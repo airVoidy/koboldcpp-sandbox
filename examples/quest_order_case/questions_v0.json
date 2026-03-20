@@ -1,0 +1,53 @@
+{
+  "questions": [
+    {
+      "id": "q-0001",
+      "text": "Нужно ли восстановить порядок входа участников?",
+      "expected_answer": "yes",
+      "wrong_answer": "no",
+      "bucket": "question_scope"
+    },
+    {
+      "id": "q-0002",
+      "text": "Нужно ли определить, кто оставил записку?",
+      "expected_answer": "yes",
+      "wrong_answer": "no",
+      "bucket": "question_scope"
+    },
+    {
+      "id": "q-0003",
+      "text": "Есть ли в задаче отношение непосредственного следования?",
+      "expected_answer": "yes",
+      "wrong_answer": "no",
+      "bucket": "adjacency_immediate"
+    },
+    {
+      "id": "q-0004",
+      "text": "Есть ли в задаче отрицание?",
+      "expected_answer": "yes",
+      "wrong_answer": "no",
+      "bucket": "negation_not"
+    },
+    {
+      "id": "q-0005",
+      "text": "Есть ли в задаче альтернатива либо/либо?",
+      "expected_answer": "yes",
+      "wrong_answer": "no",
+      "bucket": "choice_either_or"
+    },
+    {
+      "id": "q-0006",
+      "text": "Является ли фраза `ящик уже был открыт` прямым порядковым ограничением?",
+      "expected_answer": "no",
+      "wrong_answer": "yes",
+      "bucket": "observation_vs_constraint"
+    },
+    {
+      "id": "q-0007",
+      "text": "Является ли `author < 5` прямым текстом условия?",
+      "expected_answer": "no",
+      "wrong_answer": "yes",
+      "bucket": "observation_vs_constraint"
+    }
+  ]
+}

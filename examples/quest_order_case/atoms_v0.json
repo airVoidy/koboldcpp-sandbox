@@ -1,0 +1,283 @@
+[
+  {
+    "id": "a-001",
+    "raw_claim_id": "rc-003",
+    "kind": "structural",
+    "triple": {
+      "subject": "participants",
+      "relation": "enter_exactly_once",
+      "object": "time_room"
+    },
+    "formal_candidates": [
+      "forall p in participants: visits(p) = 1",
+      "entry_slots cardinality derives from participant coverage"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0003",
+      "fragment_id": "f-0004",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Каждый участник заходил в комнату с ящиком ровно один раз и поодиночке.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-002",
+    "raw_claim_id": "rc-003",
+    "kind": "structural",
+    "triple": {
+      "subject": "entry_events",
+      "relation": "non_overlapping",
+      "object": "participants"
+    },
+    "formal_candidates": [
+      "no_simultaneous_entries",
+      "one_actor_per_entry_step"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0003",
+      "fragment_id": "f-0004",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Каждый участник заходил в комнату с ящиком ровно один раз и поодиночке.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-003",
+    "raw_claim_id": "rc-004",
+    "kind": "ordering",
+    "triple": {
+      "subject": "Илья",
+      "relation": "after",
+      "object": "Диана"
+    },
+    "formal_candidates": [
+      "pos(Илья) > pos(Диана)"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0004",
+      "fragment_id": "f-0006",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Илья вошёл после Дианы, но до того, кто оставил записку.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-004",
+    "raw_claim_id": "rc-004",
+    "kind": "ordering",
+    "triple": {
+      "subject": "Илья",
+      "relation": "before",
+      "object": "author"
+    },
+    "formal_candidates": [
+      "pos(Илья) < pos(author)"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0004",
+      "fragment_id": "f-0006",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Илья вошёл после Дианы, но до того, кто оставил записку.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-005",
+    "raw_claim_id": "rc-005",
+    "kind": "adjacency",
+    "triple": {
+      "subject": "Лера",
+      "relation": "immediately_after",
+      "object": "Софья"
+    },
+    "formal_candidates": [
+      "pos(Лера) = pos(Софья) + 1"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0005",
+      "fragment_id": "f-0007",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Лера вошла сразу после Софьи.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-006",
+    "raw_claim_id": "rc-006",
+    "kind": "exclusive_choice",
+    "triple": {
+      "subject": "Елисей",
+      "relation": "one_of_positions",
+      "object": [
+        "first",
+        "last"
+      ]
+    },
+    "formal_candidates": [
+      "pos(Елисей) = first",
+      "pos(Елисей) = last"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0006",
+      "fragment_id": "f-0008",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Елисей вошёл либо первым, либо последним.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-007",
+    "raw_claim_id": "rc-007",
+    "kind": "derived_observation",
+    "triple": {
+      "subject": "author",
+      "relation": "before_slot",
+      "object": 5
+    },
+    "formal_candidates": [
+      "pos(author) < 5"
+    ],
+    "status": "heuristic_needs_check",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0007",
+      "fragment_id": null,
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Пятый посетитель обнаружил, что ящик уже был открыт.",
+      "source_kind": "derived",
+      "interpretation_level": "strong"
+    }
+  },
+  {
+    "id": "a-008",
+    "raw_claim_id": "rc-008",
+    "kind": "ordering",
+    "triple": {
+      "subject": "Анна",
+      "relation": "before",
+      "object": "Максим"
+    },
+    "formal_candidates": [
+      "pos(Анна) < pos(Максим)"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0008",
+      "fragment_id": "f-0011",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Анна вошла раньше Максима.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-009",
+    "raw_claim_id": "rc-009",
+    "kind": "ordering",
+    "triple": {
+      "subject": "author",
+      "relation": "after",
+      "object": "Диана"
+    },
+    "formal_candidates": [
+      "pos(author) > pos(Диана)"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0009",
+      "fragment_id": null,
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Тот, кто оставил записку, зашёл в комнату позже Дианы, но раньше Максима.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-010",
+    "raw_claim_id": "rc-009",
+    "kind": "ordering",
+    "triple": {
+      "subject": "author",
+      "relation": "before",
+      "object": "Максим"
+    },
+    "formal_candidates": [
+      "pos(author) < pos(Максим)"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0009",
+      "fragment_id": null,
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Тот, кто оставил записку, зашёл в комнату позже Дианы, но раньше Максима.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  },
+  {
+    "id": "a-011",
+    "raw_claim_id": "rc-010",
+    "kind": "negative_constraint",
+    "triple": {
+      "subject": "Диана",
+      "relation": "not_position",
+      "object": "first"
+    },
+    "formal_candidates": [
+      "pos(Диана) != first"
+    ],
+    "status": "unverified",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0010",
+      "fragment_id": "f-0014",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Диана не вошла первой.",
+      "source_kind": "derived",
+      "interpretation_level": "light"
+    }
+  }
+]

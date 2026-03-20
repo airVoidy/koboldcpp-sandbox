@@ -1,0 +1,18 @@
+{
+  "id": "rel-0103",
+  "type": "candidate_member_of",
+  "from": "obj-0103",
+  "to": "obj-0002",
+  "status": "candidate",
+  "source_ref": {
+    "file": "question.txt",
+    "version": "v0",
+    "sentence_id": "s-0001",
+    "fragment_id": "f-0002",
+    "token_refs": [],
+    "char_span": null,
+    "surface_text": "Лера, Максим, Софья, Илья, Диана, Елисей и Анна",
+    "source_kind": "question",
+    "interpretation_level": "direct"
+  }
+}

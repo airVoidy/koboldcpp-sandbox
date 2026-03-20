@@ -1,0 +1,2 @@
+[console_scripts]
+kobold-sandbox = kobold_sandbox.cli:app

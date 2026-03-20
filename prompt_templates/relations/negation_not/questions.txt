@@ -1,0 +1,3 @@
+1. Есть ли отрицание? yes/no
+2. Что именно отрицается? one short phrase
+3. Это entity/role/property? one word from: `entity|role|property|unknown`

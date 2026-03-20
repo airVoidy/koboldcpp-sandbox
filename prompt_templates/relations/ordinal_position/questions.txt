@@ -1,0 +1,3 @@
+1. Есть ли ordinal reference? yes/no
+2. Какой ordinal? one word
+3. К кому/чему он относится? one short phrase

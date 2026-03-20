@@ -1,0 +1,162 @@
+[
+  {
+    "id": "rc-001",
+    "kind": "entity_listing",
+    "text": "Лера, Максим, Софья, Илья, Диана, Елисей и Анна.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0001",
+      "fragment_id": "f-0002",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Лера, Максим, Софья, Илья, Диана, Елисей и Анна.",
+      "source_kind": "question",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-002",
+    "kind": "role_existence",
+    "text": "Записку оставил один из участников.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0002",
+      "fragment_id": "f-0003",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Записку оставил один из участников.",
+      "source_kind": "question",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-003",
+    "kind": "structural",
+    "text": "Каждый участник заходил в комнату с ящиком ровно один раз и поодиночке.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0003",
+      "fragment_id": "f-0004",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Каждый участник заходил в комнату с ящиком ровно один раз и поодиночке.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-004",
+    "kind": "ordering",
+    "text": "Илья вошёл после Дианы, но до того, кто оставил записку.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0004",
+      "fragment_id": "f-0006",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Илья вошёл после Дианы, но до того, кто оставил записку.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-005",
+    "kind": "adjacency",
+    "text": "Лера вошла сразу после Софьи.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0005",
+      "fragment_id": "f-0007",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Лера вошла сразу после Софьи.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-006",
+    "kind": "exclusive_choice",
+    "text": "Елисей вошёл либо первым, либо последним.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0006",
+      "fragment_id": "f-0008",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Елисей вошёл либо первым, либо последним.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-007",
+    "kind": "observational",
+    "text": "Пятый посетитель обнаружил, что ящик уже был открыт.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0007",
+      "fragment_id": null,
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Пятый посетитель обнаружил, что ящик уже был открыт.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-008",
+    "kind": "ordering",
+    "text": "Анна вошла раньше Максима.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0008",
+      "fragment_id": "f-0011",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Анна вошла раньше Максима.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-009",
+    "kind": "ordering",
+    "text": "Тот, кто оставил записку, зашёл в комнату позже Дианы, но раньше Максима.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0009",
+      "fragment_id": null,
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Тот, кто оставил записку, зашёл в комнату позже Дианы, но раньше Максима.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  },
+  {
+    "id": "rc-010",
+    "kind": "negative_constraint",
+    "text": "Диана не вошла первой.",
+    "source_ref": {
+      "file": "source_text.md",
+      "version": "v0",
+      "sentence_id": "s-0010",
+      "fragment_id": "f-0014",
+      "token_refs": [],
+      "char_span": null,
+      "surface_text": "Диана не вошла первой.",
+      "source_kind": "condition",
+      "interpretation_level": "direct"
+    }
+  }
+]

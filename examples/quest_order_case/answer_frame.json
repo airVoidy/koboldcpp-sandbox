@@ -1,0 +1,55 @@
+{
+  "case_id": "quest_order_case",
+  "question_kind": "ordered_assignment_with_role",
+  "target_forms": [
+    {
+      "id": "entry_order",
+      "kind": "ordered_sequence",
+      "description": "Порядок захода участников в комнату.",
+      "axes": [
+        {
+          "name": "slot",
+          "domain_kind": "derived_integer_range",
+          "domain_ref": "entry_slots"
+        },
+        {
+          "name": "participant",
+          "domain_kind": "entity_set",
+          "domain_ref": "participants"
+        }
+      ],
+      "status": "draft"
+    },
+    {
+      "id": "note_author",
+      "kind": "distinguished_entity",
+      "description": "Участник, оставивший записку.",
+      "domain_kind": "entity_set",
+      "domain_ref": "participants",
+      "status": "draft"
+    }
+  ],
+  "entities": {
+    "participants": [
+      "Лера",
+      "Максим",
+      "Софья",
+      "Илья",
+      "Диана",
+      "Елисей",
+      "Анна"
+    ]
+  },
+  "structural_unknowns": [
+    {
+      "id": "entry_slots",
+      "description": "Количество и индексы слотов порядка входа.",
+      "status": "to_be_derived"
+    }
+  ],
+  "notes": [
+    "Форма ответа известна из вопроса раньше, чем точный размер slot-domain.",
+    "Количество участников известно как размер entity_set participants.",
+    "Сильная структура порядка должна быть подтверждена structural claims."
+  ]
+}

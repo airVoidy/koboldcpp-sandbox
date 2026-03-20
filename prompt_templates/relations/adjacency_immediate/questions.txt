@@ -1,0 +1,4 @@
+1. Есть ли непосредственное соседство? yes/no
+2. Какой маркер? one word from: `immediately_after|immediately_before|none`
+3. Кто слева? one phrase
+4. Кто справа? one phrase

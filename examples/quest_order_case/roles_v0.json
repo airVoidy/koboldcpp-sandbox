@@ -1,0 +1,52 @@
+{
+  "roles": [
+    {
+      "id": "role-0001",
+      "surface": "тот, кто оставил записку",
+      "normalized": "author",
+      "source_ref": {
+        "file": "source_text.md",
+        "version": "v0",
+        "sentence_id": "s-0004",
+        "fragment_id": "f-0006",
+        "token_refs": [],
+        "char_span": null,
+        "surface_text": "тот, кто оставил записку",
+        "source_kind": "condition",
+        "interpretation_level": "direct"
+      }
+    },
+    {
+      "id": "role-0002",
+      "surface": "один из участников",
+      "normalized": "participant_member_unknown",
+      "source_ref": {
+        "file": "source_text.md",
+        "version": "v0",
+        "sentence_id": "s-0002",
+        "fragment_id": "f-0003",
+        "token_refs": [],
+        "char_span": null,
+        "surface_text": "один из участников",
+        "source_kind": "question",
+        "interpretation_level": "direct"
+      }
+    },
+    {
+      "id": "role-0003",
+      "surface": "пятый посетитель",
+      "normalized": "visitor_slot_5",
+      "source_ref": {
+        "file": "source_text.md",
+        "version": "v0",
+        "sentence_id": "s-0007",
+        "fragment_id": "f-0009",
+        "token_refs": [],
+        "char_span": null,
+        "surface_text": "Пятый посетитель",
+        "source_kind": "condition",
+        "interpretation_level": "direct"
+      }
+    }
+  ]
+}

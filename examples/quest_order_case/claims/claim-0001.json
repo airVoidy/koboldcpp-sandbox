@@ -1,0 +1,48 @@
+{
+  "id": "claim-0001",
+  "surface": "Семеро друзей — Лера, Максим, Софья, Илья, Диана, Елисей и Анна",
+  "kind": "group_membership_listing",
+  "object_refs": [
+    "obj-0001",
+    "obj-0002",
+    "obj-0101",
+    "obj-0102",
+    "obj-0103",
+    "obj-0104",
+    "obj-0105",
+    "obj-0106",
+    "obj-0107"
+  ],
+  "relation_refs": [
+    "rel-0001",
+    "rel-0101",
+    "rel-0102",
+    "rel-0103",
+    "rel-0104",
+    "rel-0105",
+    "rel-0106",
+    "rel-0107"
+  ],
+  "status": "raw",
+  "source_ref": {
+    "file": "source_text.md",
+    "version": "v0",
+    "sentence_id": null,
+    "fragment_id": null,
+    "token_refs": [
+      "tok-0001",
+      "tok-0002",
+      "tok-0003",
+      "tok-0004",
+      "tok-0005",
+      "tok-0006",
+      "tok-0007",
+      "tok-0008",
+      "tok-0009"
+    ],
+    "char_span": null,
+    "surface_text": "Семеро друзей — Лера, Максим, Софья, Илья, Диана, Елисей и Анна",
+    "source_kind": "historical",
+    "interpretation_level": "direct"
+  }
+}

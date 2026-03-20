@@ -1,0 +1,26 @@
+{
+  "id": "obj-0001",
+  "surface": "Семеро",
+  "lemma": "",
+  "kind": "scalar_marker",
+  "subkind": "count_word",
+  "properties": {
+    "type": "number_like",
+    "value": 7
+  },
+  "links": [],
+  "status": "raw",
+  "source_ref": {
+    "file": "question.txt",
+    "version": "v0",
+    "sentence_id": "s-0001",
+    "fragment_id": "f-0001",
+    "token_refs": [
+      "tok-0001"
+    ],
+    "char_span": null,
+    "surface_text": "Семеро друзей",
+    "source_kind": "question",
+    "interpretation_level": "direct"
+  }
+}

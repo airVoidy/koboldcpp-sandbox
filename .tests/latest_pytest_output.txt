@@ -1,0 +1,18 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\llm\KoboldCPP agentic sandbox
+configfile: pyproject.toml
+plugins: anyio-4.12.1, spec-6.0.0
+collected 27 items
+
+tests\test_rule_dsl.py ...                                               [ 11%]
+tests\test_outcomes.py ..                                                [ 18%]
+tests\test_hypothesis_runtime.py ...                                     [ 29%]
+tests\test_hypothesis_api.py .                                           [ 33%]
+examples\einstein_case\tests\test_einstein_example.py ......             [ 55%]
+tests\test_assertions.py .......                                         [ 81%]
+tests\test_reactive.py ...                                               [ 92%]
+tests\test_artifacts.py ..                                               [100%]
+
+============================= 27 passed in 1.89s ==============================
+

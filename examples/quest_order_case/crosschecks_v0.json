@@ -1,0 +1,36 @@
+{
+  "crosschecks": [
+    {
+      "id": "xc-0001",
+      "question": "[$Лера] относится к группе [$друзей]?",
+      "expected": "yes",
+      "relation_type": "candidate_member_of",
+      "left": "obj-0101",
+      "right": "obj-0002"
+    },
+    {
+      "id": "xc-0002",
+      "question": "группа [$друзей] включает [$Лера]?",
+      "expected": "yes",
+      "relation_type": "candidate_includes_member",
+      "left": "obj-0002",
+      "right": "obj-0101"
+    },
+    {
+      "id": "xc-0003",
+      "question": "[$Семеро] является количеством для [$друзей]?",
+      "expected": "yes",
+      "relation_type": "count_of",
+      "left": "obj-0001",
+      "right": "obj-0002"
+    },
+    {
+      "id": "xc-0004",
+      "question": "[$Лера] является количеством для [$друзей]?",
+      "expected": "no",
+      "relation_type": "count_of",
+      "left": "obj-0101",
+      "right": "obj-0002"
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "version": "v0",
+  "fragments": [
+    {
+      "id": "f-0001",
+      "sentence_id": "s-0001",
+      "text": "Семеро друзей",
+      "bucket": "entities"
+    },
+    {
+      "id": "f-0002",
+      "sentence_id": "s-0001",
+      "text": "Лера, Максим, Софья, Илья, Диана, Елисей и Анна",
+      "bucket": "entities"
+    },
+    {
+      "id": "f-0003",
+      "sentence_id": "s-0002",
+      "text": "записку оставил один из участников",
+      "bucket": "role_mentions"
+    },
+    {
+      "id": "f-0004",
+      "sentence_id": "s-0003",
+      "text": "Каждый участник заходил в комнату с ящиком ровно один раз и поодиночке",
+      "bucket": "structural_once_individual"
+    },
+    {
+      "id": "f-0005",
+      "sentence_id": "s-0004",
+      "text": "Илья вошёл после Дианы",
+      "bucket": "ordering_after_before"
+    },
+    {
+      "id": "f-0006",
+      "sentence_id": "s-0004",
+      "text": "Илья вошёл до того, кто оставил записку",
+      "bucket": "ordering_after_before"
+    },
+    {
+      "id": "f-0007",
+      "sentence_id": "s-0005",
+      "text": "Лера вошла сразу после Софьи",
+      "bucket": "adjacency_immediate"
+    },
+    {
+      "id": "f-0008",
+      "sentence_id": "s-0006",
+      "text": "Елисей вошёл либо первым, либо последним",
+      "bucket": "choice_either_or"
+    },
+    {
+      "id": "f-0009",
+      "sentence_id": "s-0007",
+      "text": "Пятый посетитель обнаружил",
+      "bucket": "observation_state"
+    },
+    {
+      "id": "f-0010",
+      "sentence_id": "s-0007",
+      "text": "ящик уже был открыт",
+      "bucket": "observation_state"
+    },
+    {
+      "id": "f-0011",
+      "sentence_id": "s-0008",
+      "text": "Анна вошла раньше Максима",
+      "bucket": "ordering_after_before"
+    },
+    {
+      "id": "f-0012",
+      "sentence_id": "s-0009",
+      "text": "Тот, кто оставил записку, зашёл позже Дианы",
+      "bucket": "ordering_after_before"
+    },
+    {
+      "id": "f-0013",
+      "sentence_id": "s-0009",
+      "text": "Тот, кто оставил записку, зашёл раньше Максима",
+      "bucket": "ordering_after_before"
+    },
+    {
+      "id": "f-0014",
+      "sentence_id": "s-0010",
+      "text": "Диана не вошла первой",
+      "bucket": "negation_not"
+    },
+    {
+      "id": "f-0015",
+      "sentence_id": "s-0011",
+      "text": "в каком порядке заходили в комнату участники",
+      "bucket": "unresolved"
+    },
+    {
+      "id": "f-0016",
+      "sentence_id": "s-0011",
+      "text": "кто оставил записку",
+      "bucket": "role_mentions"
+    }
+  ]
+}

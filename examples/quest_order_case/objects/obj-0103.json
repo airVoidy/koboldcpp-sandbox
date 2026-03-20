@@ -1,0 +1,30 @@
+{
+  "id": "obj-0103",
+  "surface": "Софья",
+  "lemma": "",
+  "kind": "entity",
+  "subkind": "person_name",
+  "properties": {
+    "type": "name"
+  },
+  "links": [
+    {
+      "type": "candidate_member_of",
+      "target": "obj-0002"
+    }
+  ],
+  "status": "raw",
+  "source_ref": {
+    "file": "question.txt",
+    "version": "v0",
+    "sentence_id": "s-0001",
+    "fragment_id": "f-0002",
+    "token_refs": [
+      "tok-0005"
+    ],
+    "char_span": null,
+    "surface_text": "Лера, Максим, Софья, Илья, Диана, Елисей и Анна",
+    "source_kind": "question",
+    "interpretation_level": "direct"
+  }
+}

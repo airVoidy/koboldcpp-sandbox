@@ -1,0 +1,27 @@
+{
+  "id": "obj-0002",
+  "surface": "друзей",
+  "lemma": "",
+  "kind": "group",
+  "subkind": "people_group",
+  "properties": {
+    "group_type": "friends",
+    "count_ref": "obj-0001",
+    "member_refs": []
+  },
+  "links": [],
+  "status": "raw",
+  "source_ref": {
+    "file": "question.txt",
+    "version": "v0",
+    "sentence_id": "s-0001",
+    "fragment_id": "f-0001",
+    "token_refs": [
+      "tok-0002"
+    ],
+    "char_span": null,
+    "surface_text": "Семеро друзей",
+    "source_kind": "question",
+    "interpretation_level": "direct"
+  }
+}

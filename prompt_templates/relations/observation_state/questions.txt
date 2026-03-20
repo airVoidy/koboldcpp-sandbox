@@ -1,0 +1,4 @@
+1. Это observation о состоянии? yes/no
+2. Кто наблюдатель? one short phrase
+3. Какое состояние наблюдается? one short phrase
+4. Есть ли слово `уже`? yes/no

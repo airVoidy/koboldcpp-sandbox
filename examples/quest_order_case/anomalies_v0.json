@@ -1,0 +1,21 @@
+{
+  "case_id": "quest_order_case",
+  "anomalies": [
+    {
+      "id": "an-0001",
+      "kind": "multi_solution_warning",
+      "status": "open",
+      "description": "В reasoning example встречаются несколько совместимых candidate outputs, значит нужно отдельно хранить contradiction/ambiguity checks, а не только один final answer."
+    },
+    {
+      "id": "an-0002",
+      "kind": "derived_interpretation_warning",
+      "status": "open",
+      "description": "Constraint `author < 5` является интерпретацией observation, а не прямым raw statement."
+    }
+  ],
+  "notes": [
+    "Anomaly log лучше вести избыточно.",
+    "Даже слабые подозрения на contradiction или ambiguity стоит сохранять отдельно."
+  ]
+}

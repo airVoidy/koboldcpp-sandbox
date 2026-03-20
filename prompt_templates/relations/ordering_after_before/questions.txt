@@ -1,0 +1,5 @@
+1. Есть ли прямое отношение порядка? yes/no
+2. Какой маркер? one word from: `after|before|earlier|later|none`
+3. Кто слева от relation? one phrase
+4. Кто справа от relation? one phrase
+5. Это role/entity справа? one word from: `entity|role|unknown`

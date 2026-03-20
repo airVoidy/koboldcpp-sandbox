@@ -1,0 +1,18 @@
+{
+  "id": "rel-0001",
+  "type": "count_of",
+  "from": "obj-0001",
+  "to": "obj-0002",
+  "status": "candidate",
+  "source_ref": {
+    "file": "question.txt",
+    "version": "v0",
+    "sentence_id": "s-0001",
+    "fragment_id": "f-0001",
+    "token_refs": [],
+    "char_span": null,
+    "surface_text": "Семеро друзей",
+    "source_kind": "question",
+    "interpretation_level": "direct"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "source_file": "source_text.md",
+  "tokenization": "whitespace_punctuation_v0",
+  "tokens": [
+    {"id": "tok-0001", "text": "Семеро"},
+    {"id": "tok-0002", "text": "друзей"},
+    {"id": "tok-0003", "text": "Лера"},
+    {"id": "tok-0004", "text": "Максим"},
+    {"id": "tok-0005", "text": "Софья"},
+    {"id": "tok-0006", "text": "Илья"},
+    {"id": "tok-0007", "text": "Диана"},
+    {"id": "tok-0008", "text": "Елисей"},
+    {"id": "tok-0009", "text": "Анна"}
+  ],
+  "notes": [
+    "Это только стартовый token index для первой фразы.",
+    "Позже можно добавить char spans, sentence ids, fragment ids и морфологические ссылки."
+  ]
+}
