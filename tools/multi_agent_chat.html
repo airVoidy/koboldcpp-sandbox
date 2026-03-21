@@ -1,0 +1,3640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent KoboldCpp Chat</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --surface: #24283b;
+  --surface2: #2f3349;
+  --border: #3b4261;
+  --text: #c0caf5;
+  --text-dim: #565f89;
+  --accent: #7aa2f7;
+  --accent2: #bb9af7;
+  --accent3: #7dcfff;
+  --green: #9ece6a;
+  --red: #f7768e;
+  --orange: #ff9e64;
+  --yellow: #e0af68;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.header h1 { font-size: 16px; font-weight: 600; color: var(--accent); }
+.header-controls { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+.status-indicator {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-dim);
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-dim);
+}
+.status-dot.running { background: var(--green); animation: pulse 1.5s infinite; }
+.status-dot.paused { background: var(--orange); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Layout */
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 340px;
+  min-width: 340px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.sidebar-section {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* Agent cards */
+.agent-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.agent-card.active { border-color: var(--accent); }
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.agent-color {
+  width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+}
+.agent-card label {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 3px;
+}
+.agent-card input, .agent-card textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+.agent-card input:focus, .agent-card textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.agent-card textarea { min-height: 40px; }
+.agent-field { margin-bottom: 6px; }
+.debug-panel {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.debug-panel h4 {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.debug-block {
+  margin-top: 8px;
+}
+.debug-block label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.debug-block pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.debug-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.agent-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; cursor: pointer; user-select: none;
+}
+.agent-toggle input[type="checkbox"] { accent-color: var(--accent); }
+
+/* Queue controls */
+.queue-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.queue-order {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+/* Buttons */
+btn, button {
+  font-family: inherit;
+}
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: var(--border); }
+.btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.btn.primary:hover { opacity: 0.9; }
+.btn.danger { border-color: var(--red); color: var(--red); }
+.btn.danger:hover { background: var(--red); color: var(--bg); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Chat area */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scroll-behavior: smooth;
+}
+
+/* Messages */
+.message {
+  margin-bottom: 12px;
+  max-width: 85%;
+  animation: fadeIn 0.2s ease;
+}
+.message.live-message {
+  border-left: 2px solid var(--green);
+  padding-left: 8px;
+}
+.streaming-dot {
+  font-size: 10px;
+  animation: pulse 1s infinite;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.message.human { margin-left: auto; }
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.message-nick {
+  font-weight: 600;
+}
+.message-time {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.message-body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.message.human .message-body {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+/* Message actions (edit/delete) */
+.message-actions {
+  display: none;
+  gap: 4px;
+  margin-left: auto;
+}
+.message:hover .message-actions { display: flex; }
+.msg-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: inherit;
+}
+.msg-action-btn:hover { background: var(--border); color: var(--text); }
+.msg-action-btn.tts-playing { color: var(--green); }
+.msg-action-btn.tts-loading { color: var(--orange); animation: pulse 1s infinite; }
+
+/* Inline edit */
+.message-edit-area {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.5;
+}
+.message-edit-buttons {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Collapsible thought/html blocks */
+.collapsible-block {
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--surface2);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  user-select: none;
+}
+.collapsible-header:hover { background: var(--border); }
+.collapsible-arrow {
+  transition: transform 0.2s;
+  font-size: 10px;
+}
+.collapsible-block.open .collapsible-arrow { transform: rotate(90deg); }
+.collapsible-content {
+  display: none;
+  padding: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.collapsible-block.open .collapsible-content { display: block; }
+
+/* Unclosed thinking tags — shown inline, dimmed */
+.thinking-open {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: italic;
+}
+.thinking-content {
+  color: var(--text-dim);
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* Mode toggle */
+.mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.mode-toggle button {
+  flex: 1;
+  padding: 5px 10px;
+  border: none;
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-toggle button.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+.mode-toggle button:hover:not(.active) { background: var(--border); }
+
+/* Typing indicator */
+.typing-indicator {
+  display: none;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  flex-direction: column;
+  gap: 4px;
+}
+.typing-indicator.visible { display: flex; }
+.typing-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.typing-dots span {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: typingDot 1.4s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingDot { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
+
+/* Input area */
+.input-area {
+  padding: 12px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.input-area textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  min-height: 40px;
+  max-height: 120px;
+  line-height: 1.5;
+}
+.input-area textarea:focus { outline: none; border-color: var(--accent); }
+
+/* Generation settings */
+.gen-settings {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.gen-settings label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.gen-settings input[type="number"] {
+  width: 70px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.gen-settings input[type="number"]:focus { outline: none; border-color: var(--accent); }
+
+.agent-gen-btn {
+  margin-top: 6px;
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 0;
+  text-align: center;
+}
+.agent-gen-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Attachments */
+.attachment-preview {
+  display: none;
+  padding: 6px 16px;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.attachment-preview.has-items { display: flex; }
+.attachment-thumb {
+  position: relative;
+  width: 64px; height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.attachment-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.attachment-thumb .remove-attach {
+  position: absolute;
+  top: 1px; right: 1px;
+  background: rgba(0,0,0,0.7);
+  color: var(--red);
+  border: none;
+  border-radius: 50%;
+  width: 18px; height: 18px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 16px;
+  text-align: center;
+}
+.input-area.dragover textarea {
+  border-color: var(--green);
+  background: rgba(158,206,106,0.1);
+}
+.message-body .msg-image {
+  display: block;
+  max-width: 300px;
+  max-height: 200px;
+  border-radius: 6px;
+  margin: 6px 0 0 0;
+  cursor: pointer;
+}
+
+/* Image popup */
+.image-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  cursor: pointer;
+}
+.image-popup-overlay img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 8px;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+  cursor: default;
+}
+
+/* Settings Modal */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.settings-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.settings-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 420px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  transform: translateY(10px);
+  transition: transform 0.2s;
+}
+.settings-overlay.open .settings-modal {
+  transform: translateY(0);
+}
+.settings-modal h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-modal h2 button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.settings-modal h2 button:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+.settings-section {
+  margin-bottom: 14px;
+}
+.settings-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.settings-section .agent-field {
+  margin-bottom: 8px;
+}
+.settings-section .agent-field label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+.settings-section .agent-field input,
+.settings-section .agent-field select,
+.settings-section .agent-field textarea {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.settings-section .agent-field input:focus,
+.settings-section .agent-field select:focus,
+.settings-section .agent-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.settings-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.settings-btn:hover {
+  background: var(--border);
+  border-color: var(--accent);
+}
+.settings-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* Responsive */
+@media (max-width: 800px) {
+  .sidebar { width: 100%; min-width: unset; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  .main-layout { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Multi-Agent Chat</h1>
+  <div class="header-controls">
+    <span id="tokenBudget" style="font-size:11px;color:var(--text-dim);font-family:monospace"></span>
+    <div class="status-indicator">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Idle</span>
+    </div>
+  </div>
+</div>
+
+<div class="main-layout">
+  <div class="sidebar">
+    <!-- User & Shared -->
+    <div class="sidebar-section">
+      <h3>You &amp; Shared Context</h3>
+      <div class="agent-card" style="border-color: var(--green)">
+        <div class="agent-field">
+          <label>Your Nickname</label>
+          <input type="text" id="userNick" value="You" />
+        </div>
+        <div class="agent-field">
+          <label>Shared Context (sent to all agents as system message)</label>
+          <textarea id="sharedContext" rows="3" placeholder="e.g. You are in a group discussion about..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dynamic Agents -->
+    <div id="agentsContainer"></div>
+    <div class="sidebar-section" style="padding:8px 12px">
+      <button class="btn primary" id="btnAddAgent" style="width:100%">+ Add Agent</button>
+    </div>
+
+    <!-- Queue & Settings -->
+    <div class="sidebar-section">
+      <h3>Queue &amp; Generation</h3>
+      <div class="mode-toggle" id="modeToggle">
+        <button class="active" data-mode="sequential">Sequential</button>
+        <button data-mode="parallel">Parallel</button>
+      </div>
+      <div class="queue-order" id="queueOrder">Order: Agent-A &rarr; Agent-B &rarr; Agent-C</div>
+      <div class="gen-settings">
+        <div>
+          <label>Temperature</label>
+          <input type="number" id="temperature" value="0.7" min="0" max="2" step="0.1" />
+        </div>
+        <div>
+          <label>Max Tokens</label>
+          <input type="number" id="maxTokens" value="2048" min="1" max="32768" step="1" />
+        </div>
+        <div>
+          <label>Rounds (0 = &infin;)</label>
+          <input type="number" id="maxRounds" value="0" min="0" max="999" step="1" title="Number of rounds to run (0 = infinite until paused)" />
+        </div>
+      </div>
+      <label class="agent-toggle" style="margin-top:8px">
+        <input type="checkbox" id="autoRun"> Auto-run after send
+      </label>
+      <label class="agent-toggle" style="margin-top:4px" title="Strip &lt;think&gt;/&lt;thinking&gt;/&lt;thought&gt; blocks from other agents' messages before sending to the current agent. Each agent still sees its own thinking.">
+        <input type="checkbox" id="stripThink" checked> Strip others' thinking from context
+      </label>
+      <label class="agent-toggle" style="margin-top:4px" title="Strip thinking blocks from the agent's own previous messages, keeping only the most recent one. Saves context — past thinking is usually only relevant to that turn.">
+        <input type="checkbox" id="stripOwnPrevThink" checked> Strip own previous thinking
+      </label>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          <label class="agent-toggle" title="When enabled: pause generation after </think>, run a worker to extract atomic rules/facts, store them in DataStore, inject summary back into context before continuing.">
+          <input type="checkbox" id="thinkInterceptEnabled"> Think Interceptor
+        </label>
+        <div id="interceptorSettings" style="display:none;margin-top:6px;padding:8px;background:var(--bg);border-radius:6px;font-size:12px">
+          <label style="display:block;margin-bottom:4px;color:var(--text-dim)">Worker LLM URL</label>
+          <input type="text" id="interceptorWorkerUrl" value="http://localhost:5001" style="width:100%;padding:3px 6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px" title="LLM endpoint for claim extraction (separate from main agent)">
+          <label style="display:block;margin-top:6px;margin-bottom:4px;color:var(--text-dim)">Sandbox URL (verify endpoint)</label>
+          <input type="text" id="interceptorSandboxUrl" value="http://127.0.0.1:8060" style="width:100%;padding:3px 6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px" title="kobold-sandbox server for /api/logic/verify">
+          <label style="display:block;margin-top:6px;margin-bottom:4px;color:var(--text-dim)">DataStore URL</label>
+          <input type="text" id="interceptorDsUrl" value="http://127.0.0.1:8060/api/datastore" style="width:100%;padding:3px 6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+          <label style="display:block;margin-top:6px;margin-bottom:4px;color:var(--text-dim)">Namespace</label>
+          <input type="text" id="interceptorNs" value="session" style="width:100%;padding:3px 6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+          <label class="agent-toggle" style="margin-top:6px">
+            <input type="checkbox" id="interceptorInject" checked> Inject facts into context
+          </label>
+          <label class="agent-toggle" style="margin-top:4px">
+            <input type="checkbox" id="interceptorDedup" checked> Deduplicate extracted items
+          </label>
+          <label class="agent-toggle" style="margin-top:4px">
+            <input type="checkbox" id="interceptorWorkerNoThink" checked> Worker No Think
+          </label>
+          <div style="margin-top:6px">
+            <button onclick="openDataStoreViewer()" style="font-size:11px;padding:2px 8px;background:var(--bg-surface);border:1px solid var(--border);color:var(--accent);border-radius:4px;cursor:pointer">Open DataStore Viewer</button>
+          </div>
+          <div class="debug-panel">
+            <h4>Interceptor Debug</h4>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="reverifyInterceptorDebug()">Re-verify</button>
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="copyInterceptorDebug('raw_output')">Copy Raw Output</button>
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="copyInterceptorDebug('prompt')">Copy Prompt</button>
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="copyInterceptorDebug('schema')">Copy Schema</button>
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="copyInterceptorDebug('manifest')">Copy Manifest</button>
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="copyInterceptorDebug('rejected')">Copy Rejected</button>
+              <button class="btn" style="font-size:11px;padding:2px 8px" onclick="clearInterceptorDebug()">Clear</button>
+            </div>
+            <div class="debug-meta" id="interceptorDebugMeta">No verification yet.</div>
+            <div class="debug-block">
+              <label><span>Worker Raw Output</span></label>
+              <pre id="interceptorDebugRawOutput">(empty)</pre>
+            </div>
+            <div class="debug-block">
+              <label><span>Worker Prompt</span></label>
+              <pre id="interceptorDebugPrompt">(empty)</pre>
+            </div>
+            <div class="debug-block">
+              <label><span>Raw Schema</span><span id="interceptorDebugClaims">0 items</span></label>
+              <pre id="interceptorDebugSchema">(empty)</pre>
+            </div>
+            <div class="debug-block">
+              <label><span>Parsed Manifest</span></label>
+              <pre id="interceptorDebugManifest">(empty)</pre>
+            </div>
+            <div class="debug-block">
+              <label><span>Rejected Items</span></label>
+              <pre id="interceptorDebugRejected">(none)</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TTS compact -->
+    <div class="sidebar-section">
+      <h3>Text-to-Speech</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="settings-btn" onclick="toggleSettings()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </button>
+        <label class="agent-toggle" style="font-size:12px">
+          <input type="checkbox" id="ttsAutoSpeak"> Auto-speak
+        </label>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="sidebar-section">
+      <h3>Actions</h3>
+      <div class="queue-controls">
+        <button class="btn primary" id="btnStart">Start Round</button>
+        <button class="btn" id="btnPause" disabled>Pause</button>
+        <button class="btn" id="btnResume" disabled>Resume</button>
+        <button class="btn" id="btnStep" title="Run one agent turn">Step</button>
+        <button class="btn" id="btnUndo" title="Undo last action">Undo</button>
+        <button class="btn danger" id="btnClear">Clear Chat</button>
+      </div>
+    </div>
+
+    <!-- Config Import/Export -->
+    <div class="sidebar-section">
+      <h3>Config</h3>
+      <div class="queue-controls">
+        <button class="btn" id="btnExport">Export Config</button>
+        <button class="btn" id="btnImport">Import Config</button>
+      </div>
+      <input type="file" id="fileImport" accept=".json" style="display:none" />
+    </div>
+
+    <!-- History Import/Export -->
+    <div class="sidebar-section">
+      <h3>History</h3>
+      <div class="queue-controls">
+        <button class="btn" id="btnExportHistory">Export Chat</button>
+        <button class="btn" id="btnImportHistory">Import Chat</button>
+      </div>
+      <input type="file" id="fileImportHistory" accept=".json" style="display:none" />
+    </div>
+  </div>
+
+  <div class="chat-area">
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="typing-indicator" id="typingIndicator"></div>
+    <div id="attachmentPreview" class="attachment-preview"></div>
+    <div class="input-area">
+      <button class="btn" id="btnAttach" title="Attach image" style="padding:6px 10px;font-size:16px">&#128206;</button>
+      <input type="file" id="fileAttach" accept="image/*" multiple style="display:none" />
+      <textarea id="userInput" placeholder="Type a message (Enter to send, Shift+Enter for newline). Drop/paste images here." rows="1"></textarea>
+      <button class="btn primary" id="btnSend">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)toggleSettings()">
+  <div class="settings-modal">
+    <h2>
+      <span>Settings</span>
+      <button onclick="toggleSettings()" title="Close">&times;</button>
+    </h2>
+
+    <!-- TTS Settings -->
+    <div class="settings-section">
+      <h3>Text-to-Speech</h3>
+      <div class="agent-field">
+        <label>Backend</label>
+        <select id="ttsBackend">
+          <option value="koboldcpp">KoboldCpp</option>
+          <option value="qwen-custom" selected>Qwen CustomVoice</option>
+          <option value="qwen-design">Qwen VoiceDesign</option>
+          <option value="qwen-clone">Qwen Saved Voices</option>
+        </select>
+      </div>
+      <div class="agent-field">
+        <label>TTS Endpoint</label>
+        <input type="text" id="ttsUrl" value="http://localhost:8100" placeholder="http://host:port" />
+      </div>
+      <div class="agent-field" id="ttsVoiceField">
+        <label>Voice / Speaker</label>
+        <select id="ttsVoicePreset" style="margin-bottom:4px">
+          <optgroup label="KoboldCpp (any name = unique voice)">
+            <option value="Airy">Airy</option>
+            <option value="kobo">kobo</option>
+            <option value="cheery">cheery</option>
+            <option value="sleepy">sleepy</option>
+            <option value="shouty">shouty</option>
+            <option value="chatty">chatty</option>
+          </optgroup>
+          <optgroup label="Qwen CustomVoice">
+            <option value="Vivian" selected>Vivian</option>
+            <option value="Serena">Serena</option>
+            <option value="Ryan">Ryan</option>
+            <option value="Aiden">Aiden</option>
+            <option value="Eric">Eric</option>
+            <option value="Dylan">Dylan</option>
+            <option value="Ono Anna">Ono Anna</option>
+            <option value="Sohee">Sohee</option>
+            <option value="Uncle Fu">Uncle Fu</option>
+          </optgroup>
+        </select>
+        <input type="text" id="ttsVoice" value="Vivian" placeholder="Speaker name or custom name" />
+      </div>
+      <div class="agent-field" id="ttsSavedVoiceField" style="display:none">
+        <label>Saved Voice</label>
+        <select id="ttsSavedVoice"><option value="">-- loading --</option></select>
+        <button onclick="loadSavedVoices()" style="margin-top:4px;padding:2px 8px;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">Refresh</button>
+      </div>
+      <div class="agent-field" id="ttsLangField">
+        <label>Language</label>
+        <select id="ttsLang">
+          <option value="Auto">Auto</option>
+          <option value="Russian">Russian</option>
+          <option value="English">English</option>
+          <option value="Chinese">Chinese</option>
+          <option value="Japanese">Japanese</option>
+          <option value="Korean">Korean</option>
+          <option value="German">German</option>
+          <option value="French">French</option>
+          <option value="Spanish">Spanish</option>
+          <option value="Italian">Italian</option>
+          <option value="Portuguese">Portuguese</option>
+        </select>
+      </div>
+      <div class="agent-field" id="ttsInstructField">
+        <label>Style instruction (optional)</label>
+        <input type="text" id="ttsInstruct" placeholder="e.g. Say it warmly and gently" />
+      </div>
+      <div class="agent-field" id="ttsVoiceDesignField" style="display:none">
+        <label>Voice Design Description</label>
+        <textarea id="ttsVoiceDesign" rows="3" placeholder="e.g. Young woman with a warm, energetic voice and a slight Russian accent."></textarea>
+        <div style="margin-top:4px;display:flex;gap:4px;align-items:center">
+          <input type="text" id="ttsDesignSaveName" placeholder="Voice name to save" />
+          <button onclick="saveDesignedVoice()" style="padding:4px 10px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">Save voice</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Dynamic color palette — cycles for any number of agents
+const COLOR_PALETTE = [
+  { css: 'var(--accent)',  hex: '#7aa2f7' },
+  { css: 'var(--accent2)', hex: '#bb9af7' },
+  { css: 'var(--accent3)', hex: '#7dcfff' },
+  { css: 'var(--green)',   hex: '#9ece6a' },
+  { css: 'var(--orange)',  hex: '#ff9e64' },
+  { css: 'var(--yellow)',  hex: '#e0af68' },
+  { css: 'var(--red)',     hex: '#f7768e' },
+  { css: '#ff007c',        hex: '#ff007c' },
+  { css: '#73daca',        hex: '#73daca' },
+  { css: '#b4f9f8',        hex: '#b4f9f8' },
+];
+function agentColor(idx) { return COLOR_PALETTE[idx % COLOR_PALETTE.length]; }
+
+// State
+let agentCount = 0; // total agents created (used as next id)
+let agentIds = [];   // ordered list of active agent ids [0, 1, 2, ...]
+let chatHistory = [];
+let running = false;
+let paused = false;
+let pauseRequested = false;
+let currentAgentIdx = 0;
+let abortControllers = [];
+let perAgentAbort = {};
+let mode = 'sequential';
+let pendingImages = [];
+let interceptorDebugState = {
+  updatedAt: '',
+  sourceType: '',
+  formatKind: '',
+  workerPrompt: '',
+  workerRawOutput: '',
+  rawSchema: '',
+  manifest: null,
+  rejected: [],
+  claims: [],
+};
+
+// --- Dynamic agent card creation ---
+const agentsContainer = document.getElementById('agentsContainer');
+
+function createAgentCard(id, defaults) {
+  const d = defaults || {};
+  const nick = d.nick || `Agent-${String.fromCharCode(65 + (id % 26))}`;
+  const url = d.url || '';
+  const system = d.system || 'You are a helpful assistant.';
+  const context = d.context || '';
+  const enabled = d.enabled !== undefined ? d.enabled : true;
+  const nothink = d.nothink || false;
+  const voice = d.voice || '';
+  const col = agentColor(id);
+
+  const section = document.createElement('div');
+  section.className = 'sidebar-section';
+  section.id = `agentSection${id}`;
+  section.innerHTML = `
+    <h3 style="display:flex;align-items:center;justify-content:space-between">
+      <span>Agent ${id + 1}</span>
+      <button class="msg-action-btn" title="Remove agent" onclick="removeAgent(${id})" style="font-size:14px;color:var(--red)">&times;</button>
+    </h3>
+    <div class="agent-card" id="agentCard${id}">
+      <div class="agent-card-header">
+        <div class="agent-color" style="background: ${col.css}"></div>
+        <label class="agent-toggle">
+          <input type="checkbox" ${enabled ? 'checked' : ''} data-agent-enable="${id}"> Enabled
+        </label>
+        <label class="agent-toggle">
+          <input type="checkbox" ${nothink ? 'checked' : ''} data-agent-nothink="${id}"> No Think
+        </label>
+      </div>
+      <div class="agent-field">
+        <label>Nickname</label>
+        <input type="text" data-agent-nick="${id}" value="${nick}" />
+      </div>
+      <div class="agent-field">
+        <label>Endpoint</label>
+        <input type="text" data-agent-url="${id}" value="${url}" placeholder="http://host:port" />
+      </div>
+      <div class="agent-field">
+        <label>System Prompt</label>
+        <textarea data-agent-system="${id}" rows="2">${system}</textarea>
+      </div>
+      <div class="agent-field">
+        <label>Context (prepended to conversation)</label>
+        <textarea data-agent-context="${id}" rows="2">${context}</textarea>
+      </div>
+      <div class="agent-field" style="margin-top:6px">
+        <label>Voice</label>
+        <select data-agent-voice="${id}" style="width:100%">
+          <option value="">— use global —</option>
+          <optgroup label="KoboldCpp">
+            <option value="kobold:Airy">Airy</option>
+            <option value="kobold:kobo">kobo</option>
+            <option value="kobold:cheery">cheery</option>
+            <option value="kobold:sleepy">sleepy</option>
+            <option value="kobold:shouty">shouty</option>
+            <option value="kobold:chatty">chatty</option>
+          </optgroup>
+          <optgroup label="Qwen CustomVoice">
+            <option value="qwen-custom:Vivian">Vivian</option>
+            <option value="qwen-custom:Serena">Serena</option>
+            <option value="qwen-custom:Ryan">Ryan</option>
+            <option value="qwen-custom:Aiden">Aiden</option>
+            <option value="qwen-custom:Eric">Eric</option>
+            <option value="qwen-custom:Dylan">Dylan</option>
+            <option value="qwen-custom:Ono Anna">Ono Anna</option>
+            <option value="qwen-custom:Sohee">Sohee</option>
+            <option value="qwen-custom:Uncle Fu">Uncle Fu</option>
+          </optgroup>
+          <optgroup label="Qwen Saved Voices" id="agentSavedVoices${id}">
+          </optgroup>
+        </select>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:6px">
+        <button class="btn agent-gen-btn" data-agent-gen="${id}" style="flex:1">&#9654; Generate</button>
+        <button class="btn agent-pause-btn" data-agent-pause="${id}" disabled>&#9208; Pause</button>
+      </div>
+    </div>
+  `;
+
+  agentsContainer.appendChild(section);
+
+  // Restore per-agent voice selection
+  if (voice) {
+    const voiceSel = section.querySelector(`[data-agent-voice="${id}"]`);
+    if (voiceSel) voiceSel.value = voice;
+  }
+
+  // Wire up per-agent Generate / Pause
+  section.querySelector(`[data-agent-gen="${id}"]`).addEventListener('click', () => generateSingleAgent(id));
+  section.querySelector(`[data-agent-pause="${id}"]`).addEventListener('click', () => {
+    const ac = perAgentAbort[id];
+    if (ac) { try { ac.abort(); } catch {} }
+    delete perAgentAbort[id];
+    section.querySelector(`[data-agent-pause="${id}"]`).disabled = true;
+  });
+
+  // Auto-save on field changes
+  section.querySelectorAll('input, textarea').forEach(el => {
+    el.addEventListener('change', () => { updateQueueOrder(); saveToStorage(); });
+    el.addEventListener('input', () => { updateQueueOrder(); saveToStorage(); });
+  });
+
+  if (!agentIds.includes(id)) agentIds.push(id);
+  if (id >= agentCount) agentCount = id + 1;
+
+  updateQueueOrder();
+  return id;
+}
+
+function addAgent(defaults) {
+  const id = agentCount;
+  createAgentCard(id, defaults);
+  saveToStorage();
+  return id;
+}
+
+function removeAgent(id) {
+  const section = document.getElementById(`agentSection${id}`);
+  if (section) section.remove();
+  agentIds = agentIds.filter(i => i !== id);
+  updateQueueOrder();
+  saveToStorage();
+}
+
+// Initialize default 3 agents
+function initDefaultAgents() {
+  const defaults = [
+    { nick: 'Agent-A', url: 'http://localhost:5050', system: 'You are a helpful assistant.' },
+    { nick: 'Agent-B', url: 'http://192.168.1.15:5050', system: 'You are a helpful assistant.' },
+    { nick: 'Agent-C', url: 'http://192.168.1.14:5001', system: 'You are a helpful assistant.' },
+  ];
+  for (const d of defaults) createAgentCard(agentCount, d);
+}
+
+document.getElementById('btnAddAgent').addEventListener('click', () => addAgent());
+
+// --- Context limits cache ---
+// { url: { max_context_length, max_length, fetched_at } }
+const contextLimitsCache = {};
+
+async function fetchContextLimits(baseUrl) {
+  const key = baseUrl.replace(/\/$/, '');
+  const cached = contextLimitsCache[key];
+  if (cached && (Date.now() - cached.fetched_at < 300000)) return cached; // 5min cache
+
+  try {
+    const [ctxResp, lenResp, verResp] = await Promise.all([
+      fetch(key + '/api/v1/config/max_context_length').then(r => r.json()).catch(() => null),
+      fetch(key + '/api/v1/config/max_length').then(r => r.json()).catch(() => null),
+      fetch(key + '/api/extra/version').then(r => r.json()).catch(() => null),
+    ]);
+    const limits = {
+      max_context_length: ctxResp?.value || 4096,
+      max_length: lenResp?.value || 512,
+      vision: verResp?.vision || false,
+      fetched_at: Date.now(),
+    };
+    contextLimitsCache[key] = limits;
+    return limits;
+  } catch {
+    return { max_context_length: 4096, max_length: 512, vision: false, fetched_at: Date.now() };
+  }
+}
+
+// Estimate tokens from text (~3 chars/token, like KoboldCpp's heuristic)
+function estimateTokens(text) {
+  if (!text) return 0;
+  // Avg word length check: code tokenizes worse
+  const words = text.split(/\s+/).filter(Boolean);
+  const avgWordLen = words.length > 0 ? text.length / words.length : 4;
+  const charsPerToken = avgWordLen >= 7.8 ? 2.7 : 3.0;
+  return Math.ceil(text.length / charsPerToken);
+}
+
+function estimateMessagesTokens(messages) {
+  let total = 0;
+  for (const m of messages) {
+    // ~4 tokens overhead per message for role/name/formatting
+    total += 4;
+    if (Array.isArray(m.content)) {
+      // Multipart content (text + images)
+      for (const part of m.content) {
+        if (part.type === 'text') total += estimateTokens(part.text || '');
+        else if (part.type === 'image_url') total += 85; // ~85 tokens per image (KoboldCpp vision)
+      }
+    } else {
+      total += estimateTokens(m.content || '');
+    }
+    if (m.name) total += estimateTokens(m.name);
+  }
+  return total + 2; // final assistant priming
+}
+
+// Trim messages array to fit within token budget, keeping system messages intact
+function trimMessagesToFit(messages, maxTokens) {
+  if (maxTokens <= 0) return messages;
+
+  let current = estimateMessagesTokens(messages);
+  if (current <= maxTokens) return messages;
+
+  // Separate system messages (always kept) from conversation
+  const systemMsgs = [];
+  const convMsgs = [];
+  for (const m of messages) {
+    if (m.role === 'system') systemMsgs.push(m);
+    else convMsgs.push(m);
+  }
+
+  // Remove oldest conversation messages until we fit
+  while (convMsgs.length > 1 && current > maxTokens) {
+    const removed = convMsgs.shift();
+    current -= (4 + estimateTokens(removed.content || '') + estimateTokens(removed.name || ''));
+  }
+
+  return [...systemMsgs, ...convMsgs];
+}
+
+// DOM
+const chatMessages = document.getElementById('chatMessages');
+const typingIndicator = document.getElementById('typingIndicator');
+const userInput = document.getElementById('userInput');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const queueOrder = document.getElementById('queueOrder');
+
+// Buttons
+const btnStart = document.getElementById('btnStart');
+const btnPause = document.getElementById('btnPause');
+const btnResume = document.getElementById('btnResume');
+const btnStep = document.getElementById('btnStep');
+const btnClear = document.getElementById('btnClear');
+const btnSend = document.getElementById('btnSend');
+
+// Mode toggle
+document.querySelectorAll('#modeToggle button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = btn.dataset.mode;
+    document.querySelectorAll('#modeToggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateQueueOrder();
+  });
+});
+
+// Helpers
+function getAgentConfig(idx) {
+  const el = (sel) => document.querySelector(sel);
+  const enableEl = el(`[data-agent-enable="${idx}"]`);
+  if (!enableEl) return null;
+  return {
+    enabled: enableEl.checked,
+    nothink: el(`[data-agent-nothink="${idx}"]`)?.checked || false,
+    nick: el(`[data-agent-nick="${idx}"]`)?.value.trim() || `Agent-${idx+1}`,
+    url: el(`[data-agent-url="${idx}"]`)?.value.trim() || '',
+    system: el(`[data-agent-system="${idx}"]`)?.value || '',
+    context: el(`[data-agent-context="${idx}"]`)?.value || '',
+    voice: el(`[data-agent-voice="${idx}"]`)?.value || '',
+  };
+}
+
+function getEnabledAgents() {
+  const agents = [];
+  for (const id of agentIds) {
+    const cfg = getAgentConfig(id);
+    if (cfg && cfg.enabled && cfg.url) agents.push({ ...cfg, idx: id });
+  }
+  return agents;
+}
+
+function updateQueueOrder() {
+  const agents = getEnabledAgents();
+  if (mode === 'parallel') {
+    queueOrder.textContent = 'Parallel: ' + agents.map(a => a.nick).join(' + ');
+  } else {
+    queueOrder.textContent = 'Order: ' + agents.map(a => a.nick).join(' \u2192 ');
+  }
+}
+
+// Queue order is updated by createAgentCard listeners
+
+function setStatus(state, text) {
+  statusDot.className = 'status-dot ' + state;
+  statusText.textContent = text;
+}
+
+function showTypingMulti(agents) {
+  typingIndicator.innerHTML = '';
+  for (const a of agents) {
+    const row = document.createElement('div');
+    row.className = 'typing-row';
+    row.id = 'typing_' + a.idx;
+    row.innerHTML =
+      '<div class="typing-dots"><span></span><span></span><span></span></div>' +
+      `<span style="color:${agentColor(a.idx).hex}">${a.nick} is thinking...</span>`;
+    typingIndicator.appendChild(row);
+  }
+  typingIndicator.classList.add('visible');
+}
+
+function removeTypingRow(idx) {
+  const row = document.getElementById('typing_' + idx);
+  if (row) row.remove();
+  if (typingIndicator.children.length === 0) {
+    typingIndicator.classList.remove('visible');
+  }
+}
+
+function hideTyping() {
+  typingIndicator.innerHTML = '';
+  typingIndicator.classList.remove('visible');
+}
+
+function timeNow() {
+  return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function isScrolledToBottom() {
+  return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 40;
+}
+
+function scrollToBottom() {
+  if (!isScrolledToBottom()) return;
+  requestAnimationFrame(() => {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
+}
+
+// --- Token budget display ---
+function updateTokenBudget(agentIdx, used, budget, trimmed) {
+  const el = document.getElementById('tokenBudget');
+  const pct = Math.round((used / budget) * 100);
+  const color = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--orange)' : 'var(--text-dim)';
+  let text = `ctx: ~${used}/${budget}t (${pct}%)`;
+  if (trimmed > 0) text += ` [${trimmed}t trimmed]`;
+  el.style.color = color;
+  el.textContent = text;
+}
+
+// --- Collapsible content processing ---
+// Only collapse when the closing tag is present.
+// If a <thinking> (or <think>, <thought>) has no closing tag, show it inline as-is.
+function processContent(text) {
+  let processed = text;
+
+  // Closed thought/think/thinking tags -> collapsible block
+  const thoughtPattern = /&lt;(thought|think|thinking)\b[^&]*?&gt;([\s\S]*?)&lt;\/\1&gt;/gi;
+  processed = processed.replace(thoughtPattern, (match, tag, inner) => {
+    const id = 'cb_' + Math.random().toString(36).slice(2, 10);
+    const preview = inner.trim().substring(0, 80);
+    return `<div class="collapsible-block" id="${id}">` +
+      `<div class="collapsible-header" onclick="document.getElementById('${id}').classList.toggle('open')">` +
+      `<span class="collapsible-arrow">\u25B6</span>` +
+      `<span>&lt;${tag}&gt; ${preview}${inner.trim().length > 80 ? '...' : ''}</span>` +
+      `</div>` +
+      `<div class="collapsible-content">${inner}</div>` +
+      `</div>`;
+  });
+
+  // Closed arbitrary XML/HTML-like tag pairs -> collapsible block
+  const htmlBlockPattern = /&lt;(?!\/?\s*(?:b|i|u|em|strong|code|br|p|a|span|div|pre)\b)(\w[\w-]*)\b[^&]*?&gt;([\s\S]*?)&lt;\/\1&gt;/gi;
+  processed = processed.replace(htmlBlockPattern, (match, tag, inner) => {
+    const id = 'cb_' + Math.random().toString(36).slice(2, 10);
+    const preview = inner.trim().substring(0, 80);
+    return `<div class="collapsible-block" id="${id}">` +
+      `<div class="collapsible-header" onclick="document.getElementById('${id}').classList.toggle('open')">` +
+      `<span class="collapsible-arrow">\u25B6</span>` +
+      `<span>&lt;${tag}&gt; ${preview}${inner.trim().length > 80 ? '...' : ''}</span>` +
+      `</div>` +
+      `<div class="collapsible-content">${match}</div>` +
+      `</div>`;
+  });
+
+  // Unclosed <thinking>/<think>/<thought> — keep visible, style as dim thinking text
+  const unclosedPattern = /&lt;(thought|think|thinking)\b[^&]*?&gt;([\s\S]*)$/gi;
+  processed = processed.replace(unclosedPattern, (match, tag, inner) => {
+    return `<span class="thinking-open">&lt;${tag}&gt;</span><span class="thinking-content">${inner}</span>`;
+  });
+
+  return processed;
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// --- Undo stack ---
+let undoStack = []; // snapshots of chatHistory
+
+function pushUndo() {
+  undoStack.push(JSON.parse(JSON.stringify(chatHistory)));
+  if (undoStack.length > 50) undoStack.shift();
+}
+
+function performUndo() {
+  if (undoStack.length === 0) return;
+  const prev = undoStack.pop();
+  chatHistory = [];
+  chatMessages.innerHTML = '';
+  for (const entry of prev) {
+    chatHistory.push(entry);
+    chatMessages.appendChild(renderMessage(entry));
+  }
+  scrollToBottom();
+  saveToStorage();
+}
+
+// --- Image popup ---
+function showImagePopup(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'image-popup-overlay';
+  overlay.onclick = () => overlay.remove();
+  const img = document.createElement('img');
+  img.src = src;
+  img.onclick = (e) => e.stopPropagation();
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+  document.addEventListener('keydown', function esc(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); }
+  });
+}
+
+// --- Render message ---
+function renderMessage(entry) {
+  const idx = chatHistory.indexOf(entry);
+  const div = document.createElement('div');
+  div.className = 'message' + (entry.role === 'user' ? ' human' : '');
+  div.dataset.msgIdx = idx >= 0 ? idx : chatHistory.length;
+
+  const header = document.createElement('div');
+  header.className = 'message-header';
+
+  const nick = document.createElement('span');
+  nick.className = 'message-nick';
+  nick.textContent = entry.name;
+  if (entry.agentIdx !== null && entry.agentIdx !== undefined) {
+    const c = agentColor(entry.agentIdx);
+    if (c) nick.style.color = c.hex;
+  }
+
+  const time = document.createElement('span');
+  time.className = 'message-time';
+  time.textContent = entry.time;
+
+  const actions = document.createElement('div');
+  actions.className = 'message-actions';
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'msg-action-btn';
+  editBtn.textContent = 'edit';
+  editBtn.onclick = () => startEdit(div, entry);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'msg-action-btn';
+  delBtn.textContent = 'del';
+  delBtn.onclick = () => deleteMessage(entry);
+
+  const speakBtn = document.createElement('button');
+  speakBtn.className = 'msg-action-btn';
+  speakBtn.textContent = 'speak';
+  speakBtn.onclick = () => ttsSpeak(entry.content, speakBtn, entry.agentIdx);
+
+  actions.appendChild(editBtn);
+  actions.appendChild(delBtn);
+  actions.appendChild(speakBtn);
+
+  header.appendChild(nick);
+  header.appendChild(time);
+  header.appendChild(actions);
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+
+  if (entry.role === 'user') {
+    body.textContent = entry.content;
+  } else {
+    body.innerHTML = processContent(escapeHtml(entry.content));
+  }
+
+  // Render attached images
+  if (entry.images && entry.images.length > 0) {
+    for (const dataUrl of entry.images) {
+      const img = document.createElement('img');
+      img.className = 'msg-image';
+      img.src = dataUrl;
+      img.onclick = () => showImagePopup(dataUrl);
+      body.appendChild(img);
+    }
+  }
+
+  div.appendChild(header);
+  div.appendChild(body);
+  return div;
+}
+
+function startEdit(msgDiv, entry) {
+  const body = msgDiv.querySelector('.message-body');
+  const oldContent = entry.content;
+  body.innerHTML = '';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'message-edit-area';
+  textarea.value = oldContent;
+
+  const btns = document.createElement('div');
+  btns.className = 'message-edit-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn primary';
+  saveBtn.textContent = 'Save';
+  saveBtn.style.fontSize = '11px';
+  saveBtn.style.padding = '3px 10px';
+  saveBtn.onclick = () => {
+    pushUndo();
+    entry.content = textarea.value;
+    rebuildChat();
+    saveToStorage();
+  };
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.fontSize = '11px';
+  cancelBtn.style.padding = '3px 10px';
+  cancelBtn.onclick = () => rebuildChat();
+
+  btns.appendChild(saveBtn);
+  btns.appendChild(cancelBtn);
+  body.appendChild(textarea);
+  body.appendChild(btns);
+  textarea.focus();
+}
+
+function deleteMessage(entry) {
+  pushUndo();
+  const idx = chatHistory.indexOf(entry);
+  if (idx >= 0) chatHistory.splice(idx, 1);
+  rebuildChat();
+  saveToStorage();
+}
+
+function rebuildChat() {
+  chatMessages.innerHTML = '';
+  const copy = [...chatHistory];
+  chatHistory = [];
+  for (const entry of copy) {
+    chatHistory.push(entry);
+    chatMessages.appendChild(renderMessage(entry));
+  }
+  scrollToBottom();
+}
+
+function appendMessage(entry) {
+  pushUndo();
+  chatHistory.push(entry);
+  chatMessages.appendChild(renderMessage(entry));
+  scrollToBottom();
+}
+
+// --- Live message (streaming placeholder in chat) ---
+function createLiveMessage(agentCfg) {
+  const entry = { role: 'assistant', name: agentCfg.nick, content: '', agentIdx: agentCfg.idx, time: timeNow() };
+  const div = document.createElement('div');
+  div.className = 'message live-message';
+  div.dataset.agentIdx = agentCfg.idx;
+
+  const header = document.createElement('div');
+  header.className = 'message-header';
+
+  const nick = document.createElement('span');
+  nick.className = 'message-nick';
+  nick.textContent = agentCfg.nick;
+  nick.style.color = agentColor(agentCfg.idx).hex;
+
+  const time = document.createElement('span');
+  time.className = 'message-time';
+  time.textContent = entry.time;
+
+  const streaming = document.createElement('span');
+  streaming.className = 'streaming-dot';
+  streaming.textContent = ' ●';
+  streaming.style.color = 'var(--green)';
+  streaming.style.animation = 'pulse 1s infinite';
+
+  header.appendChild(nick);
+  header.appendChild(streaming);
+  header.appendChild(time);
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+  body.innerHTML = '<span class="thinking-content" style="opacity:0.5">waiting...</span>';
+
+  div.appendChild(header);
+  div.appendChild(body);
+  chatMessages.appendChild(div);
+  scrollToBottom();
+
+  return { div, body, entry, streamingDot: streaming };
+}
+
+function updateLiveMessage(live, text) {
+  live.entry.content = text;
+  live.body.innerHTML = processContent(escapeHtml(text));
+  scrollToBottom();
+}
+
+function finalizeLiveMessage(live) {
+  // Remove streaming dot
+  if (live.streamingDot) live.streamingDot.remove();
+  live.div.classList.remove('live-message');
+
+  // Add edit/delete actions
+  const header = live.div.querySelector('.message-header');
+  const actions = document.createElement('div');
+  actions.className = 'message-actions';
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'msg-action-btn';
+  editBtn.textContent = 'edit';
+  editBtn.onclick = () => startEdit(live.div, live.entry);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'msg-action-btn';
+  delBtn.textContent = 'del';
+  delBtn.onclick = () => deleteMessage(live.entry);
+
+  const speakBtn = document.createElement('button');
+  speakBtn.className = 'msg-action-btn';
+  speakBtn.textContent = 'speak';
+  speakBtn.onclick = () => ttsSpeak(live.entry.content, speakBtn, live.entry.agentIdx);
+
+  actions.appendChild(editBtn);
+  actions.appendChild(delBtn);
+  actions.appendChild(speakBtn);
+  header.appendChild(actions);
+
+  // Re-render body with final content (collapse completed thinking tags)
+  live.body.innerHTML = processContent(escapeHtml(live.entry.content));
+
+  // Update timestamp
+  live.entry.time = timeNow();
+  header.querySelector('.message-time').textContent = live.entry.time;
+
+  // Add to history
+  pushUndo();
+  chatHistory.push(live.entry);
+  saveToStorage();
+
+  // Auto-speak if enabled
+  if (document.getElementById('ttsAutoSpeak').checked) {
+    ttsSpeak(live.entry.content, speakBtn, live.entry.agentIdx);
+  }
+  scrollToBottom();
+}
+
+// --- API call with streaming ---
+// Strip <think>/<thinking>/<thought> blocks from text
+// --- Think Interceptor ---
+// Toggle settings visibility
+document.getElementById('thinkInterceptEnabled').addEventListener('change', function() {
+  document.getElementById('interceptorSettings').style.display = this.checked ? 'block' : 'none';
+});
+
+function openDataStoreViewer() {
+  window.open('data_store/index.html', '_blank');
+}
+
+function renderInterceptorDebug() {
+  const meta = document.getElementById('interceptorDebugMeta');
+  const rawOutputEl = document.getElementById('interceptorDebugRawOutput');
+  const promptEl = document.getElementById('interceptorDebugPrompt');
+  const schemaEl = document.getElementById('interceptorDebugSchema');
+  const manifestEl = document.getElementById('interceptorDebugManifest');
+  const rejectedEl = document.getElementById('interceptorDebugRejected');
+  const claimsEl = document.getElementById('interceptorDebugClaims');
+  if (!meta || !rawOutputEl || !promptEl || !schemaEl || !manifestEl || !rejectedEl || !claimsEl) return;
+
+  const ts = interceptorDebugState.updatedAt ? new Date(interceptorDebugState.updatedAt) : null;
+  const label = interceptorDebugState.sourceType || 'n/a';
+  const formatKind = interceptorDebugState.formatKind ? `, ${interceptorDebugState.formatKind}` : '';
+  meta.textContent = ts
+    ? `Last run: ${ts.toLocaleTimeString()} (${label}${formatKind})`
+    : 'No verification yet.';
+  claimsEl.textContent = `${(interceptorDebugState.claims || []).length} items`;
+  rawOutputEl.textContent = interceptorDebugState.workerRawOutput || '(empty)';
+  promptEl.textContent = interceptorDebugState.workerPrompt || '(empty)';
+  schemaEl.textContent = interceptorDebugState.rawSchema || '(empty)';
+  manifestEl.textContent = interceptorDebugState.manifest
+    ? JSON.stringify(interceptorDebugState.manifest, null, 2)
+    : '(empty)';
+  rejectedEl.textContent = interceptorDebugState.rejected && interceptorDebugState.rejected.length
+    ? interceptorDebugState.rejected.join('\n')
+    : '(none)';
+}
+
+function updateInterceptorDebug(data) {
+  interceptorDebugState = {
+    updatedAt: new Date().toISOString(),
+    sourceType: data && data.sourceType ? data.sourceType : '',
+    formatKind: data && data.formatKind ? data.formatKind : '',
+    workerPrompt: data && data.workerPrompt ? data.workerPrompt : '',
+    workerRawOutput: data && data.workerRawOutput ? data.workerRawOutput : '',
+    rawSchema: data && data.rawSchema ? data.rawSchema : '',
+    manifest: data && data.manifest ? data.manifest : null,
+    rejected: data && data.rejected ? data.rejected : [],
+    claims: data && data.claims ? data.claims : [],
+  };
+  renderInterceptorDebug();
+  saveToStorage();
+}
+
+function clearInterceptorDebug() {
+  interceptorDebugState = {
+    updatedAt: '',
+    sourceType: '',
+    formatKind: '',
+    workerPrompt: '',
+    workerRawOutput: '',
+    rawSchema: '',
+    manifest: null,
+    rejected: [],
+    claims: [],
+  };
+  renderInterceptorDebug();
+  saveToStorage();
+}
+
+async function copyInterceptorDebug(kind) {
+  let text = '';
+  if (kind === 'raw_output') text = interceptorDebugState.workerRawOutput || '';
+  else if (kind === 'prompt') text = interceptorDebugState.workerPrompt || '';
+  if (kind === 'schema') text = interceptorDebugState.rawSchema || '';
+  else if (kind === 'manifest') text = interceptorDebugState.manifest ? JSON.stringify(interceptorDebugState.manifest, null, 2) : '';
+  else if (kind === 'rejected') text = (interceptorDebugState.rejected || []).join('\n');
+  if (!text) {
+    setStatus('', 'Nothing to copy');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus('', `Copied ${kind}`);
+  } catch (e) {
+    setStatus('', `Copy failed: ${e.message}`);
+  }
+}
+
+async function reverifyInterceptorDebug() {
+  const sandboxUrl = (document.getElementById('interceptorSandboxUrl') && document.getElementById('interceptorSandboxUrl').value || 'http://127.0.0.1:8060').replace(/\/$/, '');
+  const rawOutput = interceptorDebugState.workerRawOutput || '';
+  const schemaText = interceptorDebugState.rawSchema || extractRawSchemaText(rawOutput);
+  if (!schemaText) {
+    setStatus('', 'No schema found in debug state');
+    return;
+  }
+  setStatus('running', 'Re-verifying saved interceptor output...');
+  try {
+    const verifyRes = await fetch(`${sandboxUrl}/api/logic/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw_schema: schemaText }),
+    });
+    const serverResult = await verifyRes.json();
+    const result = buildClaimsFromServerResult(serverResult, interceptorDebugState.sourceType || 'debug');
+    updateInterceptorDebug({
+      sourceType: interceptorDebugState.sourceType || 'debug',
+      formatKind: serverResult.format_kind || '',
+      workerPrompt: interceptorDebugState.workerPrompt || '',
+      workerRawOutput: rawOutput,
+      rawSchema: schemaText,
+      manifest: serverResult.manifest || null,
+      rejected: result.errors || [],
+      claims: result.claims || [],
+    });
+    setStatus('', `Re-verified: ${(result.claims || []).length} items`);
+  } catch (e) {
+    console.warn('Re-verify failed:', e);
+    setStatus('', `Re-verify failed: ${e.message}`);
+  }
+}
+
+// Robust JSON parser that handles common LLM mistakes
+function parseLooseJSON(raw) {
+  // Try strict first
+  try { return JSON.parse(raw); } catch {}
+
+  let fixed = raw;
+  // Remove trailing commas before } or ]
+  fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+  // Fix unescaped newlines inside strings (crude but effective)
+  fixed = fixed.replace(/(?<=": "(?:[^"\\]|\\.)*)[\n\r]+(?=[^"]*")/g, '\\n');
+  try { return JSON.parse(fixed); } catch {}
+
+  // Try truncating to last complete object/array
+  let depth = 0;
+  let lastValid = -1;
+  for (let i = 0; i < fixed.length; i++) {
+    const c = fixed[i];
+    if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') { depth--; if (depth === 0) lastValid = i; }
+  }
+  if (lastValid > 0) {
+    try { return JSON.parse(fixed.substring(0, lastValid + 1)); } catch {}
+  }
+
+  // Last resort: eval-like (safe for our use case — we generated the prompt)
+  try { return (new Function('return ' + fixed))(); } catch {}
+
+  console.warn('parseLooseJSON failed, raw:', raw.substring(0, 200));
+  return null;
+}
+
+// Extract formal logic manifest from text using worker LLM
+async function runClaimWorker(content, sourceType) {
+  const pairedUserMessage = getLatestRelevantUserMessage();
+  const sourceLabel = sourceType === 'thinking_block' ? 'reasoning block' : 'answer';
+  const einsteinLike = isEinsteinLikeTask(pairedUserMessage);
+  const hypothesisInstruction = sourceType === 'thinking_block'
+    ? 'HYPOTHESES must contain distinct hypotheses or candidate conclusions from the reasoning.'
+    : 'HYPOTHESES must contain concrete claims asserted in the answer.';
+  const axiomInstruction = sourceType === 'thinking_block'
+    ? 'AXIOMS must contain stable puzzle constraints from the task, plus only explicit facts from the reasoning that are asserted as true.'
+    : 'AXIOMS must contain stable puzzle constraints from the task. Do not turn answer claims into AXIOMS.';
+
+  const workerPrompt = einsteinLike
+    ? `You extract atomic Einstein-style rules from the task and the ${sourceLabel}.
+
+Return ONLY this structure:
+ATOMIC_RULES:
+- s.pos('nation:English') == s.pos('color:Red')
+- abs(s.pos('smoke:Chesterfield') - s.pos('pet:Fox')) == 1
+- s.pos('nation:Norwegian') == 0
+
+Requirements:
+- Output only atomic rules that are explicitly stated in the task or explicitly claimed in the ${sourceLabel}.
+- Do not infer missing assignments.
+- Do not complete the puzzle.
+- Do not guess final answers.
+- Do not add any rule unless the same fact is directly written in one of the two text blocks below.
+- If a fact is presented as a possibility, question, alternative, contradiction, or rejected attempt, do not output it.
+- If the text says "maybe", "if", "could", "вариант", "предположим", "проверим", or backtracks from a claim, do not output that claim.
+- Keep only atomic statements that can be copied almost verbatim from the text into canonical rule form.
+- Use canonical category:value names when possible: color, nation, drink, smoke, pet.
+- Prefer atomic statements over grouped branches.
+- Use 0-based positions.
+- Do not output prose.
+- Do not output JSON.
+- Use only the two text blocks below.
+
+[TASK]
+${pairedUserMessage || '[missing user task]'}
+
+[${sourceType.toUpperCase()}]
+${content}`
+    : `You extract checkable formulas from a task and a model's ${sourceLabel}.
+
+AXIOMS = facts from the TASK (given conditions) + obvious deductions from those conditions.
+HYPOTHESES = specific claims the model makes in its ${sourceLabel}. Each hypothesis is checked separately against axioms.
+
+Return ONLY this structure:
+ENTITIES: [name, name]
+AXIOMS:
+- formula from task condition
+- formula from task condition
+HYPOTHESES:
+Claim 1: [formula]
+Claim 2: [formula]
+
+Requirements:
+- Use pos('Name') for order positions, 0-based.
+- AXIOMS: only facts from [TASK] or trivially derived from it. Never put model claims here.
+- HYPOTHESES: only claims from [${sourceType.toUpperCase()}]. One claim per line. Each is verified independently.
+- If a claim says who the author is, encode as author == 'Name'.
+- Keep formulas short and directly eval()-able.
+- Do not output prose or JSON.
+- Use only the two text blocks below.
+
+[TASK]
+${pairedUserMessage || '[missing user task]'}
+
+[${sourceType.toUpperCase()}]
+${content}`;
+
+  const workerBaseUrl = document.getElementById('interceptorWorkerUrl').value.replace(/\/$/, '');
+  const url = workerBaseUrl + '/api/v1/generate';
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: document.getElementById('interceptorWorkerNoThink')?.checked
+          ? workerPrompt + '\n<think>\n\n</think>\n\n'
+          : workerPrompt,
+        temperature: 0.1,
+        max_tokens: 1400,
+        quiet: true,
+        cache_prompt: false,
+      }),
+    });
+    const data = await res.json();
+    const text = data.results?.[0]?.text || data.choices?.[0]?.message?.content || '';
+    const rawSchema = extractRawSchemaText(text);
+    // Return raw schema text for server-side parsing
+    if (rawSchema && rawSchema.match(/(?:ENTITIES|AXIOMS|RULES|ATOMIC_RULES):/i)) {
+      return { _raw_schema: rawSchema, _worker_text: text, _worker_prompt: workerPrompt };
+    }
+    // Fallback: try JSON parse for backward compat
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = parseLooseJSON(jsonMatch[0]);
+      if (parsed && typeof parsed === 'object') {
+        parsed._worker_text = text;
+        parsed._worker_prompt = workerPrompt;
+      }
+      return parsed;
+    }
+    return { _worker_text: text, _worker_prompt: workerPrompt };
+  } catch (e) {
+    console.warn('Claim worker error:', e);
+  }
+  return null;
+}
+
+// Legacy wrapper
+async function runThinkWorker(thinkContent, agentCfg) {
+  return runClaimWorker(thinkContent, 'thinking_block');
+}
+
+// --- Programmatic Constraint Verifier ---
+// Brute-force checks extracted manifest against all permutations
+
+function verifyManifest(manifest) {
+  if (!manifest?.entities?.length || !manifest?.axioms?.length) return null;
+
+  const entities = manifest.entities;
+  const n = entities.length;
+
+  // For small n, generate all permutations and check axioms
+  if (n > 8) {
+    console.log('verifyManifest: too many entities for brute-force:', n);
+    return null;
+  }
+
+  const perms = permutations(Array.from({length: n}, (_, i) => i));
+  const pos = (world, name) => world[entities.indexOf(name)];
+
+  // Parse simple formulas into checker functions
+  function makeChecker(formula) {
+    // pos('X') == N, pos('X') != N, pos('X') < pos('Y'), assign('X','Y')
+    return (world, assignments) => {
+      try {
+        // Replace pos('Name') with actual positions
+        let expr = formula.replace(/pos\(['"](.*?)['"]\)/g, (_, name) => {
+          const idx = entities.indexOf(name);
+          return idx >= 0 ? world[idx] : -1;
+        });
+        // Replace assign('Name','Value') with assignment check
+        expr = expr.replace(/assign\(['"](.*?)['"],\s*['"](.*?)['"]\)/g, (_, name, val) => {
+          return JSON.stringify(assignments[name] === val);
+        });
+        // Evaluate safe expression
+        return Function('"use strict"; return (' + expr + ')')();
+      } catch {
+        return true; // skip unparseable rules
+      }
+    };
+  }
+
+  const axiomCheckers = manifest.axioms.map(a => ({ formula: a, check: makeChecker(a) }));
+
+  // Find all valid worlds
+  let validWorlds = perms.filter(world => {
+    return axiomCheckers.every(ac => ac.check(world, {}));
+  });
+
+  // Check each hypothesis
+  const results = [];
+  for (const hyp of (manifest.hypotheses || [])) {
+    const checker = makeChecker(hyp.claim || hyp.formula || '');
+    const matching = validWorlds.filter(w => checker(w, {}));
+    results.push({
+      text: hyp.text || hyp.claim,
+      claim: hyp.claim,
+      validWorlds: matching.length,
+      totalWorlds: validWorlds.length,
+      status: matching.length === 0 ? 'rejected' :
+              matching.length === validWorlds.length ? 'confirmed' : 'hypothesis',
+      reason: matching.length === 0 ? 'No valid world supports this' :
+              matching.length === validWorlds.length ? 'True in all valid worlds' :
+              `True in ${matching.length}/${validWorlds.length} worlds`,
+    });
+  }
+
+  // Check conclusions
+  for (const conc of (manifest.conclusions || [])) {
+    if (!conc.formula) {
+      results.push({ text: conc.text, status: 'unverifiable', reason: 'No formula' });
+      continue;
+    }
+    const checker = makeChecker(conc.formula);
+    const matching = validWorlds.filter(w => checker(w, {}));
+    results.push({
+      text: conc.text,
+      claim: conc.formula,
+      validWorlds: matching.length,
+      totalWorlds: validWorlds.length,
+      status: matching.length === 0 ? 'error' :
+              matching.length === validWorlds.length ? 'confirmed' : 'partial',
+      reason: matching.length === 0 ? 'WRONG — contradicts axioms' :
+              matching.length === validWorlds.length ? 'Correct — follows from axioms' :
+              `Possible in ${matching.length}/${validWorlds.length} worlds`,
+    });
+  }
+
+  return {
+    validWorldsCount: validWorlds.length,
+    claims: results,
+    errors: results.filter(r => r.status === 'error' || r.status === 'rejected').map(r => `${r.text}: ${r.reason}`),
+    contradictions: [],
+    verified: results.every(r => r.status !== 'error'),
+    summary: `${validWorlds.length} valid worlds. ${results.filter(r=>r.status==='error').length} errors found.`,
+  };
+}
+
+// Generate all permutations of array (Heap's algorithm)
+function permutations(arr) {
+  const result = [];
+  const n = arr.length;
+  const c = new Array(n).fill(0);
+  result.push([...arr]);
+  let i = 0;
+  while (i < n) {
+    if (c[i] < i) {
+      if (i % 2 === 0) [arr[0], arr[i]] = [arr[i], arr[0]];
+      else [arr[c[i]], arr[i]] = [arr[i], arr[c[i]]];
+      result.push([...arr]);
+      c[i]++;
+      i = 0;
+    } else {
+      c[i] = 0;
+      i++;
+    }
+  }
+  return result;
+}
+
+// Get problem statement — ONLY the first real user message (the task/puzzle)
+// Worker should see just the problem definition, not the entire chat log.
+function getLatestRelevantUserMessage() {
+  const userNick = getUserNick();
+  for (let i = chatHistory.length - 1; i >= 0; i--) {
+    const entry = chatHistory[i];
+    if (entry.role !== 'user') continue;
+    if (entry.isVerifier) continue;
+    if (!(entry.agentIdx === undefined || entry.agentIdx === null)) continue;
+    if (entry.name && entry.name !== userNick) continue;
+    return entry.content || '';
+  }
+  return '';
+}
+
+// Get only the last assistant message for answer verification
+function getLastAnswer() {
+  for (let i = chatHistory.length - 1; i >= 0; i--) {
+    if (chatHistory[i].role !== 'user' && chatHistory[i].agentIdx !== -1) {
+      return chatHistory[i].content;
+    }
+  }
+  return '';
+}
+
+function extractRawSchemaText(text) {
+  if (!text) return '';
+  const fenced = text.match(/```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]*?(?:ENTITIES|AXIOMS|RULES|ATOMIC_RULES)\s*:[\s\S]*?)```/i);
+  if (fenced && fenced[1]) return fenced[1].trim();
+  const inline = text.match(/(?:ENTITIES|AXIOMS|RULES|ATOMIC_RULES)\s*:[\s\S]*$/i);
+  return inline ? inline[0].trim() : '';
+}
+
+function isEinsteinLikeTask(text) {
+  if (!text) return false;
+  return /норвеж|англич|испан|украин|япон|old gold|chesterfield|lucky strike|parliament|зебр|вода|пять домов/i.test(text);
+}
+
+function formatBranchRules(rules) {
+  if (!Array.isArray(rules) || !rules.length) return '';
+  return rules.join(' AND ');
+}
+
+function describeClaim(branchName, branchRules) {
+  const normalizedName = (branchName || '').trim();
+  const body = formatBranchRules(branchRules);
+  if (!body) return normalizedName || 'Unnamed claim';
+  if (!normalizedName) return body;
+  if (/^claim[\s_-]?\d*$/i.test(normalizedName) || /^branch[\s_-]?\d*$/i.test(normalizedName)) {
+    return body;
+  }
+  if (normalizedName === body) return body;
+  return `${normalizedName}: ${body}`;
+}
+
+function buildClaimsFromServerResult(serverResult, sourceType) {
+  const v = serverResult && serverResult.verification ? serverResult.verification : { stable_worlds: 0, branches: [] };
+  const m = serverResult && serverResult.manifest ? serverResult.manifest : { hypotheses: {} };
+  const atomicRules = serverResult && serverResult.atomic_rules ? (serverResult.atomic_rules.rules || []) : [];
+  const branchRulesMap = m.hypotheses || {};
+  const claims = [];
+  const errors = [];
+
+  for (const br of (v.branches || [])) {
+    const branchRules = branchRulesMap[br.branch] || [];
+    const text = atomicRules.length
+      ? (atomicRules[parseInt(String(br.branch).replace(/\D+/g, ''), 10) - 1] || br.branch)
+      : describeClaim(br.branch, branchRules);
+    const status = br.solutions === 0 ? 'rejected' :
+                   br.solutions === v.stable_worlds ? 'confirmed' : 'hypothesis';
+    const reason = br.solutions === 0 ? 'No valid world supports this' :
+                   br.solutions === v.stable_worlds ? 'True in all valid worlds' :
+                   `True in ${br.solutions}/${v.stable_worlds} worlds`;
+    claims.push({
+      text,
+      branch: br.branch,
+      rules: branchRules,
+      status,
+      reason,
+      validWorlds: br.solutions,
+      totalWorlds: v.stable_worlds,
+      source: sourceType,
+    });
+    if (status === 'rejected') errors.push(`${text}: ${reason}`);
+  }
+
+  return {
+    validWorldsCount: v.stable_worlds,
+    claims,
+    errors,
+    contradictions: [],
+    verified: errors.length === 0,
+    summary: `${v.stable_worlds} stable worlds. ${claims.length} claims checked, ${errors.length} rejected.`,
+    serverData: serverResult,
+  };
+}
+
+// Store extracted interceptor items in DataStore
+async function storeClaimsInDataStore(claims, namespace) {
+  const dsUrl = document.getElementById('interceptorDsUrl').value;
+
+  // Ensure namespace exists
+  try {
+    await fetch(`${dsUrl}/namespaces`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ns: namespace }),
+    });
+  } catch (e) {} // namespace may already exist
+
+  if (!claims?.claims?.length) return;
+
+  const dedup = document.getElementById('interceptorDedup').checked;
+
+  // Load existing entries for dedup
+  let existing = {};
+  if (dedup) {
+    try {
+      const res = await fetch(`${dsUrl}/${namespace}/entries`);
+      const data = await res.json();
+      existing = data.entries || {};
+    } catch (e) {}
+  }
+
+  const existingTexts = new Set(Object.values(existing).map(e => e.value?.text || e.value));
+
+  const entries = {};
+  let idx = Object.keys(existing).length;
+  for (const claim of claims.claims) {
+    // Dedup: skip if item text already exists
+    if (dedup && existingTexts.has(claim.text)) continue;
+
+    const key = `claim_${String(idx).padStart(4, '0')}`;
+    entries[key] = claim;
+    idx++;
+  }
+
+  if (Object.keys(entries).length > 0) {
+    try {
+      await fetch(`${dsUrl}/${namespace}/entries/_bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries, source: 'think_interceptor' }),
+      });
+
+      // Auto-commit
+      await fetch(`${dsUrl}/git/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `intercept: +${Object.keys(entries).length} items` }),
+      });
+    } catch (e) {
+      console.warn('DataStore save error:', e);
+    }
+  }
+
+  return claims;
+}
+
+// Build context injection from DataStore
+async function buildInterceptorContext() {
+  const dsUrl = document.getElementById('interceptorDsUrl').value;
+  const ns = document.getElementById('interceptorNs').value;
+
+  try {
+    const res = await fetch(`${dsUrl}/${ns}/entries`);
+    const data = await res.json();
+    const entries = data.entries || {};
+
+    if (Object.keys(entries).length === 0) return '';
+
+    let lines = ['\n--- [Verified Facts & Rules] ---'];
+
+    // Show last verification errors prominently
+    const lastVerify = entries['last_verification'];
+    if (lastVerify?.status === 'error' && lastVerify?.value?.errors) {
+      lines.push('⚠️ PREVIOUS ANSWER HAD ERRORS:');
+      lines.push(lastVerify.value.errors);
+      lines.push('Please re-check your reasoning carefully.\n');
+    }
+
+    for (const [key, entry] of Object.entries(entries)) {
+      if (key === 'last_verification') continue; // already shown above
+      const val = entry.value;
+      if (typeof val === 'object' && val.text) {
+        const status = val.status || entry.status || 'active';
+        const marker = status === 'error' || status === 'rejected' ? '✗' : status === 'confirmed' ? '✓' : '?';
+        lines.push(`- [${marker} ${status}] ${val.text}`);
+      } else if (typeof val === 'object') {
+        continue; // skip complex objects
+      } else {
+        lines.push(`- ${key}: ${JSON.stringify(val)}`);
+      }
+    }
+    lines.push('--- [End Facts] ---\n');
+    return lines.join('\n');
+  } catch (e) {
+    console.warn('DataStore fetch error:', e);
+    return '';
+  }
+}
+
+// Main interceptor for think blocks
+async function interceptThinkBlock(thinkContent, agentCfg) {
+  return interceptContent(thinkContent, 'thinking_block', agentCfg);
+}
+
+// Main interceptor for answer verification
+async function interceptAnswer(answerContent, agentCfg) {
+  return interceptContent(answerContent, 'answer', agentCfg);
+}
+
+// Unified interceptor
+async function interceptContent(content, sourceType, agentCfg) {
+  const ns = document.getElementById('interceptorNs').value;
+  const label = sourceType === 'thinking_block' ? 'think' : 'answer';
+
+  setStatus('running', `${agentCfg.nick || 'Agent'}: extracting manifest from ${label}...`);
+
+  // Step 1: Worker extracts formal manifest (only the specific block, no extra context)
+  const manifest = await runClaimWorker(content, sourceType);
+
+  if (!manifest) {
+    console.log(`Interceptor [${label}]: worker returned nothing`);
+    return '';
+  }
+
+  console.log(`Interceptor [${label}]: manifest extracted`, manifest);
+
+  // Step 2: Verify via server-side parser (robust Python implementation)
+  let result = null;
+  const sandboxUrl = document.getElementById('interceptorSandboxUrl')?.value || 'http://127.0.0.1:8060';
+
+  if (manifest._raw_schema) {
+    // New path: send raw ENTITIES/RULES/BRANCHES text to server for parse + verify
+    setStatus('running', `${agentCfg.nick || 'Agent'}: server-side verification...`);
+    try {
+      const verifyRes = await fetch(`${sandboxUrl}/api/logic/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_schema: manifest._raw_schema }),
+      });
+      const serverResult = await verifyRes.json();
+      const v = serverResult.verification || { stable_worlds: 0, branches: [] };
+      console.log(`Server verify: ${v.stable_worlds} stable worlds, ${v.branches?.length || 0} branches`);
+      result = buildClaimsFromServerResult(serverResult, sourceType);
+      updateInterceptorDebug({
+        sourceType,
+        formatKind: serverResult.format_kind || '',
+        workerPrompt: manifest._worker_prompt || '',
+        workerRawOutput: manifest._worker_text || '',
+        rawSchema: manifest._raw_schema || '',
+        manifest: serverResult.manifest || null,
+        rejected: result.errors || [],
+        claims: result.claims || [],
+      });
+    } catch (e) {
+      console.warn('Server verify failed, falling back to JS:', e);
+    }
+  }
+
+  // Fallback: JS-side verification for old linear manifests
+  if (!result && manifest.entities?.length && manifest.axioms?.length) {
+    setStatus('running', `${agentCfg.nick || 'Agent'}: verifying ${manifest.entities.length} entities...`);
+    result = verifyManifest(manifest);
+    if (result) {
+      console.log(`JS verify: ${result.validWorldsCount} valid worlds, ${result.errors.length} errors`);
+      updateInterceptorDebug({
+        sourceType,
+        formatKind: 'manifest',
+        workerPrompt: manifest._worker_prompt || '',
+        workerRawOutput: manifest._worker_text || '',
+        rawSchema: '',
+        manifest,
+        rejected: result.errors || [],
+        claims: result.claims || [],
+      });
+    }
+  }
+
+  // Fallback: unverified extracted items
+  if (!result) {
+    const fallbackItems = [];
+    if (manifest.hypotheses && !Array.isArray(manifest.hypotheses)) {
+      for (const [name, rules] of Object.entries(manifest.hypotheses)) {
+        fallbackItems.push({
+          text: describeClaim(name, Array.isArray(rules) ? rules : []),
+          status: 'hypothesis',
+          reason: 'Not programmatically verified',
+          source: sourceType,
+        });
+      }
+    }
+    result = {
+      claims: fallbackItems,
+      errors: [],
+      contradictions: [],
+      verified: null,
+      summary: 'Extracted but not verified (no axioms or too many entities)',
+    };
+    updateInterceptorDebug({
+      sourceType,
+      formatKind: manifest._raw_schema && /ATOMIC_RULES:/i.test(manifest._raw_schema) ? 'atomic_rules' : 'manifest',
+      workerPrompt: manifest._worker_prompt || '',
+      workerRawOutput: manifest._worker_text || '',
+      rawSchema: manifest._raw_schema || '',
+      manifest,
+      rejected: [],
+      claims: result.claims || [],
+    });
+  }
+
+  // Step 3: Store in DataStore
+  await storeClaimsInDataStore(result, ns);
+
+  // Also store the raw manifest for reference
+  const dsUrl = document.getElementById('interceptorDsUrl').value;
+  try {
+    await fetch(`${dsUrl}/${ns}/entries/manifest`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        value: manifest,
+        status: result.verified === false ? 'error' : 'active',
+        source: `${sourceType}_extraction`,
+      }),
+    });
+  } catch (e) {}
+
+  // Step 4: Show errors in chat
+  const hasErrors = result.errors?.length > 0 || result.verified === false;
+  if (hasErrors) {
+    const verifyMsg = formatVerificationMessage(result, sourceType);
+    addInterceptorMessage(verifyMsg, agentCfg);
+
+    // Store error summary for next turn injection (answer verification)
+    if (sourceType === 'answer') {
+      const errorSummary = [
+        ...(result.errors || []).map(e => `Error: ${e}`),
+        ...(result.claims || []).filter(c => c.status === 'error' || c.status === 'rejected').map(c => `Wrong: ${c.text} — ${c.reason}`),
+      ].join('\n');
+      try {
+        await fetch(`${dsUrl}/${ns}/entries/last_verification`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            value: { errors: errorSummary, original_answer: content.substring(0, 500), verified: false },
+            status: 'error',
+            source: 'answer_verification',
+          }),
+        });
+      } catch (e) {}
+    }
+  }
+
+  if (result.summary) {
+    console.log(`${label} summary:`, result.summary);
+  }
+
+  if (result.claims && result.claims.length && sourceType === 'thinking_block') {
+    console.log('Interceptor items:', result.claims.map(c => `${c.status}: ${c.text}`));
+  }
+
+  // Build injection for continuing generation
+  if (document.getElementById('interceptorInject').checked) {
+    return await buildInterceptorContext();
+  }
+  return '';
+}
+
+// Format verification errors as a visible message
+function formatVerificationMessage(result, sourceType) {
+  let lines = [];
+  const label = sourceType === 'answer' ? 'Answer' : 'Reasoning';
+  const confirmed = (result.claims || []).filter(c => c.status === 'confirmed');
+  const rejected = (result.claims || []).filter(c => c.status === 'error' || c.status === 'rejected');
+  const partial = (result.claims || []).filter(c => c.status === 'hypothesis' || c.status === 'partial');
+
+  if (confirmed.length && sourceType === 'thinking_block') {
+    lines.push(`**${label} Verification — Confirmed:**`);
+    for (const item of confirmed.slice(0, 8)) {
+      lines.push(`- ✓ ${item.text}`);
+    }
+  }
+
+  if (result.errors?.length) {
+    lines.push(`**${label} Verification — Errors Found:**`);
+    for (const err of result.errors) {
+      lines.push(`- ❌ ${err}`);
+    }
+  }
+  if (result.contradictions?.length) {
+    lines.push(`**Contradictions:**`);
+    for (const c of result.contradictions) {
+      lines.push(`- ⚠️ ${c}`);
+    }
+  }
+
+  // Show rejected items
+  if (rejected.length) {
+    lines.push(`**Rejected Items:**`);
+    for (const r of rejected) {
+      lines.push(`- ✗ ${r.text} — ${r.reason || 'no reason'}`);
+    }
+  }
+
+  if (partial.length && sourceType === 'answer') {
+    lines.push(`**Uncertain Items:**`);
+    for (const item of partial.slice(0, 8)) {
+      lines.push(`- ? ${item.text} — ${item.reason || 'not fully determined'}`);
+    }
+  }
+
+  if (result.verified === false) {
+    lines.push(`\n**Verdict: Answer contains errors.** Consider re-generating.`);
+  }
+
+  return lines.join('\n');
+}
+
+// Add interceptor verification message to chat
+function addInterceptorMessage(text, agentCfg) {
+  const entry = {
+    role: 'user',
+    name: 'Verifier',
+    content: text,
+    agentIdx: -1,
+    isVerifier: true,
+    timestamp: new Date().toISOString(),
+  };
+  chatHistory.push(entry);
+
+  // Render in chat
+  const div = document.createElement('div');
+  div.className = 'message user';
+  div.style.borderLeft = '3px solid var(--yellow)';
+  div.style.background = 'rgba(224, 175, 104, 0.05)';
+  div.innerHTML = `
+    <div class="msg-header">
+      <span class="msg-name" style="color:var(--yellow)">🔍 Verifier</span>
+      <span class="msg-time">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div class="msg-body">${processContent(escapeHtml(text))}</div>
+  `;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  saveToStorage();
+}
+
+function stripThinkingBlocks(text) {
+  return text
+    .replace(/<(think|thinking|thought)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    // Also strip unclosed thinking at the end (model still "thinking" when interrupted)
+    .replace(/<(think|thinking|thought)\b[^>]*>[\s\S]*$/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Sanitize name for ChatML 'name' field (alphanumeric + underscore only)
+function chatmlName(name) {
+  return name.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 64) || 'user';
+}
+
+function buildMessages(agentCfg, historySnapshot) {
+  const history = historySnapshot || chatHistory;
+  const messages = [];
+  const strip = document.getElementById('stripThink').checked;
+  const stripOwnPrev = document.getElementById('stripOwnPrevThink').checked;
+  const userNick = getUserNick();
+
+  // Gather participant names for the preamble
+  const participants = new Set();
+  participants.add(userNick);
+  for (const entry of history) {
+    if (entry.name) participants.add(entry.name);
+  }
+
+  // Find the last own message index (to keep its thinking intact)
+  let lastOwnIdx = -1;
+  if (stripOwnPrev) {
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role !== 'user' && history[i].agentIdx === agentCfg.idx) {
+        lastOwnIdx = i;
+        break;
+      }
+    }
+  }
+
+  // System prompt with multi-party context
+  let systemBlock = '';
+  if (agentCfg.system) systemBlock += agentCfg.system + '\n\n';
+  const shared = document.getElementById('sharedContext').value.trim();
+  if (shared) systemBlock += shared + '\n\n';
+  if (agentCfg.context) systemBlock += agentCfg.context + '\n\n';
+
+  // Add multi-party format description
+  systemBlock += `You are "${agentCfg.nick}" in a multi-party conversation.\n`;
+  systemBlock += `Participants: ${[...participants].join(', ')}.\n`;
+  systemBlock += `Messages from other participants appear as user messages with a name field. Your own previous messages appear as assistant messages.\n`;
+  systemBlock += `Respond naturally as ${agentCfg.nick}. Do not prefix your response with your name.`;
+
+  // Inject DataStore context if interceptor is enabled
+  if (document.getElementById('thinkInterceptEnabled')?.checked &&
+      document.getElementById('interceptorInject')?.checked) {
+    const dsContext = _cachedDsContext || '';
+    if (dsContext) {
+      systemBlock += '\n\n' + dsContext;
+    }
+  }
+
+  messages.push({ role: 'system', content: systemBlock.trim() });
+
+  for (let i = 0; i < history.length; i++) {
+    const entry = history[i];
+    if (entry.role === 'user') {
+      // Human messages — use 'name' field for ChatML compatibility
+      // If images attached, use multipart content format
+      if (entry.images && entry.images.length > 0) {
+        const parts = [];
+        if (entry.content) parts.push({ type: 'text', text: entry.content });
+        for (const dataUrl of entry.images) {
+          parts.push({ type: 'image_url', image_url: { url: dataUrl } });
+        }
+        messages.push({ role: 'user', name: chatmlName(entry.name), content: parts });
+      } else {
+        messages.push({ role: 'user', name: chatmlName(entry.name), content: entry.content });
+      }
+    } else if (entry.agentIdx === agentCfg.idx) {
+      // Own messages — strip thinking from all except the most recent
+      let content = entry.content;
+      if (stripOwnPrev && i !== lastOwnIdx) {
+        content = stripThinkingBlocks(content);
+      }
+      if (content) {
+        messages.push({ role: 'assistant', content: content });
+      }
+    } else {
+      // Other agents — optionally strip thinking, send as user with name
+      const content = strip ? stripThinkingBlocks(entry.content) : entry.content;
+      if (content) {
+        messages.push({ role: 'user', name: chatmlName(entry.name), content: content });
+      }
+    }
+  }
+
+  return messages;
+}
+
+// Streaming call — updates live message in real-time
+// Cached DataStore context for injection into system prompt
+let _cachedDsContext = '';
+
+async function refreshDsContext() {
+  if (!document.getElementById('thinkInterceptEnabled')?.checked) return;
+  try {
+    _cachedDsContext = await buildInterceptorContext();
+  } catch (e) {
+    _cachedDsContext = '';
+  }
+}
+
+async function callAgentStreaming(agentCfg, signal, live, historySnapshot) {
+  // Refresh DataStore context before each generation
+  await refreshDsContext();
+  let messages = buildMessages(agentCfg, historySnapshot);
+  const temp = parseFloat(document.getElementById('temperature').value) || 0.7;
+  const maxTokens = parseInt(document.getElementById('maxTokens').value) || 2048;
+
+  // Fetch context limits and trim messages to fit
+  const limits = await fetchContextLimits(agentCfg.url);
+
+  // Strip base64 images from context if endpoint has no vision support
+  if (!limits.vision) {
+    for (const msg of messages) {
+      if (Array.isArray(msg.content)) {
+        // Multipart → extract text only, replace images with placeholder
+        const textParts = [];
+        let imgCount = 0;
+        for (const part of msg.content) {
+          if (part.type === 'text') textParts.push(part.text);
+          else if (part.type === 'image_url') imgCount++;
+        }
+        if (imgCount > 0) textParts.push(`[${imgCount} image${imgCount > 1 ? 's' : ''} attached]`);
+        msg.content = textParts.join('\n') || '[image]';
+      }
+    }
+  }
+
+  const tokenBudget = limits.max_context_length - maxTokens;
+  if (tokenBudget > 0) {
+    const before = estimateMessagesTokens(messages);
+    messages = trimMessagesToFit(messages, tokenBudget);
+    const after = estimateMessagesTokens(messages);
+    const trimmed = before - after;
+    updateTokenBudget(agentCfg.idx, after, tokenBudget, trimmed);
+  }
+
+  const payload = { messages, temperature: temp, max_tokens: maxTokens, stream: true };
+
+  // No Think mode: prefill assistant with empty think block, use continue_assistant_turn
+  if (agentCfg.nothink) {
+    payload.messages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+    payload.continue_assistant_turn = true;
+  }
+
+  const url = agentCfg.url.replace(/\/$/, '') + '/v1/chat/completions';
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+
+  // SSE streaming
+  if (contentType.includes('text/event-stream') || contentType.includes('text/plain')) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = '';
+    let buffer = '';
+
+    while (true) {
+      if (pauseRequested || signal.aborted) {
+        reader.cancel();
+        break;
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data:')) continue;
+
+        try {
+          const json = JSON.parse(trimmed.slice(5).trim());
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            accumulated += delta;
+            updateLiveMessage(live, accumulated);
+          }
+        } catch {}
+      }
+    }
+
+    // Process remaining buffer
+    if (buffer.trim() && buffer.trim() !== 'data: [DONE]' && buffer.trim().startsWith('data:')) {
+      try {
+        const json = JSON.parse(buffer.trim().slice(5).trim());
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) {
+          accumulated += delta;
+          updateLiveMessage(live, accumulated);
+        }
+      } catch {}
+    }
+
+    // --- Think Interceptor ---
+    const interceptEnabled = document.getElementById('thinkInterceptEnabled')?.checked;
+    if (interceptEnabled && accumulated && !signal.aborted && !pauseRequested) {
+      const thinkMatch = accumulated.match(/<think[^>]*>([\s\S]*?)<\/think>/i);
+
+      if (thinkMatch) {
+        // === Phase 1: Intercept think block ===
+        const thinkContent = thinkMatch[1];
+        updateLiveMessage(live, accumulated + '\n\n[verifying reasoning...]');
+        await interceptThinkBlock(thinkContent, agentCfg);
+      }
+
+      // === Phase 2: Verify answer (post-generation) ===
+      // Extract the answer part (everything after </think>, or full text if no think)
+      const answerPart = thinkMatch
+        ? accumulated.replace(/<think[^>]*>[\s\S]*?<\/think>/i, '').trim()
+        : accumulated.trim();
+
+      if (answerPart && answerPart.length > 10) {
+        updateLiveMessage(live, accumulated + '\n\n[verifying answer...]');
+        await interceptAnswer(answerPart, agentCfg);
+      }
+
+      // Remove temp status from live message
+      updateLiveMessage(live, accumulated);
+    }
+
+    return accumulated || '[No response]';
+  }
+
+  // Fallback: non-streaming JSON response
+  const data = await response.json();
+  const choices = data.choices || [];
+  let text = '';
+  if (choices.length > 0) text = (choices[0].message || {}).content || '';
+  else {
+    const results = data.results || [];
+    if (results.length > 0) text = results[0].text || '';
+  }
+  text = text || '[No response]';
+  updateLiveMessage(live, text);
+  return text;
+}
+
+// --- Sequential step ---
+function getNextAgent() {
+  const ids = agentIds;
+  if (ids.length === 0) return null;
+  for (let attempt = 0; attempt < ids.length; attempt++) {
+    const id = ids[currentAgentIdx % ids.length];
+    currentAgentIdx++;
+    const cfg = getAgentConfig(id);
+    if (cfg && cfg.enabled && cfg.url) return { ...cfg, idx: id };
+  }
+  return null;
+}
+
+async function runOneStep() {
+  const agent = getNextAgent();
+  if (!agent) { setStatus('', 'No agents enabled'); return false; }
+
+  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+  document.getElementById(`agentCard${agent.idx}`).classList.add('active');
+
+  setStatus('running', `${agent.nick} streaming...`);
+
+  // Create live message slot in chat
+  const live = createLiveMessage(agent);
+
+  try {
+    const ac = new AbortController();
+    abortControllers = [ac];
+    const text = await callAgentStreaming(agent, ac.signal, live);
+    live.entry.content = text.trim();
+    finalizeLiveMessage(live);
+    document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+    return true;
+  } catch (err) {
+    document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+    if (err.name === 'AbortError') {
+      // If we got partial content, keep it
+      if (live.entry.content) {
+        live.entry.content += '\n[INTERRUPTED]';
+        finalizeLiveMessage(live);
+      } else {
+        live.div.remove();
+      }
+      setStatus('paused', 'Paused');
+      return false;
+    }
+    live.entry.content = `Error: ${err.message}`;
+    live.entry.name = `${agent.nick} [ERROR]`;
+    finalizeLiveMessage(live);
+    return true;
+  }
+}
+
+// --- Parallel step: fire all enabled agents at once, stream independently ---
+async function runParallelStep() {
+  const agents = getEnabledAgents();
+  if (agents.length === 0) { setStatus('', 'No agents enabled'); return false; }
+
+  // Snapshot history so all agents see the same context
+  const snapshot = [...chatHistory];
+
+  // Highlight all active
+  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+  agents.forEach(a => document.getElementById(`agentCard${a.idx}`).classList.add('active'));
+
+  setStatus('running', agents.map(a => a.nick).join(' + ') + ' streaming...');
+
+  // Create live message slots for each agent — all visible immediately
+  const liveSlots = agents.map(a => createLiveMessage(a));
+
+  // Create individual abort controllers
+  abortControllers = agents.map(() => new AbortController());
+
+  let anyAborted = false;
+  let completedCount = 0;
+
+  const promises = agents.map((agent, i) =>
+    callAgentStreaming(agent, abortControllers[i].signal, liveSlots[i], snapshot)
+      .then(text => {
+        liveSlots[i].entry.content = text.trim();
+        finalizeLiveMessage(liveSlots[i]);
+        document.getElementById(`agentCard${agent.idx}`).classList.remove('active');
+        completedCount++;
+        setStatus('running', `${completedCount}/${agents.length} done`);
+        return { ok: true };
+      })
+      .catch(err => {
+        document.getElementById(`agentCard${agent.idx}`).classList.remove('active');
+        if (err.name === 'AbortError') {
+          if (liveSlots[i].entry.content) {
+            liveSlots[i].entry.content += '\n[INTERRUPTED]';
+            finalizeLiveMessage(liveSlots[i]);
+          } else {
+            liveSlots[i].div.remove();
+          }
+          anyAborted = true;
+          return { ok: false, aborted: true };
+        }
+        liveSlots[i].entry.content = `Error: ${err.message}`;
+        liveSlots[i].entry.name = `${agent.nick} [ERROR]`;
+        finalizeLiveMessage(liveSlots[i]);
+        completedCount++;
+        return { ok: false };
+      })
+  );
+
+  await Promise.allSettled(promises);
+
+  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+
+  if (anyAborted) { setStatus('paused', 'Paused'); return false; }
+  return true;
+}
+
+// --- Main loop ---
+async function runLoop() {
+  running = true;
+  paused = false;
+  pauseRequested = false;
+  btnStart.disabled = true;
+  btnPause.disabled = false;
+  btnResume.disabled = true;
+  btnStep.disabled = true;
+
+  const maxRounds = parseInt(document.getElementById('maxRounds').value) || 0;
+  let round = 0;
+
+  while (running && !paused) {
+    if (getEnabledAgents().length === 0) break;
+    if (chatHistory.length === 0) { setStatus('paused', 'Send a message to begin'); break; }
+
+    let ok;
+    if (mode === 'parallel') {
+      ok = await runParallelStep();
+      round++;
+    } else {
+      // One "round" in sequential = full cycle through all enabled agents
+      const agents = getEnabledAgents();
+      for (let i = 0; i < agents.length && running && !paused; i++) {
+        ok = await runOneStep();
+        if (!ok) break;
+        if (i < agents.length - 1) await new Promise(r => setTimeout(r, 500));
+      }
+      round++;
+    }
+    if (!ok || paused) break;
+    if (maxRounds > 0 && round >= maxRounds) {
+      setStatus('', `Done (${round} round${round > 1 ? 's' : ''})`);
+      break;
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  if (!paused) { running = false; setStatus('', 'Idle'); }
+  btnStart.disabled = false;
+  btnPause.disabled = true;
+  btnResume.disabled = !paused;
+  btnStep.disabled = false;
+}
+
+// --- Abort all ---
+function abortAll() {
+  for (const ac of abortControllers) {
+    try { ac.abort(); } catch {}
+  }
+  abortControllers = [];
+}
+
+// --- Event handlers ---
+btnStart.addEventListener('click', () => {
+  if (chatHistory.length === 0) { setStatus('', 'Send a message first'); return; }
+  currentAgentIdx = 0;
+  runLoop();
+});
+
+btnPause.addEventListener('click', () => {
+  pauseRequested = true;
+  paused = true;
+  running = false;
+  abortAll();
+  // Also abort any per-agent generations
+  for (const idx in perAgentAbort) {
+    try { perAgentAbort[idx].abort(); } catch {}
+  }
+  perAgentAbort = {};
+  hideTyping();
+  setStatus('paused', 'Paused');
+  btnPause.disabled = true;
+  btnResume.disabled = false;
+  btnStart.disabled = false;
+  btnStep.disabled = false;
+  // Re-enable all per-agent buttons
+  document.querySelectorAll('.agent-gen-btn').forEach(b => { b.disabled = false; b.textContent = '\u25B6 Generate'; });
+  document.querySelectorAll('.agent-pause-btn').forEach(b => b.disabled = true);
+});
+
+btnResume.addEventListener('click', () => {
+  paused = false;
+  pauseRequested = false;
+  runLoop();
+});
+
+btnStep.addEventListener('click', async () => {
+  if (chatHistory.length === 0) { setStatus('', 'Send a message first'); return; }
+  pauseRequested = false;
+  btnStep.disabled = true;
+  btnStart.disabled = true;
+  if (mode === 'parallel') {
+    await runParallelStep();
+  } else {
+    await runOneStep();
+  }
+  setStatus('', 'Idle');
+  btnStep.disabled = false;
+  btnStart.disabled = false;
+});
+
+document.getElementById('btnUndo').addEventListener('click', () => performUndo());
+
+// --- Per-agent Generate buttons ---
+async function generateSingleAgent(idx) {
+  const cfg = getAgentConfig(idx);
+  if (!cfg.enabled || !cfg.url) { setStatus('', 'Agent disabled or no URL'); return; }
+
+  const agent = { ...cfg, idx };
+  const genBtn = document.querySelector(`[data-agent-gen="${idx}"]`);
+  const pauseBtn = document.querySelector(`[data-agent-pause="${idx}"]`);
+  genBtn.disabled = true;
+  genBtn.textContent = '\u23F3 Generating...';
+  pauseBtn.disabled = false;
+
+  document.getElementById(`agentCard${idx}`).classList.add('active');
+  setStatus('running', `${agent.nick} streaming...`);
+
+  const live = createLiveMessage(agent);
+
+  try {
+    const ac = new AbortController();
+    perAgentAbort[idx] = ac;
+    abortControllers.push(ac);
+    const text = await callAgentStreaming(agent, ac.signal, live);
+    live.entry.content = text.trim();
+    finalizeLiveMessage(live);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (live.entry.content) {
+        live.entry.content += '\n[INTERRUPTED]';
+        finalizeLiveMessage(live);
+      } else {
+        live.div.remove();
+      }
+      setStatus('paused', 'Paused');
+    } else {
+      live.entry.content = `Error: ${err.message}`;
+      live.entry.name = `${agent.nick} [ERROR]`;
+      finalizeLiveMessage(live);
+    }
+  }
+
+  delete perAgentAbort[idx];
+  document.getElementById(`agentCard${idx}`).classList.remove('active');
+  genBtn.disabled = false;
+  genBtn.textContent = '\u25B6 Generate';
+  pauseBtn.disabled = true;
+  if (!running) setStatus('', 'Idle');
+}
+
+// Per-agent Generate/Pause handlers are wired in createAgentCard()
+
+btnClear.addEventListener('click', () => {
+  if (running) { paused = true; running = false; pauseRequested = true; abortAll(); }
+  chatHistory = [];
+  chatMessages.innerHTML = '';
+  currentAgentIdx = 0;
+  hideTyping();
+  setStatus('', 'Idle');
+  btnPause.disabled = true;
+  btnResume.disabled = true;
+  btnStart.disabled = false;
+  btnStep.disabled = false;
+});
+
+function getUserNick() {
+  return document.getElementById('userNick').value.trim() || 'You';
+}
+
+// --- Image attachment handling ---
+const attachPreview = document.getElementById('attachmentPreview');
+const fileAttach = document.getElementById('fileAttach');
+const btnAttach = document.getElementById('btnAttach');
+
+function addImageFiles(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    if (file.size > 30 * 1024 * 1024) { alert('File too large (max 30MB)'); continue; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      pendingImages.push(e.target.result);
+      renderAttachmentPreview();
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function renderAttachmentPreview() {
+  attachPreview.innerHTML = '';
+  if (pendingImages.length === 0) {
+    attachPreview.classList.remove('has-items');
+    return;
+  }
+  attachPreview.classList.add('has-items');
+  pendingImages.forEach((dataUrl, i) => {
+    const thumb = document.createElement('div');
+    thumb.className = 'attachment-thumb';
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-attach';
+    removeBtn.textContent = '\u00D7';
+    removeBtn.onclick = () => { pendingImages.splice(i, 1); renderAttachmentPreview(); };
+    thumb.appendChild(img);
+    thumb.appendChild(removeBtn);
+    attachPreview.appendChild(thumb);
+  });
+}
+
+btnAttach.addEventListener('click', () => fileAttach.click());
+fileAttach.addEventListener('change', (e) => {
+  addImageFiles(e.target.files);
+  fileAttach.value = '';
+});
+
+// Drag & drop on input area
+const inputArea = document.querySelector('.input-area');
+inputArea.addEventListener('dragover', (e) => { e.preventDefault(); inputArea.classList.add('dragover'); });
+inputArea.addEventListener('dragleave', () => inputArea.classList.remove('dragover'));
+inputArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  inputArea.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) addImageFiles(e.dataTransfer.files);
+});
+
+// Paste images from clipboard
+userInput.addEventListener('paste', (e) => {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      addImageFiles([item.getAsFile()]);
+      return;
+    }
+  }
+});
+
+function sendUserMessage() {
+  const text = userInput.value.trim();
+  if (!text && pendingImages.length === 0) return;
+  const entry = { role: 'user', name: getUserNick(), content: text || '', agentIdx: null, time: timeNow() };
+  if (pendingImages.length > 0) {
+    entry.images = [...pendingImages];
+    pendingImages = [];
+    renderAttachmentPreview();
+  }
+  appendMessage(entry);
+  userInput.value = '';
+  userInput.style.height = 'auto';
+
+  if (document.getElementById('autoRun').checked && !running) {
+    currentAgentIdx = 0;
+    runLoop();
+  }
+}
+
+btnSend.addEventListener('click', sendUserMessage);
+
+userInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendUserMessage(); }
+});
+
+userInput.addEventListener('input', () => {
+  userInput.style.height = 'auto';
+  userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
+});
+
+// --- Config Export / Import ---
+function gatherConfig() {
+  const agents = [];
+  for (const id of agentIds) {
+    const cfg = getAgentConfig(id);
+    if (!cfg) continue;
+    agents.push({ id, ...cfg });
+  }
+  return {
+    agents,
+    agentCount,
+    mode,
+    interceptorDebugState,
+    userNick: document.getElementById('userNick').value,
+    sharedContext: document.getElementById('sharedContext').value,
+    temperature: parseFloat(document.getElementById('temperature').value),
+    maxTokens: parseInt(document.getElementById('maxTokens').value),
+    maxRounds: parseInt(document.getElementById('maxRounds').value),
+    autoRun: document.getElementById('autoRun').checked,
+    stripThink: document.getElementById('stripThink').checked,
+    stripOwnPrevThink: document.getElementById('stripOwnPrevThink').checked,
+    thinkIntercept: document.getElementById('thinkInterceptEnabled').checked,
+    interceptorWorkerUrl: document.getElementById('interceptorWorkerUrl').value,
+    interceptorSandboxUrl: document.getElementById('interceptorSandboxUrl').value,
+    interceptorDsUrl: document.getElementById('interceptorDsUrl').value,
+    interceptorNs: document.getElementById('interceptorNs').value,
+    interceptorInject: document.getElementById('interceptorInject').checked,
+    interceptorDedup: document.getElementById('interceptorDedup').checked,
+    interceptorWorkerNoThink: document.getElementById('interceptorWorkerNoThink').checked,
+    ttsBackend: document.getElementById('ttsBackend').value,
+    ttsUrl: document.getElementById('ttsUrl').value,
+    ttsVoice: document.getElementById('ttsVoice').value,
+    ttsLang: document.getElementById('ttsLang').value,
+    ttsInstruct: document.getElementById('ttsInstruct').value,
+    ttsAutoSpeak: document.getElementById('ttsAutoSpeak').checked,
+    ttsVoiceDesign: document.getElementById('ttsVoiceDesign').value,
+  };
+}
+
+function applyConfig(cfg) {
+  if (!cfg || !cfg.agents) return;
+
+  // Clear existing agents
+  agentsContainer.innerHTML = '';
+  agentIds = [];
+  agentCount = cfg.agentCount || 0;
+
+  // Recreate agents from config
+  for (const a of cfg.agents) {
+    const id = a.id !== undefined ? a.id : agentCount;
+    createAgentCard(id, a);
+  }
+
+  // Ensure agentCount is at least max(id)+1
+  if (agentIds.length > 0) {
+    agentCount = Math.max(agentCount, Math.max(...agentIds) + 1);
+  }
+
+  if (cfg.mode) {
+    mode = cfg.mode;
+    document.querySelectorAll('#modeToggle button').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+  }
+  if (cfg.interceptorDebugState) interceptorDebugState = cfg.interceptorDebugState;
+  renderInterceptorDebug();
+  if (cfg.userNick !== undefined) document.getElementById('userNick').value = cfg.userNick;
+  if (cfg.sharedContext !== undefined) document.getElementById('sharedContext').value = cfg.sharedContext;
+  if (cfg.temperature !== undefined) document.getElementById('temperature').value = cfg.temperature;
+  if (cfg.maxTokens !== undefined) document.getElementById('maxTokens').value = cfg.maxTokens;
+  if (cfg.maxRounds !== undefined) document.getElementById('maxRounds').value = cfg.maxRounds;
+  if (cfg.autoRun !== undefined) document.getElementById('autoRun').checked = cfg.autoRun;
+  if (cfg.stripThink !== undefined) document.getElementById('stripThink').checked = cfg.stripThink;
+  if (cfg.stripOwnPrevThink !== undefined) document.getElementById('stripOwnPrevThink').checked = cfg.stripOwnPrevThink;
+  if (cfg.thinkIntercept !== undefined) {
+    document.getElementById('thinkInterceptEnabled').checked = cfg.thinkIntercept;
+    document.getElementById('interceptorSettings').style.display = cfg.thinkIntercept ? 'block' : 'none';
+  }
+  if (cfg.interceptorWorkerUrl !== undefined) document.getElementById('interceptorWorkerUrl').value = cfg.interceptorWorkerUrl;
+  if (cfg.interceptorSandboxUrl !== undefined) document.getElementById('interceptorSandboxUrl').value = cfg.interceptorSandboxUrl;
+  if (cfg.interceptorDsUrl !== undefined) document.getElementById('interceptorDsUrl').value = cfg.interceptorDsUrl;
+  if (cfg.interceptorNs !== undefined) document.getElementById('interceptorNs').value = cfg.interceptorNs;
+  if (cfg.interceptorInject !== undefined) document.getElementById('interceptorInject').checked = cfg.interceptorInject;
+  if (cfg.interceptorDedup !== undefined) document.getElementById('interceptorDedup').checked = cfg.interceptorDedup;
+  if (cfg.interceptorWorkerNoThink !== undefined) document.getElementById('interceptorWorkerNoThink').checked = cfg.interceptorWorkerNoThink;
+  if (cfg.ttsBackend !== undefined) {
+    document.getElementById('ttsBackend').value = cfg.ttsBackend;
+    document.getElementById('ttsBackend').dispatchEvent(new Event('change'));
+  }
+  if (cfg.ttsUrl !== undefined) document.getElementById('ttsUrl').value = cfg.ttsUrl;
+  if (cfg.ttsVoice !== undefined) document.getElementById('ttsVoice').value = cfg.ttsVoice;
+  if (cfg.ttsLang !== undefined) document.getElementById('ttsLang').value = cfg.ttsLang;
+  if (cfg.ttsInstruct !== undefined) document.getElementById('ttsInstruct').value = cfg.ttsInstruct;
+  if (cfg.ttsAutoSpeak !== undefined) document.getElementById('ttsAutoSpeak').checked = cfg.ttsAutoSpeak;
+  if (cfg.ttsVoiceDesign !== undefined) document.getElementById('ttsVoiceDesign').value = cfg.ttsVoiceDesign;
+  updateQueueOrder();
+}
+
+document.getElementById('btnExport').addEventListener('click', () => {
+  const cfg = gatherConfig();
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'multi-agent-config.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+const fileImport = document.getElementById('fileImport');
+document.getElementById('btnImport').addEventListener('click', () => fileImport.click());
+fileImport.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const cfg = JSON.parse(ev.target.result);
+      applyConfig(cfg);
+      setStatus('', 'Config loaded');
+    } catch (err) {
+      setStatus('', 'Invalid JSON');
+    }
+  };
+  reader.readAsText(file);
+  fileImport.value = '';
+});
+
+// --- History Export / Import ---
+document.getElementById('btnExportHistory').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(chatHistory, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().slice(0, 16).replace(/[:.]/g, '-');
+  a.download = `chat-history-${ts}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+const fileImportHistory = document.getElementById('fileImportHistory');
+document.getElementById('btnImportHistory').addEventListener('click', () => fileImportHistory.click());
+fileImportHistory.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const history = JSON.parse(ev.target.result);
+      if (!Array.isArray(history)) throw new Error('not an array');
+      pushUndo();
+      chatHistory = history;
+      rebuildChat();
+      saveToStorage();
+      const savedOk = localStorage.getItem(LS_KEY_HIST);
+      const size = savedOk ? (savedOk.length / 1024).toFixed(1) + 'KB' : 'FAILED';
+      setStatus('', `Loaded ${history.length} messages (${size})`);
+    } catch (err) {
+      console.error('Import history error:', err);
+      setStatus('', 'Invalid history JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  fileImportHistory.value = '';
+});
+
+// --- TTS ---
+let ttsCurrentAudio = null;
+
+function ttsCleanText(text) {
+  let t = text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+  t = t.replace(/<[^>]+>/g, '');
+  t = t.replace(/```[\s\S]*?```/g, '');
+  t = t.replace(/`[^`]+`/g, '');
+  t = t.replace(/[*_~#>]+/g, '');
+  t = t.replace(/\s+/g, ' ').trim();
+  return t;
+}
+
+// Sync voice preset dropdown with text input
+document.getElementById('ttsVoicePreset').addEventListener('change', function() {
+  document.getElementById('ttsVoice').value = this.value;
+  saveToStorage();
+});
+
+// Settings modal toggle
+function toggleSettings() {
+  const overlay = document.getElementById('settingsOverlay');
+  overlay.classList.toggle('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('settingsOverlay').classList.contains('open')) {
+    toggleSettings();
+  }
+});
+
+// Toggle visibility of fields per backend
+document.getElementById('ttsBackend').addEventListener('change', function() {
+  const val = this.value;
+  const isKobold = val === 'koboldcpp';
+  const isCustom = val === 'qwen-custom';
+  const isDesign = val === 'qwen-design';
+  const isClone = val === 'qwen-clone';
+  const isQwen = isCustom || isDesign || isClone;
+
+  document.getElementById('ttsVoiceField').style.display = (isKobold || isCustom) ? '' : 'none';
+  document.getElementById('ttsLangField').style.display = isQwen ? '' : 'none';
+  document.getElementById('ttsInstructField').style.display = isCustom ? '' : 'none';
+  document.getElementById('ttsVoiceDesignField').style.display = isDesign ? '' : 'none';
+  document.getElementById('ttsSavedVoiceField').style.display = isClone ? '' : 'none';
+
+  if (isKobold) {
+    document.getElementById('ttsUrl').value = 'http://localhost:5001';
+  } else {
+    document.getElementById('ttsUrl').value = 'http://localhost:8100';
+  }
+
+  if (isClone) loadSavedVoices();
+});
+
+// Load saved voices from server
+async function loadSavedVoices() {
+  const ttsUrl = document.getElementById('ttsUrl').value.trim().replace(/\/$/, '');
+  try {
+    const resp = await fetch(ttsUrl + '/tts/voices');
+    const data = await resp.json();
+    const sel = document.getElementById('ttsSavedVoice');
+    sel.innerHTML = '';
+    if (data.voices.length === 0) {
+      sel.innerHTML = '<option value="">No saved voices</option>';
+    } else {
+      data.voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = v.name + (v.design ? ` (${v.design.slice(0, 40)}...)` : '');
+        sel.appendChild(opt);
+      });
+    }
+    // Also refresh per-agent dropdowns
+    refreshAgentSavedVoices();
+  } catch(e) {
+    console.error('Failed to load voices:', e);
+  }
+}
+
+// Save a designed voice
+async function saveDesignedVoice() {
+  const ttsUrl = document.getElementById('ttsUrl').value.trim().replace(/\/$/, '');
+  const design = document.getElementById('ttsVoiceDesign').value;
+  const name = document.getElementById('ttsDesignSaveName').value.trim();
+  const lang = document.getElementById('ttsLang').value;
+  if (!design || !name) { alert('Enter voice description and name'); return; }
+
+  setStatus('running', 'Generating & saving voice...');
+  try {
+    const form = new FormData();
+    form.append('text', 'This is a sample of my voice. I can speak naturally and expressively.');
+    form.append('design', design);
+    form.append('language', lang);
+    form.append('voice_name', name);
+    const resp = await fetch(ttsUrl + '/tts/design/save', { method: 'POST', body: form });
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    setStatus('', `Voice "${name}" saved!`);
+    loadSavedVoices();
+  } catch(e) {
+    setStatus('', 'Save failed: ' + e.message);
+  }
+}
+
+// Load saved voices into all per-agent dropdowns
+async function refreshAgentSavedVoices() {
+  const ttsUrl = document.getElementById('ttsUrl').value.trim().replace(/\/$/, '');
+  if (!ttsUrl) return;
+  try {
+    const resp = await fetch(ttsUrl + '/tts/voices');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const voices = data.voices || [];
+    for (const id of agentIds) {
+      const grp = document.getElementById(`agentSavedVoices${id}`);
+      if (!grp) continue;
+      grp.innerHTML = '';
+      for (const v of voices) {
+        const opt = document.createElement('option');
+        opt.value = `qwen-clone:${v.name}`;
+        opt.textContent = v.name;
+        grp.appendChild(opt);
+      }
+    }
+  } catch {}
+}
+
+// Resolve TTS settings: per-agent voice overrides global settings
+function resolveTtsSettings(agentIdx) {
+  const globalBackend = document.getElementById('ttsBackend').value;
+  const globalVoice = document.getElementById('ttsVoice').value;
+  const globalLang = document.getElementById('ttsLang').value;
+  const globalInstruct = document.getElementById('ttsInstruct').value;
+  const globalDesign = document.getElementById('ttsVoiceDesign').value;
+  const globalUrl = document.getElementById('ttsUrl').value.trim().replace(/\/$/, '');
+
+  // Check per-agent voice override
+  let agentVoice = '';
+  if (agentIdx !== undefined && agentIdx !== null) {
+    const sel = document.querySelector(`[data-agent-voice="${agentIdx}"]`);
+    if (sel) agentVoice = sel.value; // format: "backend:voiceName" or ""
+  }
+
+  if (!agentVoice) {
+    // Use global settings as-is
+    return { backend: globalBackend, voice: globalVoice, lang: globalLang,
+             instruct: globalInstruct, design: globalDesign, url: globalUrl };
+  }
+
+  // Parse "backend:voiceName"
+  const colonIdx = agentVoice.indexOf(':');
+  const avBackend = agentVoice.substring(0, colonIdx);
+  const avVoice = agentVoice.substring(colonIdx + 1);
+
+  if (avBackend === 'kobold') {
+    return { backend: 'koboldcpp', voice: avVoice, lang: globalLang,
+             instruct: '', design: '', url: globalUrl, savedVoice: '' };
+  } else if (avBackend === 'qwen-custom') {
+    return { backend: 'qwen-custom', voice: avVoice, lang: globalLang,
+             instruct: globalInstruct, design: '', url: globalUrl, savedVoice: '' };
+  } else if (avBackend === 'qwen-clone') {
+    return { backend: 'qwen-clone', voice: '', lang: globalLang,
+             instruct: '', design: '', url: globalUrl, savedVoice: avVoice };
+  }
+
+  return { backend: globalBackend, voice: globalVoice, lang: globalLang,
+           instruct: globalInstruct, design: globalDesign, url: globalUrl };
+}
+
+async function ttsViaKoboldCpp(ttsUrl, cleanText, settings) {
+  const resp = await fetch(ttsUrl + '/api/extra/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: cleanText, voice: settings.voice }),
+  });
+  if (!resp.ok) throw new Error(`KoboldCpp TTS error: ${resp.status}`);
+  return await resp.blob();
+}
+
+async function ttsViaQwenServer(ttsUrl, cleanText, settings) {
+  const form = new FormData();
+  form.append('text', cleanText);
+  form.append('language', settings.lang);
+
+  let endpoint;
+  if (settings.backend === 'qwen-custom') {
+    endpoint = '/tts/custom';
+    form.append('speaker', settings.voice);
+    form.append('instruct', settings.instruct || '');
+  } else if (settings.backend === 'qwen-design') {
+    endpoint = '/tts/design';
+    form.append('design', settings.design || 'A natural, clear voice.');
+  } else if (settings.backend === 'qwen-clone') {
+    endpoint = '/tts/clone';
+    const voiceName = settings.savedVoice || document.getElementById('ttsSavedVoice').value;
+    if (!voiceName) throw new Error('No saved voice selected');
+    form.append('voice_name', voiceName);
+  }
+
+  const resp = await fetch(ttsUrl + endpoint, { method: 'POST', body: form });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Qwen TTS error (${resp.status}): ${errText}`);
+  }
+  return await resp.blob();
+}
+
+async function ttsSpeak(text, btn, agentIdx) {
+  const settings = resolveTtsSettings(agentIdx);
+  if (!settings.url) { setStatus('', 'TTS: no endpoint'); return; }
+
+  const cleanText = ttsCleanText(text);
+  if (!cleanText) { setStatus('', 'TTS: empty text'); return; }
+
+  // Stop if already playing
+  if (ttsCurrentAudio) {
+    ttsCurrentAudio.pause();
+    ttsCurrentAudio = null;
+    document.querySelectorAll('.msg-action-btn.tts-playing').forEach(b => { b.classList.remove('tts-playing'); b.textContent = 'speak'; });
+    setStatus('', 'Idle');
+    return;
+  }
+
+  if (btn) { btn.classList.add('tts-loading'); btn.textContent = '...'; }
+  setStatus('running', 'TTS generating...');
+
+  try {
+    let blob;
+    if (settings.backend === 'koboldcpp') {
+      blob = await ttsViaKoboldCpp(settings.url, cleanText, settings);
+    } else {
+      blob = await ttsViaQwenServer(settings.url, cleanText, settings);
+    }
+
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    ttsCurrentAudio = audio;
+
+    if (btn) { btn.classList.remove('tts-loading'); btn.classList.add('tts-playing'); btn.textContent = 'stop'; }
+    setStatus('running', 'TTS playing...');
+
+    audio.onended = () => {
+      ttsCurrentAudio = null;
+      URL.revokeObjectURL(audioUrl);
+      if (btn) { btn.classList.remove('tts-playing'); btn.textContent = 'speak'; }
+      setStatus('', 'Idle');
+    };
+
+    audio.onerror = () => {
+      ttsCurrentAudio = null;
+      URL.revokeObjectURL(audioUrl);
+      if (btn) { btn.classList.remove('tts-playing', 'tts-loading'); btn.textContent = 'speak'; }
+      setStatus('', 'TTS: playback error');
+    };
+
+    audio.play();
+  } catch (err) {
+    console.error('TTS error:', err);
+    if (btn) { btn.classList.remove('tts-loading'); btn.textContent = 'speak'; }
+    setStatus('', `TTS: ${err.message}`);
+  }
+}
+
+// --- localStorage persistence ---
+const LS_KEY_CFG = 'mac_config';
+const LS_KEY_HIST = 'mac_history';
+
+function saveToStorage() {
+  if (_loadingFromStorage) return;
+  try {
+    const cfg = gatherConfig();
+    const histJson = JSON.stringify(chatHistory);
+    localStorage.setItem(LS_KEY_CFG, JSON.stringify(cfg));
+    localStorage.setItem(LS_KEY_HIST, histJson);
+  } catch (e) {
+    console.error('saveToStorage failed:', e, e.stack);
+  }
+}
+
+let _loadingFromStorage = false;
+
+function loadFromStorage() {
+  _loadingFromStorage = true;
+
+  // Load history FIRST (before config, which triggers saveToStorage via events)
+  let savedHistory = null;
+  try {
+    const histRaw = localStorage.getItem(LS_KEY_HIST);
+    if (histRaw) {
+      const history = JSON.parse(histRaw);
+      if (Array.isArray(history) && history.length > 0) {
+        savedHistory = history;
+      }
+    }
+  } catch {}
+
+  let configLoaded = false;
+  try {
+    const cfgRaw = localStorage.getItem(LS_KEY_CFG);
+    if (cfgRaw) {
+      const parsed = JSON.parse(cfgRaw);
+      if (parsed && parsed.agents && parsed.agents.length > 0) {
+        applyConfig(parsed);
+        configLoaded = true;
+      }
+    }
+  } catch {}
+  if (!configLoaded) {
+    initDefaultAgents();
+  }
+  renderInterceptorDebug();
+
+  // Now restore history after config is applied
+  if (savedHistory) {
+    chatHistory = savedHistory;
+    rebuildChat();
+    undoStack = [];
+  }
+
+  _loadingFromStorage = false;
+}
+
+// Auto-save on every change
+const _origAppendMessage = appendMessage;
+appendMessage = function(entry) {
+  _origAppendMessage(entry);
+  saveToStorage();
+};
+
+// Save config when top-level sidebar fields change (user nick, shared context, settings)
+// Agent-specific fields are handled by createAgentCard()
+document.querySelectorAll('#userNick, #sharedContext, #temperature, #maxTokens, #maxRounds, #autoRun, #stripThink, #stripOwnPrevThink, #ttsBackend, #ttsUrl, #ttsVoice, #ttsLang, #ttsInstruct, #ttsAutoSpeak').forEach(el => {
+  el.addEventListener('change', saveToStorage);
+  el.addEventListener('input', saveToStorage);
+});
+
+// Save on clear
+const _origClearHandler = btnClear.onclick;
+btnClear.addEventListener('click', () => setTimeout(saveToStorage, 50));
+
+// Load on startup
+loadFromStorage();
+
+// Load saved voices into per-agent dropdowns
+setTimeout(refreshAgentSavedVoices, 2000);
+
+setStatus('', 'Idle');
+</script>
+
+</body>
+</html>

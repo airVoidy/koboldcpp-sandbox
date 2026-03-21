@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from kobold_sandbox.logic_manifest import linear_schema_to_manifest, parse_linear_logic_schema, parse_logic_manifest, verify_logic
+from kobold_sandbox.logic_manifest import (
+    LogicManifest,
+    linear_schema_to_manifest,
+    parse_atomic_rule_set,
+    parse_linear_logic_schema,
+    parse_logic_manifest,
+    verify_logic,
+)
 from kobold_sandbox.server import create_app
 
 
@@ -170,6 +177,224 @@ BRANCHES:
     assert manifest.axioms[1] == "abs(pos('nation:Norwegian') - pos('color:Blue')) == 1"
     assert manifest.axioms[2] == "pos('color:Green') == pos('color:White') + 1"
     assert manifest.axioms[3] == "pos('nation:Norwegian') == 0"
+
+
+def test_parse_linear_logic_schema_infers_entities_when_missing() -> None:
+    schema = parse_linear_logic_schema(
+        """
+RULES:
+- before(Diana, Ilya)
+- before(Ilya, $author)
+- immediate_after(Lera, Sofya)
+- one_of(Elisey, [0, 6])
+BRANCHES:
+Sofia:
+- author(Sofya)
+- at(Anna, 0)
+"""
+    )
+
+    assert schema.entities == ["Diana", "Ilya", "Lera", "Sofya", "Elisey", "Anna"]
+    manifest = linear_schema_to_manifest(schema)
+    assert manifest.axioms[0] == "pos('Diana') < pos('Ilya')"
+    assert manifest.hypotheses["Sofia"][0] == "author == 'Sofya'"
+
+
+def test_parse_linear_logic_schema_supports_unnamed_branch_items() -> None:
+    schema = parse_linear_logic_schema(
+        """
+RULES:
+- before(Diana, Ilya)
+BRANCHES:
+- author(Sofya)
+- at(Anna, 0)
+"""
+    )
+
+    assert schema.branches["Claim 1"] == ["author(Sofya)"]
+    assert schema.branches["Claim 2"] == ["at(Anna, 0)"]
+
+
+def test_parse_linear_logic_schema_handles_worker_style_claim_output() -> None:
+    schema = parse_linear_logic_schema(
+        """
+Here is the extracted schema:
+```text
+ENTITIES: [Elisey, Diana, Ilya, Sofya, Lera, Anna, Maksim]
+RULES:
+- before(Diana, Ilya)
+- immediately_after(Lera, Sofya)
+- one_of(Elisey, [0, 6])
+BRANCHES:
+SofyaClaim: [author(Sofya), at(Elisey, 0)]
+- AnnaClaim: author == 'Anna'
+PositionCheck:
+- at(Maksim, 6)
+```
+These are the claims.
+"""
+    )
+
+    assert schema.rules == [
+        "before(Diana, Ilya)",
+        "immediate_after(Lera, Sofya)",
+        "one_of(Elisey, [0, 6])",
+    ]
+    assert schema.branches["SofyaClaim"] == ["author(Sofya)", "at(Elisey, 0)"]
+    assert schema.branches["AnnaClaim"] == ["author(Anna)"]
+    assert schema.branches["PositionCheck"] == ["at(Maksim, 6)"]
+
+    manifest = linear_schema_to_manifest(schema)
+    assert manifest.hypotheses["SofyaClaim"][0] == "author == 'Sofya'"
+    assert manifest.hypotheses["AnnaClaim"][0] == "author == 'Anna'"
+
+
+def test_logic_verify_endpoint_parses_raw_worker_schema(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/logic/verify",
+        json={
+            "raw_schema": """
+Worker output:
+```schema
+ENTITIES: [Elisey, Diana, Ilya, Sofya, Lera, Anna, Maksim]
+RULES:
+- before(Diana, Ilya)
+- before(Ilya, $author)
+BRANCHES:
+SofyaClaim: [author(Sofya), at(Elisey, 0)]
+- AnnaClaim: [author(Anna), at(Elisey, 6)]
+```
+"""
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["linear_schema"]["branches"]["SofyaClaim"] == ["author(Sofya)", "at(Elisey, 0)"]
+    assert payload["linear_schema"]["branches"]["AnnaClaim"] == ["author(Anna)", "at(Elisey, 6)"]
+    assert {branch["branch"] for branch in payload["verification"]["branches"]} == {"SofyaClaim", "AnnaClaim"}
+
+
+def test_logic_verify_endpoint_parses_schema_without_entities(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/logic/verify",
+        json={
+            "raw_schema": """
+RULES:
+- before(Diana, Ilya)
+- before(Ilya, $author)
+BRANCHES:
+SofyaClaim:
+- author(Sofya)
+- at(Anna, 0)
+"""
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["linear_schema"]["entities"] == ["Diana", "Ilya", "Sofya", "Anna"]
+    assert payload["manifest"]["axioms"][0] == "pos('Diana') < pos('Ilya')"
+    assert payload["verification"]["branches"][0]["branch"] == "SofyaClaim"
+
+
+def test_logic_verify_endpoint_parses_manifest_format(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/logic/verify",
+        json={
+            "raw_schema": """
+ENTITIES: [Diana, Ilya, Sofya]
+AXIOMS:
+- pos('Diana') < pos('Ilya')
+- pos('Ilya') < pos('Sofya')
+HYPOTHESES:
+Branch 1: [author == 'Sofya', pos('Diana') < pos('Sofya')]
+"""
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["format_kind"] == "manifest"
+    assert payload["linear_schema"] is None
+    assert payload["manifest"]["hypotheses"]["Branch 1"][0] == "author == 'Sofya'"
+
+
+def test_logic_verify_endpoint_parses_atomic_rules_format(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/logic/verify",
+        json={
+            "raw_schema": """
+ATOMIC_RULES:
+- s.pos('nation:Norwegian') == 0
+- s.pos('drink:Water') == 0
+- s.pos('pet:Zebra') == 4
+"""
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["format_kind"] == "atomic_rules"
+    assert payload["atomic_rules"]["rules"][0] == "pos('nation:Norwegian') == 0"
+    by_branch = {branch["branch"]: branch["solutions"] for branch in payload["verification"]["branches"]}
+    assert by_branch["Rule 1"] == 1
+    assert by_branch["Rule 2"] == 1
+    assert by_branch["Rule 3"] == 1
+
+
+def test_parse_atomic_rule_set_handles_repeated_headers_and_truncated_tail() -> None:
+    rules = parse_atomic_rule_set(
+        """
+ATOMIC_RULES:
+- s.pos('nation:English') == s.pos('color:Red')
+- s.pos('pet:Dog') == s.pos('nation:Spanish')
+
+ATOMIC_RULES:
+- s.pos('drink:Coffee') == s.pos('color:Green')
+- s.pos('drink:Tea') == s.pos('nation:Ukrainian')
+-
+"""
+    ).rules
+
+    assert rules == [
+        "pos('nation:English') == pos('color:Red')",
+        "pos('pet:Dog') == pos('nation:Spanish')",
+        "pos('drink:Coffee') == pos('color:Green')",
+        "pos('drink:Tea') == pos('nation:Ukrainian')",
+    ]
+
+
+def test_verify_logic_uses_einstein_mode_for_einstein_entities() -> None:
+    manifest = parse_logic_manifest(
+        """
+ENTITIES: [Норвежец, Англичанин, Испанец, Украинец, Японец, Жёлтый, Синий, Красный, Белый, Зелёный, Вода, Зебра]
+AXIOMS:
+- pos('Норвежец') == 0
+HYPOTHESES:
+WaterClaim: [pos('Вода') == 0]
+ZebraClaim: [pos('Зебра') == 4]
+WrongWater: [pos('Вода') == 4]
+"""
+    )
+
+    verification = verify_logic(manifest)
+
+    assert verification.mode == "einstein"
+    assert verification.stable_worlds == 1
+    assert {branch.branch for branch in verification.branches} == {"WaterClaim", "ZebraClaim", "WrongWater"}
+    by_branch = {branch.branch: branch.solutions for branch in verification.branches}
+    assert by_branch["WaterClaim"] == 1
+    assert by_branch["ZebraClaim"] == 1
+    assert by_branch["WrongWater"] == 0
 
 
 def test_logic_parse_structured_endpoint_emits_puzzle_schema_when_convertible(monkeypatch, tmp_path) -> None:
@@ -352,3 +577,138 @@ def test_imagegen_endpoint(monkeypatch, tmp_path) -> None:
     assert payload["preview_image"] == "ZmFrZS1wbmc="
     assert payload["raw_response"]["image_count"] == 1
     assert "images" not in payload["raw_response"]
+
+
+# ── Atomic sieve: etalon tests (no worker, no LLM) ──────────────
+
+
+def test_atomic_sieve_simple_abc() -> None:
+    """A, B, C — A before B, B before C → only one world: A→B→C.
+    Then test hypothesis classification."""
+    manifest = LogicManifest(
+        entities=["A", "B", "C"],
+        axioms=[
+            "pos('A') < pos('B')",
+            "pos('B') < pos('C')",
+        ],
+        hypotheses={
+            "correct": ["pos('A') == 0"],       # follows from axioms → confirmed
+            "wrong":   ["pos('C') == 0"],        # contradicts → declined
+            "narrows": ["pos('B') == 1"],        # true in the only world → confirmed
+        },
+    )
+
+    result = verify_logic(manifest)
+
+    assert result.mode == "atomic"
+    assert result.stable_worlds == 1
+    assert result.sample_order == ["A", "B", "C"]
+
+    by_rule = {c.rule: c for c in result.claims}
+
+    # Axioms always accepted
+    assert by_rule["pos('A') < pos('B')"].status == "accepted"
+    assert by_rule["pos('A') < pos('B')"].source == "axiom"
+    assert by_rule["pos('B') < pos('C')"].status == "accepted"
+
+    # Hypothesis: pos('A') == 0 — true in all remaining worlds → confirmed
+    assert by_rule["pos('A') == 0"].status == "confirmed"
+    assert by_rule["pos('A') == 0"].source == "hypothesis"
+
+    # Hypothesis: pos('C') == 0 — impossible → declined
+    assert by_rule["pos('C') == 0"].status == "declined"
+    assert by_rule["pos('C') == 0"].source == "hypothesis"
+
+    # Hypothesis: pos('B') == 1 — true in the only world → confirmed
+    assert by_rule["pos('B') == 1"].status == "confirmed"
+
+
+def test_atomic_sieve_quest_order_case() -> None:
+    """Etalon: quest_order_case with Elisey.
+    Known answer with Sofya as author: Elisey→Diana→Ilya→Sofya→Lera→Anna→Maksim."""
+    manifest = LogicManifest(
+        entities=["Elisey", "Diana", "Ilya", "Sofya", "Lera", "Anna", "Maksim"],
+        axioms=[
+            "pos('Diana') < pos('Ilya')",
+            "pos('Sofya') + 1 == pos('Lera')",
+            "(pos('Elisey') == 0 or pos('Elisey') == 6)",
+            "pos('Diana') != 0",
+        ],
+        hypotheses={
+            "elisey_first":  ["pos('Elisey') == 0"],
+            "sofya_author":  ["author == 'Sofya'", "pos('Ilya') < author_pos"],
+            "wrong_claim":   ["pos('Diana') == 0"],  # contradicts axiom
+        },
+    )
+
+    result = verify_logic(manifest)
+
+    assert result.mode == "atomic"
+    assert result.stable_worlds > 0
+
+    by_rule = {c.rule: c for c in result.claims}
+
+    # All axioms accepted
+    for ax in manifest.axioms:
+        assert by_rule[ax].status == "accepted", f"axiom {ax} not accepted"
+
+    # Diana == 0 should be declined (contradicts axiom Diana != 0)
+    assert by_rule["pos('Diana') == 0"].status == "declined"
+
+    # Elisey first should be hypothesis or confirmed (narrows worlds)
+    assert by_rule["pos('Elisey') == 0"].status in ("hypothesis", "confirmed")
+
+
+def test_atomic_sieve_multiple_solutions() -> None:
+    """A, B, C — only constraint: A before C.
+    Two valid worlds: A→B→C and A→C→B... wait, no: A<C gives:
+    ABC(0,1,2), BAC(1,0,2), ACB(0,2,1) — 3 worlds.
+    Hypothesis B==1 narrows to 1 world → hypothesis."""
+    manifest = LogicManifest(
+        entities=["A", "B", "C"],
+        axioms=["pos('A') < pos('C')"],
+        hypotheses={
+            "b_middle": ["pos('B') == 1"],  # narrows 3→1
+        },
+    )
+
+    result = verify_logic(manifest)
+
+    assert result.stable_worlds == 1  # after hypothesis applied
+
+    by_rule = {c.rule: c for c in result.claims}
+    assert by_rule["pos('A') < pos('C')"].status == "accepted"
+
+    b_claim = by_rule["pos('B') == 1"]
+    assert b_claim.source == "hypothesis"
+    assert b_claim.status == "hypothesis"  # narrows, not confirmed
+    assert b_claim.worlds_before == 3  # 3 worlds with A<C
+    assert b_claim.worlds_after == 1   # only A→B→C
+
+
+def test_atomic_sieve_via_verify_endpoint(tmp_path) -> None:
+    """End-to-end: POST raw manifest to /api/logic/verify, get claim statuses."""
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/logic/verify",
+        json={
+            "raw_schema": """
+ENTITIES: [A, B, C]
+AXIOMS:
+- pos('A') < pos('B')
+- pos('B') < pos('C')
+HYPOTHESES:
+Correct: [pos('A') == 0]
+Wrong: [pos('C') == 0]
+"""
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    claims = {c["rule"]: c for c in payload["verification"]["claims"]}
+    assert claims["pos('A') < pos('B')"]["status"] == "accepted"
+    assert claims["pos('A') == 0"]["status"] == "confirmed"
+    assert claims["pos('C') == 0"]["status"] == "declined"

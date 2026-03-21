@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import uuid
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import httpx
 from pydantic import BaseModel
@@ -13,12 +15,15 @@ from pydantic import BaseModel
 from .assertions import ClaimStatus, HypothesisTree
 from .hypothesis_runtime import HypothesisRuntime
 from .logic_manifest import (
+    AtomicRuleSet,
     LinearSchemaExtractionResult,
     LogicExtractionResult,
+    LogicManifest,
     build_linear_schema_prompt,
     build_logic_manifest_prompt,
     linear_schema_to_manifest,
     load_first_thoughts_example,
+    parse_atomic_rule_set,
     parse_linear_logic_schema,
     parse_logic_manifest,
     prepare_reasoning_excerpt,
@@ -29,6 +34,7 @@ from .orchestrator import export_graph, run_task
 from .kobold_client import KoboldClient, KoboldGenerationConfig
 from .storage import Sandbox
 from .core import build_schema_backends_from_linear, linear_schema_to_puzzle_schema
+from .data_store.api import create_datastore_router
 
 
 class CreateNodeRequest(BaseModel):
@@ -109,6 +115,11 @@ class LogicParseRequest(BaseModel):
     model: str | None = None
 
 
+class LogicVerifyRequest(BaseModel):
+    """Accept raw text in ENTITIES/RULES/BRANCHES format for parse + verify without LLM."""
+    raw_schema: str
+
+
 class ImageGenerateRequest(BaseModel):
     session_id: str | None = None
     prompt: str
@@ -154,6 +165,19 @@ def create_app(root: str) -> FastAPI:
     atom_runtime = AtomRuntime()
     hypothesis_runtime = HypothesisRuntime(atom_runtime)
     app = FastAPI(title="Kobold Sandbox")
+
+    # CORS for browser access
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Mount DataStore API
+    datastore_root = Path(root).resolve() / ".sandbox" / "datastore"
+    app.include_router(create_datastore_router(datastore_root), prefix="/api/datastore")
+
     sessions: dict[str, dict[str, Any]] = {
         "default": {
             "id": "default",
@@ -612,6 +636,74 @@ def create_app(root: str) -> FastAPI:
         result["source_text"] = example.source_text
         result["reasoning_text"] = example.reasoning_text
         return result
+
+    @app.post("/api/logic/verify")
+    def verify_logic_schema(request: LogicVerifyRequest) -> dict:
+        """Parse raw logic text and verify — supports both manifest and linear schema formats."""
+        raw_text = request.raw_schema
+        is_atomic_rule_format = "ATOMIC_RULES:" in raw_text.upper()
+        is_manifest_format = bool(
+            "AXIOMS:" in raw_text.upper()
+            or "HYPOTHESES:" in raw_text.upper()
+        )
+
+        schema = None
+        atomic_rules: AtomicRuleSet | None = None
+        puzzle_schema: dict[str, Any] | None = None
+        sieve_state: list[dict[str, list[str]]] | None = None
+        stage_counts: str | None = None
+        format_kind = "atomic_rules" if is_atomic_rule_format else ("manifest" if is_manifest_format else "linear_schema")
+
+        if is_atomic_rule_format:
+            atomic_rules = parse_atomic_rule_set(raw_text)
+            entities = sorted(
+                {
+                    item
+                    for rule in atomic_rules.rules
+                    for item in re.findall(r"pos\('([^']+)'\)", rule)
+                }
+            )
+            # All atomic rules become axioms — verified together, no branches
+            manifest = LogicManifest(
+                entities=entities,
+                axioms=atomic_rules.rules,
+                hypotheses={},
+            )
+        elif is_manifest_format:
+            manifest = parse_logic_manifest(raw_text)
+        else:
+            schema = parse_linear_logic_schema(raw_text)
+            manifest = linear_schema_to_manifest(schema)
+            try:
+                bundle = build_schema_backends_from_linear(schema)
+                puzzle_schema = bundle.puzzle_schema.to_dict()
+                try:
+                    solved_sieve = bundle.sieve.run_until_fixpoint()
+                    sieve_state = [
+                        {
+                            category: sorted(values)
+                            for category, values in house.items()
+                        }
+                        for house in solved_sieve
+                    ]
+                    stage_counts = bundle.permutation.render_stage_counts(sieve_state=solved_sieve)
+                except RuntimeError:
+                    sieve_state = None
+                    stage_counts = bundle.permutation.render_stage_counts()
+            except ValueError:
+                pass
+
+        verification = verify_logic(manifest)
+        return {
+            "format_kind": format_kind,
+            "atomic_rules": atomic_rules.model_dump() if atomic_rules else None,
+            "linear_schema": schema.model_dump() if schema else None,
+            "manifest": manifest.model_dump(),
+            "verification": verification.model_dump(),
+            "puzzle_schema": puzzle_schema,
+            "sieve_state": sieve_state,
+            "stage_counts": stage_counts,
+        }
 
     @app.get("/api/logic/example/raw")
     def get_logic_example_raw() -> dict:

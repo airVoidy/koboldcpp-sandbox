@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataStore Viewer</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --bg-surface: #24283b;
+  --bg-hover: #2f3346;
+  --bg-input: #1e2030;
+  --border: #3b3d57;
+  --text: #c0caf5;
+  --text-dim: #565f89;
+  --text-bright: #e0e4ff;
+  --accent: #7aa2f7;
+  --accent-hover: #89b4fa;
+  --green: #9ece6a;
+  --yellow: #e0af68;
+  --red: #f7768e;
+  --purple: #bb9af7;
+  --orange: #ff9e64;
+  --cyan: #7dcfff;
+  --radius: 8px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.topbar h1 { font-size: 16px; color: var(--accent); font-weight: 600; }
+
+.topbar .branch-badge {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--purple);
+  font-family: var(--mono);
+}
+
+.topbar .spacer { flex: 1; }
+
+.topbar input[type="text"] {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 10px;
+  font-size: 13px;
+  width: 300px;
+}
+
+.topbar button {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius);
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.topbar button:hover { background: var(--accent-hover); }
+.topbar button.secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.topbar button.secondary:hover { background: var(--bg-hover); }
+
+/* Main layout */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  padding: 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sidebar-header button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.sidebar-header button:hover { background: var(--bg-hover); }
+
+.ns-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.ns-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 3px solid transparent;
+  transition: all 0.1s;
+}
+.ns-item:hover { background: var(--bg-hover); }
+.ns-item.active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+  color: var(--text-bright);
+}
+.ns-item .schema-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-dim);
+}
+.ns-item .delete-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 14px;
+}
+.ns-item:hover .delete-btn { opacity: 0.6; }
+.ns-item .delete-btn:hover { opacity: 1; }
+
+/* Content area */
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.content-header h2 { font-size: 16px; color: var(--text-bright); }
+
+.content-header .actions { display: flex; gap: 8px; }
+.content-header .actions button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.content-header .actions button:hover { background: var(--bg-hover); }
+
+.content-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Tree view */
+.tree { font-family: var(--mono); font-size: 13px; }
+.tree ul { list-style: none; padding-left: 20px; }
+.tree > ul { padding-left: 0; }
+
+.tree-node {
+  padding: 3px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tree-toggle {
+  width: 16px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-dim);
+  user-select: none;
+  font-size: 11px;
+}
+.tree-toggle:hover { color: var(--accent); }
+
+.tree-key { color: var(--cyan); }
+.tree-value { color: var(--text); }
+.tree-value.string { color: var(--green); }
+.tree-value.number { color: var(--orange); }
+.tree-value.bool { color: var(--purple); }
+.tree-value.null { color: var(--text-dim); font-style: italic; }
+
+.tree-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+.tree-status.active { background: #1a3a1a; color: var(--green); }
+.tree-status.confirmed { background: #1a2a3a; color: var(--accent); }
+.tree-status.rejected { background: #3a1a1a; color: var(--red); }
+.tree-status.hypothesis { background: #3a2a1a; color: var(--yellow); }
+.tree-status.archived { background: var(--bg); color: var(--text-dim); }
+
+.tree-source { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
+
+.tree-entry-actions {
+  opacity: 0;
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+.tree-node:hover .tree-entry-actions { opacity: 1; }
+.tree-entry-actions button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+}
+.tree-entry-actions button:hover { color: var(--accent); }
+
+/* Table view (for table schema) */
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.data-table th, .data-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: center;
+}
+.data-table th {
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-weight: 500;
+}
+.data-table td { cursor: pointer; }
+.data-table td:hover { background: var(--bg-hover); }
+.data-table td.val-yes { background: #1a3a1a; color: var(--green); }
+.data-table td.val-no { background: #3a1a1a; color: var(--red); }
+.data-table td.val-unknown { color: var(--text-dim); }
+.data-table .row-header {
+  background: var(--bg-surface);
+  color: var(--cyan);
+  font-weight: 500;
+  text-align: left;
+}
+
+/* Checklist view */
+.checklist-item {
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.checklist-item:hover { background: var(--bg-hover); }
+.checklist-item.done { text-decoration: line-through; color: var(--text-dim); }
+.checklist-item .check {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.checklist-item.done .check {
+  border-color: var(--green);
+  color: var(--green);
+}
+.checklist-item .state-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: auto;
+}
+
+/* Right panel - git history */
+.git-panel {
+  width: 280px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.git-panel-header {
+  padding: 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.git-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.commit-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.commit-item:hover { background: var(--bg-hover); }
+.commit-item .commit-hash {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--yellow);
+}
+.commit-item .commit-msg {
+  font-size: 13px;
+  color: var(--text);
+  margin-top: 2px;
+}
+.commit-item .commit-time {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  gap: 12px;
+}
+.empty-state .icon { font-size: 48px; opacity: 0.3; }
+.empty-state p { font-size: 14px; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  min-width: 400px;
+  max-width: 600px;
+}
+.modal h3 { color: var(--text-bright); margin-bottom: 12px; }
+.modal label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.modal input, .modal select, .modal textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--font);
+}
+.modal textarea { min-height: 80px; resize: vertical; font-family: var(--mono); }
+.modal .btn-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.modal button {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+}
+.modal button.primary {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.modal button.cancel {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Diff view */
+.diff-view {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.diff-view .diff-add { color: var(--green); }
+.diff-view .diff-del { color: var(--red); }
+.diff-view .diff-header { color: var(--accent); font-weight: bold; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <h1>DataStore</h1>
+  <span class="branch-badge" id="branchBadge">main</span>
+  <div class="spacer"></div>
+  <input type="text" id="commitMsg" placeholder="Commit message...">
+  <button onclick="doCommit()">Commit</button>
+  <button class="secondary" onclick="showBranchModal()">Branch</button>
+  <button class="secondary" onclick="refresh()">Refresh</button>
+</div>
+
+<!-- Main Layout -->
+<div class="main">
+
+  <!-- Left Sidebar: Namespaces -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      Namespaces
+      <button onclick="showCreateNsModal()">+ New</button>
+    </div>
+    <div class="ns-list" id="nsList"></div>
+  </div>
+
+  <!-- Center: Content -->
+  <div class="content">
+    <div class="content-header" id="contentHeader" style="display:none">
+      <h2 id="contentTitle"></h2>
+      <div class="actions">
+        <button onclick="showAddEntryModal()">+ Add Entry</button>
+        <button onclick="showSchemaModal()">Schema</button>
+        <button onclick="toggleView()">Toggle View</button>
+      </div>
+    </div>
+    <div class="content-body" id="contentBody">
+      <div class="empty-state">
+        <div class="icon">📦</div>
+        <p>Select a namespace or create a new one</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel: Git History -->
+  <div class="git-panel">
+    <div class="git-panel-header">
+      Git History
+      <button style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px" onclick="loadGitLog()">Refresh</button>
+    </div>
+    <div class="git-log" id="gitLog">
+      <div class="empty-state" style="height:auto;padding:40px 0">
+        <p>No commits yet</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals container -->
+<div id="modalContainer"></div>
+
+<script>
+const API = (location.origin.includes('file:') ? 'http://localhost:5001' : '') + '/api/datastore';
+let activeNs = null;
+let viewMode = 'tree'; // 'tree' | 'raw'
+let nsCache = {};
+
+// ===== API helpers =====
+
+async function api(path, opts = {}) {
+  const url = API + path;
+  const defaults = { headers: { 'Content-Type': 'application/json' } };
+  try {
+    const res = await fetch(url, { ...defaults, ...opts });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
+    return res.json();
+  } catch (e) {
+    console.error('API error:', e);
+    throw e;
+  }
+}
+
+// ===== Data Loading =====
+
+async function refresh() {
+  await Promise.all([loadNamespaces(), loadGitLog(), loadBranch()]);
+  if (activeNs) loadNamespace(activeNs);
+}
+
+async function loadNamespaces() {
+  const data = await api('/namespaces');
+  const list = document.getElementById('nsList');
+  list.innerHTML = '';
+  for (const ns of data.namespaces) {
+    const el = document.createElement('div');
+    el.className = 'ns-item' + (ns === activeNs ? ' active' : '');
+    el.onclick = () => selectNamespace(ns);
+
+    // Get schema info
+    let badge = '';
+    try {
+      const nsData = await api(`/namespaces/${ns}`);
+      nsCache[ns] = nsData;
+      if (nsData.target_schema) {
+        badge = `<span class="schema-badge">${nsData.target_schema.type}</span>`;
+      }
+    } catch (e) {}
+
+    el.innerHTML = `
+      <span>${ns} ${badge}</span>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteNs('${ns}')">×</button>
+    `;
+    list.appendChild(el);
+  }
+}
+
+async function loadGitLog() {
+  try {
+    const data = await api('/git/log?limit=30');
+    const log = document.getElementById('gitLog');
+    if (!data.commits.length) {
+      log.innerHTML = '<div class="empty-state" style="height:auto;padding:40px 0"><p>No commits yet</p></div>';
+      return;
+    }
+    log.innerHTML = data.commits.map(c => `
+      <div class="commit-item" onclick="showDiff('${c.hash}')">
+        <div class="commit-hash">${c.short_hash}</div>
+        <div class="commit-msg">${esc(c.message)}</div>
+        <div class="commit-time">${timeAgo(c.timestamp)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('gitLog').innerHTML = '<div class="empty-state" style="height:auto;padding:40px 0"><p>Git not available</p></div>';
+  }
+}
+
+async function loadBranch() {
+  try {
+    const data = await api('/git/current-branch');
+    document.getElementById('branchBadge').textContent = data.branch || 'detached';
+  } catch (e) {}
+}
+
+async function selectNamespace(ns) {
+  activeNs = ns;
+  await loadNamespaces();
+  await loadNamespace(ns);
+}
+
+async function loadNamespace(ns) {
+  const header = document.getElementById('contentHeader');
+  const body = document.getElementById('contentBody');
+  header.style.display = 'flex';
+  document.getElementById('contentTitle').textContent = ns;
+
+  try {
+    const data = nsCache[ns] || await api(`/namespaces/${ns}`);
+    nsCache[ns] = data;
+
+    if (data.target_schema) {
+      const st = data.target_schema.type;
+      if (st === 'table' && viewMode !== 'raw') {
+        renderTable(body, data);
+        return;
+      }
+      if (st === 'checklist' && viewMode !== 'raw') {
+        renderChecklist(body, data);
+        return;
+      }
+    }
+    renderTree(body, data);
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state"><p>Error: ${esc(e.message)}</p></div>`;
+  }
+}
+
+// ===== Renderers =====
+
+function renderTree(container, nsData) {
+  const entries = nsData.entries || {};
+  if (!Object.keys(entries).length) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No entries yet</p></div>';
+    return;
+  }
+
+  // Build tree from dotted keys
+  const tree = {};
+  for (const [key, entry] of Object.entries(entries)) {
+    const parts = key.split('.');
+    let node = tree;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node[parts[i]] || typeof node[parts[i]] !== 'object' || node[parts[i]]._isLeaf) {
+        node[parts[i]] = {};
+      }
+      node = node[parts[i]];
+    }
+    node[parts[parts.length - 1]] = { _isLeaf: true, _key: key, ...entry };
+  }
+
+  container.innerHTML = '<div class="tree"><ul>' + renderTreeNode(tree, '') + '</ul></div>';
+}
+
+function renderTreeNode(node, path) {
+  let html = '';
+  for (const [key, val] of Object.entries(node)) {
+    if (key.startsWith('_')) continue;
+    if (val && val._isLeaf) {
+      const valStr = JSON.stringify(val.value);
+      const valClass = typeof val.value === 'string' ? 'string' :
+                       typeof val.value === 'number' ? 'number' :
+                       typeof val.value === 'boolean' ? 'bool' :
+                       val.value === null ? 'null' : '';
+      const statusClass = val.status || 'active';
+      html += `<li>
+        <div class="tree-node">
+          <span class="tree-toggle" style="visibility:hidden">▸</span>
+          <span class="tree-key">${esc(key)}</span>:
+          <span class="tree-value ${valClass}">${esc(valStr)}</span>
+          <span class="tree-status ${statusClass}">${val.status || ''}</span>
+          ${val.source ? `<span class="tree-source">${esc(val.source)}</span>` : ''}
+          <span class="tree-entry-actions">
+            <button onclick="editEntry('${val._key}')" title="Edit">✎</button>
+            <button onclick="deleteEntry('${val._key}')" title="Delete">×</button>
+          </span>
+        </div>
+      </li>`;
+    } else {
+      const childPath = path ? path + '.' + key : key;
+      html += `<li>
+        <div class="tree-node" onclick="this.parentElement.classList.toggle('collapsed')">
+          <span class="tree-toggle">▾</span>
+          <span class="tree-key">${esc(key)}</span>
+        </div>
+        <ul>${renderTreeNode(val, childPath)}</ul>
+      </li>`;
+    }
+  }
+  return html;
+}
+
+function renderTable(container, nsData) {
+  const schema = nsData.target_schema;
+  const entries = nsData.entries || {};
+
+  let html = '<table class="data-table"><thead><tr><th></th>';
+  for (const col of schema.columns) {
+    html += `<th>${esc(col)}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const row of schema.rows) {
+    html += `<tr><td class="row-header">${esc(row)}</td>`;
+    for (const col of schema.columns) {
+      const key = `${row}.${col}`;
+      const entry = entries[key];
+      const val = entry ? entry.value : '?';
+      const cls = `val-${val}`;
+      html += `<td class="${cls}" onclick="cycleTableCell('${key}', this)" title="${key}">${esc(String(val))}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderChecklist(container, nsData) {
+  const schema = nsData.target_schema;
+  const entries = nsData.entries || {};
+  const strikeStates = new Set(schema.strikethrough_states || ['done', 'skipped']);
+  const states = schema.item_states || ['pending', 'in_progress', 'done', 'skipped'];
+
+  let html = '';
+  for (const [key, entry] of Object.entries(entries)) {
+    const isDone = strikeStates.has(entry.value);
+    const label = key.replace(/_/g, ' ');
+    const stateColors = { pending: 'var(--text-dim)', in_progress: 'var(--yellow)', done: 'var(--green)', skipped: 'var(--red)' };
+    const color = stateColors[entry.value] || 'var(--text-dim)';
+    html += `
+      <div class="checklist-item ${isDone ? 'done' : ''}" onclick="cycleChecklistItem('${key}')">
+        <div class="check">${isDone ? '✓' : ''}</div>
+        <span>${esc(label)}</span>
+        <span class="state-badge" style="background:${color}20;color:${color}">${entry.value}</span>
+      </div>
+    `;
+  }
+  container.innerHTML = html || '<div class="empty-state"><p>Empty checklist</p></div>';
+}
+
+// ===== Actions =====
+
+async function cycleTableCell(key, td) {
+  const schema = nsCache[activeNs]?.target_schema;
+  if (!schema) return;
+  const domain = schema.cell_domain || ['yes', 'no', 'unknown'];
+  const current = nsCache[activeNs].entries[key]?.value || domain[0];
+  const idx = domain.indexOf(current);
+  const next = domain[(idx + 1) % domain.length];
+  await api(`/${activeNs}/entries/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value: next }),
+  });
+  delete nsCache[activeNs];
+  loadNamespace(activeNs);
+}
+
+async function cycleChecklistItem(key) {
+  const schema = nsCache[activeNs]?.target_schema;
+  if (!schema) return;
+  const states = schema.item_states || ['pending', 'in_progress', 'done', 'skipped'];
+  const current = nsCache[activeNs].entries[key]?.value || states[0];
+  const idx = states.indexOf(current);
+  const next = states[(idx + 1) % states.length];
+  await api(`/${activeNs}/entries/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value: next }),
+  });
+  delete nsCache[activeNs];
+  loadNamespace(activeNs);
+}
+
+async function doCommit() {
+  const input = document.getElementById('commitMsg');
+  const msg = input.value.trim() || 'Manual commit';
+  await api('/git/commit', { method: 'POST', body: JSON.stringify({ message: msg }) });
+  input.value = '';
+  loadGitLog();
+}
+
+async function deleteNs(ns) {
+  if (!confirm(`Delete namespace "${ns}"?`)) return;
+  await api(`/namespaces/${ns}`, { method: 'DELETE' });
+  if (activeNs === ns) {
+    activeNs = null;
+    document.getElementById('contentHeader').style.display = 'none';
+    document.getElementById('contentBody').innerHTML = '<div class="empty-state"><div class="icon">📦</div><p>Select a namespace</p></div>';
+  }
+  delete nsCache[ns];
+  loadNamespaces();
+}
+
+async function editEntry(key) {
+  const entry = nsCache[activeNs]?.entries[key];
+  if (!entry) return;
+  showModal(`
+    <h3>Edit: ${esc(key)}</h3>
+    <label>Value (JSON)</label>
+    <textarea id="editValue">${esc(JSON.stringify(entry.value, null, 2))}</textarea>
+    <label>Status</label>
+    <input id="editStatus" value="${esc(entry.status || 'active')}">
+    <label>Source</label>
+    <input id="editSource" value="${esc(entry.source || '')}">
+    <label>Tags (comma-separated)</label>
+    <input id="editTags" value="${esc((entry.tags || []).join(', '))}">
+    <div class="btn-row">
+      <button class="cancel" onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="saveEntry('${key}')">Save</button>
+    </div>
+  `);
+}
+
+async function saveEntry(key) {
+  let value;
+  try { value = JSON.parse(document.getElementById('editValue').value); }
+  catch { value = document.getElementById('editValue').value; }
+
+  const status = document.getElementById('editStatus').value;
+  const source = document.getElementById('editSource').value || null;
+  const tags = document.getElementById('editTags').value.split(',').map(t => t.trim()).filter(Boolean);
+
+  await api(`/${activeNs}/entries/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value, status, source, tags }),
+  });
+  closeModal();
+  delete nsCache[activeNs];
+  loadNamespace(activeNs);
+}
+
+async function deleteEntry(key) {
+  if (!confirm(`Delete "${key}"?`)) return;
+  await api(`/${activeNs}/entries/${key}`, { method: 'DELETE' });
+  delete nsCache[activeNs];
+  loadNamespace(activeNs);
+}
+
+function toggleView() {
+  viewMode = viewMode === 'tree' ? 'raw' : 'tree';
+  if (activeNs) {
+    delete nsCache[activeNs];
+    loadNamespace(activeNs);
+  }
+}
+
+async function showDiff(hash) {
+  const data = await api(`/git/diff?from_ref=${hash}~1&to_ref=${hash}`);
+  const diffHtml = (data.diff || 'No changes').replace(/</g, '&lt;')
+    .split('\n')
+    .map(line => {
+      if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="diff-add">${line}</span>`;
+      if (line.startsWith('-') && !line.startsWith('---')) return `<span class="diff-del">${line}</span>`;
+      if (line.startsWith('@@') || line.startsWith('diff')) return `<span class="diff-header">${line}</span>`;
+      return line;
+    })
+    .join('\n');
+
+  showModal(`
+    <h3>Diff: ${hash.slice(0, 8)}</h3>
+    <div class="diff-view">${diffHtml}</div>
+    <div class="btn-row">
+      <button class="cancel" onclick="doRollback('${hash}')">Rollback to this</button>
+      <button class="primary" onclick="closeModal()">Close</button>
+    </div>
+  `);
+}
+
+async function doRollback(hash) {
+  if (!confirm('Rollback to this commit? Current changes will be lost.')) return;
+  await api('/git/rollback', { method: 'POST', body: JSON.stringify({ ref: hash }) });
+  closeModal();
+  refresh();
+}
+
+// ===== Modals =====
+
+function showCreateNsModal() {
+  showModal(`
+    <h3>Create Namespace</h3>
+    <label>Name</label>
+    <input id="nsName" placeholder="facts">
+    <label>Schema Type (optional)</label>
+    <select id="nsSchemaType">
+      <option value="">None</option>
+      <option value="table">Table</option>
+      <option value="checklist">Checklist</option>
+      <option value="record">Record</option>
+    </select>
+    <div id="schemaFields"></div>
+    <div class="btn-row">
+      <button class="cancel" onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="createNs()">Create</button>
+    </div>
+  `);
+  document.getElementById('nsSchemaType').onchange = updateSchemaFields;
+}
+
+function updateSchemaFields() {
+  const type = document.getElementById('nsSchemaType').value;
+  const container = document.getElementById('schemaFields');
+  if (type === 'table') {
+    container.innerHTML = `
+      <label>Rows (comma-separated)</label>
+      <input id="schemaRows" placeholder="house-1, house-2, house-3">
+      <label>Columns (comma-separated)</label>
+      <input id="schemaCols" placeholder="color, nation, drink">
+      <label>Cell domain (comma-separated)</label>
+      <input id="schemaDomain" value="yes, no, unknown">
+    `;
+  } else if (type === 'checklist') {
+    container.innerHTML = `
+      <label>Items (comma-separated)</label>
+      <input id="schemaItems" placeholder="parse clues, eliminate, verify">
+      <label>States (comma-separated)</label>
+      <input id="schemaStates" value="pending, in_progress, done, skipped">
+    `;
+  } else if (type === 'record') {
+    container.innerHTML = `
+      <label>Fields (JSON: {"name": "string", "score": "number"})</label>
+      <textarea id="schemaRecordFields" placeholder='{"name": "string", "score": "number", "date": "datetime"}'></textarea>
+    `;
+  } else {
+    container.innerHTML = '';
+  }
+}
+
+async function createNs() {
+  const ns = document.getElementById('nsName').value.trim();
+  if (!ns) return alert('Name required');
+  const type = document.getElementById('nsSchemaType').value;
+
+  let target_schema = null;
+  if (type === 'table') {
+    target_schema = {
+      type: 'table',
+      rows: document.getElementById('schemaRows').value.split(',').map(s => s.trim()).filter(Boolean),
+      columns: document.getElementById('schemaCols').value.split(',').map(s => s.trim()).filter(Boolean),
+      cell_domain: document.getElementById('schemaDomain').value.split(',').map(s => s.trim()).filter(Boolean),
+    };
+  } else if (type === 'checklist') {
+    target_schema = {
+      type: 'checklist',
+      items: document.getElementById('schemaItems').value.split(',').map(s => s.trim()).filter(Boolean),
+      item_states: document.getElementById('schemaStates').value.split(',').map(s => s.trim()).filter(Boolean),
+    };
+  } else if (type === 'record') {
+    try {
+      target_schema = {
+        type: 'record',
+        fields: JSON.parse(document.getElementById('schemaRecordFields').value),
+      };
+    } catch (e) {
+      return alert('Invalid JSON for fields');
+    }
+  }
+
+  await api('/namespaces', {
+    method: 'POST',
+    body: JSON.stringify({ ns, target_schema }),
+  });
+  closeModal();
+  await loadNamespaces();
+  selectNamespace(ns);
+}
+
+function showAddEntryModal() {
+  showModal(`
+    <h3>Add Entry to ${esc(activeNs)}</h3>
+    <label>Key (dotted notation, e.g. diana.position)</label>
+    <input id="newKey" placeholder="key.subkey">
+    <label>Value (JSON)</label>
+    <textarea id="newValue" placeholder='"hello" or 42 or {"nested": true}'>"unknown"</textarea>
+    <label>Status</label>
+    <input id="newStatus" value="active">
+    <label>Source</label>
+    <input id="newSource" placeholder="clue-3">
+    <div class="btn-row">
+      <button class="cancel" onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="addEntry()">Add</button>
+    </div>
+  `);
+}
+
+async function addEntry() {
+  const key = document.getElementById('newKey').value.trim();
+  if (!key) return alert('Key required');
+  let value;
+  try { value = JSON.parse(document.getElementById('newValue').value); }
+  catch { value = document.getElementById('newValue').value; }
+
+  const status = document.getElementById('newStatus').value;
+  const source = document.getElementById('newSource').value || null;
+
+  await api(`/${activeNs}/entries/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value, status, source }),
+  });
+  closeModal();
+  delete nsCache[activeNs];
+  loadNamespace(activeNs);
+}
+
+function showSchemaModal() {
+  const schema = nsCache[activeNs]?.target_schema;
+  const json = schema ? JSON.stringify(schema, null, 2) : '{}';
+  showModal(`
+    <h3>Schema: ${esc(activeNs)}</h3>
+    <label>Target Schema (JSON)</label>
+    <textarea id="schemaJson" style="min-height:200px">${esc(json)}</textarea>
+    <div class="btn-row">
+      <button class="cancel" onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="saveSchema()">Save</button>
+    </div>
+  `);
+}
+
+async function saveSchema() {
+  try {
+    const schema = JSON.parse(document.getElementById('schemaJson').value);
+    if (!schema.type) return alert('Schema must have a "type" field');
+    await api(`/namespaces/${activeNs}/schema`, {
+      method: 'PUT',
+      body: JSON.stringify({ target_schema: schema }),
+    });
+    closeModal();
+    delete nsCache[activeNs];
+    loadNamespace(activeNs);
+  } catch (e) {
+    alert('Invalid JSON: ' + e.message);
+  }
+}
+
+function showBranchModal() {
+  api('/git/branches').then(data => {
+    const branches = data.branches || [];
+    const current = data.current || 'main';
+    showModal(`
+      <h3>Branches</h3>
+      <p style="color:var(--text-dim);margin-bottom:8px">Current: <span style="color:var(--purple)">${esc(current)}</span></p>
+      ${branches.map(b => `
+        <div style="padding:4px 0;display:flex;justify-content:space-between;align-items:center">
+          <span style="color:${b === current ? 'var(--accent)' : 'var(--text)'}">${esc(b)}</span>
+          ${b !== current ? `<button style="font-size:11px;padding:2px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer" onclick="switchBranch('${b}')">checkout</button>` : ''}
+        </div>
+      `).join('')}
+      <hr style="border-color:var(--border);margin:12px 0">
+      <label>New Branch Name</label>
+      <input id="newBranch" placeholder="hyp/test">
+      <div class="btn-row">
+        <button class="cancel" onclick="closeModal()">Close</button>
+        <button class="primary" onclick="createBranch()">Create</button>
+      </div>
+    `);
+  });
+}
+
+async function switchBranch(ref) {
+  await api('/git/checkout', { method: 'POST', body: JSON.stringify({ ref }) });
+  closeModal();
+  refresh();
+}
+
+async function createBranch() {
+  const name = document.getElementById('newBranch').value.trim();
+  if (!name) return;
+  await api('/git/branch', { method: 'POST', body: JSON.stringify({ name }) });
+  closeModal();
+  loadBranch();
+}
+
+// ===== Modal helpers =====
+
+function showModal(html) {
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+      <div class="modal">${html}</div>
+    </div>
+  `;
+}
+
+function closeModal() {
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+// ===== Utils =====
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ===== Init =====
+refresh();
+</script>
+</body>
+</html>
