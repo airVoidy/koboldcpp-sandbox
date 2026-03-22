@@ -38,7 +38,11 @@ def test_parse_logic_manifest_and_verify() -> None:
 
     verification = verify_logic(manifest)
     assert verification.stable_worlds > 0
-    assert {branch.branch for branch in verification.branches} == {"SofiaAuthor", "AnnaAuthor"}
+    assert verification.mode == "atomic"
+    assert len(verification.claims) > 0
+    # Axioms should be accepted
+    axiom_claims = [c for c in verification.claims if c.source == "axiom"]
+    assert all(c.status == "accepted" for c in axiom_claims)
 
 
 def test_parse_logic_manifest_handles_loose_alias_format() -> None:
@@ -274,7 +278,8 @@ SofyaClaim: [author(Sofya), at(Elisey, 0)]
     payload = response.json()
     assert payload["linear_schema"]["branches"]["SofyaClaim"] == ["author(Sofya)", "at(Elisey, 0)"]
     assert payload["linear_schema"]["branches"]["AnnaClaim"] == ["author(Anna)", "at(Elisey, 6)"]
-    assert {branch["branch"] for branch in payload["verification"]["branches"]} == {"SofyaClaim", "AnnaClaim"}
+    assert payload["verification"]["mode"] == "atomic"
+    assert len(payload["verification"]["claims"]) > 0
 
 
 def test_logic_verify_endpoint_parses_schema_without_entities(tmp_path) -> None:
@@ -299,7 +304,7 @@ SofyaClaim:
     payload = response.json()
     assert payload["linear_schema"]["entities"] == ["Diana", "Ilya", "Sofya", "Anna"]
     assert payload["manifest"]["axioms"][0] == "pos('Diana') < pos('Ilya')"
-    assert payload["verification"]["branches"][0]["branch"] == "SofyaClaim"
+    assert len(payload["verification"]["claims"]) > 0
 
 
 def test_logic_verify_endpoint_parses_manifest_format(tmp_path) -> None:
@@ -345,10 +350,9 @@ ATOMIC_RULES:
     payload = response.json()
     assert payload["format_kind"] == "atomic_rules"
     assert payload["atomic_rules"]["rules"][0] == "pos('nation:Norwegian') == 0"
-    by_branch = {branch["branch"]: branch["solutions"] for branch in payload["verification"]["branches"]}
-    assert by_branch["Rule 1"] == 1
-    assert by_branch["Rule 2"] == 1
-    assert by_branch["Rule 3"] == 1
+    # Einstein entities detected → einstein mode (uses branches, not claims)
+    assert payload["verification"]["mode"] == "einstein"
+    assert payload["verification"]["stable_worlds"] == 1
 
 
 def test_parse_atomic_rule_set_handles_repeated_headers_and_truncated_tail() -> None:

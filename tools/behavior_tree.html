@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Behavior Tree Viewer</title>
+<style>
+:root {
+  --bg: #1a1b26; --surface: #24283b; --surface2: #2f3349;
+  --border: #3b4261; --text: #c0caf5; --text-dim: #565f89;
+  --accent: #7aa2f7; --accent2: #bb9af7; --accent3: #7dcfff;
+  --green: #9ece6a; --red: #f7768e; --orange: #ff9e64; --yellow: #e0af68;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+.header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.header h1 { font-size: 15px; font-weight: 600; color: var(--accent); }
+.header .status { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+
+/* Toolbar */
+.toolbar { display: flex; gap: 6px; padding: 6px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+.toolbar label { font-size: 12px; color: var(--text-dim); }
+.toolbar input[type="text"] { padding: 3px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; width: 260px; }
+.btn { padding: 4px 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; }
+.btn:hover { background: var(--border); }
+.btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.btn.danger { background: var(--red); color: var(--bg); border-color: var(--red); }
+.btn.success { background: var(--green); color: var(--bg); border-color: var(--green); }
+.meta-strip { display: flex; gap: 14px; padding: 6px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-dim); flex-wrap: wrap; }
+.meta-strip .meta-item b { color: var(--text); font-weight: 600; }
+.meta-strip .meta-item code { color: var(--accent3); font-family: monospace; }
+.meta-strip .status-ok { color: var(--green); }
+.meta-strip .status-warn { color: var(--yellow); }
+.meta-strip .status-error { color: var(--red); }
+
+/* Main layout */
+.main { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+/* Left panel: tree */
+.tree-panel { width: 280px; min-width: 200px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface); }
+.tree-panel h2 { font-size: 13px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--accent2); }
+.tree-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }
+
+/* Tree nodes */
+.tree-item { padding: 5px 8px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px; border-left: 3px solid transparent; }
+.tree-item:hover { background: var(--surface2); }
+.tree-item.active { background: var(--surface2); border-left-color: var(--accent); }
+.tree-item.root { font-weight: 600; }
+.tree-item .node-icon { font-size: 14px; flex-shrink: 0; }
+.tree-item .node-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-item .node-status { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; flex-shrink: 0; }
+.tree-item .node-status.pass { background: var(--green); color: var(--bg); }
+.tree-item .node-status.fail { background: var(--red); color: var(--bg); }
+.tree-item .node-status.pending { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+.tree-item .node-status.check { background: var(--yellow); color: var(--bg); }
+.tree-item .node-status.running { background: var(--orange); color: var(--bg); }
+.tree-indent { display: inline-block; width: 16px; }
+
+/* Right panel: detail */
+.detail-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.detail-header { padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.detail-header h2 { font-size: 14px; color: var(--accent); }
+.detail-header .kind-badge { font-size: 11px; padding: 2px 8px; background: var(--accent2); color: var(--bg); border-radius: 3px; margin-left: 8px; }
+.detail-scroll { flex: 1; overflow-y: auto; padding: 12px 16px 48px 16px; min-height: 0; }
+
+/* Detail sections */
+.section { margin-bottom: 16px; }
+.section h3 { font-size: 12px; color: var(--accent3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.section-body { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+
+/* Element flow */
+.element-flow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.element-chip { padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; cursor: pointer; position: relative; }
+.element-chip:hover { border-color: var(--accent); }
+.element-chip.current { border-color: var(--orange); background: rgba(255,158,100,0.15); }
+.element-chip.done { border-color: var(--green); opacity: 0.8; }
+.element-arrow { color: var(--text-dim); font-size: 14px; }
+.element-transition { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.element-transition .t-label { color: var(--yellow); }
+.element-transition .t-target { color: var(--accent); }
+
+/* Claims table */
+.claims-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.claims-table th { text-align: left; padding: 4px 8px; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--border); }
+.claims-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.claims-table .claim-status { font-weight: 600; }
+.claims-table .claim-status.pass { color: var(--green); }
+.claims-table .claim-status.fail { color: var(--red); }
+.claims-table .claim-status.pending { color: var(--text-dim); }
+.claims-table .claim-status.check { color: var(--yellow); }
+
+/* Data table */
+.data-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.data-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.data-table .data-key { color: var(--accent3); font-family: monospace; white-space: nowrap; width: 140px; }
+.data-table .data-val { font-family: monospace; word-break: break-all; max-height: 120px; overflow-y: auto; }
+.data-val.long { cursor: pointer; }
+.data-val.long.collapsed { max-height: 40px; overflow: hidden; }
+
+/* Agent bindings */
+.binding-card { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; margin: 2px; }
+.binding-card .agent-dot { width: 8px; height: 8px; border-radius: 50%; }
+.binding-card .agent-dot.planner { background: var(--accent2); }
+.binding-card .agent-dot.worker { background: var(--accent3); }
+
+/* Global claims panel */
+.global-bar { padding: 6px 16px; background: var(--surface); border-top: 1px solid var(--border); font-size: 11px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.global-bar .gc-item { display: flex; align-items: center; gap: 4px; }
+.global-bar .gc-dot { width: 8px; height: 8px; border-radius: 50%; }
+.global-bar .gc-dot.pass { background: var(--green); }
+.global-bar .gc-dot.fail { background: var(--red); }
+.global-bar .gc-dot.pending { background: var(--text-dim); }
+
+/* Instruction bundles */
+.bundle { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin-bottom: 6px; }
+.bundle-header { font-size: 11px; color: var(--accent2); margin-bottom: 4px; }
+.bundle-block { margin: 3px 0; font-size: 11px; }
+.bundle-block .block-kind { color: var(--accent3); font-weight: 600; text-transform: uppercase; margin-right: 6px; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+.empty-state h3 { font-size: 16px; margin-bottom: 8px; }
+
+/* Orchestration state badges */
+.lock-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+.lock-badge.locked { background: rgba(255,158,100,0.2); color: var(--orange); border: 1px solid var(--orange); }
+.lock-badge.idle { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+
+/* Element chip states */
+.element-chip.executed { border-color: var(--green); background: rgba(158,206,106,0.1); }
+.element-chip.current { border-color: var(--orange); background: rgba(255,158,100,0.15); animation: pulse-border 1.5s ease-in-out infinite; }
+.element-chip.skipped { opacity: 0.4; border-style: dashed; }
+@keyframes pulse-border { 0%,100% { box-shadow: 0 0 0 0 rgba(255,158,100,0.3); } 50% { box-shadow: 0 0 0 4px rgba(255,158,100,0.1); } }
+
+/* Transition labels on elements */
+.element-transitions-below { font-size: 10px; margin-top: 3px; }
+.element-transitions-below .t-outcome { padding: 1px 4px; border-radius: 2px; font-weight: 600; }
+.element-transitions-below .t-outcome.pass { color: var(--green); }
+.element-transitions-below .t-outcome.fail { color: var(--red); }
+.element-transitions-below .t-outcome.other { color: var(--yellow); }
+
+/* Last-updated field highlight */
+.data-table .data-key.updated { color: var(--orange); }
+.data-table .data-key.updated::after { content: ' ●'; color: var(--orange); font-size: 8px; }
+
+/* Claim authority row */
+.claim-authority { font-size: 10px; color: var(--text-dim); display: flex; gap: 8px; flex-wrap: wrap; padding: 2px 0; }
+.claim-authority .ca-label { color: var(--accent3); }
+.claim-authority .ca-agent { padding: 1px 4px; background: var(--surface2); border-radius: 2px; }
+.claim-authority .ca-path { color: var(--yellow); font-family: monospace; }
+
+/* Claim status colors refined */
+.claims-table .claim-status.blocked { color: var(--orange); }
+
+/* Node tree item execution indicator */
+.tree-item .exec-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.tree-item .exec-dot.running { background: var(--orange); animation: blink 1s infinite; }
+.tree-item .exec-dot.locked { background: var(--red); }
+.tree-item .exec-dot.idle { display: none; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* Executed elements trail */
+.exec-trail { display: flex; gap: 3px; align-items: center; font-size: 10px; color: var(--text-dim); margin-top: 6px; }
+.exec-trail .trail-step { color: var(--green); }
+.exec-trail .trail-arrow { color: var(--border); }
+.exec-trail .trail-current { color: var(--orange); font-weight: 600; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* JSON Editor Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal-overlay.hidden { display: none; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 80vw; max-width: 900px; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.modal-header { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); gap: 8px; }
+.modal-header h3 { font-size: 14px; color: var(--accent); flex: 1; }
+.modal-header .modal-tabs { display: flex; gap: 4px; }
+.modal-tab { padding: 3px 10px; font-size: 11px; border-radius: 3px; cursor: pointer; background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); }
+.modal-tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.modal-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.modal-editor { flex: 1; width: 100%; resize: none; background: var(--bg); color: var(--text); border: none; padding: 12px; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 12.5px; line-height: 1.5; tab-size: 2; outline: none; overflow: auto; }
+.modal-error { padding: 6px 16px; font-size: 12px; color: var(--red); background: rgba(247,118,142,0.1); border-top: 1px solid var(--red); display: none; }
+.modal-error.visible { display: block; }
+.modal-footer { display: flex; gap: 6px; padding: 8px 16px; border-top: 1px solid var(--border); justify-content: flex-end; align-items: center; }
+.modal-footer .info { font-size: 11px; color: var(--text-dim); margin-right: auto; }
+.modal-readonly { position: absolute; top: 8px; right: 16px; font-size: 10px; color: var(--text-dim); background: var(--surface); padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border); pointer-events: none; }
+
+/* DSL Ops Pipeline */
+.ops-pipeline { font-size: 12px; }
+.op-row { display: flex; align-items: flex-start; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.op-row:hover { background: var(--surface2); }
+.op-row.nested { padding-left: 24px; }
+.op-row.nested-2 { padding-left: 40px; }
+.op-idx { color: var(--text-dim); font-size: 10px; min-width: 18px; text-align: right; font-family: monospace; }
+.op-icon { font-size: 12px; min-width: 16px; text-align: center; }
+.op-name { color: var(--accent); font-weight: 600; min-width: 100px; font-family: monospace; }
+.op-summary { color: var(--text); flex: 1; font-family: monospace; }
+.op-summary .op-field { color: var(--yellow); }
+.op-summary .op-val { color: var(--green); }
+.op-summary .op-tpl { color: var(--accent2); }
+.op-summary .op-agent { color: var(--accent3); }
+.op-status { font-size: 10px; min-width: 40px; text-align: right; font-weight: 600; }
+.op-status.done { color: var(--green); }
+.op-status.running { color: var(--orange); }
+.op-status.error { color: var(--red); }
+.op-status.pending { color: var(--text-dim); }
+.op-branch-label { color: var(--text-dim); font-size: 10px; padding: 2px 8px 2px 24px; }
+.op-branch-label b { color: var(--accent2); }
+.op-detail { padding: 6px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin: 4px 8px; font-size: 11px; }
+.op-detail pre { white-space: pre-wrap; font-family: monospace; color: var(--text-dim); margin: 4px 0; max-height: 120px; overflow-y: auto; }
+.op-detail .op-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; margin-right: 4px; }
+.op-detail .op-badge.temp { background: rgba(122,162,247,0.2); color: var(--accent); }
+.op-detail .op-badge.maxtok { background: rgba(187,154,247,0.2); color: var(--accent2); }
+.op-detail .op-badge.nothink { background: rgba(255,158,100,0.2); color: var(--orange); }
+.op-tpl-preview { padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin: 4px 0; font-family: monospace; font-size: 11px; white-space: pre-wrap; line-height: 1.5; max-height: 150px; overflow-y: auto; }
+.vars-panel { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 8px; }
+.var-chip { padding: 2px 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; font-size: 11px; font-family: monospace; }
+.var-chip .var-name { color: var(--yellow); }
+.var-chip .var-val { color: var(--text); margin-left: 4px; }
+.var-chip .var-scope { color: var(--text-dim); font-size: 9px; }
+
+/* Namespace panel */
+.ns-panel { display:none; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); font-size:12px; max-height:50vh; overflow-y:auto; }
+.ns-panel.visible { display:block; }
+.ns-section { margin-bottom:10px; }
+.ns-section h4 { font-size:11px; color:var(--accent2); margin:0 0 4px; text-transform:uppercase; }
+.ns-table { width:100%; border-collapse:collapse; }
+.ns-table td { padding:2px 8px; border-bottom:1px solid var(--border); font-family:monospace; font-size:11px; }
+.ns-table td:first-child { color:var(--yellow); white-space:nowrap; width:200px; }
+.ns-table td:nth-child(2) { color:var(--text-dim); max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ns-table td:nth-child(3) { color:var(--text); word-break:break-all; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ Behavior Tree</h1>
+  <span id="treeId" style="font-size:12px;color:var(--text-dim)"></span>
+  <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
+    <button class="btn" onclick="refreshTree()">↻ Refresh</button>
+    <button class="btn success" onclick="runTree()">▶ Run Tree</button>
+    <button class="btn" onclick="editTreeJson()">{ } Tree JSON</button>
+    <button class="btn" onclick="toggleNamespacePanel()">📖 Namespace</button>
+    <button class="btn" onclick="exportTree()">⬇ Export</button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <label>Server:</label>
+  <input type="text" id="serverUrl" value="http://127.0.0.1:8060" style="width:180px">
+  <button class="btn" onclick="refreshTree()">Connect</button>
+  <span style="color:var(--border)">│</span>
+  <input type="text" id="planPrompt" placeholder="Задача для планировщика..." style="flex:1;min-width:200px;padding:3px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+  <button class="btn primary" onclick="planFromPrompt()">⚡ Plan</button>
+  <span style="color:var(--border)">│</span>
+  <label>Agent:</label>
+  <select id="creativeAgent" style="padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+    <option value="small_context_worker">Worker (9B)</option>
+    <option value="qwen_27b_planner" selected>Planner (27B)</option>
+  </select>
+  <span style="color:var(--border)">│</span>
+  <button class="btn" onclick="importTree()">⬆ Import</button>
+  <button class="btn" onclick="addNodeDialog()">+ Node</button>
+  <button class="btn" onclick="toggleAgentSettings()">⚙ Agents</button>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
+</div>
+
+<!-- Settings Panel -->
+<div id="agentSettings" style="display:none;padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border);font-size:12px">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+    <b style="color:var(--accent3)">Agents</b>
+    <label style="color:var(--text-dim)">Worker:</label>
+    <input type="text" id="workerUrl" value="http://localhost:5001" style="width:200px;padding:3px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+    <label style="color:var(--text-dim)">Planner:</label>
+    <input type="text" id="plannerUrl" value="http://192.168.1.15:5050" style="width:200px;padding:3px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+    <button class="btn primary" onclick="registerAgents()">Apply</button>
+    <span id="agentStatus" style="color:var(--text-dim)"></span>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <b style="color:var(--accent3)">Generation</b>
+    <label style="color:var(--text-dim)">Sentences:</label>
+    <input type="number" id="genSentMin" value="5" min="1" max="50" style="width:45px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;text-align:center">
+    <span style="color:var(--text-dim)">–</span>
+    <input type="number" id="genSentMax" value="10" min="1" max="50" style="width:45px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;text-align:center">
+    <label style="color:var(--text-dim)">Temp:</label>
+    <input type="number" id="genTemp" value="0.6" min="0" max="2" step="0.1" style="width:55px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;text-align:center">
+    <label style="color:var(--text-dim)">Max tokens:</label>
+    <input type="number" id="genMaxTokens" value="2048" min="256" max="16384" step="256" style="width:70px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;text-align:center">
+    <label style="color:var(--text-dim)">Language:</label>
+    <select id="genLang" style="padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+      <option value="ru">Русский</option>
+      <option value="en">English</option>
+    </select>
+  </div>
+</div>
+
+<div class="ns-panel" id="namespacePanel"></div>
+
+<div class="meta-strip" id="metaStrip">
+  <span class="meta-item">Tree rev: <b>-</b></span>
+  <span class="meta-item">ETag: <code>-</code></span>
+  <span class="meta-item">Last-Modified: <b>-</b></span>
+  <span class="meta-item">Status: <b>idle</b></span>
+</div>
+
+<div class="main">
+  <!-- Left: Tree -->
+  <div class="tree-panel">
+    <h2>Nodes</h2>
+    <div class="tree-scroll" id="treeContainer">
+      <div class="empty-state"><h3>No tree loaded</h3>Click Refresh</div>
+    </div>
+  </div>
+
+  <!-- Right: Detail -->
+  <div class="detail-panel">
+    <div id="detailContent" style="flex:1;overflow-y:auto;min-height:0">
+      <div class="empty-state" style="margin-top:80px"><h3>Select a node</h3>from the tree on the left</div>
+    </div>
+  </div>
+</div>
+
+<!-- JSON Editor Modal -->
+<div class="modal-overlay hidden" id="jsonModal" onclick="if(event.target===this)closeJsonModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="jsonModalTitle">Edit JSON</h3>
+      <div class="modal-tabs" id="jsonModalTabs"></div>
+      <button class="btn" onclick="formatJson()" title="Format JSON">{ }</button>
+      <button class="btn" onclick="closeJsonModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea class="modal-editor" id="jsonEditor" spellcheck="false"></textarea>
+      <div class="modal-error" id="jsonError"></div>
+      <div class="modal-readonly hidden" id="jsonReadonly">READ-ONLY</div>
+    </div>
+    <div style="padding:6px 16px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center" id="nlElementChatRow">
+      <span style="font-size:11px;color:var(--text-dim)">💬</span>
+      <input type="text" id="nlElementChat" placeholder="Инструкция: 'добавь проверку длины', 'измени промпт'" style="flex:1;padding:4px 8px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px" onkeydown="if(event.key==='Enter')nlEditElement()">
+      <button class="btn" onclick="nlEditElement()" style="font-size:11px;padding:3px 10px">Apply</button>
+      <span id="nlElementStatus" style="font-size:11px;color:var(--text-dim)"></span>
+    </div>
+    <div class="modal-footer">
+      <span class="info" id="jsonInfo"></span>
+      <button class="btn" id="jsonCopyBtn" onclick="copyJsonToClipboard()">Copy</button>
+      <button class="btn primary" id="jsonSaveBtn" onclick="saveJson()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Global claims bar -->
+<div class="global-bar" id="globalBar">
+  <span style="color:var(--text-dim)">Global Claims:</span>
+</div>
+
+<script>
+let treeData = null;
+let selectedNodeId = null;
+let treeHeaders = { etag: null, lastModified: null, merge: 'none' };
+let nodeHeaders = {};
+let uiStatus = { kind: 'ok', text: 'idle' };
+
+function baseUrl() {
+  return document.getElementById('serverUrl').value.replace(/\/$/, '');
+}
+
+function deriveEtag(revision) {
+  return Number.isInteger(revision) ? `W/"rev-${revision}"` : null;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setUiStatus(kind, text) {
+  uiStatus = { kind, text };
+  renderMetaStrip();
+}
+
+function setTreeHeadersFromResponse(res) {
+  treeHeaders = {
+    etag: res.headers.get('ETag') || deriveEtag(treeData?.revision),
+    lastModified: res.headers.get('Last-Modified') || treeData?.updated_at || null,
+    merge: res.headers.get('X-Behavior-Merge') || 'none',
+  };
+}
+
+function cacheNodeHeaders(node) {
+  if (!node?.node_id) return;
+  nodeHeaders[node.node_id] = {
+    etag: deriveEtag(node.revision),
+    lastModified: node.updated_at || null,
+  };
+}
+
+function renderMetaStrip() {
+  const strip = document.getElementById('metaStrip');
+  const treeRev = treeData?.revision ?? '-';
+  const treeEtag = treeHeaders.etag || deriveEtag(treeData?.revision) || '-';
+  const treeModified = treeHeaders.lastModified || treeData?.updated_at || '-';
+  const statusClass = uiStatus.kind === 'error' ? 'status-error' : (uiStatus.kind === 'warn' ? 'status-warn' : 'status-ok');
+  strip.innerHTML = `
+    <span class="meta-item">Tree rev: <b>${escHtml(String(treeRev))}</b></span>
+    <span class="meta-item">ETag: <code>${escHtml(treeEtag)}</code></span>
+    <span class="meta-item">Last-Modified: <b>${escHtml(treeModified)}</b></span>
+    <span class="meta-item">Status: <b class="${statusClass}">${escHtml(uiStatus.text)}</b></span>
+  `;
+}
+
+function patchIsEmpty(patch) {
+  if (patch === undefined) return true;
+  if (Array.isArray(patch)) return false;
+  if (patch && typeof patch === 'object') return Object.keys(patch).length === 0;
+  return false;
+}
+
+function diffValue(base, next) {
+  if (Array.isArray(base) || Array.isArray(next)) {
+    return JSON.stringify(base) === JSON.stringify(next) ? undefined : next;
+  }
+  if (base && next && typeof base === 'object' && typeof next === 'object') {
+    const patch = {};
+    const keys = new Set([...Object.keys(base), ...Object.keys(next)]);
+    for (const key of keys) {
+      const child = diffValue(base[key], next[key]);
+      if (child !== undefined) patch[key] = child;
+    }
+    return Object.keys(patch).length ? patch : undefined;
+  }
+  return JSON.stringify(base) === JSON.stringify(next) ? undefined : next;
+}
+
+async function refreshTree() {
+  try {
+    const res = await fetch(baseUrl() + '/api/behavior/tree');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    treeData = await res.json();
+    setTreeHeadersFromResponse(res);
+    Object.values(treeData.nodes || {}).forEach(cacheNodeHeaders);
+    document.getElementById('treeId').textContent = treeData.tree_id || '';
+    renderTree();
+    renderGlobalClaims();
+    setUiStatus('ok', treeHeaders.merge === 'applied' ? 'merge applied' : 'synced');
+    if (selectedNodeId && treeData.nodes[selectedNodeId]) {
+      renderNodeDetail(selectedNodeId);
+    }
+  } catch (e) {
+    setUiStatus('error', `refresh failed: ${e.message}`);
+    document.getElementById('treeContainer').innerHTML =
+      `<div class="empty-state"><h3>Connection failed</h3>${e.message}</div>`;
+  }
+}
+
+function renderTree() {
+  const container = document.getElementById('treeContainer');
+  if (!treeData || !treeData.nodes) {
+    container.innerHTML = '<div class="empty-state"><h3>Empty tree</h3></div>';
+    return;
+  }
+
+  const rootId = treeData.root_node_id;
+  const rootNode = treeData.nodes[rootId];
+  let html = '';
+
+  // Render root
+  html += renderTreeItem(rootId, rootNode, 0, true);
+
+  // Render children (from root's data.child_ids or all non-root)
+  const childIds = rootNode?.data?.child_ids || [];
+  const renderedIds = new Set([rootId]);
+
+  for (const childId of childIds) {
+    const childNode = treeData.nodes[childId];
+    if (childNode) {
+      html += renderTreeItem(childId, childNode, 1, false);
+      renderedIds.add(childId);
+    }
+  }
+
+  // Render any remaining nodes not in child_ids
+  for (const [nodeId, node] of Object.entries(treeData.nodes)) {
+    if (!renderedIds.has(nodeId)) {
+      html += renderTreeItem(nodeId, node, 1, false);
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function renderTreeItem(nodeId, node, depth, isRoot) {
+  const indent = '<span class="tree-indent"></span>'.repeat(depth);
+  const icon = isRoot ? '🌳' : getNodeIcon(node);
+  const status = getNodeStatus(node);
+  const statusClass = status.toLowerCase();
+  const active = nodeId === selectedNodeId ? ' active' : '';
+  const rootClass = isRoot ? ' root' : '';
+  const execState = node.execution_lock ? 'running' : (node.current_element_id ? 'locked' : 'idle');
+  const curEl = node.current_element_id ? ` [${node.current_element_id}]` : '';
+
+  return `<div class="tree-item${active}${rootClass}" onclick="selectNode('${nodeId}')" title="${nodeId}${curEl}">
+    ${indent}<span class="exec-dot ${execState}"></span>
+    <span class="node-icon">${icon}</span>
+    <span class="node-label">${nodeId}</span>
+    <span class="node-status ${statusClass}">${status}</span>
+  </div>`;
+}
+
+function getNodeIcon(node) {
+  const kind = node.kind || '';
+  if (kind.includes('root')) return '📦';
+  if (kind.includes('item') || kind.includes('description')) return '📝';
+  if (kind.includes('check')) return '✅';
+  if (kind.includes('repair')) return '🔧';
+  return '◆';
+}
+
+function getNodeStatus(node) {
+  if (!node.claims || node.claims.length === 0) {
+    const audit = node.data?.audit_status;
+    if (audit === 'pass') return 'PASS';
+    if (audit === 'fail') return 'FAIL';
+    return 'PENDING';
+  }
+  const allPass = node.claims.every(c => c.status === 'pass');
+  const anyFail = node.claims.some(c => c.status === 'fail');
+  if (allPass) return 'PASS';
+  if (anyFail) return 'FAIL';
+  return 'PENDING';
+}
+
+function selectNode(nodeId) {
+  selectedNodeId = nodeId;
+  renderTree();
+  renderNodeDetail(nodeId);
+}
+
+function renderNodeDetail(nodeId) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  cacheNodeHeaders(node);
+
+  const detail = document.getElementById('detailContent');
+  let html = '';
+
+  // Execution state
+  const isLocked = node.execution_lock;
+  const curElId = node.current_element_id;
+  const lockLabel = isLocked ? `🔒 LOCKED at <b>${curElId}</b>` : '⏸ idle';
+  const lockClass = isLocked ? 'locked' : 'idle';
+  const nodeEtag = nodeHeaders[nodeId]?.etag || deriveEtag(node.revision) || '-';
+  const nodeModified = nodeHeaders[nodeId]?.lastModified || node.updated_at || '-';
+
+  // Header
+  html += `<div class="detail-header">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <h2>${nodeId}</h2>
+      <span class="kind-badge">${node.kind}</span>
+      <span class="lock-badge ${lockClass}">${lockLabel}</span>
+      <span style="font-size:11px;color:var(--text-dim)">rev <b style="color:var(--text)">${node.revision ?? '-'}</b></span>
+      <span style="font-size:11px;color:var(--text-dim)">etag <code style="color:var(--accent3)">${escHtml(nodeEtag)}</code></span>
+      <span style="font-size:11px;color:var(--text-dim)">modified <b style="color:var(--text)">${escHtml(nodeModified)}</b></span>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn success" onclick="runNode('${nodeId}')">▶ Run</button>
+        <button class="btn" onclick="refreshTree()">↻</button>
+        <button class="btn" onclick="editNodeJson('${nodeId}')">{ }</button>
+        <button class="btn" onclick="openJsonModal('node-data','${nodeId}')">📋</button>
+        ${nodeId !== 'root' ? `<button class="btn danger" onclick="deleteNode('${nodeId}')">🗑</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+
+  html += '<div class="detail-scroll">';
+
+  // ── Element Flow with execution state ──
+  // Determine executed elements from meta
+  const executedEls = node.meta?.last_executed_elements || [];
+  const elementIds = node.elements.map(e => e.element_id);
+
+  html += `<div class="section"><h3>Element Flow <button class="btn" style="font-size:10px;padding:1px 6px;margin-left:8px" onclick="addElement('${nodeId}')">+ Element</button></h3><div class="section-body">`;
+  html += '<div class="element-flow">';
+  for (let i = 0; i < node.elements.length; i++) {
+    const el = node.elements[i];
+    const isCurrent = el.element_id === curElId;
+    const wasExecuted = executedEls.includes(el.element_id);
+    let cls = '';
+    if (isCurrent) cls = ' current';
+    else if (wasExecuted) cls = ' executed';
+
+    if (i > 0) html += '<span class="element-arrow">→</span>';
+    html += `<div style="position:relative">
+      <div class="element-chip${cls}" onclick="openElementJson('${nodeId}',${i})" style="cursor:pointer"
+           title="handler: ${el.handler} · click to view/edit JSON${isCurrent ? ' [ACTIVE]' : ''}${wasExecuted ? ' [DONE]' : ''}">
+        ${isCurrent ? '▸ ' : wasExecuted ? '✓ ' : ''}${el.element_id}
+        <span style="font-size:9px;color:var(--text-dim);margin-left:4px">${el.handler}${el.handler === '__dsl__' && el.meta?.ops ? ` ×${el.meta.ops.length}` : ''}</span>
+      </div>
+      <div style="display:flex;gap:2px;margin-top:2px;justify-content:center">
+        ${i > 0 ? `<button class="btn" style="font-size:9px;padding:0 4px" onclick="moveElement('${nodeId}',${i},-1)" title="Move left">◀</button>` : ''}
+        ${i < node.elements.length - 1 ? `<button class="btn" style="font-size:9px;padding:0 4px" onclick="moveElement('${nodeId}',${i},1)" title="Move right">▶</button>` : ''}
+        <button class="btn" style="font-size:9px;padding:0 4px;color:var(--red)" onclick="removeElement('${nodeId}',${i})" title="Remove">✕</button>
+      </div>`;
+    // Transition routing
+    if (el.transitions && Object.keys(el.transitions).length > 0) {
+      html += '<div class="element-transitions-below">';
+      for (const [outcome, target] of Object.entries(el.transitions)) {
+        const outcomeClass = outcome === 'pass' ? 'pass' : outcome === 'fail' ? 'fail' : 'other';
+        html += `<span class="t-outcome ${outcomeClass}">${outcome}</span>→<span class="t-target" style="color:var(--accent)">${target || 'next'}</span> `;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Execution trail (if available)
+  if (executedEls.length > 0) {
+    html += '<div class="exec-trail" style="margin-top:8px">Trail: ';
+    for (let i = 0; i < executedEls.length; i++) {
+      if (i > 0) html += '<span class="trail-arrow"> → </span>';
+      const isCur = executedEls[i] === curElId;
+      html += `<span class="${isCur ? 'trail-current' : 'trail-step'}">${executedEls[i]}</span>`;
+    }
+    html += '</div>';
+  }
+  html += '</div></div>';
+
+  // ── Claims with authority ──
+  if (node.claims && node.claims.length > 0) {
+    html += '<div class="section"><h3>Claims</h3><div class="section-body">';
+    html += '<table class="claims-table"><tr><th>Claim</th><th>Evaluator</th><th>Status</th><th>Details</th></tr>';
+    for (const claim of node.claims) {
+      const sc = claim.status || 'pending';
+      html += `<tr>
+        <td>
+          ${claim.claim_id}
+          <div class="claim-authority">`;
+      // Watched paths
+      if (claim.watched_paths?.length) {
+        html += `<span><span class="ca-label">watches:</span> ${claim.watched_paths.map(p => `<span class="ca-path">${p}</span>`).join(', ')}</span>`;
+      }
+      // Producer agents
+      if (claim.producer_agents?.length) {
+        html += `<span><span class="ca-label">produce:</span> ${claim.producer_agents.map(a => `<span class="ca-agent">${a}</span>`).join(' ')}</span>`;
+      }
+      // Pass agents
+      if (claim.pass_agents?.length) {
+        html += `<span><span class="ca-label">can pass:</span> ${claim.pass_agents.map(a => `<span class="ca-agent">${a}</span>`).join(' ')}</span>`;
+      }
+      // Fail agents
+      if (claim.fail_agents?.length) {
+        html += `<span><span class="ca-label">can fail:</span> ${claim.fail_agents.map(a => `<span class="ca-agent">${a}</span>`).join(' ')}</span>`;
+      }
+      html += `</div>
+        </td>
+        <td style="color:var(--text-dim);font-family:monospace;font-size:11px">${claim.evaluator}</td>
+        <td><span class="claim-status ${sc}">${sc.toUpperCase()}</span></td>
+        <td style="color:var(--text-dim)">${claim.details || '—'}</td>
+      </tr>`;
+    }
+    html += '</table></div></div>';
+  }
+
+  // ── Data with update highlighting ──
+  const updatedPaths = node.meta?.last_updated_paths || [];
+  html += `<div class="section"><h3>Data</h3><div class="section-body">`;
+  html += '<table class="data-table">';
+  for (const [key, val] of Object.entries(node.data || {})) {
+    const strVal = typeof val === 'string' ? val : JSON.stringify(val, null, 2);
+    const isLong = strVal.length > 100;
+    const collapsedCls = isLong ? ' long collapsed' : '';
+    const isUpdated = updatedPaths.includes(key);
+    const keyClass = isUpdated ? ' updated' : '';
+    html += `<tr>
+      <td class="data-key${keyClass}" style="cursor:pointer" onclick="editDataField('${nodeId}','${key}')" title="click to edit">${key} ✎</td>
+      <td class="data-val${collapsedCls}" onclick="this.classList.toggle('collapsed')">${escHtml(strVal)}</td>
+    </tr>`;
+  }
+  html += '</table></div></div>';
+
+  // ── Instruction Bundles ──
+  const bundles = node.meta?.instruction_bundles;
+  if (bundles && bundles.length > 0) {
+    html += '<div class="section"><h3>Instruction Bundles</h3><div class="section-body">';
+    for (const bundle of bundles) {
+      html += `<div class="bundle">
+        <div class="bundle-header">${bundle.bundle_id} · <span style="color:var(--accent2)">${bundle.author_agent}</span> → <span style="color:var(--accent3)">${bundle.target_agent}</span> · ${bundle.strictness}</div>`;
+      for (const block of (bundle.blocks || [])) {
+        html += `<div class="bundle-block"><span class="block-kind">[${block.kind}]</span>${escHtml(block.content)}</div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // Agent bindings relevant to this node
+  if (treeData.bindings?.rules) {
+    const nodeKind = node.kind;
+    const relevant = treeData.bindings.rules.filter(r => r.entity_kind.startsWith(nodeKind));
+    if (relevant.length > 0) {
+      html += '<div class="section"><h3>Agent Bindings</h3><div class="section-body" style="display:flex;flex-wrap:wrap;gap:4px">';
+      for (const rule of relevant) {
+        const action = rule.entity_kind.split('.')[1] || rule.action;
+        for (const agent of rule.allowed_agents) {
+          const profile = treeData.bindings.profiles?.[agent];
+          const dotClass = profile?.scopes?.includes('plan') ? 'planner' : 'worker';
+          html += `<div class="binding-card">
+            <span class="agent-dot ${dotClass}"></span>
+            <span>${agent}</span>
+            <span style="color:var(--text-dim)">· ${action}</span>
+          </div>`;
+        }
+      }
+      html += '</div></div>';
+    }
+  }
+
+  // Python refs
+  if (node.python_refs && Object.keys(node.python_refs).length > 0) {
+    html += '<div class="section"><h3>Python Refs</h3><div class="section-body">';
+    html += '<table class="data-table">';
+    for (const [key, val] of Object.entries(node.python_refs)) {
+      html += `<tr><td class="data-key">${key}</td><td style="font-family:monospace;font-size:11px;color:var(--text-dim)">${escHtml(val)}</td></tr>`;
+    }
+    html += '</table></div></div>';
+  }
+
+  // ── NL Chat Editor (node-level) ──
+  html += `<div class="section"><h3>💬 Edit via Chat</h3><div class="section-body">
+    <div style="display:flex;gap:6px">
+      <input type="text" id="nlNodeChat" placeholder="Инструкция: например 'добавь claim на длину текста'" style="flex:1;padding:6px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px">
+      <button class="btn primary" onclick="nlEditNode('${nodeId}')" style="white-space:nowrap">Send</button>
+    </div>
+    <div id="nlNodeResult" style="margin-top:6px;font-size:11px;color:var(--text-dim);max-height:200px;overflow:auto"></div>
+  </div></div>`;
+
+  html += '</div>'; // detail-scroll
+  detail.innerHTML = html;
+}
+
+function renderGlobalClaims() {
+  const bar = document.getElementById('globalBar');
+  let html = '<span style="color:var(--text-dim)">Global Claims:</span>';
+
+  if (treeData?.global_claims) {
+    for (const claim of treeData.global_claims) {
+      const sc = claim.status || 'pending';
+      html += `<div class="gc-item">
+        <span class="gc-dot ${sc}"></span>
+        <span>${claim.claim_id}</span>
+        <span style="color:var(--text-dim)">(${claim.details || sc})</span>
+      </div>`;
+    }
+  }
+
+  // Tree-level summary
+  if (treeData?.nodes) {
+    const total = Object.keys(treeData.nodes).length;
+    let passed = 0, failed = 0;
+    for (const node of Object.values(treeData.nodes)) {
+      const s = getNodeStatus(node);
+      if (s === 'PASS') passed++;
+      else if (s === 'FAIL') failed++;
+    }
+    html += `<span style="margin-left:auto;color:var(--text-dim)">Nodes: ${passed}/${total} pass`;
+    if (failed) html += `, <span style="color:var(--red)">${failed} fail</span>`;
+    html += '</span>';
+  }
+
+  bar.innerHTML = html;
+}
+
+async function runTree() {
+  try {
+    const settings = getGenSettings();
+    const res = await fetch(baseUrl() + '/api/behavior/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    setUiStatus('warn', '▶ running tree...');
+    startPolling(1500); // faster polling during run
+    pollRunStatus();
+  } catch (e) {
+    setUiStatus('error', `run failed: ${e.message}`);
+  }
+}
+
+async function runNode(nodeId) {
+  try {
+    const settings = getGenSettings();
+    const res = await fetch(baseUrl() + `/api/behavior/nodes/${nodeId}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    setUiStatus('warn', `▶ running ${nodeId}...`);
+    startPolling(1500);
+    pollRunStatus();
+  } catch (e) {
+    setUiStatus('error', `run failed: ${e.message}`);
+  }
+}
+
+async function pollRunStatus() {
+  const check = async () => {
+    try {
+      const res = await fetch(baseUrl() + '/api/behavior/status');
+      const status = await res.json();
+      if (status.running) {
+        const nodeInfo = status.node_id ? ` [${status.node_id}]` : '';
+        setUiStatus('warn', `▶ running${nodeInfo}...`);
+        setTimeout(check, 1500);
+      } else {
+        if (status.error) {
+          setUiStatus('error', `run error: ${status.error}`);
+        } else {
+          setUiStatus('ok', 'run complete ✓');
+          await refreshTree();
+        }
+        startPolling(3000); // back to normal polling
+      }
+    } catch { setTimeout(check, 2000); }
+  };
+  setTimeout(check, 1000);
+}
+
+// ── JSON Editor Modal ──
+
+let jsonModalState = { mode: null, nodeId: null, readonly: false, basePayload: null, etag: null };
+
+function openJsonModal(mode, nodeId) {
+  jsonModalState = { mode, nodeId, readonly: false, basePayload: null, etag: null };
+  const modal = document.getElementById('jsonModal');
+  const editor = document.getElementById('jsonEditor');
+  const title = document.getElementById('jsonModalTitle');
+  const tabs = document.getElementById('jsonModalTabs');
+  const info = document.getElementById('jsonInfo');
+  const saveBtn = document.getElementById('jsonSaveBtn');
+  const readonlyBadge = document.getElementById('jsonReadonly');
+  const errorEl = document.getElementById('jsonError');
+
+  errorEl.classList.remove('visible');
+  readonlyBadge.classList.add('hidden');
+  saveBtn.style.display = '';
+
+  let json = '';
+  if (mode === 'node') {
+    const node = treeData.nodes[nodeId];
+    jsonModalState.basePayload = structuredClone(node);
+    jsonModalState.etag = nodeHeaders[nodeId]?.etag || deriveEtag(node.revision);
+    json = JSON.stringify(node, null, 2);
+    title.textContent = `Node: ${nodeId}`;
+    tabs.innerHTML = buildNodeTabs(nodeId);
+  } else if (mode === 'tree') {
+    jsonModalState.basePayload = structuredClone(treeData);
+    jsonModalState.etag = treeHeaders.etag || deriveEtag(treeData?.revision);
+    json = JSON.stringify(treeData, null, 2);
+    title.textContent = 'Full Tree';
+    tabs.innerHTML = '<span class="modal-tab active">tree</span>';
+  } else if (mode === 'tree-meta') {
+    json = JSON.stringify(treeData.global_meta || {}, null, 2);
+    title.textContent = 'Global Meta';
+    tabs.innerHTML = '';
+    jsonModalState.readonly = true;
+    readonlyBadge.classList.remove('hidden');
+    saveBtn.style.display = 'none';
+  } else if (mode === 'node-data') {
+    jsonModalState.basePayload = structuredClone(treeData.nodes[nodeId]?.data || {});
+    jsonModalState.etag = nodeHeaders[nodeId]?.etag || deriveEtag(treeData.nodes[nodeId]?.revision);
+    json = JSON.stringify(treeData.nodes[nodeId]?.data || {}, null, 2);
+    title.textContent = `Data: ${nodeId}`;
+    tabs.innerHTML = buildNodeTabs(nodeId);
+  } else if (mode === 'node-claims') {
+    jsonModalState.basePayload = structuredClone(treeData.nodes[nodeId]?.claims || []);
+    jsonModalState.etag = nodeHeaders[nodeId]?.etag || deriveEtag(treeData.nodes[nodeId]?.revision);
+    json = JSON.stringify(treeData.nodes[nodeId]?.claims || [], null, 2);
+    title.textContent = `Claims: ${nodeId}`;
+    tabs.innerHTML = buildNodeTabs(nodeId);
+  }
+
+  editor.value = json;
+  editor.readOnly = jsonModalState.readonly;
+  info.textContent = `${json.length} chars · ${json.split('\n').length} lines`;
+  modal.classList.remove('hidden');
+  editor.focus();
+
+  // Live validation on input
+  editor.oninput = () => validateJson();
+}
+
+function buildNodeTabs(activeNodeId) {
+  const views = [
+    { key: 'node', label: 'full' },
+    { key: 'node-data', label: 'data' },
+    { key: 'node-claims', label: 'claims' },
+  ];
+  return views.map(v => {
+    const active = jsonModalState.mode === v.key ? ' active' : '';
+    return `<span class="modal-tab${active}" onclick="switchTab('${v.key}','${activeNodeId}')">${v.label}</span>`;
+  }).join('');
+}
+
+function switchTab(mode, nodeId) {
+  openJsonModal(mode, nodeId);
+}
+
+// ── NL Editing via Chat ──
+
+async function nlEditElement() {
+  const input = document.getElementById('nlElementChat');
+  const status = document.getElementById('nlElementStatus');
+  const instruction = input.value.trim();
+  if (!instruction || !jsonModalState) return;
+
+  const editor = document.getElementById('jsonEditor');
+  let currentElement;
+  try {
+    currentElement = JSON.parse(editor.value);
+  } catch {
+    status.textContent = 'Invalid JSON in editor';
+    status.style.color = 'var(--red)';
+    return;
+  }
+
+  status.textContent = 'Thinking...';
+  status.style.color = 'var(--yellow)';
+  input.disabled = true;
+
+  try {
+    const resp = await fetch(`${BASE}/api/behavior/nl/edit-element`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        element: currentElement,
+        instruction,
+        agent: agentSettings.workerAgent || 'small_context_worker',
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+    editor.value = JSON.stringify(data.element, null, 2);
+    status.textContent = 'Applied!';
+    status.style.color = 'var(--green)';
+    input.value = '';
+    validateJson();
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+    status.style.color = 'var(--red)';
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+async function nlEditNode(nodeId) {
+  const input = document.getElementById('nlNodeChat');
+  const resultDiv = document.getElementById('nlNodeResult');
+  const instruction = input.value.trim();
+  if (!instruction) return;
+
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+
+  resultDiv.textContent = 'Thinking...';
+  resultDiv.style.color = 'var(--yellow)';
+  input.disabled = true;
+
+  try {
+    const resp = await fetch(`${BASE}/api/behavior/nl/edit-node`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node,
+        instruction,
+        agent: agentSettings.workerAgent || 'small_context_worker',
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+
+    // Apply changes via PATCH
+    const patchResp = await fetch(`${BASE}/api/behavior/nodes/${nodeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: data.node }),
+    });
+    if (patchResp.ok) {
+      resultDiv.innerHTML = '<span style="color:var(--green)">Applied! Refreshing...</span>';
+      input.value = '';
+      await refreshTree();
+      selectNode(nodeId);
+    } else {
+      resultDiv.innerHTML = '<span style="color:var(--red)">Patch failed</span>';
+    }
+  } catch (e) {
+    resultDiv.innerHTML = `<span style="color:var(--red)">Error: ${escHtml(e.message)}</span>`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function closeJsonModal() {
+  document.getElementById('jsonModal').classList.add('hidden');
+  // Restore editor if element form was shown
+  document.getElementById('jsonEditor').style.display = '';
+  const formDiv = document.getElementById('elEditForm');
+  if (formDiv) formDiv.style.display = 'none';
+  const ctxDiv = document.getElementById('elContextPanel');
+  if (ctxDiv) ctxDiv.style.display = 'none';
+  // Reset save button
+  const saveBtn = document.getElementById('jsonSaveBtn');
+  saveBtn.textContent = 'Save';
+  saveBtn.onclick = saveJson;
+}
+
+function formatJson() {
+  const editor = document.getElementById('jsonEditor');
+  try {
+    const parsed = JSON.parse(editor.value);
+    editor.value = JSON.stringify(parsed, null, 2);
+    validateJson();
+  } catch (e) {
+    showJsonError(e.message);
+  }
+}
+
+function validateJson() {
+  const editor = document.getElementById('jsonEditor');
+  const errorEl = document.getElementById('jsonError');
+  const info = document.getElementById('jsonInfo');
+  try {
+    JSON.parse(editor.value);
+    errorEl.classList.remove('visible');
+    info.textContent = `${editor.value.length} chars · ${editor.value.split('\n').length} lines · ✓ valid`;
+    info.style.color = '';
+    return true;
+  } catch (e) {
+    showJsonError(e.message);
+    return false;
+  }
+}
+
+function showJsonError(msg) {
+  const errorEl = document.getElementById('jsonError');
+  errorEl.textContent = '⚠ ' + msg;
+  errorEl.classList.add('visible');
+}
+
+async function saveJson() {
+  if (jsonModalState.readonly) return;
+  if (!validateJson()) return;
+
+  const editor = document.getElementById('jsonEditor');
+  const parsed = JSON.parse(editor.value);
+  const { mode, nodeId, basePayload, etag } = jsonModalState;
+
+  try {
+    let endpoint = '';
+    let patch = {};
+    if (mode === 'tree') {
+      endpoint = '/api/behavior/tree';
+      patch = diffValue(basePayload, parsed) || {};
+    } else if (mode === 'node') {
+      endpoint = `/api/behavior/nodes/${nodeId}`;
+      patch = diffValue(basePayload, parsed) || {};
+    } else if (mode === 'node-data') {
+      endpoint = `/api/behavior/nodes/${nodeId}`;
+      const dataPatch = diffValue(basePayload, parsed);
+      patch = dataPatch === undefined ? {} : { data: dataPatch };
+    } else if (mode === 'node-claims') {
+      endpoint = `/api/behavior/nodes/${nodeId}`;
+      patch = JSON.stringify(basePayload) === JSON.stringify(parsed) ? {} : { claims: parsed };
+    } else if (mode === 'element') {
+      // Replace single element in node's elements array
+      endpoint = `/api/behavior/nodes/${nodeId}`;
+      const idx = jsonModalState._elementIndex;
+      const currentNode = treeData.nodes[nodeId];
+      if (currentNode) {
+        const newElements = [...currentNode.elements];
+        newElements[idx] = parsed;
+        patch = { elements: newElements };
+      }
+    }
+
+    if (patchIsEmpty(patch)) {
+      setUiStatus('ok', 'no changes');
+      closeJsonModal();
+      return;
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (etag) headers['If-Match'] = etag;
+    const res = await fetch(baseUrl() + endpoint, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ patch, merge_on_conflict: true }),
+    });
+    const payload = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      if (res.status === 409) {
+        const detail = payload.detail || payload;
+        const actual = detail.actual_revision ?? '?';
+        showJsonError(`Conflict: current revision is ${actual}. Reload and retry.`);
+        setUiStatus('warn', `conflict at rev ${actual}`);
+        return;
+      }
+      throw new Error(payload.detail || payload.error || `HTTP ${res.status}`);
+    }
+
+    const mergeStatus = res.headers.get('X-Behavior-Merge') || 'none';
+    if (mode === 'tree') {
+      treeData = payload;
+      setTreeHeadersFromResponse(res);
+      Object.values(treeData.nodes || {}).forEach(cacheNodeHeaders);
+    } else {
+      treeData.nodes[nodeId] = payload;
+      cacheNodeHeaders(payload);
+    }
+    await refreshTree();
+    setUiStatus('ok', mergeStatus === 'applied' ? 'merge applied' : 'saved');
+    closeJsonModal();
+  } catch (e) {
+    showJsonError('Save failed: ' + e.message);
+    setUiStatus('error', `save failed: ${e.message}`);
+  }
+}
+
+async function copyJsonToClipboard() {
+  const editor = document.getElementById('jsonEditor');
+  try {
+    await navigator.clipboard.writeText(editor.value);
+    document.getElementById('jsonCopyBtn').textContent = '✓ Copied';
+    setTimeout(() => document.getElementById('jsonCopyBtn').textContent = 'Copy', 1500);
+  } catch (e) {
+    showJsonError('Copy failed: ' + e.message);
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeJsonModal();
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    if (!document.getElementById('jsonModal').classList.contains('hidden')) {
+      e.preventDefault();
+      saveJson();
+    }
+  }
+});
+
+// ── Original functions updated ──
+
+function editNodeJson(nodeId) {
+  openJsonModal('node', nodeId);
+}
+
+function editTreeJson() {
+  openJsonModal('tree', null);
+}
+
+function exportTree() {
+  if (!treeData) return;
+  const blob = new Blob([JSON.stringify(treeData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `behavior-tree-${treeData.tree_id || 'export'}.json`;
+  a.click();
+}
+
+// ── Plan from prompt ──
+function getGenSettings() {
+  return {
+    sentence_range: [
+      parseInt(document.getElementById('genSentMin').value) || 5,
+      parseInt(document.getElementById('genSentMax').value) || 10,
+    ],
+    temperature: parseFloat(document.getElementById('genTemp').value) || 0.6,
+    max_tokens: parseInt(document.getElementById('genMaxTokens').value) || 2048,
+    language: document.getElementById('genLang').value || 'ru',
+    creative_agent: document.getElementById('creativeAgent').value,
+  };
+}
+
+async function planFromPrompt() {
+  const prompt = document.getElementById('planPrompt').value.trim();
+  if (!prompt) { alert('Введите задачу'); return; }
+  setUiStatus('warn', 'planning...');
+  try {
+    const settings = getGenSettings();
+    const res = await fetch(baseUrl() + '/api/behavior/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: prompt, settings }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.json().catch(()=>({}))).detail || ''}`);
+    const result = await res.json();
+    treeData = result.tree || result;
+    setTreeHeadersFromResponse(res);
+    Object.values(treeData.nodes || {}).forEach(cacheNodeHeaders);
+    document.getElementById('treeId').textContent = treeData.tree_id || '';
+    renderTree();
+    renderGlobalClaims();
+    setUiStatus('ok', `planned: ${Object.keys(treeData.nodes || {}).length} nodes`);
+    // Show plan preview
+    showPlanPreview(treeData);
+  } catch (e) {
+    setUiStatus('error', `plan failed: ${e.message}`);
+    alert('Plan failed: ' + e.message);
+  }
+}
+
+function showPlanPreview(tree) {
+  const nodes = tree.nodes || {};
+  const rootData = nodes.root?.data || {};
+  let items = [];
+  const childIds = rootData.child_ids || [];
+  for (const cid of childIds) {
+    const n = nodes[cid];
+    if (!n) continue;
+    const d = n.data || {};
+    items.push(`${cid}: "${d.prompt || d.style || '?'}" [${(d.sentence_range||[5,10]).join('-')} sent] detail=${d.key_detail||'—'}`);
+  }
+  const planText = `Plan: ${childIds.length} tasks\n\n` + items.join('\n');
+  openJsonModal('tree', null);
+  // Switch to a readable summary
+  const editor = document.getElementById('jsonEditor');
+  const title = document.getElementById('jsonModalTitle');
+  title.textContent = '📋 Plan Preview — edit tree JSON and Save, or close and Run';
+}
+
+// Enter to plan
+document.getElementById('planPrompt').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); planFromPrompt(); }
+});
+
+// ── Import tree JSON ──
+function importTree() { document.getElementById('importFile').click(); }
+
+function handleImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      const res = await fetch(baseUrl() + '/api/behavior/tree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(imported),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refreshTree();
+      setUiStatus('ok', 'tree imported');
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ── Add node dialog ──
+function addNodeDialog() {
+  const nodeId = prompt('Node ID (kebab-case):');
+  if (!nodeId) return;
+  const kind = prompt('Kind (e.g. description_item, checker):', 'description_item');
+  if (!kind) return;
+
+  const newNode = {
+    node_id: nodeId,
+    kind: kind,
+    elements: [
+      { element_id: 'draft', handler: 'generate_description', transitions: { pass: null, fail: 'draft' } }
+    ],
+    data: {},
+    claims: [],
+    meta: {},
+  };
+
+  // Add via API
+  fetch(baseUrl() + `/api/behavior/nodes/${nodeId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newNode),
+  }).then(async res => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Also add to root's child_ids
+    if (treeData?.nodes?.root?.data?.child_ids) {
+      const childIds = [...treeData.nodes.root.data.child_ids, nodeId];
+      await fetch(baseUrl() + '/api/behavior/nodes/root', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch: { data: { child_ids: childIds } } }),
+      });
+    }
+    await refreshTree();
+    selectNode(nodeId);
+    setUiStatus('ok', `added node: ${nodeId}`);
+  }).catch(e => {
+    alert('Add failed: ' + e.message);
+  });
+}
+
+// ── Delete node ──
+async function deleteNode(nodeId) {
+  if (nodeId === 'root') { alert('Cannot delete root'); return; }
+  if (!confirm(`Удалить ноду "${nodeId}" и все данные?`)) return;
+
+  try {
+    // Remove from root's child_ids
+    if (treeData?.nodes?.root?.data?.child_ids) {
+      const childIds = treeData.nodes.root.data.child_ids.filter(id => id !== nodeId);
+      await fetch(baseUrl() + '/api/behavior/nodes/root', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch: { data: { child_ids: childIds } } }),
+      });
+    }
+
+    // Remove node from tree
+    const treePatch = { nodes: {} };
+    treePatch.nodes[nodeId] = null;
+    await fetch(baseUrl() + '/api/behavior/tree', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: treePatch }),
+    });
+
+    if (selectedNodeId === nodeId) selectedNodeId = null;
+    await refreshTree();
+    setUiStatus('ok', `deleted: ${nodeId}`);
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+// ── Inline edit data field ──
+async function editDataField(nodeId, key) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const current = node.data[key];
+  const currentStr = typeof current === 'string' ? current : JSON.stringify(current, null, 2);
+
+  const newVal = prompt(`Edit "${key}":`, currentStr);
+  if (newVal === null || newVal === currentStr) return;
+
+  // Try to parse as JSON, otherwise keep as string
+  let parsed;
+  try { parsed = JSON.parse(newVal); } catch { parsed = newVal; }
+
+  const patch = { data: {} };
+  patch.data[key] = parsed;
+
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const etag = nodeHeaders[nodeId]?.etag;
+    if (etag) headers['If-Match'] = etag;
+
+    const res = await fetch(baseUrl() + `/api/behavior/nodes/${nodeId}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ patch }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await refreshTree();
+    setUiStatus('ok', `updated ${key}`);
+  } catch (e) {
+    alert('Update failed: ' + e.message);
+  }
+}
+
+// ── Element JSON viewer/editor ──
+
+// Handler descriptions: what each handler does
+const HANDLER_INFO = {
+  // Generic handlers (new)
+  llm_generate:        { desc: 'LLM генерирует текст по prompt_template', icon: '✨' },
+  llm_repair:          { desc: 'LLM переписывает текст, исправляя failures', icon: '🔧' },
+  evaluate_claims:     { desc: 'Проверяет claims ноды, собирает failures', icon: '✅' },
+  truncate_sentences:  { desc: 'Обрезает до макс. предложений', icon: '✂️' },
+  finalize_from_claims:{ desc: 'Финальная проверка: все claims pass → audit', icon: '🏁' },
+  // Legacy / special handlers
+  generate_from_prompt:{ desc: 'LLM генерирует текст по промпту (legacy)', icon: '✨' },
+  generate_description:{ desc: 'LLM описание внешности (legacy)', icon: '✨' },
+  local_check:         { desc: 'Проверяет claims (legacy)', icon: '✅' },
+  repair_local:        { desc: 'LLM repair (legacy)', icon: '🔧' },
+  repair_from_prompt:  { desc: 'LLM repair по промпту (legacy)', icon: '🔧' },
+  compress_description:{ desc: 'Compress text (legacy)', icon: '✂️' },
+  audit_description:   { desc: 'Audit (legacy)', icon: '🏁' },
+  root_plan:           { desc: 'Планирует и создаёт дочерние ноды', icon: '📋' },
+  run_children:        { desc: 'Запускает все дочерние ноды', icon: '▶' },
+  global_check:        { desc: 'Проверяет глобальные claims', icon: '🌐' },
+  repair_global_conflicts: { desc: 'Исправляет конфликты между нодами', icon: '🔧' },
+  collect_outputs:     { desc: 'Собирает outputs из дочерних нод', icon: '📦' },
+};
+
+function extractMetaFields(meta) {
+  // Extract reads/writes from meta config fields
+  const reads = [], writes = [];
+  if (meta) {
+    for (const [k, v] of Object.entries(meta)) {
+      if (typeof v === 'string') {
+        if (k.endsWith('_field') || k === 'output_field' || k === 'source_field' || k === 'return_field') {
+          if (k.startsWith('target') || k.startsWith('output') || k.startsWith('status') || k.startsWith('counter')) writes.push(v);
+          else reads.push(v);
+        }
+      }
+    }
+  }
+  return { reads, writes };
+}
+
+function openElementJson(nodeId, index) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const el = node.elements[index];
+  if (!el) return;
+
+  const hi = HANDLER_INFO[el.handler] || { desc: '(custom handler)', icon: '◆' };
+  const elMeta = el.meta || {};
+  const { reads, writes } = extractMetaFields(elMeta);
+
+  // Build context panel
+  let contextHtml = `<div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px">`;
+
+  // Handler info
+  contextHtml += `<div style="margin-bottom:8px">
+    <span style="font-size:14px">${hi.icon || '◆'}</span>
+    <b style="color:var(--accent);margin-left:4px">${el.handler}</b>
+    <span style="color:var(--text-dim);margin-left:8px">${hi.desc}</span>
+    ${el.description ? `<div style="color:var(--text);margin-top:2px;font-style:italic">${escHtml(el.description)}</div>` : ''}
+  </div>`;
+
+  // Prompt template (the key content)
+  if (elMeta.prompt_template) {
+    // Resolve template preview with actual data values
+    let preview = elMeta.prompt_template;
+    preview = preview.replace(/\{\$data\.(\w+)\}/g, (_, k) => {
+      const v = node.data[k];
+      return v !== undefined ? `<span style="color:var(--green);font-weight:600">${escHtml(String(v))}</span>` : `<span style="color:var(--red)">{$data.${k}} ⚠</span>`;
+    });
+    preview = preview.replace(/\{\$global\.(\w+)\}/g, (_, k) => {
+      const gm = treeData?.global_meta || {};
+      const v = gm[k];
+      return v !== undefined ? `<span style="color:var(--accent3);font-weight:600">${escHtml(JSON.stringify(v))}</span>` : `<span style="color:var(--red)">{$global.${k}} ⚠</span>`;
+    });
+    preview = preview.replace(/\{\$(old_text|failures_text)\}/g, (m) => `<span style="color:var(--yellow)">${m}</span>`);
+
+    contextHtml += `<div style="margin-bottom:8px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px">
+      <div style="color:var(--accent2);font-size:10px;margin-bottom:4px;text-transform:uppercase">prompt template (preview)</div>
+      <div style="white-space:pre-wrap;line-height:1.5;font-family:monospace;font-size:11px">${preview}</div>
+    </div>`;
+  }
+
+  // Meta config fields
+  const metaEntries = Object.entries(elMeta).filter(([k]) => k !== 'prompt_template');
+  if (metaEntries.length) {
+    contextHtml += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    for (const [k, v] of metaEntries) {
+      const dataVal = typeof v === 'string' && node.data[v] !== undefined
+        ? ` → <code style="color:var(--text)">${escHtml(JSON.stringify(node.data[v])).substring(0,50)}</code>` : '';
+      contextHtml += `<span style="padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px">
+        <span style="color:var(--accent3)">${k}</span>: <span style="color:var(--yellow)">${escHtml(String(v))}</span>${dataVal}
+      </span>`;
+    }
+    contextHtml += '</div>';
+  }
+
+  // Data fields this element touches
+  if (reads.length || writes.length) {
+    contextHtml += '<div style="display:flex;gap:16px;margin-bottom:6px">';
+    if (reads.length) {
+      contextHtml += `<div><span style="color:var(--accent3);font-size:10px">READS:</span> ${reads.map(r => {
+        const v = node.data[r];
+        const vs = v !== undefined ? `=<code>${escHtml(String(v)).substring(0,40)}</code>` : ' <span style="color:var(--text-dim)">(∅)</span>';
+        return `<span style="color:var(--yellow)">${r}</span>${vs}`;
+      }).join(', ')}</div>`;
+    }
+    if (writes.length) {
+      contextHtml += `<div><span style="color:var(--green);font-size:10px">WRITES:</span> ${writes.map(w => {
+        const v = node.data[w];
+        const vs = v !== undefined ? `=<code>${escHtml(String(v)).substring(0,40)}</code>` : '';
+        return `<span style="color:var(--yellow)">${w}</span>${vs}`;
+      }).join(', ')}</div>`;
+    }
+    contextHtml += '</div>';
+  }
+
+  // Related claims
+  const allFields = [...reads, ...writes];
+  const relatedClaims = (node.claims || []).filter(c => {
+    const wp = c.watched_paths || [];
+    return wp.some(p => allFields.includes(p)) || allFields.length === 0;
+  });
+  if (relatedClaims.length) {
+    contextHtml += '<div style="margin-bottom:4px"><span style="color:var(--accent2);font-size:10px">CLAIMS:</span> ';
+    contextHtml += relatedClaims.map(c => {
+      const sc = c.status || 'pending';
+      const cls = sc === 'pass' ? 'color:var(--green)' : sc === 'fail' ? 'color:var(--red)' : 'color:var(--text-dim)';
+      return `<span style="${cls};font-weight:600">${c.claim_id}:${sc.toUpperCase()}</span>`;
+    }).join(' ');
+    contextHtml += '</div>';
+  }
+
+  // Transitions
+  const trans = el.transitions || {};
+  if (Object.keys(trans).length) {
+    contextHtml += '<div><span style="color:var(--text-dim);font-size:10px">TRANSITIONS:</span> ';
+    for (const [oc, target] of Object.entries(trans)) {
+      const ocColor = oc === 'pass' ? 'var(--green)' : oc === 'fail' ? 'var(--red)' : 'var(--yellow)';
+      contextHtml += `<span style="color:${ocColor};font-weight:600">${oc}</span>→<span style="color:var(--accent)">${target || 'next'}</span> `;
+    }
+    contextHtml += '</div>';
+  }
+
+  contextHtml += '</div>';
+
+  jsonModalState = { mode: 'element', nodeId, readonly: false, basePayload: structuredClone(el), etag: nodeHeaders[nodeId]?.etag, _elementIndex: index };
+  const modal = document.getElementById('jsonModal');
+  const editor = document.getElementById('jsonEditor');
+  const title = document.getElementById('jsonModalTitle');
+  const tabs = document.getElementById('jsonModalTabs');
+  const info = document.getElementById('jsonInfo');
+  const saveBtn = document.getElementById('jsonSaveBtn');
+  const errorEl = document.getElementById('jsonError');
+  const readonlyBadge = document.getElementById('jsonReadonly');
+
+  errorEl.classList.remove('visible');
+  readonlyBadge.classList.add('hidden');
+  saveBtn.style.display = '';
+
+  const json = JSON.stringify(el, null, 2);
+  editor.value = json;
+  editor.readOnly = false;
+  title.textContent = `Element: ${el.element_id}`;
+  tabs.innerHTML = node.elements.map((e, i) => {
+    const active = i === index ? ' active' : '';
+    return `<span class="modal-tab${active}" onclick="openElementJson('${nodeId}',${i})">${e.element_id}</span>`;
+  }).join('');
+
+  // Insert context panel above editor
+  let ctxDiv = document.getElementById('elContextPanel');
+  if (!ctxDiv) {
+    ctxDiv = document.createElement('div');
+    ctxDiv.id = 'elContextPanel';
+    const body = document.querySelector('.modal-body');
+    body.insertBefore(ctxDiv, editor);
+  }
+  // Add ops pipeline for __dsl__ elements
+  if (el.handler === '__dsl__' && elMeta.ops) {
+    contextHtml += renderOpsPipeline(elMeta.ops, node, index);
+  }
+
+  // Variables panel
+  const dslLog = node.meta?._dsl_log;
+  if (el.handler === '__dsl__' && dslLog) {
+    const vars = {};
+    for (const entry of dslLog) {
+      if (entry.op === 'var' && entry.status === 'done') {
+        // Can't extract var values from log alone, but show what was logged
+      }
+    }
+  }
+
+  // Templates library
+  const allTpls = { ...(treeData?.global_meta?.templates || {}), ...(elMeta.templates || {}) };
+  if (Object.keys(allTpls).length) {
+    contextHtml += `<div style="padding:6px 16px;border-top:1px solid var(--border)">
+      <div style="color:var(--accent2);font-size:10px;margin-bottom:4px;text-transform:uppercase">Templates</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">`;
+    for (const [name, tpl] of Object.entries(allTpls)) {
+      const isLocal = name in (elMeta.templates || {});
+      const scope = isLocal ? 'element' : 'global';
+      const preview = String(tpl).substring(0, 60).replace(/</g, '&lt;');
+      contextHtml += `<span class="var-chip" title="${escHtml(String(tpl))}">
+        <span class="var-name">{$tpl.${name}}</span>
+        <span class="var-scope">${scope}</span>
+        <span class="var-val">${preview}${String(tpl).length > 60 ? '…' : ''}</span>
+      </span>`;
+    }
+    contextHtml += '</div></div>';
+  }
+
+  ctxDiv.innerHTML = contextHtml;
+  ctxDiv.style.display = '';
+
+  info.textContent = `${json.length} chars`;
+  modal.classList.remove('hidden');
+  editor.focus();
+  editor.oninput = () => validateJson();
+}
+
+// ── Ops Pipeline Renderer ──
+
+function renderOpsPipeline(ops, node, elementIndex) {
+  const dslLog = node.meta?._dsl_log || [];
+
+  let html = `<div style="padding:6px 16px;border-top:1px solid var(--border)">
+    <div style="color:var(--accent2);font-size:10px;margin-bottom:4px;text-transform:uppercase">Op Pipeline (${ops.length} ops)</div>
+    <div class="ops-pipeline">`;
+
+  html += renderOpsRows(ops, dslLog, node, 0);
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderOpsRows(ops, dslLog, node, depth) {
+  let html = '';
+  const indent = depth > 0 ? ` nested${depth > 1 ? '-2' : ''}` : '';
+
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i];
+    const opName = op.op || '?';
+    const logEntry = dslLog.find(l => l.index === i && l.op === opName) || {};
+    const status = logEntry.status || 'pending';
+    const icon = getOpIcon(opName);
+    const summary = getOpSummary(op, node);
+
+    html += `<div class="op-row${indent}" onclick="toggleOpDetail(this)" title="${escHtml(JSON.stringify(op))}">
+      <span class="op-idx">${i + 1}.</span>
+      <span class="op-icon">${icon}</span>
+      <span class="op-name">${opName}</span>
+      <span class="op-summary">${summary}</span>
+      <span class="op-status ${status}">${status === 'done' ? '✓' : status === 'error' ? '✗' : status === 'running' ? '▸' : '·'}</span>
+    </div>`;
+
+    // Error detail
+    if (logEntry.error) {
+      html += `<div class="op-detail" style="border-color:var(--red)"><span style="color:var(--red)">Error:</span> ${escHtml(logEntry.error)}</div>`;
+    }
+
+    // LLM response preview
+    if (logEntry.llm_response) {
+      html += `<div class="op-detail" style="display:none">
+        <span class="op-badge temp">agent: ${escHtml(logEntry.llm_agent || '?')}</span>
+        ${op.temperature ? `<span class="op-badge temp">temp=${op.temperature}</span>` : ''}
+        ${op.max_tokens ? `<span class="op-badge maxtok">max=${op.max_tokens}</span>` : ''}
+        ${op.no_think ? '<span class="op-badge nothink">no_think</span>' : ''}
+        <pre>${escHtml(logEntry.llm_response)}</pre>
+      </div>`;
+    }
+
+    // Nested ops for branch
+    if (opName === 'branch') {
+      if (op.then_ops?.length) {
+        html += `<div class="op-branch-label"><b>├ then:</b></div>`;
+        html += renderOpsRows(op.then_ops, [], node, depth + 1);
+      }
+      if (op.else_ops?.length) {
+        html += `<div class="op-branch-label"><b>└ else:</b></div>`;
+        html += renderOpsRows(op.else_ops, [], node, depth + 1);
+      }
+    }
+
+    // Nested ops for loop
+    if (opName === 'loop' && op.body_ops?.length) {
+      html += `<div class="op-branch-label"><b>↻ body:</b> (max ${op.max_iterations || 5})</div>`;
+      html += renderOpsRows(op.body_ops, [], node, depth + 1);
+    }
+
+    // Nested fallback ops
+    if (opName === 'llm_call_or_fallback' && op.fallback_ops?.length) {
+      html += `<div class="op-branch-label"><b>⚡ fallback:</b></div>`;
+      html += renderOpsRows(op.fallback_ops, [], node, depth + 1);
+    }
+  }
+  return html;
+}
+
+function getOpIcon(opName) {
+  const icons = {
+    set: '📝', copy: '📋', increment: '➕', append: '➕', delete: '🗑',
+    var: '💠', expand: '📐',
+    llm_call: '🤖', llm_call_or_fallback: '🤖',
+    evaluate_claims: '✅', check_claims_pass: '🏁',
+    truncate_sentences: '✂️', regex_replace: '🔄', strip: '✂️', join: '🔗',
+    branch: '🔀', switch: '🔀', set_outcome: '🎯', set_return: '↩️', halt: '⛔', loop: '🔁',
+    run_script: '🐍', log: '📌',
+  };
+  return icons[opName] || '◆';
+}
+
+function getOpSummary(op, node) {
+  const f = (s) => `<span class="op-field">${escHtml(String(s))}</span>`;
+  const v = (s) => `<span class="op-val">${escHtml(String(s)).substring(0, 40)}</span>`;
+  const t = (s) => `<span class="op-tpl">${escHtml(String(s)).substring(0, 50)}</span>`;
+
+  switch (op.op) {
+    case 'set': return `${f(op.field)} = ${v(op.value)}`;
+    case 'copy': return `${f(op.from)} → ${f(op.to)}`;
+    case 'increment': return `${f(op.field)} += ${op.delta || 1}`;
+    case 'append': return `${f(op.field)} << ${v(op.value)}`;
+    case 'delete': return `del ${f(op.field)}`;
+    case 'var': {
+      const scope = op.scope ? `[${op.scope}]` : '';
+      return `${f(op.name)}${scope} = ${op.template ? t(op.template) : v(op.value ?? '')}`;
+    }
+    case 'expand': return `${t(op.template?.substring(0, 40) || '...')} → ${f(op.output_field || op.output_var || '?')}`;
+    case 'llm_call':
+    case 'llm_call_or_fallback': {
+      let s = `→ ${f(op.output_field || '_output')}`;
+      if (op.agent_name) s += ` <span class="op-agent">${op.agent_name}</span>`;
+      if (op.temperature) s += ` <span class="op-badge temp">t=${op.temperature}</span>`;
+      if (op.max_tokens) s += ` <span class="op-badge maxtok">max=${op.max_tokens}</span>`;
+      if (op.no_think) s += ` <span class="op-badge nothink">no_think</span>`;
+      if (op.parse) {
+        const p = Array.isArray(op.parse) ? op.parse : [op.parse];
+        s += ` parse:${p.map(pp => `${pp.mode}→${f(pp.var || '?')}`).join(',')}`;
+      }
+      return s;
+    }
+    case 'evaluate_claims': return `scope=${op.scope || 'node'} → ${f(op.failure_field || 'failures')}`;
+    case 'check_claims_pass': return `→ ${f(op.status_field || 'audit_status')}`;
+    case 'truncate_sentences': return `${f(op.source_field || 'draft_text')} → ${f(op.target_field || 'final_text')}`;
+    case 'regex_replace': return `${f(op.field)} s/${t(op.pattern)}/${v(op.replacement || '')}/`;
+    case 'strip': return f(op.field);
+    case 'join': return `${f(op.field)} → ${f(op.output_field || op.field)} sep="${op.separator || ', '}"`;
+    case 'branch': {
+      const c = op.condition || {};
+      return `${f(c.field || '?')} ${c.test || '?'} ${c.value !== undefined ? v(c.value) : ''}`;
+    }
+    case 'switch': {
+      if (op.field) {
+        const cases = Object.entries(op.cases || {}).map(([k,o]) => `${v(k)}→${v(o)}`).join(' ');
+        return `${f(op.field)} ${cases} default=${v(op.default || 'next')}`;
+      }
+      const onCases = (op.on || []).map(c => `${c.condition?.test || '?'}→${v(c.outcome || '?')}`).join(' ');
+      return `${onCases} default=${v(op.default || 'next')}`;
+    }
+    case 'set_outcome': return v(op.outcome || 'next');
+    case 'set_return': return op.field ? f(op.field) : v(op.value || '');
+    case 'halt': return '';
+    case 'loop': {
+      const c = op.condition || {};
+      return `while ${f(c.field || '?')} ${c.test || '?'} (max ${op.max_iterations || 5})`;
+    }
+    case 'run_script': return `${f(op.script)} timeout=${op.timeout || 5}s`;
+    case 'log': return t(op.message || '');
+    default: return JSON.stringify(op).substring(0, 60);
+  }
+}
+
+function toggleOpDetail(row) {
+  const detail = row.nextElementSibling;
+  if (detail && detail.classList.contains('op-detail')) {
+    detail.style.display = detail.style.display === 'none' ? '' : 'none';
+  }
+}
+
+// ── Element Flow Editor ──
+
+async function patchNodeElements(nodeId, elements) {
+  const headers = { 'Content-Type': 'application/json' };
+  const etag = nodeHeaders[nodeId]?.etag;
+  if (etag) headers['If-Match'] = etag;
+  const res = await fetch(baseUrl() + `/api/behavior/nodes/${nodeId}`, {
+    method: 'PATCH', headers,
+    body: JSON.stringify({ patch: { elements } }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  await refreshTree();
+}
+
+function addElement(nodeId) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const id = prompt('Element ID (e.g. verify, draft2):');
+  if (!id) return;
+  const handler = prompt('Handler name:', 'generate_from_prompt');
+  if (!handler) return;
+
+  const transStr = prompt('Transitions JSON (e.g. {"pass":null,"fail":"repair"}):', '{"pass":null}');
+  let transitions = {};
+  try { transitions = JSON.parse(transStr || '{}'); } catch { }
+
+  const newElements = [...node.elements, { element_id: id, handler, transitions }];
+  patchNodeElements(nodeId, newElements).then(() => {
+    selectNode(nodeId);
+    setUiStatus('ok', `added element: ${id}`);
+  }).catch(e => alert('Add element failed: ' + e.message));
+}
+
+function editElement(nodeId, index) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const el = node.elements[index];
+  if (!el) return;
+
+  // Get list of all element IDs in this node (for transition targets)
+  const allElIds = node.elements.map(e => e.element_id);
+  // Known handlers
+  const knownHandlers = [
+    'generate_from_prompt', 'generate_description', 'local_check', 'repair_local',
+    'compress_description', 'audit_description', 'root_plan', 'run_children',
+    'global_check', 'repair_global_conflicts', 'collect_outputs',
+  ];
+
+  let transHtml = '';
+  const trans = el.transitions || {};
+  const outcomes = Object.keys(trans);
+  // Always show pass/fail + any custom
+  const allOutcomes = new Set(['pass', 'fail', ...outcomes]);
+  for (const oc of allOutcomes) {
+    const target = trans[oc] ?? '';
+    const targetOpts = ['(next)', '(end)', ...allElIds.filter(id => id !== el.element_id)]
+      .map(t => {
+        const val = t === '(next)' ? '' : (t === '(end)' ? '__end__' : t);
+        const sel = (target === '' && t === '(next)') || target === val ? ' selected' : '';
+        return `<option value="${escHtml(val)}"${sel}>${escHtml(t)}</option>`;
+      }).join('');
+    const ocColor = oc === 'pass' ? 'var(--green)' : oc === 'fail' ? 'var(--red)' : 'var(--yellow)';
+    transHtml += `<div style="display:flex;gap:6px;align-items:center;margin:3px 0">
+      <input type="text" class="el-edit-outcome" value="${escHtml(oc)}" style="width:80px;padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:${ocColor};font-size:12px;font-weight:600">
+      <span style="color:var(--text-dim)">→</span>
+      <select class="el-edit-target" style="padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--accent);font-size:12px">${targetOpts}</select>
+      <button class="btn" style="font-size:10px;padding:0 4px;color:var(--red)" onclick="this.closest('div').remove()">✕</button>
+    </div>`;
+  }
+
+  const handlerOpts = knownHandlers.map(h =>
+    `<option value="${h}"${h === el.handler ? ' selected' : ''}>${h}</option>`
+  ).join('');
+
+  const modalContent = `
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px;font-size:12px">
+      <div style="display:flex;gap:12px;align-items:center">
+        <label style="color:var(--text-dim);width:80px">Element ID</label>
+        <input type="text" id="elEditId" value="${escHtml(el.element_id)}" style="flex:1;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px;font-weight:600">
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <label style="color:var(--text-dim);width:80px">Handler</label>
+        <select id="elEditHandler" style="flex:1;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--accent);font-size:12px">
+          ${handlerOpts}
+          <option value="__custom__"${!knownHandlers.includes(el.handler) ? ' selected' : ''}>(custom...)</option>
+        </select>
+        <input type="text" id="elEditHandlerCustom" value="${escHtml(el.handler)}" style="width:160px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;${knownHandlers.includes(el.handler) ? 'display:none' : ''}">
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <label style="color:var(--text-dim)">Transitions</label>
+          <button class="btn" style="font-size:10px;padding:1px 6px" onclick="addTransitionRow()">+ outcome</button>
+        </div>
+        <div id="elEditTransitions">${transHtml}</div>
+      </div>
+    </div>`;
+
+  // Use the existing modal
+  const modal = document.getElementById('jsonModal');
+  const editor = document.getElementById('jsonEditor');
+  const title = document.getElementById('jsonModalTitle');
+  const tabs = document.getElementById('jsonModalTabs');
+  const saveBtn = document.getElementById('jsonSaveBtn');
+  const errorEl = document.getElementById('jsonError');
+  const readonlyBadge = document.getElementById('jsonReadonly');
+  const body = document.querySelector('.modal-body');
+
+  errorEl.classList.remove('visible');
+  readonlyBadge.classList.add('hidden');
+  title.textContent = `Edit Element: ${el.element_id}`;
+  tabs.innerHTML = '';
+
+  // Replace editor with form
+  editor.style.display = 'none';
+  let formDiv = document.getElementById('elEditForm');
+  if (!formDiv) {
+    formDiv = document.createElement('div');
+    formDiv.id = 'elEditForm';
+    formDiv.style.cssText = 'flex:1;overflow-y:auto';
+    body.appendChild(formDiv);
+  }
+  formDiv.innerHTML = modalContent;
+  formDiv.style.display = '';
+
+  // Handler select logic
+  const handlerSelect = document.getElementById('elEditHandler');
+  const handlerCustom = document.getElementById('elEditHandlerCustom');
+  handlerSelect.onchange = () => {
+    handlerCustom.style.display = handlerSelect.value === '__custom__' ? '' : 'none';
+    if (handlerSelect.value !== '__custom__') handlerCustom.value = handlerSelect.value;
+  };
+
+  // Save button
+  saveBtn.textContent = 'Save Element';
+  saveBtn.onclick = () => saveElementEdit(nodeId, index);
+
+  modal.classList.remove('hidden');
+}
+
+function addTransitionRow() {
+  const container = document.getElementById('elEditTransitions');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:6px;align-items:center;margin:3px 0';
+  div.innerHTML = `
+    <input type="text" class="el-edit-outcome" value="" placeholder="outcome" style="width:80px;padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--yellow);font-size:12px;font-weight:600">
+    <span style="color:var(--text-dim)">→</span>
+    <input type="text" class="el-edit-target" value="" placeholder="target element" style="width:120px;padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--accent);font-size:12px">
+    <button class="btn" style="font-size:10px;padding:0 4px;color:var(--red)" onclick="this.closest('div').remove()">✕</button>`;
+  container.appendChild(div);
+}
+
+async function saveElementEdit(nodeId, index) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+
+  const newId = document.getElementById('elEditId').value.trim();
+  const handlerSelect = document.getElementById('elEditHandler');
+  const handlerCustom = document.getElementById('elEditHandlerCustom');
+  const handler = handlerSelect.value === '__custom__' ? handlerCustom.value.trim() : handlerSelect.value;
+
+  // Collect transitions
+  const transitions = {};
+  const rows = document.getElementById('elEditTransitions').children;
+  for (const row of rows) {
+    const outcomeEl = row.querySelector('.el-edit-outcome');
+    const targetEl = row.querySelector('.el-edit-target');
+    if (!outcomeEl || !targetEl) continue;
+    const oc = (outcomeEl.value || outcomeEl.textContent || '').trim();
+    if (!oc) continue;
+    let target = targetEl.value ?? '';
+    if (target === '__end__') target = null;
+    else if (target === '') target = null;
+    transitions[oc] = target;
+  }
+
+  const newElements = [...node.elements];
+  newElements[index] = { ...node.elements[index], element_id: newId || node.elements[index].element_id, handler: handler || node.elements[index].handler, transitions };
+
+  try {
+    await patchNodeElements(nodeId, newElements);
+    closeJsonModal();
+    selectNode(nodeId);
+    setUiStatus('ok', `updated: ${newId}`);
+  } catch (e) {
+    const errorEl = document.getElementById('jsonError');
+    errorEl.textContent = '⚠ ' + e.message;
+    errorEl.classList.add('visible');
+  }
+}
+
+function moveElement(nodeId, index, direction) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= node.elements.length) return;
+
+  const newElements = [...node.elements];
+  [newElements[index], newElements[newIndex]] = [newElements[newIndex], newElements[index]];
+  patchNodeElements(nodeId, newElements).then(() => {
+    selectNode(nodeId);
+    setUiStatus('ok', 'reordered elements');
+  }).catch(e => alert('Move failed: ' + e.message));
+}
+
+function removeElement(nodeId, index) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const el = node.elements[index];
+  if (!confirm(`Удалить элемент "${el.element_id}"?`)) return;
+
+  const newElements = node.elements.filter((_, i) => i !== index);
+  patchNodeElements(nodeId, newElements).then(() => {
+    selectNode(nodeId);
+    setUiStatus('ok', `removed: ${el.element_id}`);
+  }).catch(e => alert('Remove failed: ' + e.message));
+}
+
+// ── Agent Settings ──
+function toggleAgentSettings() {
+  const el = document.getElementById('agentSettings');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function toggleNamespacePanel() {
+  const panel = document.getElementById('namespacePanel');
+  if (panel.classList.contains('visible')) {
+    panel.classList.remove('visible');
+    return;
+  }
+  renderNamespacePanel();
+  panel.classList.add('visible');
+}
+
+function renderNamespacePanel() {
+  const panel = document.getElementById('namespacePanel');
+  let html = '';
+
+  // ── @@ Global Meta ──
+  const gm = treeData?.global_meta || {};
+  html += '<div class="ns-section"><h4>@@ Global Meta</h4><table class="ns-table">';
+  for (const [k, v] of Object.entries(gm)) {
+    const val = typeof v === 'string' ? v : JSON.stringify(v);
+    html += `<tr><td>@@${k}</td><td style="color:var(--accent3)">${typeof v}</td><td>${escHtml(String(val).substring(0, 120))}</td></tr>`;
+  }
+  if (!Object.keys(gm).length) html += '<tr><td colspan="3" style="color:var(--text-dim)">(empty)</td></tr>';
+  html += '</table></div>';
+
+  // ── Global Claims ──
+  const gc = treeData?.global_claims || [];
+  if (gc.length) {
+    html += '<div class="ns-section"><h4># Global Claims</h4><table class="ns-table">';
+    for (const c of gc) {
+      const sc = c.status || 'pending';
+      const scColor = sc === 'pass' ? 'var(--green)' : sc === 'fail' ? 'var(--red)' : 'var(--text-dim)';
+      html += `<tr><td>#${c.claim_id}</td><td>${c.evaluator || '-'}</td><td style="color:${scColor};font-weight:600">${sc.toUpperCase()}</td></tr>`;
+    }
+    html += '</table></div>';
+  }
+
+  // ── @ Selected Node Data ──
+  if (selectedNodeId && treeData?.nodes?.[selectedNodeId]) {
+    const node = treeData.nodes[selectedNodeId];
+    const data = node.data || {};
+    html += `<div class="ns-section"><h4>@ Node Data — ${selectedNodeId}</h4><table class="ns-table">`;
+    for (const [k, v] of Object.entries(data)) {
+      const val = typeof v === 'string' ? v : JSON.stringify(v);
+      const display = String(val).length > 80 ? String(val).substring(0, 80) + '…' : val;
+      html += `<tr><td>@${k}</td><td style="color:var(--yellow)">${typeof v}</td><td>${escHtml(String(display))}</td></tr>`;
+    }
+    html += '</table></div>';
+
+    // Node claims
+    if (node.claims?.length) {
+      html += `<div class="ns-section"><h4># Node Claims — ${selectedNodeId}</h4><table class="ns-table">`;
+      for (const c of node.claims) {
+        const sc = c.status || 'pending';
+        const scColor = sc === 'pass' ? 'var(--green)' : sc === 'fail' ? 'var(--red)' : 'var(--text-dim)';
+        html += `<tr><td>#${c.claim_id}</td><td>${c.evaluator || '-'}</td><td style="color:${scColor};font-weight:600">${sc.toUpperCase()}</td></tr>`;
+      }
+      html += '</table></div>';
+    }
+
+    // Node elements
+    html += `<div class="ns-section"><h4>Elements — ${selectedNodeId}</h4><table class="ns-table">`;
+    for (const el of node.elements || []) {
+      const trans = Object.entries(el.transitions || {}).map(([k,v]) => `${k}→${v}`).join(' ') || '—';
+      const dslCount = el.handler === '__dsl__' ? ` (${(el.meta?.do || el.meta?.ops || []).length} ops)` : '';
+      html += `<tr><td>${el.element_id}</td><td>${el.handler}${dslCount}</td><td>${trans}</td></tr>`;
+    }
+    html += '</table></div>';
+  }
+
+  // ── All Nodes Overview ──
+  const nodes = treeData?.nodes || {};
+  html += '<div class="ns-section"><h4>All Nodes</h4><table class="ns-table">';
+  for (const [nid, node] of Object.entries(nodes)) {
+    const dataKeys = Object.keys(node.data || {}).join(', ');
+    const claimCount = (node.claims || []).length;
+    const elCount = (node.elements || []).length;
+    html += `<tr>
+      <td style="cursor:pointer;color:var(--accent)" onclick="selectNode('${nid}')">${nid}</td>
+      <td>${node.kind || '-'}</td>
+      <td>${elCount} els, ${claimCount} claims · ${dataKeys.substring(0, 60)}</td>
+    </tr>`;
+  }
+  html += '</table></div>';
+
+  // ── DSL Namespace Legend ──
+  html += `<div class="ns-section"><h4>DSL Namespace Legend</h4>
+    <table class="ns-table">
+      <tr><td style="color:var(--yellow)">$x</td><td>local</td><td>Локальная переменная шага (временная, не сохраняется)</td></tr>
+      <tr><td style="color:var(--yellow)">@x</td><td>node.data</td><td>Поле данных текущей ноды (сохраняется)</td></tr>
+      <tr><td style="color:var(--accent3)">@@x</td><td>global_meta</td><td>Глобальные настройки дерева</td></tr>
+      <tr><td style="color:var(--accent2)">#x</td><td>claim/ref</td><td>Ссылка на claim или служебное значение</td></tr>
+      <tr><td style="color:var(--green)">{$@field}</td><td>template</td><td>Макрос в шаблоне: подставляется значение @field</td></tr>
+      <tr><td style="color:var(--green)">{$$$var}</td><td>template</td><td>Макрос: подставляется локальная $var</td></tr>
+      <tr><td style="color:var(--green)">{$@@key}</td><td>template</td><td>Макрос: подставляется @@global_meta.key</td></tr>
+    </table>
+  </div>`;
+
+  panel.innerHTML = html;
+}
+
+async function registerAgents() {
+  const workerUrl = document.getElementById('workerUrl').value.trim();
+  const plannerUrl = document.getElementById('plannerUrl').value.trim();
+  const statusEl = document.getElementById('agentStatus');
+
+  try {
+    const body = {};
+    if (workerUrl) body.small_context_worker = workerUrl;
+    if (plannerUrl) body.qwen_27b_planner = plannerUrl;
+
+    const res = await fetch(baseUrl() + '/api/behavior/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    statusEl.textContent = `✓ Registered: ${data.registered.join(', ')}`;
+    statusEl.style.color = 'var(--green)';
+    setTimeout(() => { statusEl.textContent = ''; }, 3000);
+
+    // Save to localStorage
+    localStorage.setItem('bt_workerUrl', workerUrl);
+    localStorage.setItem('bt_plannerUrl', plannerUrl);
+  } catch (e) {
+    statusEl.textContent = `✗ ${e.message}`;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+// Restore saved settings
+(function restoreSettings() {
+  const w = localStorage.getItem('bt_workerUrl');
+  const p = localStorage.getItem('bt_plannerUrl');
+  if (w) document.getElementById('workerUrl').value = w;
+  if (p) document.getElementById('plannerUrl').value = p;
+  // Generation settings
+  const fields = ['genSentMin','genSentMax','genTemp','genMaxTokens','genLang','creativeAgent'];
+  for (const f of fields) {
+    const v = localStorage.getItem('bt_' + f);
+    if (v != null) {
+      const el = document.getElementById(f);
+      if (el) el.value = v;
+    }
+  }
+  // Save on change
+  for (const f of fields) {
+    const el = document.getElementById(f);
+    if (el) el.addEventListener('change', () => localStorage.setItem('bt_' + f, el.value));
+  }
+})();
+
+// Auto-register agents on page load
+setTimeout(() => registerAgents(), 500);
+
+// ── Live polling ──
+let pollInterval = null;
+let lastRevision = null;
+
+async function pollTree() {
+  try {
+    const res = await fetch(baseUrl() + '/api/behavior/tree');
+    if (!res.ok) return;
+    const data = await res.json();
+    const newRev = data.revision;
+
+    if (newRev !== lastRevision) {
+      const prevSelected = selectedNodeId;
+      treeData = data;
+      lastRevision = newRev;
+      setTreeHeadersFromResponse(res);
+      Object.values(treeData.nodes || {}).forEach(cacheNodeHeaders);
+      document.getElementById('treeId').textContent = treeData.tree_id || '';
+      renderTree();
+      renderGlobalClaims();
+      if (prevSelected && treeData.nodes[prevSelected]) {
+        renderNodeDetail(prevSelected);
+      }
+      // Flash status
+      setUiStatus('ok', 'live update');
+    }
+  } catch { }
+}
+
+function startPolling(ms = 2000) {
+  stopPolling();
+  lastRevision = treeData?.revision ?? null;
+  pollInterval = setInterval(pollTree, ms);
+}
+
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
+// Auto-load
+refreshTree().then(() => startPolling());
+</script>
+</body>
+</html>

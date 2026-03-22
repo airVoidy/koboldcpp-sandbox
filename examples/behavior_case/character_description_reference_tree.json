@@ -1,0 +1,2003 @@
+{
+  "format_version": "behavior-tree/v1",
+  "tree_id": "character-description-reference",
+  "root_node_id": "root",
+  "global_meta": {
+    "task": "create 10 appearance descriptions with different styles and different hair colors",
+    "target_count": 10,
+    "sentence_range": [
+      5,
+      10
+    ],
+    "bindings_version": "v1",
+    "fallback_hair_colors": [
+      "black",
+      "copper",
+      "silver",
+      "chestnut",
+      "violet-black",
+      "golden blond",
+      "white",
+      "blue-black",
+      "auburn",
+      "rose-gold"
+    ]
+  },
+  "global_claims": [
+    {
+      "claim_id": "global-unique-hair-colors",
+      "owner_node_id": "root",
+      "scope": "tree",
+      "evaluator": "unique_child_field",
+      "producer_agents": [
+        "small_context_worker",
+        "qwen_27b_planner"
+      ],
+      "pass_agents": [
+        "qwen_27b_planner"
+      ],
+      "meta": {
+        "child_field": "hair_color",
+        "label": "hair colors"
+      }
+    },
+    {
+      "claim_id": "global-unique-styles",
+      "owner_node_id": "root",
+      "scope": "tree",
+      "evaluator": "unique_child_field",
+      "producer_agents": [
+        "small_context_worker",
+        "qwen_27b_planner"
+      ],
+      "pass_agents": [
+        "qwen_27b_planner"
+      ],
+      "meta": {
+        "child_field": "style",
+        "label": "styles"
+      }
+    }
+  ],
+  "bindings": {
+    "profiles": {
+      "qwen_27b_planner": {
+        "agent_name": "qwen_27b_planner",
+        "model_class": "qwen-27b",
+        "scopes": [
+          "plan",
+          "audit",
+          "repair"
+        ],
+        "description": "Writes strict instructions, audits results, replans on conflicts."
+      },
+      "small_context_worker": {
+        "agent_name": "small_context_worker",
+        "model_class": "qwen-9b",
+        "scopes": [
+          "generate",
+          "check",
+          "compress"
+        ],
+        "description": "Runs long-context local tasks from strict instructions."
+      }
+    },
+    "rules": [
+      {
+        "entity_kind": "description_item.generate",
+        "action": "run",
+        "allowed_agents": [
+          "small_context_worker"
+        ],
+        "priority": 0
+      },
+      {
+        "entity_kind": "description_item.local_check",
+        "action": "check",
+        "allowed_agents": [
+          "small_context_worker",
+          "qwen_27b_planner"
+        ],
+        "priority": 0
+      },
+      {
+        "entity_kind": "description_item.audit",
+        "action": "pass",
+        "allowed_agents": [
+          "qwen_27b_planner"
+        ],
+        "priority": 10
+      },
+      {
+        "entity_kind": "description_root.plan",
+        "action": "run",
+        "allowed_agents": [
+          "qwen_27b_planner"
+        ],
+        "priority": 10
+      },
+      {
+        "entity_kind": "description_root.global_check",
+        "action": "audit",
+        "allowed_agents": [
+          "qwen_27b_planner"
+        ],
+        "priority": 10
+      }
+    ]
+  },
+  "python_refs": {
+    "tree_factory": "kobold_sandbox.behavior_orchestrator:build_character_description_reference_tree",
+    "orchestrator_factory": "kobold_sandbox.behavior_orchestrator:create_reference_behavior_orchestrator"
+  },
+  "nodes": {
+    "root": {
+      "format_version": "behavior-node/v1",
+      "node_id": "root",
+      "kind": "description_root",
+      "entry_element": "plan",
+      "elements": [
+        {
+          "element_id": "plan",
+          "handler": "root_plan",
+          "description": "Compile the top-level instruction bundle."
+        },
+        {
+          "element_id": "run_children",
+          "handler": "run_children",
+          "description": "Run each generated description node."
+        },
+        {
+          "element_id": "global_check",
+          "handler": "global_check",
+          "description": "Audit uniqueness constraints across all children.",
+          "transitions": {
+            "fail": "repair_global",
+            "pass": "collect"
+          }
+        },
+        {
+          "element_id": "repair_global",
+          "handler": "repair_global_conflicts",
+          "description": "Repair global conflicts such as duplicate hair colors."
+        },
+        {
+          "element_id": "collect",
+          "handler": "collect_outputs",
+          "description": "Collect final outputs."
+        }
+      ],
+      "data": {
+        "child_ids": [
+          "description-01",
+          "description-02",
+          "description-03",
+          "description-04",
+          "description-05",
+          "description-06",
+          "description-07",
+          "description-08",
+          "description-09",
+          "description-10"
+        ],
+        "outputs": []
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "root-plan",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Plan a strict multi-node writing workflow."
+              },
+              {
+                "kind": "context",
+                "content": "Need 10 appearance descriptions, each 5..10 sentences, each style distinct, each hair color distinct."
+              },
+              {
+                "kind": "answer",
+                "content": "Return explicit item specs, local checks, and repair rules."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "outputs",
+      "claims": [],
+      "python_refs": {
+        "handler.plan": "kobold_sandbox.behavior_orchestrator:_handle_root_plan",
+        "handler.run_children": "kobold_sandbox.behavior_orchestrator:_handle_run_children",
+        "handler.global_check": "kobold_sandbox.behavior_orchestrator:_handle_global_check",
+        "handler.repair_global": "kobold_sandbox.behavior_orchestrator:_handle_repair_global_conflicts",
+        "handler.collect": "kobold_sandbox.behavior_orchestrator:_handle_collect_outputs"
+      }
+    },
+    "description-01": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-01",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 0,
+        "style": "gothic",
+        "hair_color": "black",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending",
+        "fallback_sentence_count": 4,
+        "fallback_hair_color": ""
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-01-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: gothic. Required hair color: black. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-01-sentence-range",
+          "owner_node_id": "description-01",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-01-hair-color",
+          "owner_node_id": "description-01",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-01-style",
+          "owner_node_id": "description-01",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-02": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-02",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 1,
+        "style": "solar fantasy",
+        "hair_color": "copper",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending",
+        "fallback_hair_color": "black"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-02-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: solar fantasy. Required hair color: copper. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-02-sentence-range",
+          "owner_node_id": "description-02",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-02-hair-color",
+          "owner_node_id": "description-02",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-02-style",
+          "owner_node_id": "description-02",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-03": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-03",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 2,
+        "style": "dieselpunk",
+        "hair_color": "silver",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-03-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: dieselpunk. Required hair color: silver. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-03-sentence-range",
+          "owner_node_id": "description-03",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-03-hair-color",
+          "owner_node_id": "description-03",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-03-style",
+          "owner_node_id": "description-03",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-04": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-04",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 3,
+        "style": "courtly romance",
+        "hair_color": "chestnut",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-04-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: courtly romance. Required hair color: chestnut. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-04-sentence-range",
+          "owner_node_id": "description-04",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-04-hair-color",
+          "owner_node_id": "description-04",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-04-style",
+          "owner_node_id": "description-04",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-05": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-05",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 4,
+        "style": "urban noir",
+        "hair_color": "violet-black",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-05-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: urban noir. Required hair color: violet-black. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-05-sentence-range",
+          "owner_node_id": "description-05",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-05-hair-color",
+          "owner_node_id": "description-05",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-05-style",
+          "owner_node_id": "description-05",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-06": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-06",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 5,
+        "style": "mythic watercolor",
+        "hair_color": "golden blond",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-06-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: mythic watercolor. Required hair color: golden blond. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-06-sentence-range",
+          "owner_node_id": "description-06",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-06-hair-color",
+          "owner_node_id": "description-06",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-06-style",
+          "owner_node_id": "description-06",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-07": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-07",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 6,
+        "style": "clockwork opera",
+        "hair_color": "white",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-07-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: clockwork opera. Required hair color: white. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-07-sentence-range",
+          "owner_node_id": "description-07",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-07-hair-color",
+          "owner_node_id": "description-07",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-07-style",
+          "owner_node_id": "description-07",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-08": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-08",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 7,
+        "style": "desert epic",
+        "hair_color": "blue-black",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-08-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: desert epic. Required hair color: blue-black. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-08-sentence-range",
+          "owner_node_id": "description-08",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-08-hair-color",
+          "owner_node_id": "description-08",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-08-style",
+          "owner_node_id": "description-08",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-09": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-09",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 8,
+        "style": "winter fairy tale",
+        "hair_color": "auburn",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-09-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: winter fairy tale. Required hair color: auburn. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-09-sentence-range",
+          "owner_node_id": "description-09",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-09-hair-color",
+          "owner_node_id": "description-09",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-09-style",
+          "owner_node_id": "description-09",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    },
+    "description-10": {
+      "format_version": "behavior-node/v1",
+      "node_id": "description-10",
+      "kind": "description_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "llm_generate",
+          "meta": {
+            "output_field": "draft_text",
+            "fallback_mode": "description_template",
+            "prompt_template": "Write one appearance-only character description.\nStyle: {$data.style}.\nRequired hair color: {$data.hair_color}.\nUse {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content."
+          }
+        },
+        {
+          "element_id": "local_check",
+          "handler": "evaluate_claims",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "meta": {
+            "failure_field": "local_failures"
+          }
+        },
+        {
+          "element_id": "repair",
+          "handler": "llm_repair",
+          "meta": {
+            "target_field": "draft_text",
+            "counter_field": "repair_count",
+            "prompt_template": "Previous text failed validation.\nFailures: {$failures_text}.\nStyle: {$data.style}. Hair color: {$data.hair_color}.\nRewrite the appearance description, fix the issues, keep {$global.sentence_range} sentences range.\nReply in {$global.language}. Start directly with content.\n\nPrevious text:\n{$old_text}"
+          }
+        },
+        {
+          "element_id": "compress",
+          "handler": "truncate_sentences",
+          "meta": {
+            "source_field": "draft_text",
+            "target_field": "final_text",
+            "range_field": "sentence_range"
+          }
+        },
+        {
+          "element_id": "audit",
+          "handler": "finalize_from_claims",
+          "meta": {
+            "status_field": "audit_status",
+            "return_field": "final_text"
+          }
+        }
+      ],
+      "data": {
+        "index": 9,
+        "style": "retro sci-fi",
+        "hair_color": "rose-gold",
+        "draft_text": "",
+        "final_text": "",
+        "repair_count": 0,
+        "audit_status": "pending"
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "description-10-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Generate one appearance-only character description."
+              },
+              {
+                "kind": "context",
+                "content": "Style: retro sci-fi. Required hair color: rose-gold. Use 5..10 sentences."
+              },
+              {
+                "kind": "think",
+                "content": "Check sentence count, visual specificity, and keep focus on appearance."
+              },
+              {
+                "kind": "answer",
+                "content": "Return clean prose only."
+              }
+            ]
+          }
+        ]
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "description-10-sentence-range",
+          "owner_node_id": "description-10",
+          "scope": "node",
+          "evaluator": "text_sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "range_field": "sentence_range",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-10-hair-color",
+          "owner_node_id": "description-10",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "hair_color",
+            "label": "hair color",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        },
+        {
+          "claim_id": "description-10-style",
+          "owner_node_id": "description-10",
+          "scope": "node",
+          "evaluator": "text_has_expected_value",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "meta": {
+            "expected_field": "style",
+            "label": "style",
+            "text_fields": [
+              "final_text",
+              "draft_text"
+            ]
+          }
+        }
+      ],
+      "python_refs": {
+        "handler.draft": "kobold_sandbox.behavior_orchestrator:_handle_llm_generate",
+        "handler.local_check": "kobold_sandbox.behavior_orchestrator:_handle_evaluate_claims",
+        "handler.repair": "kobold_sandbox.behavior_orchestrator:_handle_llm_repair",
+        "handler.compress": "kobold_sandbox.behavior_orchestrator:_handle_truncate_sentences",
+        "handler.audit": "kobold_sandbox.behavior_orchestrator:_handle_finalize_from_claims",
+        "claim.sentence_range": "kobold_sandbox.behavior_orchestrator:_eval_text_sentence_range",
+        "claim.hair_color_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value",
+        "claim.style_present": "kobold_sandbox.behavior_orchestrator:_eval_text_has_expected_value"
+      }
+    }
+  }
+}

@@ -208,6 +208,144 @@ btn, button {
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Chat area */
+/* Main tab bar */
+.main-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.main-tab {
+  padding: 8px 20px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+.main-tab:hover { color: var(--text); }
+.main-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.main-tab .tab-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.tab-panel.active { display: flex; }
+
+/* Task Lists panel */
+.tasklists-panel {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.tasklists-sidebar {
+  width: 240px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tasklists-sidebar-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.tasklists-sidebar-header button { font-size: 12px; }
+.tasklists-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.tasklist-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--bg);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.tasklist-item:hover { background: var(--bg); }
+.tasklist-item.active { background: var(--accent)22; border-left: 3px solid var(--accent); }
+.tasklist-item-name {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tasklist-item-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  display: flex;
+  gap: 8px;
+}
+.tasklists-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tasklists-detail-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tasklists-detail-header input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 2px 4px;
+}
+.tasklists-detail-header input:focus { outline: none; border-color: var(--accent); }
+.tasklists-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.tasklists-detail-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+.tasklists-detail-footer textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: none;
+  min-height: 32px;
+}
+.tasklists-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
 .chat-area {
   flex: 1;
   display: flex;
@@ -287,6 +425,60 @@ btn, button {
 .msg-action-btn:hover { background: var(--border); color: var(--text); }
 .msg-action-btn.tts-playing { color: var(--green); }
 .msg-action-btn.tts-loading { color: var(--orange); animation: pulse 1s infinite; }
+.message { position: relative; }
+.msg-worker-btn {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+.message:hover .msg-worker-btn { opacity: 0.7; }
+.msg-worker-btn:hover { opacity: 1 !important; background: var(--accent); color: #fff; border-color: var(--accent); }
+.msg-worker-menu {
+  position: absolute;
+  bottom: 36px;
+  right: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 20;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: none;
+}
+.msg-worker-menu.open { display: block; }
+.msg-worker-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.msg-worker-menu-item:hover { background: var(--border); }
+.msg-worker-menu-item .menu-icon { font-size: 14px; width: 18px; text-align: center; }
+.msg-worker-menu-sep { height: 1px; background: var(--border); margin: 3px 0; }
 
 /* Inline edit */
 .message-edit-area {
@@ -434,6 +626,160 @@ btn, button {
   line-height: 1.5;
 }
 .input-area textarea:focus { outline: none; border-color: var(--accent); }
+
+/* Send extras dropdown */
+.send-group { display: flex; gap: 0; }
+.send-group .btn.primary { border-radius: 6px 0 0 6px; }
+.send-extras-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.2);
+  border-radius: 0 6px 6px 0;
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+.send-extras-btn:hover { background: #8ab4f8; }
+.send-extras-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 0;
+  min-width: 200px;
+  z-index: 20;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: none;
+}
+.send-extras-menu.open { display: block; }
+.send-extras-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.send-extras-menu-item:hover { background: var(--border); }
+
+/* Task runner panel */
+.task-runner-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.task-runner-overlay.open { display: flex; }
+.task-runner-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.task-runner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.task-runner-header h3 { margin: 0; font-size: 14px; }
+.task-runner-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.task-runner-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.task-runner-footer textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: none;
+  min-height: 32px;
+  max-height: 80px;
+}
+.task-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bg);
+}
+.task-check {
+  font-size: 16px;
+  min-width: 22px;
+  text-align: center;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+.task-check.passed { color: var(--green); }
+.task-check.failed { color: var(--red); }
+.task-check.partial { color: var(--orange); }
+.task-check.running { color: var(--orange); animation: pulse 1s infinite; }
+.task-content { flex: 1; }
+.task-prompt {
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.task-prompt:hover { color: var(--accent); }
+.task-result {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 6px 10px;
+  display: none;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.task-result.open { display: block; }
+.task-actions {
+  display: flex;
+  gap: 4px;
+}
+.task-actions button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: inherit;
+}
+.task-actions button:hover { background: var(--border); color: var(--text); }
 
 /* Generation settings */
 .gen-settings {
@@ -839,14 +1185,45 @@ btn, button {
   </div>
 
   <div class="chat-area">
-    <div class="chat-messages" id="chatMessages"></div>
-    <div class="typing-indicator" id="typingIndicator"></div>
-    <div id="attachmentPreview" class="attachment-preview"></div>
-    <div class="input-area">
-      <button class="btn" id="btnAttach" title="Attach image" style="padding:6px 10px;font-size:16px">&#128206;</button>
-      <input type="file" id="fileAttach" accept="image/*" multiple style="display:none" />
-      <textarea id="userInput" placeholder="Type a message (Enter to send, Shift+Enter for newline). Drop/paste images here." rows="1"></textarea>
-      <button class="btn primary" id="btnSend">Send</button>
+    <!-- Tab bar -->
+    <div class="main-tabs">
+      <button class="main-tab active" data-main-tab="chat" onclick="switchMainTab('chat')">&#128172; Chat</button>
+      <button class="main-tab" data-main-tab="tasklists" onclick="switchMainTab('tasklists')">&#9889; Task Lists <span class="tab-badge" id="tasklistsBadge" style="display:none">0</span></button>
+    </div>
+
+    <!-- Chat tab -->
+    <div class="tab-panel active" id="tabChat">
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="typing-indicator" id="typingIndicator"></div>
+      <div id="attachmentPreview" class="attachment-preview"></div>
+      <div class="input-area">
+        <button class="btn" id="btnAttach" title="Attach image" style="padding:6px 10px;font-size:16px">&#128206;</button>
+        <input type="file" id="fileAttach" accept="image/*" multiple style="display:none" />
+        <textarea id="userInput" placeholder="Type a message (Enter to send, Shift+Enter for newline). Drop/paste images here." rows="1"></textarea>
+        <div class="send-group" style="position:relative">
+          <button class="btn primary" id="btnSend">Send</button>
+          <button class="send-extras-btn" id="btnSendExtras" title="More actions">&#9660;</button>
+          <div class="send-extras-menu" id="sendExtrasMenu">
+            <button class="send-extras-menu-item" onclick="createNewTaskList()">&#9889; New task list</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Lists tab -->
+    <div class="tab-panel" id="tabTasklists">
+      <div class="tasklists-panel">
+        <div class="tasklists-sidebar">
+          <div class="tasklists-sidebar-header">
+            <button class="btn primary" onclick="createNewTaskList()" style="flex:1;font-size:12px;padding:4px 0">+ New List</button>
+            <button class="btn" onclick="deleteSelectedTaskList()" title="Delete selected list" style="font-size:12px;padding:4px 8px;color:var(--red)">&times;</button>
+          </div>
+          <div class="tasklists-list" id="tasklistsSidebar"></div>
+        </div>
+        <div class="tasklists-detail" id="tasklistsDetail">
+          <div class="tasklists-empty">Select or create a task list</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1471,7 +1848,203 @@ function renderMessage(entry) {
 
   div.appendChild(header);
   div.appendChild(body);
+
+  // Worker action button (bottom-right corner)
+  const workerBtn = document.createElement('button');
+  workerBtn.className = 'msg-worker-btn';
+  workerBtn.title = 'Worker actions';
+  workerBtn.innerHTML = '&#9889;'; // ⚡
+  const menu = buildWorkerMenu(entry, div);
+  div.appendChild(menu);
+  workerBtn.onclick = (e) => {
+    e.stopPropagation();
+    // Close any other open menus
+    document.querySelectorAll('.msg-worker-menu.open').forEach(m => { if (m !== menu) m.classList.remove('open'); });
+    menu.classList.toggle('open');
+  };
+  div.appendChild(workerBtn);
+
   return div;
+}
+
+function buildWorkerMenu(entry, msgDiv) {
+  const menu = document.createElement('div');
+  menu.className = 'msg-worker-menu';
+
+  const items = [
+    { icon: '\u{1F9E9}', label: 'Extract claims', action: () => workerAction('claims', entry, msgDiv) },
+    { icon: '\u{1F4CA}', label: 'Parse to table', action: () => workerAction('table', entry, msgDiv) },
+    { icon: '\u2705', label: 'Make todo list', action: () => workerAction('todo', entry, msgDiv) },
+    { sep: true },
+    { icon: '\u{1F4CB}', label: 'Copy as markdown', action: () => workerAction('copy_md', entry, msgDiv) },
+  ];
+
+  for (const item of items) {
+    if (item.sep) {
+      const sep = document.createElement('div');
+      sep.className = 'msg-worker-menu-sep';
+      menu.appendChild(sep);
+      continue;
+    }
+    const btn = document.createElement('button');
+    btn.className = 'msg-worker-menu-item';
+    btn.innerHTML = `<span class="menu-icon">${item.icon}</span>${item.label}`;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      menu.classList.remove('open');
+      item.action();
+    };
+    menu.appendChild(btn);
+  }
+
+  return menu;
+}
+
+// Close worker menus when clicking outside
+document.addEventListener('click', () => {
+  document.querySelectorAll('.msg-worker-menu.open').forEach(m => m.classList.remove('open'));
+});
+
+async function workerAction(actionType, entry, msgDiv) {
+  const content = entry.content || '';
+  const workerUrl = document.getElementById('interceptorWorkerUrl')?.value?.replace(/\/$/, '') || 'http://localhost:5001';
+  const noThink = document.getElementById('interceptorWorkerNoThink')?.checked ?? true;
+
+  setStatus('running', `Worker: ${actionType}...`);
+
+  if (actionType === 'copy_md') {
+    try {
+      await navigator.clipboard.writeText(content);
+      setStatus('', 'Copied as markdown');
+    } catch (e) {
+      setStatus('', 'Copy failed');
+    }
+    return;
+  }
+
+  const prompts = {
+    claims: `Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.
+Верни ТОЛЬКО в формате:
+ENTITIES: [сущность1, сущность2, ...]
+AXIOMS:
+- утверждение 1
+- утверждение 2
+HYPOTHESES:
+- гипотеза 1
+
+Требования:
+- Используй pos('Имя') для позиционных утверждений.
+- AXIOMS = факты, данные как условие.
+- HYPOTHESES = выводы, предположения.
+- Каждое утверждение атомарное и короткое.
+- Не выводи прозу или JSON.
+- Отвечай на языке текста.
+
+Текст для анализа:
+${content}`,
+
+    table: `Ты — экстрактор данных. Распарси текст в структурированную таблицу.
+Верни markdown-таблицу с подходящими колонками.
+Если есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |
+Если список: | # | Элемент | Детали |
+Кратко. Только таблица, без комментариев.
+Отвечай на языке текста.
+
+Текст:
+${content}`,
+
+    todo: `Ты — экстрактор задач. Извлеки из текста список действий.
+Верни markdown-чеклист:
+- [ ] Задача 1
+- [ ] Задача 2
+- [x] Выполненная задача
+
+Требования:
+- Только конкретные, выполнимые задачи.
+- Каждый пункт — одна строка.
+- Отмечай [x] то, что уже выполнено.
+- Не добавляй то, чего нет в тексте.
+- Отвечай на языке текста.
+
+Текст:
+${content}`,
+  };
+
+  const prompt = prompts[actionType];
+  if (!prompt) return;
+
+  try {
+    const messages = [
+      { role: 'user', content: prompt },
+    ];
+    if (noThink) {
+      messages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+    }
+    const res = await fetch(workerUrl + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        ...(noThink ? { continue_assistant_turn: true } : {}),
+        cache_prompt: false,
+        temperature: 0.1,
+        max_tokens: 2048,
+        stream: false,
+      }),
+    });
+
+    const data = await res.json();
+    const result = data.choices?.[0]?.message?.content || data.results?.[0]?.text || '';
+
+    if (!result.trim()) {
+      setStatus('', `Worker returned empty result`);
+      return;
+    }
+
+    // If claims → also send to verify endpoint
+    if (actionType === 'claims') {
+      const sandboxUrl = document.getElementById('interceptorSandboxUrl')?.value?.replace(/\/$/, '') || 'http://127.0.0.1:8060';
+      try {
+        const verifyRes = await fetch(sandboxUrl + '/api/logic/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw_schema: result }),
+        });
+        const verifyData = await verifyRes.json();
+
+        // Update debug panel
+        if (typeof updateInterceptorDebug === 'function') {
+          updateInterceptorDebug({
+            sourceType: 'manual_extract',
+            rawSchema: result,
+            manifest: verifyData.manifest,
+            claims: verifyData.verification?.claims || [],
+          });
+        }
+      } catch (e) {
+        console.warn('Verify failed:', e);
+      }
+    }
+
+    // Show result as a new message in chat
+    const resultEntry = {
+      role: 'assistant',
+      name: `Worker (${actionType})`,
+      content: result,
+      time: new Date().toLocaleTimeString(),
+      isWorkerResult: true,
+    };
+    chatHistory.push(resultEntry);
+    const chatBox = document.getElementById('chatBox');
+    chatBox.appendChild(renderMessage(resultEntry));
+    chatBox.scrollTop = chatBox.scrollHeight;
+    saveToStorage();
+
+    setStatus('', `Worker: ${actionType} done`);
+  } catch (e) {
+    setStatus('', `Worker error: ${e.message}`);
+    console.error('Worker action error:', e);
+  }
 }
 
 function startEdit(msgDiv, entry) {
@@ -3550,6 +4123,1294 @@ async function ttsSpeak(text, btn, agentIdx) {
   }
 }
 
+// --- Send extras dropdown ---
+document.getElementById('btnSendExtras').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('sendExtrasMenu').classList.toggle('open');
+});
+document.addEventListener('click', () => {
+  document.getElementById('sendExtrasMenu')?.classList.remove('open');
+});
+
+// --- Main tab switching ---
+function switchMainTab(tab) {
+  document.querySelectorAll('.main-tab').forEach(t => t.classList.toggle('active', t.dataset.mainTab === tab));
+  document.getElementById('tabChat').classList.toggle('active', tab === 'chat');
+  document.getElementById('tabTasklists').classList.toggle('active', tab === 'tasklists');
+  if (tab === 'tasklists') renderTaskListsSidebar();
+}
+
+// --- Task Lists persistent store ---
+const LS_KEY_TASKS = 'mac_tasklists';
+let allTaskLists = []; // { id, name, createdAt, tasks[] }
+let activeListId = null;
+let taskRunnerAbort = null;
+
+function loadTaskLists() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_TASKS);
+    if (raw) allTaskLists = JSON.parse(raw);
+  } catch (e) { console.warn('loadTaskLists:', e); }
+  updateTasklistsBadge();
+}
+
+function saveTaskLists() {
+  try {
+    localStorage.setItem(LS_KEY_TASKS, JSON.stringify(allTaskLists));
+  } catch (e) { console.warn('saveTaskLists:', e); }
+  updateTasklistsBadge();
+}
+
+function updateTasklistsBadge() {
+  const badge = document.getElementById('tasklistsBadge');
+  if (!badge) return;
+  const count = allTaskLists.length;
+  badge.textContent = count;
+  badge.style.display = count > 0 ? 'inline-block' : 'none';
+}
+
+function getActiveList() {
+  return allTaskLists.find(l => l.id === activeListId) || null;
+}
+
+// Helper: get active list's tasks
+function getActiveTaskList() { const l = getActiveList(); return l ? l.tasks : []; }
+
+// Utility: fetch LLM with auto-continue on token limit
+// KoboldCpp "Generate More": same messages with last assistant msg = accumulated text,
+// continue_assistant_turn = true. KoboldCpp matches prefix from SmartCache and continues.
+async function fetchLLMWithContinue(url, messages, opts = {}) {
+  const { temperature = 0.3, max_tokens = 2048, noThink = false, signal, maxContinues = 5 } = opts;
+  let result = '';
+
+  // Separate non-assistant base from any trailing assistant prefill (noThink)
+  const baseMessages = [...messages];
+  const lastMsg = baseMessages[baseMessages.length - 1];
+  const hasPrefill = lastMsg && lastMsg.role === 'assistant';
+  const prefill = hasPrefill ? lastMsg.content : '';
+
+  for (let i = 0; i <= maxContinues; i++) {
+    let curMessages;
+    if (i === 0) {
+      curMessages = baseMessages; // as-is (with prefill if noThink)
+    } else if (hasPrefill) {
+      // Replace the prefill assistant msg with accumulated result
+      curMessages = [...baseMessages.slice(0, -1), { role: 'assistant', content: result }];
+    } else {
+      // No prefill — append assistant msg with accumulated result
+      curMessages = [...baseMessages, { role: 'assistant', content: result }];
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: curMessages,
+        continue_assistant_turn: i > 0 || noThink,
+        cache_prompt: false,
+        temperature,
+        max_tokens,
+        stream: false,
+      }),
+      ...(signal ? { signal } : {}),
+    });
+
+    const data = await res.json();
+    const chunk = data.choices?.[0]?.message?.content || data.results?.[0]?.text || '';
+    const finishReason = data.choices?.[0]?.finish_reason || data.results?.[0]?.finish_reason || 'stop';
+
+    console.log(`[fetchLLMWithContinue] iter=${i}, finish=${finishReason}, chunkLen=${chunk.length}, resultLen=${result.length}`);
+    if (i > 0) {
+      console.log(`[fetchLLMWithContinue] continue chunk preview:`, chunk.slice(0, 100));
+    }
+
+    result += chunk;
+    if (finishReason !== 'length') break;
+  }
+
+  return result;
+}
+
+function getAllAgents() {
+  const result = [];
+  for (const id of agentIds) {
+    const cfg = getAgentConfig(id);
+    if (cfg && cfg.url) result.push({ idx: id, nick: cfg.nick, url: cfg.url, enabled: cfg.enabled, nothink: cfg.nothink, system: cfg.system, context: cfg.context });
+  }
+  return result;
+}
+
+function createNewTaskList() {
+  document.getElementById('sendExtrasMenu')?.classList.remove('open');
+  const input = prompt('Task list name (or paste a task prompt — it will be added as the first task):', `Tasks ${new Date().toLocaleDateString()}`);
+  if (!input) return;
+  const trimmed = input.trim();
+  // If input is long (>40 chars), treat it as both name and first task
+  const isTaskPrompt = trimmed.length > 40;
+  const listName = isTaskPrompt ? trimmed.slice(0, 50) + (trimmed.length > 50 ? '...' : '') : trimmed;
+  const list = {
+    id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    name: listName,
+    createdAt: new Date().toISOString(),
+    tasks: [],
+  };
+  allTaskLists.unshift(list);
+  activeListId = list.id;
+  // Auto-add as first task if it looks like a prompt
+  if (isTaskPrompt) {
+    const enabledAgents = getAllAgents().filter(a => a.enabled);
+    list.tasks.push(createTask(trimmed, { agentIds: enabledAgents.map(a => a.idx) }));
+  }
+  saveTaskLists();
+  switchMainTab('tasklists');
+}
+
+function deleteSelectedTaskList() {
+  if (!activeListId) return;
+  const list = getActiveList();
+  if (!list) return;
+  if (!confirm(`Delete "${list.name}"?`)) return;
+  allTaskLists = allTaskLists.filter(l => l.id !== activeListId);
+  activeListId = allTaskLists.length > 0 ? allTaskLists[0].id : null;
+  saveTaskLists();
+  renderTaskListsSidebar();
+  renderTaskListDetail();
+}
+
+function selectTaskList(id) {
+  activeListId = id;
+  renderTaskListsSidebar();
+  renderTaskListDetail();
+}
+
+function getTaskOverallStatus(task) {
+  if (!task.agentIds || task.agentIds.length === 0) return 'pending';
+  const statuses = task.agentIds.map(id => task.runs?.[id]?.status || 'pending');
+  if (statuses.some(s => s === 'running')) return 'running';
+  if (statuses.every(s => s === 'passed')) return 'passed';
+  if (statuses.some(s => s === 'passed')) return 'partial';
+  if (statuses.every(s => s === 'failed')) return 'failed';
+  return 'pending';
+}
+
+function getListSummary(list) {
+  const total = list.tasks.length;
+  const passed = list.tasks.filter(t => getTaskOverallStatus(t) === 'passed').length;
+  return { total, passed };
+}
+
+// --- Task Lists sidebar ---
+function renderTaskListsSidebar() {
+  const container = document.getElementById('tasklistsSidebar');
+  if (!container) return;
+  container.innerHTML = '';
+  if (allTaskLists.length === 0) {
+    container.innerHTML = '<div style="padding:20px 12px;color:var(--text-dim);font-size:12px;text-align:center">No task lists yet</div>';
+    return;
+  }
+  for (const list of allTaskLists) {
+    const item = document.createElement('div');
+    item.className = 'tasklist-item' + (list.id === activeListId ? ' active' : '');
+    item.onclick = () => selectTaskList(list.id);
+
+    const name = document.createElement('div');
+    name.className = 'tasklist-item-name';
+    name.textContent = list.name;
+
+    const meta = document.createElement('div');
+    meta.className = 'tasklist-item-meta';
+    const summary = getListSummary(list);
+    const date = new Date(list.createdAt);
+    meta.innerHTML = `<span>${date.toLocaleDateString()}</span><span>${summary.passed}/${summary.total} \u2705</span>`;
+
+    // Action buttons (edit / delete)
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:none;gap:4px;margin-left:auto';
+    item.onmouseenter = () => actions.style.display = 'flex';
+    item.onmouseleave = () => actions.style.display = 'none';
+
+    const renameBtn = document.createElement('button');
+    renameBtn.textContent = '\u270E';
+    renameBtn.title = 'Rename';
+    renameBtn.style.cssText = 'background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;padding:0 3px';
+    renameBtn.onclick = (e) => {
+      e.stopPropagation();
+      const newName = prompt('Rename task list:', list.name);
+      if (newName && newName.trim()) {
+        list.name = newName.trim();
+        saveTaskLists();
+        renderTaskListsSidebar();
+        renderTaskListDetail();
+      }
+    };
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '\u00D7';
+    delBtn.title = 'Delete';
+    delBtn.style.cssText = 'background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 3px';
+    delBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${list.name}"?`)) return;
+      allTaskLists = allTaskLists.filter(l => l.id !== list.id);
+      if (activeListId === list.id) activeListId = allTaskLists.length > 0 ? allTaskLists[0].id : null;
+      saveTaskLists();
+      renderTaskListsSidebar();
+      renderTaskListDetail();
+    };
+
+    actions.appendChild(renameBtn);
+    actions.appendChild(delBtn);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:4px';
+    row.appendChild(name);
+    row.appendChild(actions);
+
+    item.appendChild(row);
+    item.appendChild(meta);
+    container.appendChild(item);
+  }
+}
+
+// --- Task List detail panel ---
+function renderTaskListDetail() {
+  const container = document.getElementById('tasklistsDetail');
+  if (!container) return;
+  const list = getActiveList();
+
+  if (!list) {
+    container.innerHTML = '<div class="tasklists-empty">Select or create a task list</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  const allAgents = getAllAgents();
+
+  // Header: editable name + run all
+  const header = document.createElement('div');
+  header.className = 'tasklists-detail-header';
+  const nameInput = document.createElement('input');
+  nameInput.value = list.name;
+  nameInput.onchange = () => { list.name = nameInput.value.trim() || list.name; saveTaskLists(); renderTaskListsSidebar(); };
+  const runAllBtn = document.createElement('button');
+  runAllBtn.className = 'btn primary';
+  runAllBtn.style.cssText = 'font-size:11px;padding:3px 12px;white-space:nowrap';
+  runAllBtn.textContent = '\u25B6 Run all';
+  runAllBtn.onclick = () => runAllListTasks(list);
+  header.appendChild(nameInput);
+  header.appendChild(runAllBtn);
+  container.appendChild(header);
+
+  // Body: tasks
+  const body = document.createElement('div');
+  body.className = 'tasklists-detail-body';
+
+  if (list.tasks.length === 0) {
+    body.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px 0">Add tasks below</div>';
+  } else {
+    // Render tree: only root tasks, children indented under parents
+    const roots = getRootTasks(list);
+    function renderTreeLevel(tasks, depth) {
+      for (const task of tasks) {
+        body.appendChild(renderTaskItem(task, list, allAgents, depth));
+        const children = getTaskChildren(list, task);
+        if (children.length > 0) {
+          renderTreeLevel(children, depth + 1);
+        }
+      }
+    }
+    renderTreeLevel(roots, 0);
+  }
+  container.appendChild(body);
+
+  // Footer: add task input
+  const footer = document.createElement('div');
+  footer.className = 'tasklists-detail-footer';
+  const input = document.createElement('textarea');
+  input.placeholder = 'Enter task prompt (Enter to add)';
+  input.rows = 1;
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      addTaskToList(list, text);
+      input.value = '';
+    }
+  };
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn primary';
+  addBtn.style.cssText = 'font-size:12px;padding:4px 12px';
+  addBtn.textContent = 'Add';
+  addBtn.onclick = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    addTaskToList(list, text);
+    input.value = '';
+  };
+  footer.appendChild(input);
+  footer.appendChild(addBtn);
+  container.appendChild(footer);
+}
+
+// Verdict presets
+const VERDICT_PRESETS = {
+  'smart': ['PASS', 'CHECK', 'FAIL'],  // CHECK triggers smart verdict flow
+  'pass/fail': ['PASS', 'FAIL'],
+  'yes/no': ['YES', 'NO'],
+  'approve/revise/reject': ['APPROVE', 'REVISE', 'REJECT'],
+  'done/partial/blocked': ['DONE', 'PARTIAL', 'BLOCKED'],
+  'custom': [],
+};
+
+function makeTaskId() {
+  return Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function createTask(prompt, opts = {}) {
+  const enabledAgents = getAllAgents().filter(a => a.enabled);
+  return {
+    id: makeTaskId(),
+    prompt,
+    shortName: opts.shortName || '',
+    agentIds: opts.agentIds || enabledAgents.map(a => a.idx),
+    runs: {},
+    verdictOptions: opts.verdictOptions || ['PASS', 'FAIL'],
+    branches: opts.branches || {},
+    parentId: opts.parentId || null,
+    children: [],  // child task ids
+    type: opts.type || 'task',  // 'task' | 'orchestrator' | 'checklist'
+  };
+}
+
+function addTaskToList(list, prompt, opts = {}) {
+  const task = createTask(prompt, opts);
+  // If parentId specified, add as child
+  if (opts.parentId) {
+    const parent = findTaskInList(list, opts.parentId);
+    if (parent) {
+      parent.children.push(task.id);
+    }
+  }
+  list.tasks.push(task);
+  saveTaskLists();
+  renderTaskListDetail();
+  renderTaskListsSidebar();
+  return task;
+}
+
+function findTaskInList(list, taskId) {
+  return list.tasks.find(t => t.id === taskId);
+}
+
+function getTaskChildren(list, task) {
+  return (task.children || []).map(id => findTaskInList(list, id)).filter(Boolean);
+}
+
+function getRootTasks(list) {
+  return list.tasks.filter(t => !t.parentId);
+}
+
+// Propagate: if all children passed → parent passed
+function propagateStatus(list, task) {
+  if (!task.children || task.children.length === 0) return;
+  const children = getTaskChildren(list, task);
+  const allPassed = children.every(c => getTaskOverallStatus(c) === 'passed');
+  const anyRunning = children.some(c => getTaskOverallStatus(c) === 'running');
+  const anyFailed = children.some(c => getTaskOverallStatus(c) === 'failed');
+
+  if (allPassed && task.agentIds.length > 0) {
+    // Auto-mark parent as passed
+    for (const agentIdx of task.agentIds) {
+      if (!task.runs) task.runs = {};
+      if (!task.runs[agentIdx] || task.runs[agentIdx].status !== 'passed') {
+        task.runs[agentIdx] = {
+          status: 'passed',
+          chat: [{ role: 'system', content: `All ${children.length} subtasks passed.` }],
+          agentResponse: `All ${children.length} subtasks completed successfully.`,
+          verifierResponse: 'PASS (auto-propagated)',
+          verifierVerdict: 'PASS',
+          result: 'All subtasks passed.',
+        };
+      }
+    }
+    saveTaskLists();
+    renderTaskListDetail();
+    renderTaskListsSidebar();
+    // Propagate up
+    if (task.parentId) {
+      const parent = findTaskInList(list, task.parentId);
+      if (parent) propagateStatus(list, parent);
+    }
+  }
+}
+
+function removeTaskFromList(list, taskId) {
+  // Also remove children recursively
+  const task = findTaskInList(list, taskId);
+  if (task?.children) {
+    for (const childId of [...task.children]) {
+      removeTaskFromList(list, childId);
+    }
+  }
+  // Remove from parent's children array
+  if (task?.parentId) {
+    const parent = findTaskInList(list, task.parentId);
+    if (parent) parent.children = parent.children.filter(id => id !== taskId);
+  }
+  list.tasks = list.tasks.filter(t => t.id !== taskId);
+  saveTaskLists();
+  renderTaskListDetail();
+  renderTaskListsSidebar();
+}
+
+// --- Orchestrator: decompose a root task into subtasks via worker ---
+async function orchestrateTask(list, task) {
+  const workerUrl = document.getElementById('interceptorWorkerUrl')?.value?.replace(/\/$/, '') || 'http://localhost:5001';
+  const noThink = document.getElementById('interceptorWorkerNoThink')?.checked ?? true;
+
+  task.type = 'orchestrator';
+  setStatus('running', 'Orchestrator: decomposing task...');
+
+  const messages = [
+    { role: 'system', content: `Ты — планировщик задач. Разбей задачу на нумерованный список конкретных подзадач.
+Верни ТОЛЬКО нумерованный список, по одной подзадаче на строку:
+1. Первая подзадача
+2. Вторая подзадача
+...
+Каждая подзадача должна быть понятной и самостоятельной.
+Не добавляй комментарии до или после списка.
+Отвечай на том же языке, на котором написана задача.` },
+    { role: 'user', content: task.prompt },
+  ];
+  if (noThink) {
+    messages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+  }
+
+  try {
+    const text = await fetchLLMWithContinue(
+      workerUrl + '/v1/chat/completions', messages,
+      { temperature: 0.4, max_tokens: 2048, noThink }
+    );
+    let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
+    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+    cleaned = cleaned.replace(/<\/?think>/gi, '').trim();
+
+    // Parse numbered list
+    const lines = cleaned.split('\n')
+      .map(l => l.replace(/^\s*[\-\*]\s*/, '').replace(/^\s*\d+[\.\)]\s*/, '').trim())
+      .filter(l => l.length > 3 && !/^[<#]/.test(l));
+
+    if (lines.length === 0) {
+      setStatus('', 'Orchestrator: no subtasks parsed');
+      return;
+    }
+
+    // Create child tasks
+    const enabledAgents = getAllAgents().filter(a => a.enabled);
+    for (const line of lines) {
+      const child = createTask(line, {
+        parentId: task.id,
+        verdictOptions: ['PASS', 'CHECK', 'FAIL'],
+        agentIds: enabledAgents.map(a => a.idx),
+      });
+      task.children.push(child.id);
+      list.tasks.push(child);
+    }
+
+    // Store orchestrator response
+    if (!task.runs) task.runs = {};
+    task.runs['orchestrator'] = {
+      status: 'passed',
+      chat: [
+        { role: 'user', content: task.prompt },
+        { role: 'assistant', name: 'Orchestrator', content: cleaned },
+      ],
+      agentResponse: cleaned,
+      verifierResponse: `Created ${lines.length} subtasks`,
+      verifierVerdict: 'PASS',
+      result: cleaned,
+    };
+
+    saveTaskLists();
+    renderTaskListDetail();
+    renderTaskListsSidebar();
+    setStatus('', `Orchestrator: created ${lines.length} subtasks`);
+
+  } catch (e) {
+    setStatus('', `Orchestrator error: ${e.message}`);
+  }
+}
+
+// --- Checklist: survey-style items with enum verdict + comment ---
+async function createChecklistForTask(list, task) {
+  const workerUrl = document.getElementById('interceptorWorkerUrl')?.value?.replace(/\/$/, '') || 'http://localhost:5001';
+  const noThink = document.getElementById('interceptorWorkerNoThink')?.checked ?? true;
+
+  task.type = 'checklist';
+  setStatus('running', 'Creating checklist...');
+
+  const messages = [
+    { role: 'system', content: `Ты — создатель чеклистов. Для данной задачи создай список критериев проверки.
+
+Верни ТОЛЬКО нумерованный список. Каждый пункт — короткий проверочный вопрос:
+1. Указан ли X?
+2. Соответствует ли Y требованию?
+...
+
+Каждый пункт проверяет одну вещь. Максимум 10 пунктов.
+Не добавляй комментарии.
+Отвечай на том же языке, на котором написана задача.` },
+    { role: 'user', content: task.prompt },
+  ];
+  if (noThink) {
+    messages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+  }
+
+  try {
+    const text = await fetchLLMWithContinue(
+      workerUrl + '/v1/chat/completions', messages,
+      { temperature: 0.3, max_tokens: 1024, noThink }
+    );
+    // Strip think blocks (closed and unclosed)
+    let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
+    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim(); // unclosed think
+    cleaned = cleaned.replace(/<\/?think>/gi, '').trim(); // stray tags
+
+    const lines = cleaned.split('\n')
+      .map(l => l.replace(/^\s*[\-\*]\s*/, '').replace(/^\s*\d+[\.\)]\s*/, '').trim())
+      .filter(l => l.length > 5 && !/^[<\*#]/.test(l) && !/^(Thinking|Correction|Actually|Wait|Looking|Hmm)/i.test(l));
+
+    if (lines.length === 0) {
+      setStatus('', 'Checklist: no items parsed');
+      return;
+    }
+
+    for (const line of lines) {
+      const item = createTask(line, {
+        parentId: task.id,
+        type: 'checklist_item',
+        verdictOptions: ['YES', 'PARTIAL', 'NO'],
+        agentIds: [],  // no agent execution — verdict-only
+      });
+      item.checklistComment = '';  // comment field
+      task.children.push(item.id);
+      list.tasks.push(item);
+    }
+
+    saveTaskLists();
+    renderTaskListDetail();
+    renderTaskListsSidebar();
+    setStatus('', `Checklist: ${lines.length} items created`);
+
+  } catch (e) {
+    setStatus('', `Checklist error: ${e.message}`);
+  }
+}
+
+// --- Auto-pipeline: run all children sequentially, verify, propagate ---
+async function runPipeline(list, parentTask) {
+  const children = getTaskChildren(list, parentTask);
+  if (children.length === 0) {
+    // No children — just run the task itself
+    await runListTask(list, parentTask);
+    return;
+  }
+
+  taskRunnerAbort = new AbortController();
+  setStatus('running', `Pipeline: 0/${children.length}`);
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (getTaskOverallStatus(child) === 'passed') continue; // skip already passed
+    setStatus('running', `Pipeline: ${i + 1}/${children.length} — ${child.shortName || child.prompt.slice(0, 30)}`);
+
+    // Step 1: Agent executes
+    await runListTask(list, child);
+
+    // Step 2: If agent self-marks as CHECK → smart verdict flow
+    for (const agentIdx of child.agentIds) {
+      const run = child.runs?.[agentIdx];
+      if (run && run.verifierVerdict === 'CHECK') {
+        // Ask agent if custom verdicts are needed
+        await smartVerdictFlow(list, child, agentIdx, parentTask);
+        // Then re-verify
+        await reverifyTask(list, child, agentIdx);
+      }
+    }
+
+    // Step 3: Propagate up
+    propagateStatus(list, parentTask);
+
+    if (taskRunnerAbort?.signal?.aborted) break;
+  }
+
+  taskRunnerAbort = null;
+  propagateStatus(list, parentTask);
+  setStatus('', `Pipeline complete: ${children.filter(c => getTaskOverallStatus(c) === 'passed').length}/${children.length} passed`);
+}
+
+// Re-verify a CHECK task with the verifier worker
+async function reverifyTask(list, task, agentIdx) {
+  const run = task.runs?.[agentIdx];
+  if (!run) return;
+
+  const verifierUrl = document.getElementById('interceptorWorkerUrl')?.value?.replace(/\/$/, '') || 'http://localhost:5001';
+  const noThink = document.getElementById('interceptorWorkerNoThink')?.checked ?? true;
+  const opts = task.verdictOptions || ['PASS', 'CHECK', 'FAIL'];
+
+  const messages = [
+    { role: 'system', content: `Ты — строгий ревьюер. Агент пометил задачу как CHECK (требуется проверка). Проверь качество тщательно.
+Ответь ровно одним из: ${opts.filter(o => o !== 'CHECK').join(' | ')}
+Вердикт — на ПЕРВОЙ строке (одно слово), затем краткое пояснение.
+Отвечай на том же языке, на котором написана задача.` },
+    { role: 'user', content: `Задача: ${task.prompt}\n\nОтвет агента:\n${run.agentResponse}\n\nВердикт:` },
+  ];
+  if (noThink) {
+    messages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+  }
+
+  try {
+    const res = await fetch(verifierUrl + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        ...(noThink ? { continue_assistant_turn: true } : {}),
+        cache_prompt: false,
+        temperature: 0.1,
+        max_tokens: 512,
+        stream: false,
+      }),
+      signal: taskRunnerAbort?.signal,
+    });
+
+    const data = await res.json();
+    const result = data.choices?.[0]?.message?.content || data.results?.[0]?.text || '';
+    run.chat.push({ role: 'assistant', name: 'Reviewer', content: result });
+
+    const stripped = result.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+    const firstWord = stripped.split(/[\s\n]/)[0].toUpperCase().replace(/[^A-Z_]/g, '');
+    const firstLine = stripped.split('\n')[0].toUpperCase();
+    const finalOpts = opts.filter(o => o !== 'CHECK'); // reviewer can't say CHECK again
+    const matched = finalOpts.find(o => firstWord === o) || finalOpts.find(o => firstLine.includes(o)) || finalOpts[finalOpts.length - 1];
+
+    run.verifierResponse = result;
+    run.verifierVerdict = matched;
+    const vIdx = opts.indexOf(matched);
+    run.status = vIdx === 0 ? 'passed' : vIdx === opts.length - 1 ? 'failed' : 'partial';
+
+    saveTaskLists();
+    renderTaskListDetail();
+  } catch (e) {
+    console.warn('Reverify error:', e);
+  }
+}
+
+// --- Smart verdict flow ---
+// After CHECK: ask agent if additional verdict branches are needed
+async function smartVerdictFlow(list, task, agentIdx, parentTask) {
+  const run = task.runs?.[agentIdx];
+  if (!run?.agentResponse) return;
+
+  const workerUrl = document.getElementById('interceptorWorkerUrl')?.value?.replace(/\/$/, '') || 'http://localhost:5001';
+  const noThink = document.getElementById('interceptorWorkerNoThink')?.checked ?? true;
+
+  const messages = [
+    { role: 'system', content: `Ты — аналитик задач. По задаче и ответу агента определи, нужны ли дополнительные ветки действий.
+
+Если ответ полный и ничего дополнять не надо, ответь одним словом:
+NONE
+
+Если нужны дополнительные действия, верни список ключевых слов (одно слово КАПСОМ) с кратким описанием:
+KEYWORD: описание ветки
+KEYWORD2: описание
+
+Правила:
+- Каждое ключевое слово — ОДНО слово латиницей капсом (например REFINE, EXPAND, TRANSLATE, ILLUSTRATE)
+- Максимум 3 дополнительных ключа
+- Предлагай только реально полезные ветки
+- НЕ используй PASS, FAIL или CHECK — они уже существуют
+- Описания пиши на том же языке, что и задача` },
+    { role: 'user', content: `Задача: ${task.prompt}\n\nОтвет агента:\n${run.agentResponse}\n\nНужны ли дополнительные ветки действий?` },
+  ];
+  if (noThink) {
+    messages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+  }
+
+  try {
+    const res = await fetch(workerUrl + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        ...(noThink ? { continue_assistant_turn: true } : {}),
+        cache_prompt: false,
+        temperature: 0.3,
+        max_tokens: 512,
+        stream: false,
+      }),
+      signal: taskRunnerAbort?.signal,
+    });
+
+    const data = await res.json();
+    const result = data.choices?.[0]?.message?.content || data.results?.[0]?.text || '';
+    const cleaned = result.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+
+    run.chat.push({ role: 'assistant', name: 'Analyst', content: cleaned });
+
+    if (cleaned.toUpperCase().startsWith('NONE')) {
+      // No new branches needed
+      return;
+    }
+
+    // Parse KEYWORD: description lines
+    const newVerdicts = [];
+    for (const line of cleaned.split('\n')) {
+      const match = line.match(/^([A-Z_]{2,20})\s*:\s*(.+)/);
+      if (match) {
+        const keyword = match[1].toUpperCase();
+        const description = match[2].trim();
+        if (!['PASS', 'FAIL', 'CHECK', 'NONE'].includes(keyword)) {
+          newVerdicts.push({ keyword, description });
+        }
+      }
+    }
+
+    if (newVerdicts.length === 0) return;
+
+    // Add new verdicts to task's enum
+    const currentOpts = task.verdictOptions || ['PASS', 'CHECK', 'FAIL'];
+    for (const nv of newVerdicts) {
+      if (!currentOpts.includes(nv.keyword)) {
+        // Insert before FAIL (last position)
+        currentOpts.splice(currentOpts.length - 1, 0, nv.keyword);
+      }
+    }
+    task.verdictOptions = currentOpts;
+
+    // Create subtask branches for each new verdict
+    const enabledAgents = getAllAgents().filter(a => a.enabled);
+    for (const nv of newVerdicts) {
+      const branchPrompt = `[${nv.keyword}] ${nv.description}\n\nOriginal task: ${task.prompt}\nAgent response to refine:\n${run.agentResponse}`;
+      const branchTask = createTask(branchPrompt, {
+        parentId: task.id,
+        shortName: nv.keyword + ': ' + nv.description.slice(0, 40),
+        agentIds: enabledAgents.map(a => a.idx),
+        verdictOptions: ['PASS', 'FAIL'],
+      });
+      task.children.push(branchTask.id);
+      if (!task.branches) task.branches = {};
+      task.branches[nv.keyword] = branchTask.id;
+      list.tasks.push(branchTask);
+    }
+
+    saveTaskLists();
+    renderTaskListDetail();
+    renderTaskListsSidebar();
+    setStatus('', `Smart verdict: added ${newVerdicts.map(v => v.keyword).join(', ')}`);
+
+  } catch (e) {
+    console.warn('Smart verdict error:', e);
+  }
+}
+
+function toggleTaskAgent(list, taskId, agentIdx) {
+  const task = list.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  const i = task.agentIds.indexOf(agentIdx);
+  if (i >= 0) task.agentIds.splice(i, 1);
+  else task.agentIds.push(agentIdx);
+  saveTaskLists();
+  renderTaskListDetail();
+}
+
+function renderTaskItem(task, list, allAgents, depth = 0) {
+  const item = document.createElement('div');
+  item.className = 'task-item';
+  item.style.cssText = `flex-direction:column;gap:6px;margin-left:${depth * 24}px;${depth > 0 ? 'border-left:2px solid var(--border);padding-left:10px;' : ''}`;
+
+  const hasChildren = task.children && task.children.length > 0;
+  const childCount = hasChildren ? task.children.length : 0;
+  const childPassed = hasChildren ? getTaskChildren(list, task).filter(c => getTaskOverallStatus(c) === 'passed').length : 0;
+
+  const topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;gap:10px;align-items:flex-start;width:100%';
+
+  const overall = hasChildren
+    ? (childPassed === childCount ? 'passed' : childPassed > 0 ? 'partial' : getTaskOverallStatus(task))
+    : getTaskOverallStatus(task);
+  const checkIcon = overall === 'passed' ? '\u2705' : overall === 'failed' ? '\u274C' : overall === 'running' ? '\u23F3' : overall === 'partial' ? '\u{1F7E1}' : '\u2B1C';
+  const check = document.createElement('div');
+  check.className = 'task-check ' + (overall === 'passed' ? 'passed' : overall === 'failed' ? 'failed' : overall === 'partial' ? 'partial' : overall === 'running' ? 'running' : '');
+  check.textContent = checkIcon;
+
+  const content = document.createElement('div');
+  content.style.cssText = 'flex:1';
+
+  const promptEl = document.createElement('div');
+  promptEl.className = 'task-prompt';
+  const typeTag = task.type === 'orchestrator' ? '\uD83D\uDCCB '
+    : task.type === 'checklist' ? '\u2611 '
+    : task.type === 'checklist_item' ? ''
+    : '';
+  // Always show full prompt as main text
+  promptEl.textContent = typeTag + task.prompt;
+  if (task.shortName) {
+    promptEl.title = task.shortName; // short summary in tooltip
+  }
+  promptEl.ondblclick = (e) => {
+    e.stopPropagation();
+    const newPrompt = prompt('Edit task prompt:', task.prompt);
+    if (newPrompt !== null && newPrompt.trim()) {
+      task.prompt = newPrompt.trim();
+      task.shortName = '';
+      saveTaskLists();
+      renderTaskListDetail();
+    }
+  };
+  if (hasChildren) {
+    const counter = document.createElement('span');
+    counter.style.cssText = 'font-size:10px;color:var(--text-dim);margin-left:6px';
+    counter.textContent = `(${childPassed}/${childCount})`;
+    promptEl.appendChild(counter);
+  }
+  content.appendChild(promptEl);
+
+  const actions = document.createElement('div');
+  actions.className = 'task-actions';
+
+  // Orchestrate / Checklist buttons
+  if (!hasChildren && overall !== 'running') {
+    const orchBtn = document.createElement('button');
+    orchBtn.textContent = '\uD83D\uDCCB';
+    orchBtn.title = 'Decompose into subtasks';
+    orchBtn.onclick = () => orchestrateTask(list, task);
+    actions.appendChild(orchBtn);
+
+    const checklistBtn = document.createElement('button');
+    checklistBtn.textContent = '\u2611';
+    checklistBtn.title = 'Create checklist';
+    checklistBtn.onclick = () => createChecklistForTask(list, task);
+    actions.appendChild(checklistBtn);
+  }
+
+  // Pipeline button — run all children
+  if (hasChildren && overall !== 'running') {
+    const pipeBtn = document.createElement('button');
+    pipeBtn.textContent = '\u23E9';
+    pipeBtn.title = 'Run pipeline (all subtasks)';
+    pipeBtn.onclick = () => runPipeline(list, task);
+    actions.appendChild(pipeBtn);
+  }
+
+  if (overall !== 'running' && !hasChildren && task.type !== 'checklist_item') {
+    const runBtn = document.createElement('button');
+    runBtn.textContent = '\u25B6';
+    runBtn.title = 'Run';
+    runBtn.onclick = () => runListTask(list, task);
+    actions.appendChild(runBtn);
+  }
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '\u00D7';
+  delBtn.title = hasChildren ? 'Remove with all subtasks' : 'Remove';
+  delBtn.onclick = () => {
+    if (hasChildren && !confirm(`Delete "${task.shortName || task.prompt.slice(0, 40)}" and ${childCount} subtask(s)?`)) return;
+    removeTaskFromList(list, task.id);
+  };
+  actions.appendChild(delBtn);
+
+  topRow.appendChild(check);
+  topRow.appendChild(content);
+  topRow.appendChild(actions);
+  item.appendChild(topRow);
+
+  // --- Checklist item: special compact UI ---
+  if (task.type === 'checklist_item') {
+    const clRow = document.createElement('div');
+    clRow.style.cssText = 'display:flex;gap:6px;align-items:center;margin-left:32px;flex-wrap:wrap';
+
+    const taskVerdicts = task.verdictOptions || ['YES', 'PARTIAL', 'NO'];
+    const currentVerdict = task.checklistVerdict || '';
+
+    for (const v of taskVerdicts) {
+      const btn = document.createElement('button');
+      const isActive = currentVerdict === v;
+      const vIdx = taskVerdicts.indexOf(v);
+      const color = vIdx === 0 ? 'var(--green)' : vIdx === taskVerdicts.length - 1 ? 'var(--red)' : 'var(--orange)';
+      btn.textContent = v;
+      btn.style.cssText = `font-size:10px;padding:2px 8px;border-radius:6px;cursor:pointer;font-family:inherit;border:1px solid ${isActive ? color : 'var(--border)'};background:${isActive ? color + '33' : 'transparent'};color:${isActive ? color : 'var(--text-dim)'};font-weight:${isActive ? '600' : '400'}`;
+      btn.onclick = () => {
+        task.checklistVerdict = v;
+        // Map to run status for propagation
+        if (!task.runs) task.runs = {};
+        task.runs['checklist'] = {
+          status: vIdx === 0 ? 'passed' : vIdx === taskVerdicts.length - 1 ? 'failed' : 'partial',
+          chat: [],
+          agentResponse: '',
+          verifierResponse: task.checklistComment || '',
+          verifierVerdict: v,
+          result: v + (task.checklistComment ? ': ' + task.checklistComment : ''),
+        };
+        task.agentIds = ['checklist']; // so getTaskOverallStatus works
+        saveTaskLists();
+        // Propagate to parent
+        if (task.parentId) {
+          const parent = findTaskInList(list, task.parentId);
+          if (parent) propagateStatus(list, parent);
+        }
+        renderTaskListDetail();
+        renderTaskListsSidebar();
+      };
+      clRow.appendChild(btn);
+    }
+
+    // Comment input
+    const commentInput = document.createElement('input');
+    commentInput.type = 'text';
+    commentInput.placeholder = 'comment...';
+    commentInput.value = task.checklistComment || '';
+    commentInput.style.cssText = 'flex:1;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 8px;font-family:inherit;min-width:100px';
+    commentInput.onchange = () => {
+      task.checklistComment = commentInput.value;
+      // Update run if verdict exists
+      if (task.checklistVerdict && task.runs?.['checklist']) {
+        task.runs['checklist'].verifierResponse = commentInput.value;
+        task.runs['checklist'].result = task.checklistVerdict + (commentInput.value ? ': ' + commentInput.value : '');
+      }
+      saveTaskLists();
+    };
+    clRow.appendChild(commentInput);
+
+    item.appendChild(clRow);
+    return item;
+  }
+
+  // Verdict options row
+  const verdictRow = document.createElement('div');
+  verdictRow.style.cssText = 'display:flex;gap:6px;align-items:center;margin-left:32px;flex-wrap:wrap';
+  const verdictLabel = document.createElement('span');
+  verdictLabel.style.cssText = 'font-size:10px;color:var(--text-dim)';
+  verdictLabel.textContent = 'Verdicts:';
+  verdictRow.appendChild(verdictLabel);
+
+  const taskVerdicts = task.verdictOptions || ['PASS', 'FAIL'];
+  // Preset selector
+  const presetSel = document.createElement('select');
+  presetSel.style.cssText = 'font-size:10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px';
+  const currentPreset = Object.entries(VERDICT_PRESETS).find(([, v]) => JSON.stringify(v) === JSON.stringify(taskVerdicts));
+  for (const [name, vals] of Object.entries(VERDICT_PRESETS)) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (currentPreset && currentPreset[0] === name) opt.selected = true;
+    else if (!currentPreset && name === 'custom') opt.selected = true;
+    presetSel.appendChild(opt);
+  }
+  presetSel.onchange = () => {
+    const preset = VERDICT_PRESETS[presetSel.value];
+    if (presetSel.value === 'custom') {
+      const custom = prompt('Verdict options (comma-separated):', taskVerdicts.join(', '));
+      if (custom) task.verdictOptions = custom.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    } else {
+      task.verdictOptions = [...preset];
+    }
+    task.branches = {}; // reset branches on change
+    saveTaskLists();
+    renderTaskListDetail();
+  };
+  verdictRow.appendChild(presetSel);
+
+  // Show verdict chips
+  for (const v of taskVerdicts) {
+    const vChip = document.createElement('span');
+    vChip.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border);color:var(--text-dim)';
+    const branchTarget = task.branches?.[v];
+    const targetTask = branchTarget ? list.tasks.find(t => t.id === branchTarget) : null;
+    if (targetTask) {
+      vChip.style.color = 'var(--accent)';
+      vChip.style.borderColor = 'var(--accent)';
+      vChip.textContent = `${v} \u2192 ${targetTask.shortName || targetTask.prompt.slice(0, 20)}`;
+      vChip.title = `On ${v}: go to "${targetTask.prompt}"`;
+    } else {
+      vChip.textContent = v;
+    }
+    vChip.style.cursor = 'pointer';
+    vChip.onclick = () => {
+      // Pick target task from list
+      const otherTasks = list.tasks.filter(t => t.id !== task.id);
+      if (otherTasks.length === 0) { alert('No other tasks to branch to'); return; }
+      const choices = otherTasks.map((t, i) => `${i + 1}. ${t.shortName || t.prompt.slice(0, 40)}`);
+      const pick = prompt(`On verdict "${v}", go to which task?\n0 = none (end)\n${choices.join('\n')}`, '0');
+      if (pick === null) return;
+      const idx = parseInt(pick) - 1;
+      if (!task.branches) task.branches = {};
+      if (idx < 0 || idx >= otherTasks.length) {
+        delete task.branches[v];
+      } else {
+        task.branches[v] = otherTasks[idx].id;
+      }
+      saveTaskLists();
+      renderTaskListDetail();
+    };
+    verdictRow.appendChild(vChip);
+  }
+  item.appendChild(verdictRow);
+
+  // Agent chips
+  const agentRow = document.createElement('div');
+  agentRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-left:32px';
+  for (const agent of allAgents) {
+    const isSelected = task.agentIds.includes(agent.idx);
+    const run = task.runs?.[agent.idx];
+    const runStatus = run?.status || 'none';
+
+    const chip = document.createElement('label');
+    chip.style.cssText = `display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:10px;cursor:pointer;border:1px solid ${isSelected ? agentColor(agent.idx).hex : 'var(--border)'};background:${isSelected ? agentColor(agent.idx).hex + '22' : 'transparent'};color:${isSelected ? agentColor(agent.idx).hex : 'var(--text-dim)'}`;
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = isSelected;
+    cb.style.display = 'none';
+    cb.onchange = () => toggleTaskAgent(list, task.id, agent.idx);
+
+    const statusIcon = runStatus === 'passed' ? '\u2705 ' : runStatus === 'failed' ? '\u274C ' : runStatus === 'running' ? '\u23F3 ' : '';
+    chip.appendChild(cb);
+    chip.appendChild(document.createTextNode(statusIcon + agent.nick));
+
+    if (run?.chat?.length > 0) {
+      const chatBtn = document.createElement('span');
+      chatBtn.textContent = '\uD83D\uDCAC';
+      chatBtn.style.cssText = 'cursor:pointer;margin-left:2px';
+      chatBtn.title = 'Open chat';
+      chatBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openTaskChat(task, agent.idx); };
+      chip.appendChild(chatBtn);
+    }
+    agentRow.appendChild(chip);
+  }
+  item.appendChild(agentRow);
+
+  // Collapsed results — agent response + verifier as separate blocks
+  for (const agentIdx of task.agentIds) {
+    const run = task.runs?.[agentIdx];
+    if (!run?.agentResponse && !run?.result) continue;
+    const agent = allAgents.find(a => a.idx === agentIdx);
+    const details = document.createElement('details');
+    details.style.cssText = 'margin-left:32px;margin-top:4px';
+    const summary = document.createElement('summary');
+    summary.style.cssText = 'font-size:11px;color:var(--text-dim);cursor:pointer';
+    summary.textContent = `${run.status === 'passed' ? '\u2705' : run.status === 'failed' ? '\u274C' : '\u2B1C'} ${agent?.nick || 'Agent'}`;
+    details.appendChild(summary);
+
+    // Agent response block
+    if (run.agentResponse) {
+      const respLabel = document.createElement('div');
+      respLabel.style.cssText = 'font-size:10px;color:var(--accent);margin-top:6px;font-weight:600';
+      respLabel.textContent = 'Agent Response';
+      const respPre = document.createElement('pre');
+      respPre.style.cssText = 'font-size:11px;color:var(--text);background:var(--bg);padding:6px 10px;border-radius:4px;margin-top:2px;white-space:pre-wrap;max-height:200px;overflow-y:auto';
+      respPre.textContent = run.agentResponse;
+      details.appendChild(respLabel);
+      details.appendChild(respPre);
+    }
+
+    // Verifier block
+    if (run.verifierResponse) {
+      const verLabel = document.createElement('div');
+      const vOpts = task.verdictOptions || ['PASS', 'FAIL'];
+      const vIdx = vOpts.indexOf(run.verifierVerdict);
+      const vColor = vIdx === 0 ? 'var(--green)' : vIdx === vOpts.length - 1 ? 'var(--red)' : 'var(--orange)';
+      verLabel.style.cssText = `font-size:10px;color:${vColor};margin-top:8px;font-weight:600`;
+      verLabel.textContent = `Verifier: ${run.verifierVerdict || '?'}`;
+      const verPre = document.createElement('pre');
+      verPre.style.cssText = 'font-size:11px;color:var(--text-dim);background:var(--bg);padding:6px 10px;border-radius:4px;margin-top:2px;white-space:pre-wrap;max-height:150px;overflow-y:auto';
+      verPre.textContent = run.verifierResponse.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+      details.appendChild(verLabel);
+      details.appendChild(verPre);
+    } else if (run.result && !run.agentResponse) {
+      // Legacy fallback for old data without separate fields
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'font-size:11px;color:var(--text-dim);background:var(--bg);padding:6px 10px;border-radius:4px;margin-top:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto';
+      pre.textContent = run.result;
+      details.appendChild(pre);
+    }
+
+    item.appendChild(details);
+  }
+
+  return item;
+}
+
+// --- Task execution ---
+async function runTaskForAgent(list, task, agentIdx) {
+  const agent = getAllAgents().find(a => a.idx === agentIdx);
+  if (!agent) return;
+
+  const verifierUrl = document.getElementById('interceptorWorkerUrl')?.value?.replace(/\/$/, '') || 'http://localhost:5001';
+  const verifierNoThink = document.getElementById('interceptorWorkerNoThink')?.checked ?? true;
+
+  if (!task.runs) task.runs = {};
+  const run = { status: 'running', chat: [], agentResponse: '', verifierResponse: '', verifierVerdict: '', result: '' };
+  task.runs[agentIdx] = run;
+  renderTaskListDetail();
+
+  try {
+    const execMessages = [];
+    if (agent.system || agent.context) {
+      execMessages.push({ role: 'system', content: [agent.system, agent.context].filter(Boolean).join('\n\n') });
+    }
+    execMessages.push({ role: 'user', content: task.prompt });
+    if (agent.nothink) {
+      execMessages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+    }
+
+    // Agent execution with auto-continue on token limit
+    const execResult = await fetchLLMWithContinue(
+      agent.url.replace(/\/$/, '') + '/v1/chat/completions',
+      execMessages,
+      { temperature: 0.3, max_tokens: 2048, noThink: agent.nothink, signal: taskRunnerAbort?.signal }
+    );
+
+    run.chat.push({ role: 'user', content: task.prompt });
+    run.chat.push({ role: 'assistant', name: agent.nick, content: execResult });
+
+    // Auto-name: first 50 chars of first line
+    if (!task.shortName && execResult.trim()) {
+      const firstLine = execResult.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim().split('\n')[0];
+      task.shortName = firstLine.length > 50 ? firstLine.slice(0, 50) + '...' : firstLine;
+    }
+
+    // Interceptor verifies — enum-based verdict
+    const opts = task.verdictOptions || ['PASS', 'FAIL'];
+    const optsStr = opts.join(' | ');
+    const verifyMessages = [
+      { role: 'system', content: `Ты — верификатор. Оцени результат и ответь ровно одним из: ${optsStr}\nВердикт — на ПЕРВОЙ строке (одно слово), затем краткое пояснение.\nОтвечай на том же языке, на котором написана задача.` },
+      { role: 'user', content: `Задача: ${task.prompt}\n\nАгент "${agent.nick}" ответил:\n${execResult}\n\nВыбери вердикт: ${optsStr}` },
+    ];
+    if (verifierNoThink) {
+      verifyMessages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+    }
+
+    const verifyRes = await fetch(verifierUrl + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: verifyMessages,
+        ...(verifierNoThink ? { continue_assistant_turn: true } : {}),
+        cache_prompt: false,
+        temperature: 0.1,
+        max_tokens: 512,
+        stream: false,
+      }),
+      signal: taskRunnerAbort?.signal,
+    });
+
+    const verifyData = await verifyRes.json();
+    const verifyResult = verifyData.choices?.[0]?.message?.content || verifyData.results?.[0]?.text || '';
+    run.chat.push({ role: 'assistant', name: 'Verifier', content: verifyResult });
+
+    const stripped = verifyResult.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+    const firstWord = stripped.split(/[\s\n]/)[0].toUpperCase().replace(/[^A-Z_]/g, '');
+    // Match against enum options (case-insensitive, also check if first line contains any option)
+    const firstLine = stripped.split('\n')[0].toUpperCase();
+    const matchedVerdict = opts.find(o => firstWord === o.toUpperCase())
+      || opts.find(o => firstLine.includes(o.toUpperCase()))
+      || opts[opts.length - 1]; // fallback to last option (usually the negative one)
+
+    run.agentResponse = execResult;
+    run.verifierResponse = verifyResult;
+    run.verifierVerdict = matchedVerdict;
+    // Status mapping: first option = passed, last = failed, middle = partial
+    const verdictIdx = opts.indexOf(matchedVerdict);
+    run.status = verdictIdx === 0 ? 'passed' : verdictIdx === opts.length - 1 ? 'failed' : 'partial';
+    run.result = execResult + '\n\n--- Verifier ---\n' + verifyResult;
+
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      run.status = 'pending';
+      run.agentResponse = '';
+      run.verifierResponse = '';
+      run.verifierVerdict = '';
+      run.result = 'Cancelled';
+    } else {
+      run.status = 'failed';
+      run.agentResponse = '';
+      run.verifierResponse = '';
+      run.verifierVerdict = '';
+      run.result = 'Error: ' + e.message;
+    }
+  }
+
+  saveTaskLists();
+  renderTaskListDetail();
+  renderTaskListsSidebar();
+}
+
+async function runListTask(list, task) {
+  taskRunnerAbort = new AbortController();
+  const promises = task.agentIds.map(idx => runTaskForAgent(list, task, idx));
+  await Promise.all(promises);
+  taskRunnerAbort = null;
+  // Propagate to parent
+  if (task.parentId) {
+    const parent = findTaskInList(list, task.parentId);
+    if (parent) propagateStatus(list, parent);
+  }
+}
+
+async function runAllListTasks(list) {
+  for (const task of list.tasks) {
+    if (getTaskOverallStatus(task) === 'passed' || getTaskOverallStatus(task) === 'running') continue;
+    await runListTask(list, task);
+  }
+}
+
+function openTaskChat(task, agentIdx) {
+  const run = task.runs?.[agentIdx];
+  if (!run?.chat?.length) return;
+  const agent = getAllAgents().find(a => a.idx === agentIdx);
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:12px;width:550px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center';
+  header.innerHTML = `<h4 style="margin:0;font-size:13px">\uD83D\uDCAC ${agent?.nick || 'Agent'} \u2014 Task Chat</h4>`;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = '\u00D7';
+  closeBtn.style.cssText = 'font-size:14px;padding:2px 8px';
+  closeBtn.onclick = () => overlay.remove();
+  header.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1;overflow-y:auto;padding:12px 16px';
+
+  for (const msg of run.chat) {
+    const msgDiv = document.createElement('div');
+    msgDiv.style.cssText = 'margin-bottom:12px';
+    const nameEl = document.createElement('div');
+    const isVerifier = msg.name === 'Verifier';
+    nameEl.style.cssText = `font-size:11px;color:${isVerifier ? 'var(--orange)' : 'var(--accent)'};margin-bottom:2px;font-weight:600`;
+    nameEl.textContent = msg.name || msg.role;
+    const contentEl = document.createElement('div');
+    contentEl.style.cssText = 'font-size:13px;color:var(--text);white-space:pre-wrap;background:var(--bg);padding:8px 10px;border-radius:6px';
+    contentEl.textContent = msg.content;
+    msgDiv.appendChild(nameEl);
+    msgDiv.appendChild(contentEl);
+    body.appendChild(msgDiv);
+  }
+
+  panel.appendChild(header);
+  panel.appendChild(body);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+}
+
 // --- localStorage persistence ---
 const LS_KEY_CFG = 'mac_config';
 const LS_KEY_HIST = 'mac_history';
@@ -3629,6 +5490,7 @@ btnClear.addEventListener('click', () => setTimeout(saveToStorage, 50));
 
 // Load on startup
 loadFromStorage();
+loadTaskLists();
 
 // Load saved voices into per-agent dropdowns
 setTimeout(refreshAgentSavedVoices, 2000);

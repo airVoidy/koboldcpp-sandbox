@@ -6,13 +6,20 @@ import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import httpx
 from pydantic import BaseModel
 
 from .assertions import ClaimStatus, HypothesisTree
+from .behavior_orchestrator import (
+    BehaviorTree,
+    build_character_description_reference_tree,
+    create_reference_behavior_orchestrator,
+    load_reference_behavior_tree_template,
+    reference_behavior_tree_template_path,
+)
 from .hypothesis_runtime import HypothesisRuntime
 from .logic_manifest import (
     AtomicRuleSet,
@@ -136,6 +143,26 @@ class ChatSessionCreateRequest(BaseModel):
     title: str | None = None
 
 
+class BehaviorJsonUpdateRequest(BaseModel):
+    payload: dict[str, Any]
+    expected_revision: int | None = None
+    merge_on_conflict: bool = False
+
+
+class BehaviorPatchRequest(BaseModel):
+    patch: dict[str, Any]
+    expected_revision: int | None = None
+    merge_on_conflict: bool = True
+
+
+class PlanTaskRequest(BaseModel):
+    session_id: str | None = None
+    task: str
+    tree_id: str = "auto"
+    run: bool = False
+    settings: dict | None = None
+
+
 def _mcp_success(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "result": result}
 
@@ -160,11 +187,108 @@ def _mcp_tool_result(payload: Any, *, is_error: bool = False) -> dict[str, Any]:
     }
 
 
+def _etag_for_revision(revision: int) -> str:
+    return f'W/"rev-{revision}"'
+
+
+def _revision_from_if_match(value: str | None) -> int | None:
+    if not value:
+        return None
+    match = re.fullmatch(r'W/"rev-(\d+)"|"rev-(\d+)"|rev-(\d+)', value.strip())
+    if not match:
+        return None
+    for group in match.groups():
+        if group is not None:
+            return int(group)
+    return None
+
+
+def _paths_overlap(left: set[tuple[str, ...]], right: set[tuple[str, ...]]) -> bool:
+    for lhs in left:
+        for rhs in right:
+            if lhs == rhs or lhs[: len(rhs)] == rhs or rhs[: len(lhs)] == lhs:
+                return True
+    return False
+
+
+def _diff_paths(base: Any, other: Any, prefix: tuple[str, ...] = ()) -> set[tuple[str, ...]]:
+    if isinstance(base, dict) and isinstance(other, dict):
+        changed: set[tuple[str, ...]] = set()
+        for key in set(base) | set(other):
+            if key not in base or key not in other:
+                changed.add(prefix + (str(key),))
+                continue
+            changed |= _diff_paths(base[key], other[key], prefix + (str(key),))
+        return changed
+    if isinstance(base, list) and isinstance(other, list):
+        if base == other:
+            return set()
+        return {prefix}
+    if base != other:
+        return {prefix}
+    return set()
+
+
+def _deep_merge(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(target)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _patch_paths(patch: Any, prefix: tuple[str, ...] = ()) -> set[tuple[str, ...]]:
+    if isinstance(patch, dict):
+        changed: set[tuple[str, ...]] = set()
+        for key, value in patch.items():
+            child_prefix = prefix + (str(key),)
+            nested = _patch_paths(value, child_prefix)
+            if nested:
+                changed |= nested
+            else:
+                changed.add(child_prefix)
+        return changed
+    return {prefix} if prefix else set()
+
+
+def _history_snapshot(history_holder: dict[str, Any], revision: int) -> dict[str, Any] | None:
+    history = history_holder.get("_revision_history", {})
+    snapshot = history.get(str(revision))
+    return snapshot if isinstance(snapshot, dict) else None
+
+
+def _set_behavior_headers(
+    response: Response,
+    *,
+    revision: int,
+    updated_at: str,
+    merge_status: str = "none",
+) -> None:
+    response.headers["ETag"] = _etag_for_revision(revision)
+    response.headers["Last-Modified"] = updated_at
+    response.headers["X-Behavior-Merge"] = merge_status
+
+
 def create_app(root: str) -> FastAPI:
     sandbox = Sandbox(Path(root))
     atom_runtime = AtomRuntime()
     hypothesis_runtime = HypothesisRuntime(atom_runtime)
+    import os
+
+    behavior_orchestrator = create_reference_behavior_orchestrator(
+        worker_url=os.environ.get("BEHAVIOR_WORKER_URL"),
+        planner_url=os.environ.get("BEHAVIOR_PLANNER_URL"),
+    )
+    behavior_trees: dict[str, BehaviorTree] = {"default": build_character_description_reference_tree()}
     app = FastAPI(title="Kobold Sandbox")
+
+    def resolve_behavior_tree(session_id: str | None = None) -> BehaviorTree:
+        resolved = (session_id or "default").strip() or "default"
+        if resolved not in behavior_trees:
+            behavior_trees[resolved] = build_character_description_reference_tree()
+        return behavior_trees[resolved]
 
     # CORS for browser access
     app.add_middleware(
@@ -430,6 +554,461 @@ def create_app(root: str) -> FastAPI:
             raise HTTPException(404, "Sandbox not initialized.")
         return export_graph(sandbox)
 
+    @app.get("/api/behavior/template")
+    def get_behavior_template() -> dict:
+        return {
+            "path": str(reference_behavior_tree_template_path()),
+            "template": load_reference_behavior_tree_template(),
+        }
+
+    @app.get("/api/behavior/tree")
+    def get_behavior_tree(response: Response, session_id: str | None = None) -> dict:
+        tree = resolve_behavior_tree(session_id)
+        _set_behavior_headers(response, revision=tree.revision, updated_at=tree.updated_at)
+        return tree.to_serialized_dict()
+
+    @app.post("/api/behavior/tree")
+    def update_behavior_tree(
+        response: Response,
+        request: BehaviorJsonUpdateRequest,
+        session_id: str | None = None,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> dict:
+        tree = resolve_behavior_tree(session_id)
+        merge_status = "none"
+        expected_revision = _revision_from_if_match(if_match)
+        if expected_revision is None:
+            expected_revision = request.expected_revision
+        if expected_revision is None:
+            incoming_revision = request.payload.get("revision")
+            if isinstance(incoming_revision, int):
+                expected_revision = incoming_revision
+        if expected_revision is not None and expected_revision != tree.revision:
+            if request.merge_on_conflict:
+                base_snapshot = _history_snapshot(tree.global_meta, expected_revision)
+                if isinstance(base_snapshot, dict):
+                    current_snapshot = tree.to_serialized_dict()
+                    user_changes = _diff_paths(base_snapshot, request.payload)
+                    current_changes = _diff_paths(base_snapshot, current_snapshot)
+                    if not _paths_overlap(user_changes, current_changes):
+                        merged_payload = _deep_merge(current_snapshot, request.payload)
+                        behavior_orchestrator.update_tree_from_json(tree, merged_payload)
+                        behavior_orchestrator.persist_tree_to_meta(tree)
+                        merge_status = "applied"
+                        _set_behavior_headers(
+                            response,
+                            revision=tree.revision,
+                            updated_at=tree.updated_at,
+                            merge_status=merge_status,
+                        )
+                        return tree.to_serialized_dict()
+            raise HTTPException(
+                409,
+                {
+                    "error": "revision_conflict",
+                    "expected_revision": expected_revision,
+                    "actual_revision": tree.revision,
+                },
+            )
+        behavior_orchestrator.update_tree_from_json(tree, request.payload)
+        behavior_orchestrator.persist_tree_to_meta(tree)
+        _set_behavior_headers(response, revision=tree.revision, updated_at=tree.updated_at, merge_status=merge_status)
+        return tree.to_serialized_dict()
+
+    @app.patch("/api/behavior/tree")
+    def patch_behavior_tree(
+        response: Response,
+        request: BehaviorPatchRequest,
+        session_id: str | None = None,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> dict:
+        tree = resolve_behavior_tree(session_id)
+        merge_status = "none"
+        expected_revision = _revision_from_if_match(if_match)
+        if expected_revision is None:
+            expected_revision = request.expected_revision
+        current_snapshot = tree.to_serialized_dict()
+        merged_payload = _deep_merge(current_snapshot, request.patch)
+        if expected_revision is not None and expected_revision != tree.revision:
+            if request.merge_on_conflict:
+                base_snapshot = _history_snapshot(tree.global_meta, expected_revision)
+                if isinstance(base_snapshot, dict):
+                    patch_paths = _patch_paths(request.patch)
+                    current_changes = _diff_paths(base_snapshot, current_snapshot)
+                    if not _paths_overlap(patch_paths, current_changes):
+                        behavior_orchestrator.update_tree_from_json(tree, merged_payload)
+                        behavior_orchestrator.persist_tree_to_meta(tree)
+                        merge_status = "applied"
+                        _set_behavior_headers(
+                            response,
+                            revision=tree.revision,
+                            updated_at=tree.updated_at,
+                            merge_status=merge_status,
+                        )
+                        return tree.to_serialized_dict()
+            raise HTTPException(
+                409,
+                {
+                    "error": "revision_conflict",
+                    "expected_revision": expected_revision,
+                    "actual_revision": tree.revision,
+                },
+            )
+        behavior_orchestrator.update_tree_from_json(tree, merged_payload)
+        behavior_orchestrator.persist_tree_to_meta(tree)
+        _set_behavior_headers(response, revision=tree.revision, updated_at=tree.updated_at, merge_status=merge_status)
+        return tree.to_serialized_dict()
+
+    @app.get("/api/behavior/nodes/{node_id}")
+    def get_behavior_node(node_id: str, response: Response, session_id: str | None = None) -> dict:
+        try:
+            node = resolve_behavior_tree(session_id).node(node_id)
+            _set_behavior_headers(response, revision=node.revision, updated_at=node.updated_at)
+            return node.to_serialized_dict()
+        except KeyError as exc:
+            raise HTTPException(404, f"Behavior node not found: {node_id}") from exc
+
+    @app.post("/api/behavior/nodes/{node_id}")
+    def update_behavior_node(
+        node_id: str,
+        response: Response,
+        request: BehaviorJsonUpdateRequest,
+        session_id: str | None = None,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> dict:
+        tree = resolve_behavior_tree(session_id)
+        try:
+            node = tree.node(node_id)
+            merge_status = "none"
+            expected_revision = _revision_from_if_match(if_match)
+            if expected_revision is None:
+                expected_revision = request.expected_revision
+            if expected_revision is None:
+                incoming_revision = request.payload.get("revision")
+                if isinstance(incoming_revision, int):
+                    expected_revision = incoming_revision
+            if expected_revision is not None and expected_revision != node.revision:
+                if request.merge_on_conflict:
+                    base_snapshot = _history_snapshot(node.meta, expected_revision)
+                    if isinstance(base_snapshot, dict):
+                        current_snapshot = node.to_serialized_dict()
+                        user_changes = _diff_paths(base_snapshot, request.payload)
+                        current_changes = _diff_paths(base_snapshot, current_snapshot)
+                        if not _paths_overlap(user_changes, current_changes):
+                            merged_payload = _deep_merge(current_snapshot, request.payload)
+                            behavior_orchestrator.update_node_from_json(tree, node_id, merged_payload)
+                            behavior_orchestrator.persist_node_to_meta(tree, node_id)
+                            behavior_orchestrator.persist_tree_to_meta(tree)
+                            merge_status = "applied"
+                            current_node = tree.node(node_id)
+                            _set_behavior_headers(
+                                response,
+                                revision=current_node.revision,
+                                updated_at=current_node.updated_at,
+                                merge_status=merge_status,
+                            )
+                            return tree.node(node_id).to_serialized_dict()
+                raise HTTPException(
+                    409,
+                    {
+                        "error": "revision_conflict",
+                        "expected_revision": expected_revision,
+                        "actual_revision": node.revision,
+                        "node_id": node_id,
+                    },
+                )
+            behavior_orchestrator.update_node_from_json(tree, node_id, request.payload)
+            behavior_orchestrator.persist_node_to_meta(tree, node_id)
+            behavior_orchestrator.persist_tree_to_meta(tree)
+            current_node = tree.node(node_id)
+            _set_behavior_headers(
+                response,
+                revision=current_node.revision,
+                updated_at=current_node.updated_at,
+                merge_status=merge_status,
+            )
+            return current_node.to_serialized_dict()
+        except KeyError as exc:
+            raise HTTPException(404, f"Behavior node not found: {node_id}") from exc
+
+    @app.patch("/api/behavior/nodes/{node_id}")
+    def patch_behavior_node(
+        node_id: str,
+        response: Response,
+        request: BehaviorPatchRequest,
+        session_id: str | None = None,
+        if_match: str | None = Header(default=None, alias="If-Match"),
+    ) -> dict:
+        tree = resolve_behavior_tree(session_id)
+        try:
+            node = tree.node(node_id)
+            merge_status = "none"
+            expected_revision = _revision_from_if_match(if_match)
+            if expected_revision is None:
+                expected_revision = request.expected_revision
+            current_snapshot = node.to_serialized_dict()
+            merged_payload = _deep_merge(current_snapshot, request.patch)
+            if expected_revision is not None and expected_revision != node.revision:
+                if request.merge_on_conflict:
+                    base_snapshot = _history_snapshot(node.meta, expected_revision)
+                    if isinstance(base_snapshot, dict):
+                        patch_paths = _patch_paths(request.patch)
+                        current_changes = _diff_paths(base_snapshot, current_snapshot)
+                        if not _paths_overlap(patch_paths, current_changes):
+                            behavior_orchestrator.update_node_from_json(tree, node_id, merged_payload)
+                            behavior_orchestrator.persist_node_to_meta(tree, node_id)
+                            behavior_orchestrator.persist_tree_to_meta(tree)
+                            merge_status = "applied"
+                            current_node = tree.node(node_id)
+                            _set_behavior_headers(
+                                response,
+                                revision=current_node.revision,
+                                updated_at=current_node.updated_at,
+                                merge_status=merge_status,
+                            )
+                            return tree.node(node_id).to_serialized_dict()
+                raise HTTPException(
+                    409,
+                    {
+                        "error": "revision_conflict",
+                        "expected_revision": expected_revision,
+                        "actual_revision": node.revision,
+                        "node_id": node_id,
+                    },
+                )
+            behavior_orchestrator.update_node_from_json(tree, node_id, merged_payload)
+            behavior_orchestrator.persist_node_to_meta(tree, node_id)
+            behavior_orchestrator.persist_tree_to_meta(tree)
+            current_node = tree.node(node_id)
+            _set_behavior_headers(
+                response,
+                revision=current_node.revision,
+                updated_at=current_node.updated_at,
+                merge_status=merge_status,
+            )
+            return current_node.to_serialized_dict()
+        except KeyError as exc:
+            raise HTTPException(404, f"Behavior node not found: {node_id}") from exc
+
+    import threading
+
+    _run_lock = threading.Lock()
+    _run_status: dict = {"running": False, "node_id": None, "error": None}
+
+    def _apply_settings(tree, body):
+        for key in ("sentence_range", "temperature", "max_tokens", "language", "creative_agent"):
+            if key in body:
+                tree.global_meta[key] = body[key]
+
+    def _bg_run_tree(tree):
+        try:
+            _run_status.update(running=True, node_id="root", error=None)
+            behavior_orchestrator.run_tree(tree)
+            _run_status.update(running=False, node_id=None)
+        except Exception as exc:
+            _run_status.update(running=False, error=str(exc))
+
+    def _bg_run_node(tree, node_id):
+        try:
+            _run_status.update(running=True, node_id=node_id, error=None)
+            behavior_orchestrator.run_node(tree, node_id)
+            _run_status.update(running=False, node_id=None)
+        except Exception as exc:
+            _run_status.update(running=False, error=str(exc))
+
+    @app.post("/api/behavior/run")
+    async def run_behavior_tree(request: Request, session_id: str | None = None, sync: bool = False) -> dict:
+        body = await request.json() if await request.body() else {}
+        tree = resolve_behavior_tree(session_id)
+        _apply_settings(tree, body)
+
+        if sync:
+            outputs = behavior_orchestrator.run_tree(tree)
+            return {"root_node_id": tree.root_node_id, "outputs": outputs, "tree": tree.to_serialized_dict()}
+
+        if _run_status["running"]:
+            raise HTTPException(409, "A run is already in progress")
+        threading.Thread(target=_bg_run_tree, args=(tree,), daemon=True).start()
+        return {"status": "started", "root_node_id": tree.root_node_id}
+
+    @app.post("/api/behavior/nodes/{node_id}/run")
+    async def run_behavior_node(request: Request, node_id: str, session_id: str | None = None, sync: bool = False) -> dict:
+        body = await request.json() if await request.body() else {}
+        tree = resolve_behavior_tree(session_id)
+        _apply_settings(tree, body)
+
+        if sync:
+            try:
+                record = behavior_orchestrator.run_node(tree, node_id)
+                return {"record": record.model_dump(), "node": tree.node(node_id).to_serialized_dict(), "tree_meta": tree.global_meta}
+            except KeyError as exc:
+                raise HTTPException(404, f"Behavior node not found: {node_id}") from exc
+
+        if _run_status["running"]:
+            raise HTTPException(409, "A run is already in progress")
+        threading.Thread(target=_bg_run_node, args=(tree, node_id), daemon=True).start()
+        return {"status": "started", "node_id": node_id}
+
+    @app.get("/api/behavior/status")
+    def run_status() -> dict:
+        return _run_status
+
+    @app.post("/api/behavior/plan")
+    def plan_behavior_tree(request: PlanTaskRequest) -> dict:
+        from .nl_to_dsl import plan_and_build
+        from .behavior_orchestrator import BehaviorTree
+
+        try:
+            # Build global_meta from UI settings
+            global_meta: dict = {}
+            if request.settings:
+                for key in ("sentence_range", "temperature", "max_tokens", "language", "creative_agent"):
+                    if key in request.settings:
+                        global_meta[key] = request.settings[key]
+
+            # Determine which agent to use for planning
+            planner_agent = global_meta.get("creative_agent") or "small_context_worker"
+            # Use first registered agent as fallback
+            if planner_agent not in behavior_orchestrator.llm._clients:
+                available = list(behavior_orchestrator.llm._clients.keys())
+                if available:
+                    planner_agent = available[0]
+
+            tree_dict = plan_and_build(
+                behavior_orchestrator.llm,
+                request.task,
+                planner_agent,
+                global_meta=global_meta,
+            )
+
+            new_tree = BehaviorTree.from_serialized_dict(tree_dict)
+            session_id = (request.session_id or "default").strip() or "default"
+            behavior_trees[session_id] = new_tree
+
+            result: dict = {
+                "status": "planned",
+                "tree_id": new_tree.tree_id,
+                "item_count": len(new_tree.nodes) - 1,
+                "tree": new_tree.to_serialized_dict(),
+            }
+
+            if request.run:
+                outputs = behavior_orchestrator.run_tree(new_tree)
+                result["status"] = "completed"
+                result["outputs"] = outputs
+                result["tree"] = new_tree.to_serialized_dict()
+
+            return result
+        except Exception as exc:
+            raise HTTPException(500, f"Planning failed: {exc}") from exc
+
+    @app.post("/api/behavior/agents")
+    async def register_behavior_agents(request: Request) -> dict:
+        """Register or update LLM agent URLs for the behavior orchestrator."""
+        from .kobold_client import KoboldClient
+
+        body = await request.json()
+        registered = []
+        for agent_name, url in body.items():
+            if not url or not isinstance(url, str):
+                continue
+            url = url.strip().rstrip("/")
+            if not url:
+                continue
+            behavior_orchestrator.llm.register(agent_name, KoboldClient(url, timeout=180.0))
+            registered.append(agent_name)
+        return {"registered": registered}
+
+    @app.get("/api/behavior/agents")
+    def list_behavior_agents() -> dict:
+        """List registered LLM agent names."""
+        return {"agents": list(behavior_orchestrator.llm._clients.keys())}
+
+    @app.post("/api/behavior/nl/plan")
+    async def nl_plan(request: Request) -> dict:
+        """NL task → plan items → build tree with DSL elements."""
+        from .nl_to_dsl import plan_and_build, plan_items
+
+        body = await request.json()
+        task = body.get("task", "")
+        agent = body.get("agent", "small_context_worker")
+        global_meta = body.get("global_meta", {})
+        plan_only = body.get("plan_only", False)
+
+        if not task:
+            raise HTTPException(400, "task is required")
+
+        try:
+            if plan_only:
+                items = plan_items(behavior_orchestrator.llm, task, agent)
+                return {"status": "planned", "items": items}
+
+            tree_dict = plan_and_build(
+                behavior_orchestrator.llm, task, agent,
+                global_meta=global_meta,
+            )
+            # Store as active tree
+            session_id = body.get("session_id", "default")
+            from .behavior_orchestrator import BehaviorTree
+            new_tree = BehaviorTree.from_serialized_dict(tree_dict)
+            behavior_trees[session_id] = new_tree
+            return {
+                "status": "built",
+                "tree_id": tree_dict.get("tree_id"),
+                "node_count": len(tree_dict.get("nodes", {})),
+                "tree": tree_dict,
+            }
+        except Exception as exc:
+            raise HTTPException(500, f"NL plan failed: {exc}") from exc
+
+    @app.post("/api/behavior/nl/edit-element")
+    async def nl_edit_element(request: Request) -> dict:
+        """Edit element via NL chat instruction."""
+        from .nl_to_dsl import edit_element_via_chat
+
+        body = await request.json()
+        element_json = body.get("element")
+        instruction = body.get("instruction", "")
+        agent = body.get("agent", "small_context_worker")
+
+        if not element_json or not instruction:
+            raise HTTPException(400, "element and instruction are required")
+
+        try:
+            result = edit_element_via_chat(
+                behavior_orchestrator.llm,
+                element_json,
+                instruction,
+                agent,
+            )
+            return {"status": "ok", "element": result}
+        except Exception as exc:
+            raise HTTPException(500, f"Edit failed: {exc}") from exc
+
+    @app.post("/api/behavior/nl/edit-node")
+    async def nl_edit_node(request: Request) -> dict:
+        """Edit node via NL chat instruction."""
+        from .nl_to_dsl import edit_node_via_chat
+
+        body = await request.json()
+        node_json = body.get("node")
+        instruction = body.get("instruction", "")
+        agent = body.get("agent", "small_context_worker")
+
+        if not node_json or not instruction:
+            raise HTTPException(400, "node and instruction are required")
+
+        try:
+            result = edit_node_via_chat(
+                behavior_orchestrator.llm,
+                node_json,
+                instruction,
+                agent,
+            )
+            return {"status": "ok", "node": result}
+        except Exception as exc:
+            raise HTTPException(500, f"Edit failed: {exc}") from exc
+
     @app.get("/models")
     def models() -> dict:
         return {"models": resolve_client().list_models()}
@@ -453,6 +1032,11 @@ def create_app(root: str) -> FastAPI:
     def run(node_id: str, request: RunRequest) -> dict:
         result = run_task(sandbox, node_id, request.task, model=request.model, commit=request.commit)
         return result.model_dump()
+
+    @app.get("/behavior", response_class=HTMLResponse)
+    def behavior_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "behavior_tree.html"
+        return html_path.read_text(encoding="utf-8")
 
     @app.get("/chat", response_class=HTMLResponse)
     def chat_page() -> str:

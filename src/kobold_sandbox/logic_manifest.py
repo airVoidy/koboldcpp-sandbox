@@ -181,11 +181,18 @@ def parse_logic_manifest(text: str) -> LogicManifest:
     )
 
     alias_map = _build_entity_alias_map(entities)
-    axioms = [
+    axioms_raw = [
         normalized
         for line in axioms_block.splitlines()
         if (normalized := _normalize_formula(line, alias_map=alias_map, zero_based=global_zero_based))
     ]
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    axioms: list[str] = []
+    for ax in axioms_raw:
+        if ax not in seen:
+            seen.add(ax)
+            axioms.append(ax)
 
     hypotheses: dict[str, list[str]] = {}
     current_branch: str | None = None
@@ -297,7 +304,14 @@ def parse_linear_logic_schema(text: str) -> LinearLogicSchema:
 
 
 def linear_schema_to_manifest(schema: LinearLogicSchema) -> LogicManifest:
-    axioms = [_schema_rule_to_formula(rule) for rule in schema.rules]
+    axioms_raw = [_schema_rule_to_formula(rule) for rule in schema.rules]
+    # Deduplicate axioms
+    seen: set[str] = set()
+    axioms: list[str] = []
+    for ax in axioms_raw:
+        if ax and ax not in seen:
+            seen.add(ax)
+            axioms.append(ax)
     hypotheses = {
         branch: [_schema_rule_to_formula(rule) for rule in rules]
         for branch, rules in schema.branches.items()
@@ -482,6 +496,17 @@ def _normalize_formula(text: str, alias_map: dict[str, str] | None = None, zero_
             flags=re.IGNORECASE,
         )
     stripped = stripped.replace("pos('Автор')", "author_pos")
+    # Reject truncated expressions: trailing 'or', 'and', operators without RHS
+    if re.search(r"\b(or|and)\s*$", stripped, flags=re.IGNORECASE):
+        return ""
+    if re.search(r"(==|!=|<=|>=|<|>|\+|\-)\s*$", stripped):
+        return ""
+    # Reject unclosed parentheses
+    if stripped.count("(") != stripped.count(")"):
+        return ""
+    # Reject garbled method calls (e.g. s.mixed())
+    if re.search(r"\bs\.\w+\(", stripped):
+        return ""
     if "author" not in stripped.lower() and not _looks_like_expression(stripped):
         return ""
     return stripped.strip()
