@@ -116,6 +116,55 @@ def _clean_probe_result(text: str, grammar: str | None = None, capture: Any = No
     return value
 
 
+def _check_status(text: Any) -> str:
+    value = str(text or "").strip()
+    if re.search(r"\bPASS\b", value, re.IGNORECASE):
+        return "pass"
+    if re.search(r"\bFAIL\b", value, re.IGNORECASE):
+        return "fail"
+    return "pending"
+
+
+def build_default_builtins(overrides: dict[str, Callable] | None = None) -> dict[str, Callable]:
+    builtins: dict[str, Callable] = {
+        "claims": lambda x: (
+            "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\n"
+            "Верни ТОЛЬКО в формате:\n"
+            "ENTITIES: [сущность1, сущность2, ...]\n"
+            "AXIOMS:\n- утверждение 1\n- утверждение 2\n"
+            "HYPOTHESES:\n- гипотеза 1\n\n"
+            "Требования:\n"
+            "- Используй pos('Имя') для позиционных утверждений.\n"
+            "- AXIOMS = факты, данные как условие.\n"
+            "- HYPOTHESES = выводы, предположения.\n"
+            "- Каждое утверждение атомарное и короткое.\n"
+            "- Не выводи прозу или JSON.\n"
+            "- Отвечай на языке текста.\n\n"
+            "Текст для анализа:\n" + str(x)
+        ),
+        "table": lambda x: (
+            "Ты — экстрактор данных. Распарси текст в структурированную таблицу.\n"
+            "Верни markdown-таблицу с подходящими колонками.\n"
+            "Если есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |\n"
+            "Если список: | # | Элемент | Детали |\n"
+            "Кратко. Только таблица, без комментариев.\n"
+            "Отвечай на языке текста.\n\n"
+            "Текст:\n" + str(x)
+        ),
+        "numbered": lambda text: "\n".join(f"{i+1}. {l}" for i, l in enumerate(str(text).split("\n"))),
+        "concat": lambda *args: sum((list(a) if isinstance(a, list) else [a] for a in args), []),
+        "slice_lines": lambda text, start, end: _slice_lines(text, start, end),
+        "enrich_entities": lambda entities, answer: _enrich_entities(entities, answer),
+        "join": lambda lst, sep=", ": sep.join(str(x) for x in lst),
+        "len": lambda x: len(x) if x else 0,
+        "unique": lambda x: list(set(x)) if isinstance(x, list) else x,
+        "check_status": _check_status,
+    }
+    if overrides:
+        builtins.update(overrides)
+    return builtins
+
+
 class WorkflowContext:
     """Runtime state for a workflow execution."""
 
@@ -736,42 +785,7 @@ def run_workflow(
     """Parse YAML workflow and execute it."""
     spec = parse_spec(yaml_text)
 
-    # Default builtins
-    default_builtins = {
-        "claims": lambda x: (
-            "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\n"
-            "Верни ТОЛЬКО в формате:\n"
-            "ENTITIES: [сущность1, сущность2, ...]\n"
-            "AXIOMS:\n- утверждение 1\n- утверждение 2\n"
-            "HYPOTHESES:\n- гипотеза 1\n\n"
-            "Требования:\n"
-            "- Используй pos('Имя') для позиционных утверждений.\n"
-            "- AXIOMS = факты, данные как условие.\n"
-            "- HYPOTHESES = выводы, предположения.\n"
-            "- Каждое утверждение атомарное и короткое.\n"
-            "- Не выводи прозу или JSON.\n"
-            "- Отвечай на языке текста.\n\n"
-            "Текст для анализа:\n" + str(x)
-        ),
-        "table": lambda x: (
-            "Ты — экстрактор данных. Распарси текст в структурированную таблицу.\n"
-            "Верни markdown-таблицу с подходящими колонками.\n"
-            "Если есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |\n"
-            "Если список: | # | Элемент | Детали |\n"
-            "Кратко. Только таблица, без комментариев.\n"
-            "Отвечай на языке текста.\n\n"
-            "Текст:\n" + str(x)
-        ),
-        "numbered": lambda text: "\n".join(f"{i+1}. {l}" for i, l in enumerate(str(text).split("\n"))),
-        "concat": lambda *args: sum((list(a) if isinstance(a, list) else [a] for a in args), []),
-        "slice_lines": lambda text, start, end: _slice_lines(text, start, end),
-        "enrich_entities": lambda entities, answer: _enrich_entities(entities, answer),
-        "join": lambda lst, sep=", ": sep.join(str(x) for x in lst),
-        "len": lambda x: len(x) if x else 0,
-        "unique": lambda x: list(set(x)) if isinstance(x, list) else x,
-    }
-    if builtins:
-        default_builtins.update(builtins)
+    default_builtins = build_default_builtins(builtins)
 
     ctx = WorkflowContext(
         workers=workers,

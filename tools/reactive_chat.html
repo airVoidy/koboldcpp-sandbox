@@ -714,6 +714,59 @@ function addReaction(nodeId, worker, emoji, status, detail) {
   renderTree();
 }
 
+function buildWorkerMap() {
+  const workerUrls = {};
+  workers.forEach(w => {
+    if (w.role && w.url) workerUrls[w.role] = w.url;
+  });
+  return workerUrls;
+}
+
+function inferCheckStatus(text) {
+  const value = String(text || '');
+  if (/\bPASS\b/i.test(value)) return 'pass';
+  if (/\bFAIL\b/i.test(value)) return 'fail';
+  return 'pending';
+}
+
+function syncTriggerEntityResults(nodeId, entityVars) {
+  const nd = nodes[nodeId]; if(!nd || !Array.isArray(entityVars)) return;
+  const targets = nd.type === 'entity'
+    ? [nd]
+    : nd.children.map(cid => nodes[cid]).filter(n => n?.type === 'entity');
+  const analyzerName = getWorkerByRole('analyzer')?.name || 'analyzer';
+
+  entityVars.forEach((entity, idx) => {
+    const title = entity?._title || entity?.title || '';
+    const target =
+      targets[idx] ||
+      targets.find(n => title && n?.title === title);
+    if (!target) return;
+
+    if (typeof entity.answer === 'string' && entity.answer.trim()) {
+      setAnswer(target.id, entity.answer);
+    }
+    if (typeof entity.imageUrl === 'string' && entity.imageUrl.trim()) {
+      target.imageUrl = entity.imageUrl;
+    }
+    if (typeof entity.reaction === 'string' && entity.reaction.trim()) {
+      const status = typeof entity.reactionStatus === 'string' && entity.reactionStatus
+        ? entity.reactionStatus
+        : inferCheckStatus(entity.reaction);
+      const emoji = status === 'pass' ? '✅' : status === 'fail' ? '❌' : '⚠️';
+      const existing = target.reactions.find(r => r.worker === analyzerName);
+      if (existing) {
+        existing.emoji = emoji;
+        existing.status = status;
+        existing.detail = entity.reaction;
+      } else {
+        target.reactions.push({worker: analyzerName, emoji, status, detail: entity.reaction});
+      }
+      target.answerStatus = status === 'pass' ? 'pass' : status === 'fail' ? 'fail' : target.answerStatus;
+    }
+  });
+}
+
 /* LLM fetch. By default prompt calls are single-shot.
    Auto-continue is opt-in, or implied by noThink fastpath. */
 async function fetchLLMWithContinue(url, messages, opts = {}) {
@@ -922,10 +975,12 @@ async function runTrigger(triggerName, nodeId) {
   traceEncoding(`workflow.trigger.${triggerName}.yaml.before_post`, activeYaml);
 
   // Collect vars from current state
-  const entityNodes = nd.children.map(cid => {
-    const cn = nodes[cid];
-    return cn ? {_title: cn.title || cn.question, answer: cn.answer, imageUrl: cn.imageUrl || ''} : null;
-  }).filter(Boolean);
+  const entityNodes = nd.type === 'entity'
+    ? [{_title: nd.title || nd.question, answer: nd.answer, imageUrl: nd.imageUrl || ''}]
+    : nd.children.map(cid => {
+        const cn = nodes[cid];
+        return cn ? {_title: cn.title || cn.question, answer: cn.answer, imageUrl: cn.imageUrl || ''} : null;
+      }).filter(Boolean);
 
   const vars = {
     '$answer': nd.answer || '',
@@ -944,7 +999,7 @@ async function runTrigger(triggerName, nodeId) {
         yaml: activeYaml,
         trigger: triggerName,
         settings: getSettings(),
-        workers: getWorkerMap(),
+        workers: buildWorkerMap(),
         vars,
       }),
     }).then(r => r.json());
@@ -965,6 +1020,9 @@ async function runTrigger(triggerName, nodeId) {
           });
         }
       });
+    }
+    if (Array.isArray(res.vars?.entity_nodes)) {
+      syncTriggerEntityResults(nodeId, res.vars.entity_nodes);
     }
     renderTree(true);
   } catch(e) {
@@ -1663,17 +1721,12 @@ async function executeWorkflowRun(displayText, yamlText, inputText = '') {
     }
 
     // Build worker URLs map from sidebar
-    const workerUrls = {};
-    workers.forEach(w => {
-      if (w.role && w.url) workerUrls[w.role] = w.url;
-    });
-
     // Execute workflow on server - all steps, all visible
     setS('busy', 'Running workflow...');
     const res = await post('/api/workflow/run', {
       yaml: yamlText,
       input: inputText,
-      workers: workerUrls,
+      workers: buildWorkerMap(),
       settings: getSettings(),
     });
     if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/run yaml', res.diagnostics.yaml);

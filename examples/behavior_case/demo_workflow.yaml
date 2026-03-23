@@ -108,6 +108,17 @@ triggers:
 
   generate:
     - "for $entity in $entity_nodes":
+        - analyzer -> $reaction:
+            prompt: |
+              Evaluate this text. Reply PASS if good, FAIL + reason if not.
+
+              {$entity.answer}
+            temperature: 0.2
+            max_tokens: 512
+            tag: check
+        - set:
+            "$entity.reaction": $reaction
+            "$entity.reactionStatus": check_status($reaction)
         - comfyui:
             workflow: "C:/Users/vAiry/.lmstudio/models/qwen t2i.json"
             node: "6"
