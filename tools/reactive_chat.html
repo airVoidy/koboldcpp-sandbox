@@ -1548,6 +1548,7 @@ function sendToWorker(nodeId, worker, prompt, tag, opts) {
 }
 
 let workflowYaml = ''; // loaded on init
+let workflowEditorDirty = false;
 window.__encodingTrace = window.__encodingTrace || [];
 
 function detectEncodingIssue(text) {
@@ -1592,20 +1593,25 @@ async function loadDefaultWorkflow() {
     workflowYaml = res.yaml || '';
     if (res.encoding) console.info('[encoding][server] /api/workflow/default', res.encoding);
     traceEncoding('workflow.default.loaded', workflowYaml, {server: res.encoding || null});
+    const editor = document.getElementById('workflowEditor');
+    if (editor && !workflowEditorDirty) {
+      editor.value = workflowYaml;
+      traceEncoding('workflow.editor.filled', workflowYaml, {reason: 'default-load'});
+    }
   } catch(_) {}
 }
 
 async function ensureWorkflowYaml() {
   const editor = document.getElementById('workflowEditor');
   const editorYaml = editor?.value || '';
-  if (editorYaml.trim()) {
+  if (workflowEditorDirty && editorYaml.trim()) {
     traceEncoding('workflow.editor.read', editorYaml);
     workflowYaml = editorYaml;
   }
   if (!workflowYaml) {
     await loadDefaultWorkflow();
   }
-  if (editor && workflowYaml && !editor.value.trim()) {
+  if (editor && workflowYaml && (!editor.value.trim() || !workflowEditorDirty)) {
     editor.value = workflowYaml;
     traceEncoding('workflow.editor.filled', workflowYaml);
   }
@@ -1845,6 +1851,7 @@ async function clearReactiveUiState() {
   idN = 0;
   session = 'sess-' + Date.now();
   workflowYaml = '';
+  workflowEditorDirty = false;
   wfChatMessages = [];
   window.__encodingTrace = [];
 
@@ -2033,12 +2040,17 @@ document.getElementById('btnToggleRight').addEventListener('click', toggleRightS
 document.getElementById('btnWorkflow').addEventListener('click', toggleRightSidebar);
 document.getElementById('btnWorkflowSave').addEventListener('click', () => {
   workflowYaml = document.getElementById('workflowEditor').value;
+  workflowEditorDirty = false;
   traceEncoding('workflow.editor.saved', workflowYaml);
 });
 document.getElementById('btnWorkflowReset').addEventListener('click', async () => {
+  workflowEditorDirty = false;
   await loadDefaultWorkflow();
   document.getElementById('workflowEditor').value = workflowYaml;
   traceEncoding('workflow.editor.reset', workflowYaml);
+});
+document.getElementById('workflowEditor').addEventListener('input', () => {
+  workflowEditorDirty = true;
 });
 // Workflow chat messages
 let wfChatMessages = []; // [{role, content}]
@@ -2082,6 +2094,7 @@ document.getElementById('btnWorkflowApplyNL').addEventListener('click', async ()
     if (yaml.startsWith('```')) yaml = yaml.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
     editor.value = yaml;
     workflowYaml = yaml;
+    workflowEditorDirty = true;
     traceEncoding('workflow.apply_nl.response', yaml, {worker: applyRole});
   } catch(e) {
     addWfChat('assistant', 'Apply error: ' + e.message);

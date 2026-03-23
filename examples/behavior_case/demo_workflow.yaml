@@ -68,7 +68,7 @@ flow:
                 <think>
                 Описание "{$entity._title}":
                 {$entity.answer}
-                ((answer generated) == true) ==
+                ((answer generated) == true) ===
           max_tokens: 1
           temperature: 0.1
           tag: confirm
