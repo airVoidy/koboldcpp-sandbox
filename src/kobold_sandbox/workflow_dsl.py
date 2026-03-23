@@ -244,7 +244,6 @@ class WorkflowContext:
         stop: list[str] | None = None,
         grammar: str | None = None,
         tag: str = "",
-        continue_on_length: bool | None = None,
         max_continue: int | None = None,
     ) -> str:
         """Call an LLM worker. Returns answer text (think stripped)."""
@@ -289,11 +288,6 @@ class WorkflowContext:
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
         for cont_i in range(continue_limit):
             if not _is_token_limit_finish(finish):
-                break
-            if continue_on_length is not None:
-                if not continue_on_length:
-                    break
-            elif mode not in {"continue", "probe_continue"} and not _has_unclosed_think(full_assistant):
                 break
             cont_messages = list(messages[:-1]) if messages and messages[-1]["role"] == "assistant" else list(messages)
             cont_messages.append({"role": "assistant", "content": full_assistant})
@@ -368,8 +362,6 @@ def _resolve_params(ctx: WorkflowContext, step: dict) -> dict:
         params["stop"] = step["stop"]
     if "grammar" in step:
         params["grammar"] = str(step["grammar"])
-    if "continue_on_length" in step:
-        params["continue_on_length"] = bool(step["continue_on_length"])
     if "max_continue" in step:
         params["max_continue"] = int(step["max_continue"])
     return params

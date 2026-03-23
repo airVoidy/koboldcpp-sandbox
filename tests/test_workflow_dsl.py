@@ -168,7 +168,7 @@ class _PromptCaptureHttpClient:
         return None
 
 
-def test_prompt_mode_does_not_auto_continue_on_length(monkeypatch) -> None:
+def test_prompt_mode_auto_continues_on_token_limit(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _LengthThenStopHttpClient)
@@ -183,11 +183,11 @@ def test_prompt_mode_does_not_auto_continue_on_length(monkeypatch) -> None:
     http_client = ctx._http
     ctx.close()
 
-    assert result == "partial"
-    assert len(http_client.calls) == 1
+    assert result == "partial tail"
+    assert len(http_client.calls) == 2
 
 
-def test_continue_mode_keeps_auto_continue_on_length(monkeypatch) -> None:
+def test_continue_mode_auto_continues_on_length(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _LengthThenStopHttpClient)
@@ -206,7 +206,7 @@ def test_continue_mode_keeps_auto_continue_on_length(monkeypatch) -> None:
     assert len(http_client.calls) == 2
 
 
-def test_continue_mode_keeps_auto_continue_on_max_tokens(monkeypatch) -> None:
+def test_continue_mode_auto_continues_on_max_tokens(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _MaxTokensThenStopHttpClient)
