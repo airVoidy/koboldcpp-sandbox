@@ -1,8 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ...core.schema_engine import PuzzleSchema
 
 SUDOKU_9X9_CATEGORY_ORDER = ("digit",)
+DEFAULT_SUDOKU_REFERENCE_GRID = (
+    "530070000",
+    "600195000",
+    "098000060",
+    "000000000",
+    "000000000",
+    "000000000",
+    "000000000",
+    "000000000",
+    "000000000",
+)
 
 
 def _row_positions(row_index: int) -> list[int]:
@@ -57,88 +70,74 @@ def _group_rules() -> list[dict[str, object]]:
             )
     return rules
 
-# A small starter puzzle. Position indexes are 0..80 in row-major order.
-SUDOKU_9X9_SCHEMA_DATA = {
-    "metadata": {
-        "name": "Sudoku 9x9",
-        "size": 81,
-        "repeated_categories": ["digit"],
-        "layout": {
-            "kind": "grid",
-            "rows": 9,
-            "cols": 9,
-            "box_rows": 3,
-            "box_cols": 3,
-        },
-    },
-    "categories": {
-        "digit": [str(value) for value in range(1, 10)],
-    },
-    "rules": [
-        {
-            "type": "position",
-            "relation_id": "r1c1=5",
-            "statement": "Cell r1c1 is 5.",
-            "fact": ["digit:5", 0],
-        },
-        {
-            "type": "position",
-            "relation_id": "r1c2=3",
-            "statement": "Cell r1c2 is 3.",
-            "fact": ["digit:3", 1],
-        },
-        {
-            "type": "position",
-            "relation_id": "r1c5=7",
-            "statement": "Cell r1c5 is 7.",
-            "fact": ["digit:7", 4],
-        },
-        {
-            "type": "position",
-            "relation_id": "r2c1=6",
-            "statement": "Cell r2c1 is 6.",
-            "fact": ["digit:6", 9],
-        },
-        {
-            "type": "position",
-            "relation_id": "r2c4=1",
-            "statement": "Cell r2c4 is 1.",
-            "fact": ["digit:1", 12],
-        },
-        {
-            "type": "position",
-            "relation_id": "r2c5=9",
-            "statement": "Cell r2c5 is 9.",
-            "fact": ["digit:9", 13],
-        },
-        {
-            "type": "position",
-            "relation_id": "r2c6=5",
-            "statement": "Cell r2c6 is 5.",
-            "fact": ["digit:5", 14],
-        },
-        {
-            "type": "position",
-            "relation_id": "r3c2=9",
-            "statement": "Cell r3c2 is 9.",
-            "fact": ["digit:9", 19],
-        },
-        {
-            "type": "position",
-            "relation_id": "r3c3=8",
-            "statement": "Cell r3c3 is 8.",
-            "fact": ["digit:8", 20],
-        },
-        {
-            "type": "position",
-            "relation_id": "r3c8=6",
-            "statement": "Cell r3c8 is 6.",
-            "fact": ["digit:6", 25],
-        },
-        *_group_rules(),
-    ],
-}
+def normalize_sudoku_grid(grid: Sequence[str] | None = None) -> tuple[str, ...]:
+    raw_values = tuple(DEFAULT_SUDOKU_REFERENCE_GRID if grid is None else tuple(str(item).strip() for item in grid))
+    if len(raw_values) == 9 and all(len(value) == 9 for value in raw_values):
+        cells = tuple(cell for row in raw_values for cell in row)
+    elif len(raw_values) == 81 and all(len(value) == 1 for value in raw_values):
+        cells = raw_values
+    else:
+        raise ValueError("Sudoku grid must be 9 row strings or 81 single-cell values.")
+
+    normalized: list[str] = []
+    for value in cells:
+        if value == ".":
+            normalized.append("0")
+            continue
+        if value in {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}:
+            normalized.append(value)
+            continue
+        raise ValueError(f"Unsupported sudoku cell value: {value!r}")
+    return tuple(normalized)
 
 
-def build_sudoku_9x9_schema() -> PuzzleSchema:
-    return PuzzleSchema.from_dict(SUDOKU_9X9_SCHEMA_DATA)
+def build_sudoku_9x9_schema_data(
+    grid: Sequence[str] | None = None,
+    *,
+    name: str = "Sudoku 9x9",
+) -> dict[str, object]:
+    givens = normalize_sudoku_grid(grid)
+    rules: list[dict[str, object]] = []
+    for index, value in enumerate(givens):
+        if value == "0":
+            continue
+        row_index = index // 9 + 1
+        col_index = index % 9 + 1
+        rules.append(
+            {
+                "type": "position",
+                "relation_id": f"r{row_index}c{col_index}={value}",
+                "statement": f"Cell r{row_index}c{col_index} is {value}.",
+                "fact": [f"digit:{value}", index],
+            }
+        )
+    rules.extend(_group_rules())
+    return {
+        "metadata": {
+            "name": name,
+            "size": 81,
+            "repeated_categories": ["digit"],
+            "layout": {
+                "kind": "grid",
+                "rows": 9,
+                "cols": 9,
+                "box_rows": 3,
+                "box_cols": 3,
+            },
+        },
+        "categories": {
+            "digit": [str(value) for value in range(1, 10)],
+        },
+        "rules": rules,
+    }
+
+
+SUDOKU_9X9_SCHEMA_DATA = build_sudoku_9x9_schema_data()
+
+
+def build_sudoku_9x9_schema(
+    grid: Sequence[str] | None = None,
+    *,
+    name: str = "Sudoku 9x9",
+) -> PuzzleSchema:
+    return PuzzleSchema.from_dict(build_sudoku_9x9_schema_data(grid, name=name))

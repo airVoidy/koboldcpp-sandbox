@@ -29,6 +29,8 @@ def _loose_json_array(text: str) -> list[dict] | None:
     text = re.sub(r",\s*([}\]])", r"\1", text.strip())
     text = re.sub(r"//[^\n]*", "", text)
     # Fix common LLM JSON errors
+    # Pattern: },{"{"id" → },{"id" (model inserts extra {" between objects)
+    text = re.sub(r'\},\s*\{\s*"\s*\{', '},{', text)
     text = re.sub(r'\},\s*\{\s*\{', '},{', text)  # },{{ → },{ (extra opening brace)
     text = re.sub(r'\}\s*\{', '},{', text)  # missing comma between objects
     text = re.sub(r'"\s*\{', '",{', text)   # missing comma after string before object
@@ -126,11 +128,20 @@ EDIT_ELEMENT_SYSTEM = (
 )
 
 EDIT_NODE_SYSTEM = (
-    "Ты редактируешь ноду behavior tree.\n"
-    "Тебе дан текущий JSON ноды (data, elements, claims) и инструкция.\n"
-    "Верни ТОЛЬКО обновлённый JSON объект ноды целиком.\n"
-    "Без прозы, без markdown. Только JSON."
+    "Ты редактируешь behavior tree через set-команды.\n"
+    "Тебе дан контекст (текущие данные) и инструкция.\n"
+    "Верни ТОЛЬКО JSON массив set-команд:\n"
+    '[{"set_path": "nodes.item-01.data.hair_color", "value": "красные"},\n'
+    ' {"set_path": "global_meta.sentence_range", "value": [5, 10]}]\n\n'
+    "Доступные пути:\n"
+    "  nodes.<id>.data.<field> — данные ноды\n"
+    "  global_meta.<field> — глобальные настройки\n"
+    "  nodes.<id>.elements[<idx>].meta.do — DSL команды элемента\n"
+    "  nodes.<id>.claims[<idx>].meta — метаданные клейма\n\n"
+    "Без прозы, без markdown. Только JSON массив."
 )
+
+EDIT_TREE_SYSTEM = EDIT_NODE_SYSTEM  # alias
 
 
 # ── Core functions ───────────────────────────────────────────────
@@ -211,34 +222,36 @@ def edit_element_via_chat(
     return result
 
 
-def edit_node_via_chat(
+def edit_tree_via_chat(
     llm: LLMBackend,
-    current_node: dict[str, Any],
+    tree_dict: dict[str, Any],
     instruction: str,
     agent_name: str = "small_context_worker",
     *,
+    node_id: str | None = None,
     temperature: float = 0.15,
-    max_tokens: int = 2048,
-) -> dict[str, Any]:
-    """Modify node via chat instruction. Returns updated node dict."""
-    # Compact node representation — skip large text fields
-    compact = {
-        "node_id": current_node.get("node_id"),
-        "kind": current_node.get("kind"),
-        "data": current_node.get("data", {}),
-        "elements": [
-            {
-                "element_id": e.get("element_id"),
-                "handler": e.get("handler"),
-                "transitions": e.get("transitions", {}),
-                "meta": e.get("meta", {}),
-            }
-            for e in current_node.get("elements", [])
-        ],
-        "claims": current_node.get("claims", []),
-    }
+    max_tokens: int = 1024,
+) -> list[dict[str, Any]]:
+    """Generate set_path patches from NL instruction. Returns list of patches."""
+    # Build compact context — only relevant data, skip large text fields
+    if node_id and node_id in tree_dict.get("nodes", {}):
+        node = tree_dict["nodes"][node_id]
+        context = {
+            "node_id": node_id,
+            "data_keys": list(node.get("data", {}).keys()),
+            "data_sample": {k: v for k, v in list(node.get("data", {}).items())[:10]
+                           if not isinstance(v, str) or len(v) < 100},
+            "elements": [e.get("element_id") for e in node.get("elements", [])],
+            "claims": [c.get("claim_id") for c in node.get("claims", [])],
+        }
+    else:
+        context = {
+            "node_ids": list(tree_dict.get("nodes", {}).keys()),
+            "global_meta": tree_dict.get("global_meta", {}),
+        }
+
     prompt = (
-        f"Текущая нода:\n```json\n{json.dumps(compact, ensure_ascii=False, indent=2)}\n```\n\n"
+        f"Контекст:\n{json.dumps(context, ensure_ascii=False, indent=2)}\n\n"
         f"Инструкция: {instruction}"
     )
     text = llm.call(
@@ -248,10 +261,88 @@ def edit_node_via_chat(
         max_tokens=max_tokens,
         max_continue=2,
     )
-    result = _extract_json_object(text)
-    if result is None:
-        raise ValueError(f"Could not parse edited node: {text[:300]}")
+    patches = _extract_json_array(text)
+    if patches is None:
+        raise ValueError(f"Could not parse patches from LLM: {text[:300]}")
+    return patches
+
+
+class PatchResult:
+    def __init__(self) -> None:
+        self.applied: int = 0
+        self.failed: list[dict[str, Any]] = []
+
+    @property
+    def all_ok(self) -> bool:
+        return not self.failed
+
+
+def _apply_one_patch(tree_dict: dict[str, Any], patch: dict[str, Any]) -> str | None:
+    """Apply one set_path patch. Returns error string or None on success."""
+    path = patch.get("set_path", "")
+    value = patch.get("value")
+    if not path:
+        return "empty set_path"
+    parts = path.split(".")
+    target = tree_dict
+    for part in parts[:-1]:
+        if "[" in part:
+            key, idx_str = part.rstrip("]").split("[")
+            arr = target.get(key) if isinstance(target, dict) else None
+            if not isinstance(arr, list):
+                return f"'{key}' is not a list at path '{path}'"
+            idx = int(idx_str)
+            if idx >= len(arr):
+                return f"{key}[{idx}] out of range (len={len(arr)}) at path '{path}'"
+            target = arr[idx]
+        else:
+            if isinstance(target, dict):
+                if part not in target:
+                    target[part] = {}
+                target = target[part]
+            else:
+                return f"cannot traverse '{part}' in non-dict at path '{path}'"
+    last = parts[-1]
+    if "[" in last:
+        key, idx_str = last.rstrip("]").split("[")
+        arr = target.get(key) if isinstance(target, dict) else None
+        if not isinstance(arr, list):
+            return f"'{key}' is not a list at path '{path}'"
+        idx = int(idx_str)
+        if idx >= len(arr):
+            return f"{key}[{idx}] out of range (len={len(arr)}) at path '{path}'"
+        arr[idx] = value
+    else:
+        if isinstance(target, dict):
+            target[last] = value
+        else:
+            return f"cannot set '{last}' on non-dict at path '{path}'"
+    return None
+
+
+def apply_set_patches(tree_dict: dict[str, Any], patches: list[dict[str, Any]]) -> PatchResult:
+    """Apply set_path patches to tree dict. Returns PatchResult with applied count and failed list."""
+    result = PatchResult()
+    for patch in patches:
+        error = _apply_one_patch(tree_dict, patch)
+        if error is None:
+            result.applied += 1
+        else:
+            result.failed.append({**patch, "_error": error})
     return result
+
+
+# Keep backward compat alias
+def edit_node_via_chat(
+    llm: LLMBackend,
+    current_node: dict[str, Any],
+    instruction: str,
+    agent_name: str = "small_context_worker",
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Legacy wrapper — returns patches as list."""
+    tree_dict = {"nodes": {current_node.get("node_id", "node"): current_node}}
+    return edit_tree_via_chat(llm, tree_dict, instruction, agent_name, **kwargs)
 
 
 PIPELINE_SYSTEM = (
@@ -432,7 +523,10 @@ def build_tree_from_plan(
         "node_id": "root",
         "kind": "auto_root",
         "entry_element": "run_children",
-        "data": {"task": task},
+        "data": {
+            "task": task,
+            "child_ids": [item.get("id", f"item-{i+1:02d}") for i, item in enumerate(items)],
+        },
         "elements": [
             {
                 "element_id": "run_children",

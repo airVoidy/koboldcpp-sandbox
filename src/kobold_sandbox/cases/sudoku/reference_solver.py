@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...core import UniversalSieveEngine
-from .schema_data import build_sudoku_9x9_schema
+from .schema_data import build_sudoku_9x9_schema, normalize_sudoku_grid
 
 
 def _row(index: int) -> int:
@@ -39,15 +40,7 @@ class SudokuHint:
 
 
 def build_sudoku_reference_grid() -> list[str]:
-    schema = build_sudoku_9x9_schema()
-    grid = ["0"] * schema.size
-    for rule in schema.rules:
-        if rule.type != "position":
-            continue
-        value = str(rule.fact[0]).split(":", 1)[1]
-        position = int(rule.fact[1])
-        grid[position] = value
-    return grid
+    return list(normalize_sudoku_grid())
 
 
 def _is_safe(grid: list[str], index: int, value: str) -> bool:
@@ -63,8 +56,8 @@ def _is_safe(grid: list[str], index: int, value: str) -> bool:
     return True
 
 
-def solve_sudoku_reference(grid: list[str] | None = None) -> SudokuReferenceSolution:
-    working = list(grid or build_sudoku_reference_grid())
+def solve_sudoku_reference(grid: Sequence[str] | None = None) -> SudokuReferenceSolution:
+    working = list(normalize_sudoku_grid(grid))
 
     def backtrack() -> bool:
         try:
@@ -85,10 +78,15 @@ def solve_sudoku_reference(grid: list[str] | None = None) -> SudokuReferenceSolu
     return SudokuReferenceSolution(cells=tuple(working))
 
 
-def render_sudoku_reference_markdown(solution: SudokuReferenceSolution | None = None) -> str:
-    solved = solution or solve_sudoku_reference()
+def render_sudoku_reference_markdown(
+    solution: SudokuReferenceSolution | None = None,
+    *,
+    grid: Sequence[str] | None = None,
+    title: str = "# Sudoku Reference Solution",
+) -> str:
+    solved = solution or solve_sudoku_reference(grid)
     lines = [
-        "# Sudoku Reference Solution",
+        title,
         "",
         "| r/c | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | c9 |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -98,14 +96,22 @@ def render_sudoku_reference_markdown(solution: SudokuReferenceSolution | None = 
     return "\n".join(lines)
 
 
-def build_sudoku_sieve_state() -> list[dict[str, set[str]]]:
-    schema = build_sudoku_9x9_schema()
+def build_sudoku_sieve_state(
+    grid: Sequence[str] | None = None,
+    *,
+    name: str = "Sudoku 9x9",
+) -> list[dict[str, set[str]]]:
+    schema = build_sudoku_9x9_schema(grid, name=name)
     engine = UniversalSieveEngine(schema)
     return engine.run_until_fixpoint()
 
 
-def find_sudoku_forced_move(state: list[dict[str, set[str]]] | None = None) -> SudokuHint | None:
-    current = state or build_sudoku_sieve_state()
+def find_sudoku_forced_move(
+    state: list[dict[str, set[str]]] | None = None,
+    *,
+    grid: Sequence[str] | None = None,
+) -> SudokuHint | None:
+    current = state or build_sudoku_sieve_state(grid)
     best_index: int | None = None
     best_candidates: tuple[str, ...] | None = None
     for index, house in enumerate(current):
@@ -125,10 +131,15 @@ def find_sudoku_forced_move(state: list[dict[str, set[str]]] | None = None) -> S
     )
 
 
-def render_sudoku_sieve_markdown(state: list[dict[str, set[str]]] | None = None) -> str:
-    current = state or build_sudoku_sieve_state()
+def render_sudoku_sieve_markdown(
+    state: list[dict[str, set[str]]] | None = None,
+    *,
+    grid: Sequence[str] | None = None,
+    title: str = "# Sudoku Sieve State",
+) -> str:
+    current = state or build_sudoku_sieve_state(grid)
     lines = [
-        "# Sudoku Sieve State",
+        title,
         "",
         "| r/c | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | c9 |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",

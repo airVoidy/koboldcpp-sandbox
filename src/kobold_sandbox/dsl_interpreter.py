@@ -290,6 +290,7 @@ def _fn_render_template(ctx: DslContext, args: dict) -> Any:
 
 
 def _fn_call_agent(ctx: DslContext, args: dict) -> Any:
+    import re as _re
     from .behavior_orchestrator import _strip_think
 
     agent = str(_resolve_arg(ctx, args.get("agent", "")) or ctx.tree.global_meta.get("creative_agent", "small_context_worker"))
@@ -301,14 +302,19 @@ def _fn_call_agent(ctx: DslContext, args: dict) -> Any:
     if no_think is None:
         no_think = True
 
-    text = ctx.orchestrator.llm.call(
+    raw = ctx.orchestrator.llm.call(
         agent, prompt,
         system_prompt=str(system) if system else None,
         temperature=temp,
         max_tokens=max_tok,
         no_think=bool(no_think),
     )
-    return _strip_think(text).strip()
+
+    # Extract think content before stripping — store as $-variable for UI visibility
+    think_match = _re.search(r"<think\b[^>]*>([\s\S]*?)</think>", raw, _re.IGNORECASE)
+    ctx.variables["_last_think"] = think_match.group(1).strip() if think_match else ""
+
+    return _strip_think(raw).strip()
 
 
 def _fn_eval_claims(ctx: DslContext, args: dict) -> Any:

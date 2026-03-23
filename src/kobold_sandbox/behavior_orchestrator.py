@@ -332,7 +332,7 @@ class LLMBackend:
         temperature: float = 0.6,
         max_tokens: int = 2048,
         no_think: bool = True,
-        max_continue: int = 3,
+        max_continue: int = 20,
     ) -> str:
         client = self._clients.get(agent_name)
         if client is None:
@@ -374,23 +374,21 @@ class LLMBackend:
 
             # With no_think + continue_assistant_turn, KoboldCpp returns ONLY new tokens
             # (not the prefill), so chunk IS the result directly
-            result = chunk
+            raw_result = chunk
 
             # For continue: full_assistant = prefill + all chunks so far
             if no_think:
-                full_assistant = "<think>\n\n</think>\n\n" + result
+                full_assistant = "<think>\n\n</think>\n\n" + raw_result
             else:
-                full_assistant = result
+                full_assistant = raw_result
 
-            # Strip think from result (in case model generated think despite prefill)
-            result = _re.sub(r"<think\b[^>]*>.*?</think>", "", result, flags=_re.DOTALL | _re.IGNORECASE).strip()
-            if "<think>" in result:
-                result = _re.sub(r"<think>[\s\S]*", "", result).strip()
-
-            # Continue loop if generation hit token limit
+            # Continue loop until EoT (finish_reason != "length") or max_continue.
+            # Even if </think> appeared, keep going — model hasn't sent EoT yet,
+            # answer text is still being generated.
             for i in range(max_continue):
-                if finish != "length":
+                if str(finish).strip().lower() not in {"length", "max_tokens"}:
                     break
+
                 # Send same base messages + full assistant content for KV cache match
                 cont_messages = list(messages[:-1]) if no_think else list(messages)
                 cont_messages.append({"role": "assistant", "content": full_assistant})
@@ -403,13 +401,34 @@ class LLMBackend:
                     "max_tokens": max_tokens,
                     "stream": False,
                 }
-                resp = http.post(f"{base_url}/v1/chat/completions", json=continue_payload)
-                resp.raise_for_status()
+                try:
+                    resp = http.post(f"{base_url}/v1/chat/completions", json=continue_payload)
+                    resp.raise_for_status()
+                except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError) as exc:
+                    # Connection reset — retry once with fresh client
+                    http.close()
+                    http = httpx.Client(timeout=client.timeout, trust_env=False)
+                    try:
+                        resp = http.post(f"{base_url}/v1/chat/completions", json=continue_payload)
+                        resp.raise_for_status()
+                    except Exception:
+                        break  # Give up, return partial result
+                except httpx.HTTPStatusError:
+                    break  # Server error, return partial result
                 cont_raw = resp.json()
                 new_chunk = cont_raw.get("choices", [{}])[0].get("message", {}).get("content", "")
-                result += new_chunk
+                raw_result += new_chunk
                 full_assistant += new_chunk
                 finish = cont_raw.get("choices", [{}])[0].get("finish_reason", "stop")
+
+            # Strip think blocks from final result
+            result = _re.sub(r"<think\b[^>]*>.*?</think>\s*", "", raw_result, flags=_re.DOTALL | _re.IGNORECASE).strip()
+            if "<think>" in result:
+                # Unclosed think — take everything after </think> if present, or discard think
+                if "</think>" in raw_result:
+                    result = raw_result[raw_result.rindex("</think>") + len("</think>"):].strip()
+                else:
+                    result = _re.sub(r"<think>[\s\S]*", "", result).strip()
         finally:
             http.close()
 

@@ -1,0 +1,103 @@
+dsl: workflow/v2
+
+let:
+  input: >
+    написать 4 описания внешности демонши в разных образах
+    [проверить, что разные образы, разный цвет глаз,
+    разный цвет волос, разные позы]
+
+flow:
+  - bootstrap:
+      in_parallel:
+        - analyzer -> $claims:
+            prompt: claims($input)
+            temperature: 0.1
+            max_tokens: 2048
+            tag: claims
+        - generator -> $answer:
+            prompt: $input
+            temperature: $settings.temperature
+            max_tokens: $settings.max_tokens
+            tag: answer
+
+  - parse_claims:
+      from: $claims
+      export: [$entities, $axioms, $hypotheses]
+
+  - set:
+      "@root.answer": $answer
+
+  - analyzer -> $table:
+      prompt: table($answer)
+      temperature: 0.1
+      max_tokens: 2048
+      tag: table
+
+  - parse_table:
+      from: $table
+      into: "@root.entities"
+      export: $entity_nodes
+
+  - set:
+      "$entity_nodes": enrich_entities($entity_nodes, $answer)
+
+  - "for $entity in $entity_nodes":
+      - generator -> $endLineNumber:
+          mode: probe_continue
+          grammar: "[0-9]+"
+          messages:
+            - user: numbered($answer)
+            - assistant: |
+                <think>
+                Разделю текст на блоки.
+                Описание "{$entity._title}" начинается со строки
+                под номером "{$entity._startNum}" "{$entity._firstLine}"
+                и длится до строки под номером "line number:
+          max_tokens: 3
+          temperature: 0.1
+          tag: trim
+      - set:
+          "$entity.answer": slice_lines($answer, $entity._startNum, $endLineNumber)
+      # Confirm answer was generated (1-token self-check via reaction)
+      - generator -> $confirmed:
+          mode: probe_continue
+          grammar: "[01]"
+          messages:
+            - user: numbered($answer)
+            - assistant: |
+                <think>
+                Описание "{$entity._title}":
+                {$entity.answer}
+                ((answer generated) == true) ==
+          max_tokens: 1
+          temperature: 0.1
+          tag: confirm
+
+  - verify_axioms:
+      items: concat($axioms, $hypotheses)
+      answer: $answer
+      table: $table
+      worker: analyzer
+      tag: verify
+
+triggers:
+  check:
+    - "for $entity in $entity_nodes":
+        - analyzer -> $reaction:
+            prompt: |
+              Evaluate this text. Reply PASS if good, FAIL + reason if not.
+
+              {$entity.answer}
+            tag: check
+        - set:
+            "$entity.reaction": $reaction
+
+  generate:
+    - "for $entity in $entity_nodes":
+        - comfyui:
+            workflow: "C:/Users/vAiry/.lmstudio/models/qwen t2i.json"
+            node: "6"
+            field: "text"
+            value: $entity.answer
+            server: "http://127.0.0.1:8188"
+            export: $entity.imageUrl

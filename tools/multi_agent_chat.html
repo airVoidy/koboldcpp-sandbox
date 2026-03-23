@@ -4225,7 +4225,7 @@ async function fetchLLMWithContinue(url, messages, opts = {}) {
     }
 
     result += chunk;
-    if (finishReason !== 'length') break;
+    if (!['length', 'max_tokens'].includes(String(finishReason || '').toLowerCase())) break;
   }
 
   return result;

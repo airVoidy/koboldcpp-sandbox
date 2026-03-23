@@ -231,7 +231,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); co
 .ns-table { width:100%; border-collapse:collapse; }
 .ns-table td { padding:2px 8px; border-bottom:1px solid var(--border); font-family:monospace; font-size:11px; }
 .ns-table td:first-child { color:var(--yellow); white-space:nowrap; width:200px; }
-.ns-table td:nth-child(2) { color:var(--text-dim); max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ns-table td:nth-child(2) { color:var(--text-dim); }
 .ns-table td:nth-child(3) { color:var(--text); word-break:break-all; }
 </style>
 </head>
@@ -923,40 +923,78 @@ async function nlEditElement() {
   const instruction = input.value.trim();
   if (!instruction || !jsonModalState) return;
 
-  const editor = document.getElementById('jsonEditor');
-  let currentElement;
-  try {
-    currentElement = JSON.parse(editor.value);
-  } catch {
-    status.textContent = 'Invalid JSON in editor';
-    status.style.color = 'var(--red)';
-    return;
-  }
-
   status.textContent = 'Thinking...';
   status.style.color = 'var(--yellow)';
   input.disabled = true;
 
   try {
-    const resp = await fetch(`${BASE}/api/behavior/nl/edit-element`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        element: currentElement,
-        instruction,
-        agent: agentSettings.workerAgent || 'small_context_worker',
-      }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || resp.statusText);
+    // If modal shows tree or node — use patch-based edit (small response)
+    if (jsonModalState.mode === 'tree' || jsonModalState.mode === 'node') {
+      const resp = await fetch(`${baseUrl()}/api/behavior/nl/edit-node`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instruction,
+          node_id: jsonModalState.mode === 'node' ? jsonModalState.nodeId : null,
+          agent: agentSettings.workerAgent || 'small_context_worker',
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const data = await resp.json();
+      const failCount = data.failed?.length || 0;
+      if (failCount > 0) {
+        const failPaths = data.failed.map(f => f.set_path).join(', ');
+        status.textContent = `Applied ${data.applied}, failed ${failCount}: ${failPaths}`;
+        status.style.color = 'var(--orange)';
+      } else {
+        status.textContent = `Applied ${data.applied} patches!`;
+        status.style.color = 'var(--green)';
+      }
+      input.value = '';
+      // Refresh editor with updated tree
+      await refreshTree();
+      const editor = document.getElementById('jsonEditor');
+      if (jsonModalState.mode === 'tree') {
+        editor.value = JSON.stringify(treeData, null, 2);
+      } else if (jsonModalState.nodeId && treeData.nodes[jsonModalState.nodeId]) {
+        editor.value = JSON.stringify(treeData.nodes[jsonModalState.nodeId], null, 2);
+      }
+      validateJson();
+    } else {
+      // Element mode — send element JSON for full replacement (small)
+      const editor = document.getElementById('jsonEditor');
+      let currentElement;
+      try {
+        currentElement = JSON.parse(editor.value);
+      } catch {
+        status.textContent = 'Invalid JSON in editor';
+        status.style.color = 'var(--red)';
+        input.disabled = false;
+        return;
+      }
+      const resp = await fetch(`${baseUrl()}/api/behavior/nl/edit-element`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          element: currentElement,
+          instruction,
+          agent: agentSettings.workerAgent || 'small_context_worker',
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const data = await resp.json();
+      editor.value = JSON.stringify(data.element, null, 2);
+      status.textContent = 'Applied!';
+      status.style.color = 'var(--green)';
+      input.value = '';
+      validateJson();
     }
-    const data = await resp.json();
-    editor.value = JSON.stringify(data.element, null, 2);
-    status.textContent = 'Applied!';
-    status.style.color = 'var(--green)';
-    input.value = '';
-    validateJson();
   } catch (e) {
     status.textContent = `Error: ${e.message}`;
     status.style.color = 'var(--red)';
@@ -980,12 +1018,12 @@ async function nlEditNode(nodeId) {
   input.disabled = true;
 
   try {
-    const resp = await fetch(`${BASE}/api/behavior/nl/edit-node`, {
+    const resp = await fetch(`${baseUrl()}/api/behavior/nl/edit-node`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        node,
         instruction,
+        node_id: nodeId,
         agent: agentSettings.workerAgent || 'small_context_worker',
       }),
     });
@@ -995,14 +1033,9 @@ async function nlEditNode(nodeId) {
     }
     const data = await resp.json();
 
-    // Apply changes via PATCH
-    const patchResp = await fetch(`${BASE}/api/behavior/nodes/${nodeId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ patch: data.node }),
-    });
-    if (patchResp.ok) {
-      resultDiv.innerHTML = '<span style="color:var(--green)">Applied! Refreshing...</span>';
+    // Patches already applied server-side, just refresh
+    if (data.applied > 0) {
+      resultDiv.innerHTML = `<span style="color:var(--green)">Applied ${data.applied} patches! Refreshing...</span>`;
       input.value = '';
       await refreshTree();
       selectNode(nodeId);
@@ -1876,10 +1909,14 @@ function editElement(nodeId, index) {
   errorEl.classList.remove('visible');
   readonlyBadge.classList.add('hidden');
   title.textContent = `Edit Element: ${el.element_id}`;
-  tabs.innerHTML = '';
 
-  // Replace editor with form
-  editor.style.display = 'none';
+  // Tabs: Form | JSON
+  tabs.innerHTML = `
+    <button class="tab-btn active" data-eltab="form" onclick="switchElEditTab('form')">Form</button>
+    <button class="tab-btn" data-eltab="json" onclick="switchElEditTab('json')">JSON</button>
+  `;
+
+  // Form view
   let formDiv = document.getElementById('elEditForm');
   if (!formDiv) {
     formDiv = document.createElement('div');
@@ -1889,6 +1926,12 @@ function editElement(nodeId, index) {
   }
   formDiv.innerHTML = modalContent;
   formDiv.style.display = '';
+
+  // JSON view — show full element JSON in the editor
+  editor.value = JSON.stringify(el, null, 2);
+  editor.style.display = 'none';
+  editor.dataset.elEditNodeId = nodeId;
+  editor.dataset.elEditIndex = index;
 
   // Handler select logic
   const handlerSelect = document.getElementById('elEditHandler');
@@ -1903,6 +1946,52 @@ function editElement(nodeId, index) {
   saveBtn.onclick = () => saveElementEdit(nodeId, index);
 
   modal.classList.remove('hidden');
+}
+
+function switchElEditTab(tab) {
+  const editor = document.getElementById('jsonEditor');
+  const formDiv = document.getElementById('elEditForm');
+  const saveBtn = document.getElementById('jsonSaveBtn');
+  document.querySelectorAll('#jsonModalTabs .tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.eltab === tab);
+  });
+  if (tab === 'json') {
+    formDiv.style.display = 'none';
+    editor.style.display = '';
+    saveBtn.textContent = 'Save JSON';
+    saveBtn.onclick = () => saveElementJsonDirect(editor.dataset.elEditNodeId, parseInt(editor.dataset.elEditIndex));
+  } else {
+    formDiv.style.display = '';
+    editor.style.display = 'none';
+    saveBtn.textContent = 'Save Element';
+    const nodeId = editor.dataset.elEditNodeId;
+    const idx = parseInt(editor.dataset.elEditIndex);
+    saveBtn.onclick = () => saveElementEdit(nodeId, idx);
+  }
+}
+
+async function saveElementJsonDirect(nodeId, index) {
+  const editor = document.getElementById('jsonEditor');
+  const errorEl = document.getElementById('jsonError');
+  try {
+    const updated = JSON.parse(editor.value);
+    const node = treeData.nodes[nodeId];
+    if (!node) throw new Error('Node not found');
+    node.elements[index] = updated;
+    // Patch to server
+    const res = await fetch(baseUrl() + `/api/behavior/nodes/${nodeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: { elements: node.elements } }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    document.getElementById('jsonModal').classList.add('hidden');
+    await refreshTree();
+    selectNode(nodeId);
+  } catch (e) {
+    errorEl.textContent = 'Error: ' + e.message;
+    errorEl.classList.add('visible');
+  }
 }
 
 function addTransitionRow() {
@@ -2008,7 +2097,7 @@ function renderNamespacePanel() {
   html += '<div class="ns-section"><h4>@@ Global Meta</h4><table class="ns-table">';
   for (const [k, v] of Object.entries(gm)) {
     const val = typeof v === 'string' ? v : JSON.stringify(v);
-    html += `<tr><td>@@${k}</td><td style="color:var(--accent3)">${typeof v}</td><td>${escHtml(String(val).substring(0, 120))}</td></tr>`;
+    html += `<tr><td>@@${k}</td><td style="color:var(--accent3)">${typeof v}</td><td>${escHtml(String(val))}</td></tr>`;
   }
   if (!Object.keys(gm).length) html += '<tr><td colspan="3" style="color:var(--text-dim)">(empty)</td></tr>';
   html += '</table></div>';
@@ -2032,8 +2121,7 @@ function renderNamespacePanel() {
     html += `<div class="ns-section"><h4>@ Node Data — ${selectedNodeId}</h4><table class="ns-table">`;
     for (const [k, v] of Object.entries(data)) {
       const val = typeof v === 'string' ? v : JSON.stringify(v);
-      const display = String(val).length > 80 ? String(val).substring(0, 80) + '…' : val;
-      html += `<tr><td>@${k}</td><td style="color:var(--yellow)">${typeof v}</td><td>${escHtml(String(display))}</td></tr>`;
+      html += `<tr><td>@${k}</td><td style="color:var(--yellow)">${typeof v}</td><td style="word-break:break-all">${escHtml(String(val))}</td></tr>`;
     }
     html += '</table></div>';
 

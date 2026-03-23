@@ -1,7 +1,9 @@
 __all__ = [
     "SUDOKU_9X9_CATEGORY_ORDER",
     "SUDOKU_9X9_SCHEMA_DATA",
+    "build_sudoku_9x9_schema_data",
     "build_sudoku_9x9_schema",
+    "normalize_sudoku_grid",
     "SudokuHint",
     "SudokuReferenceSolution",
     "build_sudoku_reference_grid",
@@ -14,7 +16,13 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    if name in {"SUDOKU_9X9_CATEGORY_ORDER", "SUDOKU_9X9_SCHEMA_DATA", "build_sudoku_9x9_schema"}:
+    if name in {
+        "SUDOKU_9X9_CATEGORY_ORDER",
+        "SUDOKU_9X9_SCHEMA_DATA",
+        "build_sudoku_9x9_schema_data",
+        "build_sudoku_9x9_schema",
+        "normalize_sudoku_grid",
+    }:
         from . import schema_data
 
         return getattr(schema_data, name)

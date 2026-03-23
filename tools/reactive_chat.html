@@ -1,0 +1,2101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reactive Task Builder</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --surface: #24283b;
+  --surface2: #2f3349;
+  --border: #3b4261;
+  --text: #c0caf5;
+  --text-dim: #565f89;
+  --accent: #7aa2f7;
+  --accent2: #bb9af7;
+  --accent3: #7dcfff;
+  --green: #9ece6a;
+  --red: #f7768e;
+  --orange: #ff9e64;
+  --yellow: #e0af68;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+button:active, button:focus { outline:none; opacity:1; filter:none; }
+input:focus { outline:none; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* Header */
+.header {
+  display:flex; align-items:center; gap:12px; padding:8px 16px;
+  background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.header h1 { font-size:16px; font-weight:600; color:var(--accent); }
+.hdr-right { display:flex; gap:8px; margin-left:auto; align-items:center; }
+.status { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--text-dim); }
+.dot.ok { background:var(--green); }
+.dot.busy { background:var(--orange); animation:pulse 1.5s infinite; }
+
+/* Buttons */
+.btn {
+  padding:4px 12px; border:1px solid var(--border); border-radius:5px;
+  background:var(--surface2); color:var(--text); cursor:pointer;
+  font-size:12px; font-family:inherit; white-space:nowrap;
+}
+.btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn-small {
+  padding:2px 8px; border:1px solid var(--border); border-radius:3px;
+  background:var(--surface2); color:var(--dim); cursor:pointer;
+  font-size:11px; font-family:inherit; margin-left:4px;
+}
+.btn-small:hover { color:var(--text); border-color:var(--accent); }
+
+/* Settings popup */
+.settings-overlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,.5); z-index:100;
+  justify-content:center; align-items:center;
+}
+.settings-overlay.open { display:flex; }
+.settings-popup {
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  min-width:280px; max-width:360px; box-shadow:0 8px 32px rgba(0,0,0,.6);
+}
+.settings-popup-hdr {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; border-bottom:1px solid var(--border);
+  font-weight:600; font-size:14px;
+}
+.settings-popup-body {
+  padding:12px 14px;
+}
+.settings-popup-body label {
+  font-size:11px; color:var(--text-dim); display:block; margin-bottom:2px; margin-top:8px;
+}
+.settings-popup-body label:first-child { margin-top:0; }
+.settings-popup-body input[type="number"] {
+  width:100%; background:var(--bg); border:1px solid var(--border); border-radius:4px;
+  color:var(--text); padding:4px 8px; font-size:13px;
+}
+.settings-popup-body input:focus { outline:none; border-color:var(--accent); }
+
+/* Layout */
+.main { flex:1; display:flex; overflow:hidden; }
+.sidebar {
+  width:220px; min-width:0; background:var(--surface);
+  border-right:1px solid var(--border); padding:10px; overflow-y:auto;
+  font-size:12px;
+}
+.sidebar.collapsed { width:0; padding:0; overflow:hidden; border:none; }
+.sidebar label { color:var(--text-dim); font-size:11px; display:block; margin-bottom:2px; }
+.sidebar input {
+  width:100%; background:var(--bg); border:1px solid var(--border); border-radius:4px;
+  color:var(--text); padding:3px 6px; font-size:12px; margin-bottom:8px;
+}
+.sidebar input:focus { outline:none; border-color:var(--accent); }
+.feed-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.feed { flex:1; overflow-y:auto; padding:12px 16px; }
+
+/* Right sidebar - YAML editor + chat */
+.right-sidebar {
+  width:400px; min-width:200px; background:var(--surface);
+  border-left:2px solid var(--accent);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.right-sidebar.collapsed { width:0; min-width:0; overflow:hidden; border:none; }
+.right-sidebar-hdr {
+  display:flex; align-items:center; gap:6px; padding:6px 10px;
+  border-bottom:1px solid var(--border); flex-shrink:0; font-size:12px;
+}
+.right-sidebar-hdr span { font-weight:600; color:var(--accent); }
+/* Resize handle between feed and right sidebar */
+.resize-handle {
+  width:4px; cursor:col-resize; background:transparent;
+  flex-shrink:0;
+}
+.resize-handle.active { background:var(--accent); }
+/* Collapse buttons */
+.sidebar-toggle {
+  position:absolute; top:50%; z-index:10;
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--text-dim); cursor:pointer; font-size:10px;
+  padding:8px 2px; border-radius:0 4px 4px 0;
+}
+.sidebar-toggle.left { left:0; }
+.sidebar-toggle.right { right:0; border-radius:4px 0 0 4px; }
+
+/* Main input */
+.main-input {
+  padding:10px 16px; background:var(--surface); border-top:1px solid var(--border);
+  display:flex; gap:8px; align-items:flex-end; flex-shrink:0;
+}
+.main-input textarea {
+  flex:1; background:var(--bg); border:1px solid var(--border); border-radius:6px;
+  color:var(--text); padding:8px 10px; font-size:14px; font-family:inherit;
+  resize:none; min-height:38px; max-height:100px; line-height:1.4;
+}
+.main-input textarea:focus { outline:none; border-color:var(--accent); }
+
+/* ============================================================
+   NODE - recursive tree node
+   ============================================================ */
+.node {
+  border:1px solid var(--border); border-radius:8px;
+  background:var(--surface); margin-bottom:8px;
+  animation:fadeIn .2s ease;
+}
+.node.active { border-color:var(--accent); }
+.node.done   { border-color:var(--green); }
+.node.fail   { border-color:var(--red); }
+
+/* - Node header (always visible, click to collapse/expand body) - */
+.node-hdr {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  cursor:pointer; user-select:none;
+}
+.node-arrow { font-size:10px; color:var(--text-dim); width:12px; text-align:center; }
+.node-arrow.open { transform:rotate(90deg); }
+.node-icon {
+  width:24px; height:24px; border-radius:5px; display:flex; align-items:center;
+  justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;
+}
+.node-icon.root   { background:rgba(122,162,247,.15); color:var(--accent); }
+.node-icon.entity { background:rgba(187,154,247,.15); color:var(--accent2); }
+.node-icon.ok     { background:rgba(158,206,106,.15); color:var(--green); }
+.node-icon.err    { background:rgba(247,118,142,.15); color:var(--red); }
+.node-title { font-weight:600; font-size:13px; flex:1; }
+.node-badge {
+  font-size:9px; padding:1px 7px; border-radius:8px; text-transform:uppercase; letter-spacing:.3px;
+}
+.node-badge.pending    { background:var(--surface2); color:var(--text-dim); }
+.node-badge.active     { background:rgba(255,158,100,.15); color:var(--orange); }
+.node-badge.done       { background:rgba(158,206,106,.15); color:var(--green); }
+.node-badge.fail       { background:rgba(247,118,142,.15); color:var(--red); }
+.node-badge.generating { background:rgba(255,158,100,.15); color:var(--orange); }
+.node-time { font-size:10px; color:var(--text-dim); }
+.node-collapse-hint { font-size:10px; color:var(--text-dim); margin-left:4px; }
+
+/* - Node body (collapsible) - */
+.node-body { display:none; border-top:1px solid var(--border); }
+.node-body.open { display:block; }
+
+/* Tags / scope (collapsible) */
+.node-tags-wrap {
+  border-bottom:1px solid var(--border);
+  padding:4px 12px;
+}
+.node-tags-wrap.collapsed { padding:0; border-bottom:none; }
+.node-tags {
+  display:flex; flex-wrap:wrap; gap:4px;
+}
+.node-tags.collapsed { display:none; }
+/* Toggle button lives in the header row */
+.tags-toggle-btn {
+  background:none; border:1px solid var(--border); border-radius:4px;
+  color:var(--text-dim); cursor:pointer; font-size:10px; padding:1px 6px;
+  flex-shrink:0; font-family:inherit;
+}
+.tag {
+  font-size:10px; padding:2px 8px; border-radius:10px;
+  background:var(--bg); color:var(--text-dim); border:1px solid var(--border);
+  cursor:default; user-select:none;
+}
+.tag.accent { border-color:var(--accent); color:var(--accent); }
+.tag.green  { border-color:var(--green);  color:var(--green); }
+
+/* Question / prompt */
+.node-question {
+  padding:8px 12px; font-size:13px; line-height:1.5;
+  white-space:pre-wrap; border-bottom:1px solid var(--border);
+}
+
+/* Question form */
+.node-form { padding:8px 12px; border-bottom:1px solid var(--border); }
+.qf-item { margin-bottom:6px; }
+.qf-item label { font-size:12px; color:var(--text); display:block; margin-bottom:2px; }
+.qf-item .qf-hint { font-size:10px; color:var(--text-dim); margin-top:1px; }
+.qf-item input, .qf-item textarea {
+  width:100%; background:var(--bg); border:1px solid var(--border); border-radius:4px;
+  color:var(--text); padding:5px 8px; font-size:12px; font-family:inherit;
+}
+.qf-item textarea { min-height:40px; resize:vertical; }
+.qf-item input:focus, .qf-item textarea:focus { outline:none; border-color:var(--accent); }
+
+/* Structured lists (ENTITIES, AXIOMS, HYPOTHESES) */
+.node-lists { border-bottom:1px solid var(--border); }
+.node-list-section { border-bottom:1px solid var(--border); }
+.node-list-section:last-child { border-bottom:none; }
+.node-list-header {
+  display:flex; align-items:center; gap:6px; padding:5px 12px;
+  cursor:pointer; user-select:none; font-size:11px;
+  text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim);
+}
+.node-list-header .arrow { font-size:9px; }
+.node-list-header .arrow.open { transform:rotate(90deg); }
+.node-list-header .list-count {
+  background:var(--surface2); border-radius:8px; padding:0 5px;
+  font-size:10px; color:var(--text-dim);
+}
+.node-list-body { display:none; padding:2px 12px 6px 24px; }
+.node-list-body.open { display:block; }
+.node-list-item {
+  font-size:12px; padding:2px 0; color:var(--text);
+  display:flex; align-items:flex-start; gap:4px;
+}
+.node-list-item .li-bullet { color:var(--text-dim); flex-shrink:0; }
+.node-list-item.entity .li-bullet { color:var(--accent); }
+.node-list-item.axiom .li-bullet { color:var(--green); }
+.node-list-item.hypothesis .li-bullet { color:var(--accent2); }
+
+/* Think block (collapsed above RESULT) */
+.think-block {
+  margin:8px 12px 0; border:1px solid var(--border); border-radius:6px;
+  background:var(--surface2); overflow:hidden;
+}
+.think-toggle {
+  display:flex; align-items:center; gap:6px; padding:4px 10px;
+  cursor:pointer; user-select:none; font-size:10px; color:var(--text-dim);
+}
+.think-toggle .arrow { font-size:9px; }
+.think-toggle .arrow.open { transform:rotate(90deg); }
+.think-body {
+  display:none; padding:6px 10px; font-size:11px; line-height:1.4;
+  color:var(--text-dim); white-space:pre-wrap; word-break:break-word;
+  max-height:200px; overflow-y:auto; border-top:1px solid var(--border);
+  font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;
+}
+.think-body.open { display:block; }
+
+/* Answer - code block style */
+.node-answer { padding:8px 12px; border-bottom:1px solid var(--border); }
+.node-answer-label { font-size:10px; color:var(--text-dim); text-transform:uppercase; margin-bottom:3px; }
+.answer-block {
+  position:relative; background:#1e2030; border:1px solid var(--border); border-radius:6px;
+  overflow:hidden;
+}
+.answer-block.pass { border-color:var(--green); }
+.answer-block.fail { border-color:var(--red); }
+.answer-lang {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 10px; background:var(--surface2); font-size:10px; color:var(--text-dim);
+  border-bottom:1px solid var(--border); user-select:none;
+}
+.answer-lang span { text-transform:uppercase; letter-spacing:.5px; }
+.answer-ta {
+  width:100%; min-height:30px; padding:8px 10px; background:transparent;
+  border:none; color:var(--green); font-size:13px;
+  font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;
+  line-height:1.6; resize:none; white-space:pre-wrap; display:block;
+  overflow:hidden; field-sizing:content;
+}
+.answer-ta:focus { outline:none; }
+.answer-ta.empty { color:var(--text-dim); }
+.node-image { padding:8px 12px; }
+.node-image img { max-width:100%; max-height:512px; border-radius:6px; border:1px solid var(--border); }
+.tmsg-image { margin:6px 0; }
+.tmsg-image img { max-width:100%; max-height:400px; border-radius:6px; border:1px solid var(--border); }
+
+/* Reactions bar - Slack-like emoji votes from workers */
+.reactions-bar {
+  display:flex; flex-wrap:wrap; gap:4px; padding:6px 12px;
+  border-bottom:1px solid var(--border);
+}
+.reaction {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 8px; border-radius:12px;
+  background:var(--surface2); border:1px solid var(--border);
+  font-size:11px; cursor:default; user-select:none;
+}
+.reaction.pass { border-color:var(--green); }
+.reaction.fail { border-color:var(--red); }
+.reaction.pending { border-color:var(--yellow); }
+.reaction.loading { border-color:var(--orange); }
+.reaction-emoji { font-size:13px; }
+.reaction-who {
+  max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:var(--text-dim); font-size:10px;
+}
+.reaction-who.pass { color:var(--green); }
+.reaction-who.fail { color:var(--red); }
+.reactions-summary {
+  font-size:10px; color:var(--text-dim); padding:2px 6px;
+  display:inline-flex; align-items:center; gap:4px;
+}
+.reactions-summary .count { font-weight:600; }
+.reactions-summary .count.ok { color:var(--green); }
+.reactions-summary .count.bad { color:var(--red); }
+
+/* Children (sub-nodes) - full width, left border only as depth indicator */
+.node-children {
+  padding:6px 0 6px 0;
+  margin-left:0;
+  border-left:3px solid var(--border);
+  padding-left:0;
+}
+
+/* Thread (dialog) */
+.thread-bar {
+  display:flex; align-items:center; gap:6px; padding:6px 12px;
+  cursor:pointer; user-select:none; font-size:11px; color:var(--accent);
+  border-top:1px solid var(--border);
+}
+.thread-bar .arrow { font-size:10px; }
+.thread-bar .arrow.open { transform:rotate(90deg); }
+.thread-cnt { background:var(--surface2); border-radius:8px; padding:0 5px; font-size:10px; color:var(--text-dim); }
+.thread-wrap { display:none; border-top:1px solid var(--border); }
+.thread-wrap.open { display:block; }
+.thread-msgs { padding:6px 12px 4px 28px; }
+
+.tmsg { display:flex; gap:6px; margin-bottom:6px; }
+.tmsg-ava {
+  width:22px; height:22px; border-radius:4px; display:flex; align-items:center;
+  justify-content:center; font-size:10px; flex-shrink:0; margin-top:1px;
+}
+.tmsg-ava.worker   { background:rgba(125,207,255,.12); color:var(--accent3); }
+.tmsg-ava.verifier { background:rgba(187,154,247,.12); color:var(--accent2); }
+.tmsg-ava.user     { background:rgba(122,162,247,.12); color:var(--accent); }
+.tmsg-ava.system   { background:var(--surface2); color:var(--text-dim); }
+.tmsg-body { flex:1; min-width:0; }
+.tmsg-hdr { display:flex; align-items:center; gap:5px; font-size:11px; margin-bottom:1px; }
+.tmsg-nick { font-weight:600; }
+.tmsg-nick.worker   { color:var(--accent3); }
+.tmsg-nick.verifier { color:var(--accent2); }
+.tmsg-nick.user     { color:var(--accent); }
+.tmsg-nick.system   { color:var(--text-dim); }
+.tmsg-time { font-size:9px; color:var(--text-dim); }
+.tmsg-badge { font-size:8px; padding:0 4px; border-radius:3px; text-transform:uppercase; }
+.tmsg-badge.pass { background:rgba(158,206,106,.15); color:var(--green); }
+.tmsg-badge.fail { background:rgba(247,118,142,.15); color:var(--red); }
+.tmsg-text { font-size:12px; line-height:1.4; white-space:pre-wrap; word-break:break-word; }
+
+/* Actions on thread messages (pin, worker actions) */
+.tmsg-actions {
+  display:flex; gap:3px; margin-top:3px; flex-wrap:wrap;
+}
+.pin-btn {
+  background:none; border:1px solid transparent; border-radius:4px;
+  color:var(--text-dim); cursor:pointer; font-size:12px; padding:1px 6px;
+  display:inline-flex; align-items:center; gap:3px; font-family:inherit;
+}
+.pin-btn.pinned { color:var(--orange); border-color:var(--orange); }
+.pin-count { font-size:10px; color:var(--text-dim); }
+.tmsg.promoted { opacity:.6; border-left:2px solid var(--orange); padding-left:6px; }
+.tmsg.promoted .tmsg-text::before { content:"[pinned] "; color:var(--orange); font-size:10px; }
+
+.thread-input {
+  display:flex; gap:4px; padding:4px 12px 6px 28px; border-top:1px solid var(--border);
+}
+.thread-input textarea {
+  flex:1; background:var(--bg); border:1px solid var(--border); border-radius:4px;
+  color:var(--text); padding:4px 8px; font-size:12px; font-family:inherit;
+  resize:none; min-height:28px; max-height:60px; line-height:1.3;
+}
+.thread-input textarea:focus { outline:none; border-color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Reactive Task Builder</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="stxt">Ready</span></div>
+  <div class="hdr-right">
+    <button class="btn" id="btnExport">Export</button>
+    <button class="btn" id="btnWorkflow" title="Edit Workflow YAML">YAML</button>
+    <button class="btn" id="btnClear" title="Clear">Clear</button>
+    <button class="btn" id="btnSettings" title="Settings" style="font-size:15px;padding:4px 8px">&#9881;</button>
+  </div>
+</div>
+
+<!-- Settings popup -->
+<div class="settings-overlay" id="settingsOverlay">
+  <div class="settings-popup">
+    <div class="settings-popup-hdr">
+      <span>Settings</span>
+      <button class="btn" id="btnCloseSettings" style="padding:2px 8px;font-size:11px">&#x2715;</button>
+    </div>
+    <div class="settings-popup-body">
+      <label>Temperature</label>
+      <input id="settingTemp" type="number" value="0.6" step="0.1" min="0" max="2" />
+      <label>Max tokens</label>
+      <input id="settingMaxTokens" type="number" value="2048" step="256" min="64" max="8192" />
+      <label>Max continues</label>
+      <input id="settingMaxContinue" type="number" value="20" step="1" min="1" max="50" />
+      <label>Verify max rounds</label>
+      <input id="settingVerifyRounds" type="number" value="3" step="1" min="1" max="10" />
+      <label>YAML Apply worker</label>
+      <select id="settingYamlApplyRole" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:12px">
+        <option value="generator">generator</option>
+        <option value="analyzer">analyzer</option>
+      </select>
+      <label>YAML Ask worker</label>
+      <select id="settingYamlAskRole" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:12px">
+        <option value="generator">generator</option>
+        <option value="analyzer">analyzer</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="main" style="position:relative">
+  <!-- Left sidebar collapse button -->
+  <button class="sidebar-toggle left" id="btnToggleLeft" title="Toggle sidebar">&#9664;</button>
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <label>Sandbox URL</label>
+      <div style="display:flex;gap:4px;align-items:center">
+        <span class="dot" id="serverDot" style="flex-shrink:0"></span>
+        <input id="sandboxUrl" value="http://localhost:5002" style="flex:1" />
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <button class="btn" id="btnStartServer" style="flex:1;font-size:11px">Start</button>
+        <button class="btn" id="btnStopServer" style="flex:1;font-size:11px">Stop</button>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <h3>Workers</h3>
+      <div id="workerList" style="margin-bottom:4px"></div>
+      <div style="display:flex;gap:4px">
+        <input id="newWorkerUrl" placeholder="http://host:port" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:11px" />
+        <button class="btn" style="padding:2px 8px;font-size:11px" id="btnAddWorker">+</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        <input id="settingNoThink" type="checkbox" checked style="width:auto;margin:0" />
+        <label style="margin:0;font-size:11px;color:var(--text-dim)">No-think prefill</label>
+      </div>
+    </div>
+  </div>
+  <div class="feed-area">
+    <div class="feed" id="feed"></div>
+    <div class="main-input">
+      <textarea id="inp" placeholder="Describe your task... (Enter)" rows="2"></textarea>
+      <button class="btn primary" id="btnSend">Send</button>
+    </div>
+  </div>
+  <!-- Resize handle -->
+  <div class="resize-handle" id="resizeHandle"></div>
+  <!-- Right sidebar: YAML → NL change → Chat -->
+  <div class="right-sidebar collapsed" id="rightSidebar">
+    <div class="right-sidebar-hdr">
+      <span>Workflow</span>
+      <button class="btn primary" id="btnRun" style="font-size:10px;padding:2px 8px">Run</button>
+      <div style="display:flex;gap:4px;margin-left:auto">
+        <button class="btn" id="btnWorkflowSave" style="font-size:10px;padding:1px 6px">Save</button>
+        <button class="btn" id="btnWorkflowReset" style="font-size:10px;padding:1px 6px">Reset</button>
+      </div>
+    </div>
+    <!-- 1. YAML editor (top) -->
+    <textarea id="workflowEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2"></textarea>
+    <!-- 2. NL change processor (middle) -->
+    <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
+      <textarea id="workflowNL" placeholder="Describe YAML change..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+      <button class="btn primary" id="btnWorkflowApplyNL" style="font-size:10px;padding:2px 8px">Apply</button>
+    </div>
+    <!-- 3. Chat (bottom) — input on top, messages flow down (newest first) -->
+    <div style="flex:0 0 35%;min-height:100px;display:flex;flex-direction:column">
+      <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
+        <textarea id="workflowChatInput" placeholder="Ask about this workflow..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+        <button class="btn" id="btnWorkflowChatSend" style="font-size:10px;padding:2px 8px">Ask</button>
+      </div>
+      <div id="workflowChat" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px"></div>
+    </div>
+  </div>
+  <!-- Right sidebar collapse button -->
+  <button class="sidebar-toggle right" id="btnToggleRight" title="Toggle YAML">&#9654;</button>
+</div>
+
+<script>
+/* ================================================================
+   State
+   ================================================================ */
+const SB = () => document.getElementById('sandboxUrl').value.replace(/\/+$/,'');
+let session = 'default';
+let nodes = {};   // id -> node data
+let idN = 0;
+let rootNodeId = null;
+// Restore state from localStorage
+try {
+  const saved = JSON.parse(localStorage.getItem('reactive_nodes') || '{}');
+  if (saved.nodes && Object.keys(saved.nodes).length) {
+    nodes = saved.nodes;
+    rootNodeId = saved.rootNodeId || null;
+    idN = saved.idN || 0;
+  }
+} catch(_) {}
+const feed = document.getElementById('feed');
+
+/* Settings - read from sidebar inputs */
+function getSettings() {
+  return {
+    temperature: parseFloat(document.getElementById('settingTemp').value) || 0.6,
+    max_tokens: parseInt(document.getElementById('settingMaxTokens').value) || 2048,
+    max_continue: parseInt(document.getElementById('settingMaxContinue').value) || 20,
+    verify_max_rounds: parseInt(document.getElementById('settingVerifyRounds').value) || 3,
+    no_think: document.getElementById('settingNoThink').checked,
+  };
+}
+
+/* Workers - multiple validator endpoints */
+let workers = [
+  {url: 'http://localhost:5001', name: 'local:5001', role: 'generator'},
+  {url: 'http://192.168.1.15:5050', name: 'remote:5050', role: 'analyzer'},
+];
+
+/* helpers */
+function ts() { return new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function gid() { return 'n'+(++idN); }
+function setS(c,t) { document.getElementById('dot').className='dot '+c; document.getElementById('stxt').textContent=t; }
+
+/* API */
+async function post(p,b) {
+  const r=await fetch(SB()+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  if(!r.ok) throw new Error(r.status+': '+await r.text());
+  return r.json();
+}
+async function get(p) { const r=await fetch(SB()+p); if(!r.ok) throw new Error(''+r.status); return r.json(); }
+
+/* ================================================================
+   Node CRUD
+   ================================================================ */
+function createNode(parentId, opts) {
+  const id = gid();
+  const nd = {
+    id, parentId,
+    type: opts.type||'entity',   // root | entity | sub
+    title: opts.title||'',
+    status: opts.status||'pending',
+    tags: opts.tags||{},         // key->value scope constants (collapsible)
+    question: opts.question||'',
+    questionForm: opts.questionForm||null,
+    answer: opts.answer||'',
+    answerThink: opts.answerThink||'',  // <think> content, shown collapsed above RESULT
+    answerStatus: null,
+    showAnswer: opts.showAnswer!==false,
+    reactions: [],               // [{worker, emoji, status, detail}]
+    children: [],                // child node ids
+    thread: [],                  // [{role,name,content,time,status}]
+    time: ts(),
+    collapsed: false,
+    threadOpen: true,
+    tagsCollapsed: (opts.type||'entity') === 'root',  // root: tags collapsed, entity: open
+    answerOpen: false,
+  };
+  nodes[id] = nd;
+  if (parentId && nodes[parentId]) nodes[parentId].children.push(id);
+  renderTree(true);
+  return nd;
+}
+
+function removeNodeTree(nodeId) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  const childIds = [...(nd.children || [])];
+  childIds.forEach(removeNodeTree);
+  if (nd.parentId && nodes[nd.parentId]) {
+    nodes[nd.parentId].children = nodes[nd.parentId].children.filter(id => id !== nodeId);
+  }
+  delete nodes[nodeId];
+}
+
+function syncEntityChildren(parentId, entityList) {
+  const parent = nodes[parentId];
+  if (!parent) return [];
+  const desired = Array.isArray(entityList) ? entityList : [];
+  const existing = parent.children.map(id => nodes[id]).filter(n => n?.type === 'entity');
+  const used = new Set();
+  const synced = [];
+
+  desired.forEach((entity, idx) => {
+    const title = entity?._title || entity?.title || entity?.name || `entity-${idx + 1}`;
+    let node =
+      existing.find(n => !used.has(n.id) && n.title === title) ||
+      existing.find(n => !used.has(n.id) && String(n.tags?._index ?? '') === String(entity?._index ?? '')) ||
+      existing.find(n => !used.has(n.id));
+
+    if (!node) {
+      node = createNode(parentId, {type:'entity', title, tags: entity || {}, status:'pending'});
+    } else {
+      Object.assign(node, {
+        title,
+        tags: entity || {},
+        status: node.answer ? node.status : 'pending',
+      });
+    }
+    used.add(node.id);
+    synced.push(node);
+  });
+
+  existing
+    .filter(n => !used.has(n.id))
+    .forEach(n => removeNodeTree(n.id));
+
+  renderTree();
+  return synced;
+}
+
+function applyWorkflowResult(rootId, res, opts = {}) {
+  const markSource = opts.markSource !== false;
+  if (res.thread) {
+    for (const t of res.thread) {
+      addThread(
+        rootId,
+        t.role || 'system',
+        t.name || t.role || 'System',
+        t.content || '',
+        {think: t.think || '', tag: t.tag || '', image_url: t.image_url || '', ...(markSource ? {source: 'workflow'} : {})},
+      );
+      // Show ComfyUI images inline in thread messages
+      if (t.image_url) {
+        const last = nd.thread[nd.thread.length - 1];
+        if (last) last.image_url = t.image_url;
+      }
+    }
+  }
+
+  if (res.state?.root?.answer) {
+    nodes[rootId].showAnswer = true;
+    setAnswer(rootId, res.state.root.answer);
+  }
+
+  nodes[rootId].entities_list = Array.isArray(res.vars?.entities) ? res.vars.entities : [];
+  nodes[rootId].axioms_list = Array.isArray(res.vars?.axioms) ? res.vars.axioms : [];
+  nodes[rootId].hypotheses_list = Array.isArray(res.vars?.hypotheses) ? res.vars.hypotheses : [];
+
+  const entityNodes = syncEntityChildren(rootId, res.state?.root?.entities || []);
+  if (res.vars?.entity_nodes && Array.isArray(res.vars.entity_nodes)) {
+    res.vars.entity_nodes.forEach((en, i) => {
+      if (i < entityNodes.length && en.answer) {
+        setAnswer(entityNodes[i].id, en.answer);
+        updateNode(entityNodes[i].id, {status: 'done'});
+      }
+    });
+  }
+
+  if (res.status === 'error') {
+    addThread(rootId, 'system', 'Error', res.error || 'Unknown error', markSource ? {source: 'workflow'} : {});
+  }
+
+  updateNode(rootId, {status: res.status === 'done' ? 'done' : 'active'});
+}
+
+function addThread(nodeId, role, name, content, extra) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  nd.thread.push({role, name, content, time:ts(), ...(extra||{})});
+  nd.threadOpen = true; // keep thread open when new messages arrive
+  renderTree();
+}
+
+function setAnswer(nodeId, text, status, think) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  nd.answer = text; nd.answerStatus = status;
+  if (think !== undefined) nd.answerThink = think;
+  renderTree();
+  // Auto-resize answer textareas
+  document.querySelectorAll('.answer-ta').forEach(ta => {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  });
+}
+
+function addReaction(nodeId, worker, emoji, status, detail) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  // Update existing or add new
+  const existing = nd.reactions.find(r => r.worker === worker);
+  if (existing) { existing.emoji = emoji; existing.status = status; existing.detail = detail||''; }
+  else nd.reactions.push({worker, emoji, status, detail:detail||''});
+  renderTree();
+}
+
+/* LLM fetch. By default prompt calls are single-shot.
+   Auto-continue is opt-in, or implied by noThink fastpath. */
+async function fetchLLMWithContinue(url, messages, opts = {}) {
+  const s = getSettings();
+  const {
+    temperature = s.temperature,
+    max_tokens = s.max_tokens,
+    noThink = s.no_think,
+    maxContinues = s.max_continue,
+    continueOnLength = !!noThink,
+  } = opts;
+  let result = '';
+  const baseMessages = [...messages];
+
+  // No-think: add assistant prefill (same as multi_agent_chat.html)
+  if (noThink && (baseMessages.length === 0 || baseMessages[baseMessages.length-1].role !== 'assistant')) {
+    baseMessages.push({ role: 'assistant', content: '<think>\n\n</think>\n\n' });
+  }
+
+  const lastMsg = baseMessages[baseMessages.length - 1];
+  const hasPrefill = lastMsg && lastMsg.role === 'assistant';
+
+  for (let i = 0; i <= maxContinues; i++) {
+    let curMessages;
+    if (i === 0) {
+      curMessages = baseMessages;
+    } else if (hasPrefill) {
+      // Replace prefill with accumulated result for KV cache match
+      curMessages = [...baseMessages.slice(0, -1), { role: 'assistant', content: (noThink ? '<think>\n\n</think>\n\n' : '') + result }];
+    } else {
+      curMessages = [...baseMessages, { role: 'assistant', content: result }];
+    }
+
+    let res, data;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: curMessages,
+          continue_assistant_turn: i > 0 || noThink,
+          cache_prompt: false,
+          temperature, max_tokens, stream: false,
+        }),
+      });
+      if (!res.ok) {
+        console.warn(`LLM request failed (${res.status}): ${await res.text()}`);
+        break; // Return partial result
+      }
+      data = await res.json();
+    } catch (e) {
+      console.warn(`LLM fetch error on continue ${i}:`, e.message);
+      break; // Connection error, return partial result
+    }
+    const chunk = data.choices?.[0]?.message?.content || data.results?.[0]?.text || '';
+    const finishReason = data.choices?.[0]?.finish_reason || 'stop';
+    result += chunk;
+    if (!continueOnLength) break;
+    if (!['length', 'max_tokens'].includes(String(finishReason || '').toLowerCase())) break;
+  }
+  // Separate think and answer - return both
+  let think = '';
+  let answer = result;
+  const thinkMatch = result.match(/<think\b[^>]*>([\s\S]*?)<\/think>/i);
+  if (thinkMatch) {
+    think = thinkMatch[1].trim();
+    answer = result.replace(/<think\b[^>]*>[\s\S]*?<\/think>\s*/gi, '').trim();
+  } else if (result.includes('<think>')) {
+    const idx = result.indexOf('<think>');
+    const endIdx = result.lastIndexOf('</think>');
+    if (endIdx > idx) {
+      think = result.slice(idx + 7, endIdx).trim();
+      answer = result.slice(endIdx + 8).trim();
+    } else {
+      think = result.slice(idx + 7).trim();
+      answer = '';
+    }
+  }
+  return { answer, think };
+}
+
+async function requestWorkerCheck(nodeId, workerObj) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  if (!nd.answer) {
+    addReaction(nodeId, workerObj.name, '\u26A0\uFE0F', 'pending', 'no text to check');
+    return;
+  }
+  addReaction(nodeId, workerObj.name, '\u23F3', 'loading', 'checking...');
+
+  try {
+    const url = workerObj.url.replace(/\/+$/,'') + '/v1/chat/completions';
+    const prompt = `Evaluate this text. Reply PASS if good, FAIL + reason if not.\n\nText:\n${nd.answer}`;
+    const messages = [{role:'user', content:prompt}];
+    const {answer, think} = await fetchLLMWithContinue(url, messages, {temperature:0.2, max_tokens:512});
+    const pass = /PASS/i.test(answer);
+    addReaction(nodeId, workerObj.name, pass?'\u2705':'\u274C', pass?'pass':'fail', answer.slice(0,100));
+    addThread(nodeId, 'verifier', workerObj.name, answer, {status: pass?'pass':'fail', think});
+  } catch(e) {
+    addReaction(nodeId, workerObj.name, '\u26A0\uFE0F', 'fail', e.message);
+  }
+}
+
+/* Verify axioms + hypotheses step by step via think injection.
+   Each item injected as a question, stop on newline, read answer, next. */
+async function verifyAxiomsViaThink(nodeId) {
+  const nd = nodes[nodeId]; if (!nd?.answer) return;
+  const worker = getWorkerByRole('analyzer');
+  if (!worker?.url) return;
+  const url = worker.url.replace(/\/+$/,'') + '/v1/chat/completions';
+
+  // Collect all items to verify
+  const items = [];
+  (nd.axioms_list || []).forEach(a => items.push({type:'AXIOM', text:a}));
+  (nd.hypotheses_list || []).forEach(h => items.push({type:'HYPOTHESIS', text:h}));
+  if (items.length === 0) return;
+
+  addThread(nodeId, 'system', 'Verify', `Verifying ${items.length} items step by step...`);
+
+  // Find table from thread (if parsed)
+  const tableMsg = nd.thread.find(t => t.name?.includes('(table)'));
+  const tableText = tableMsg?.content || '';
+
+  // Build conversation: result as user, start <think> with table context
+  let thinkAccum = '\n';
+  if (tableText) thinkAccum += 'Summary table:\n' + tableText + '\n\n';
+  thinkAccum += 'Verification:\n';
+  let fullAssistant = '<think>' + thinkAccum;
+  const results = [];
+
+  // First: verify table matches truth
+  if (tableText) {
+    items.unshift({type: 'TABLE', text: 'Table matches truth'});
+  }
+
+  try {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const question = `\n((${item.text}) == 1) === `;
+
+      // Append question to accumulated think
+      fullAssistant += question;
+
+      // Continue with stop on newline - model answers until \n
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          messages: [
+            {role: 'user', content: nd.answer},
+            {role: 'assistant', content: fullAssistant},
+          ],
+          continue_assistant_turn: true,
+          cache_prompt: false,
+          temperature: 0.1,
+          max_tokens: 100,
+          stop: ['\n'],
+          stream: false,
+        }),
+      });
+      const data = await res.json();
+      const answer = (data.choices?.[0]?.message?.content || '').trim();
+
+      // Record result - 1 = true, 0 = false
+      const pass = answer.trim().startsWith('1') || /^true/i.test(answer);
+      const partial = false;
+      results.push({item, answer, pass, partial});
+      thinkAccum += question + answer + '\n';
+      fullAssistant += answer + '\n';
+    }
+
+    // Show results in thread
+    const summary = results.map((r,i) =>
+      `${r.pass?'\u2705':r.partial?'\u26A0\uFE0F':'\u274C'} ${r.item.text} = ${r.answer}`
+    ).join('\n');
+    const allPass = results.every(r => r.pass);
+    addThread(nodeId, 'verifier', worker.name + ' (axioms)',
+      summary, {think: thinkAccum, status: allPass ? 'pass' : 'fail'});
+
+  } catch(e) {
+    addThread(nodeId, 'system', 'Verify', 'Error: ' + e.message);
+  }
+}
+
+function runVerify(nodeId) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  // For root node: verify axioms via think injection
+  if (nd.axioms_list?.length || nd.hypotheses_list?.length) {
+    verifyAxiomsViaThink(nodeId);
+    return;
+  }
+  // For entity nodes: inherit from root and verify
+  const root = Object.values(nodes).find(n => n.type === 'task');
+  if (root && (root.axioms_list?.length || root.hypotheses_list?.length)) {
+    // Copy lists to entity for verification context
+    nd.axioms_list = root.axioms_list;
+    nd.hypotheses_list = root.hypotheses_list;
+    verifyAxiomsViaThink(nodeId);
+  }
+}
+
+async function runTrigger(triggerName, nodeId) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  addThread(nodeId, 'system', 'Trigger', `Running trigger: ${triggerName}...`);
+  renderTree(true);
+
+  // Collect vars from current state
+  const entityNodes = nd.children.map(cid => {
+    const cn = nodes[cid];
+    return cn ? {_title: cn.question, answer: cn.answer, imageUrl: cn.imageUrl || ''} : null;
+  }).filter(Boolean);
+
+  const vars = {
+    '$answer': nd.answer || '',
+    '$table': nd.table || '',
+    '$entity_nodes': entityNodes,
+    '$axioms': nd.axioms_list || [],
+    '$hypotheses': nd.hypotheses_list || [],
+    '$entities': nd.entities_list || [],
+  };
+
+  try {
+    const res = await fetch(`${sandboxUrl}/api/workflow/trigger`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        yaml: workflowYaml,
+        trigger: triggerName,
+        settings: getSettings(),
+        workers: getWorkerMap(),
+        vars,
+      }),
+    }).then(r => r.json());
+
+    if (res.thread) {
+      res.thread.forEach(t => {
+        addThread(nodeId, t.role||'system', t.name||'System', t.content||'',
+          {think: t.think||'', tag: t.tag||'', image_url: t.image_url||''});
+        // If ComfyUI returned image, set on matching entity by prompt snippet
+        if (t.image_url && t.tag === 'comfyui') {
+          const snippet = t.prompt_snippet || '';
+          nd.children.forEach(cid => {
+            const cn = nodes[cid];
+            if (cn && !cn.imageUrl && cn.answer && snippet && cn.answer.startsWith(snippet.substring(0, 30))) {
+              cn.imageUrl = t.image_url;
+            }
+          });
+        }
+      });
+    }
+    renderTree(true);
+  } catch(e) {
+    addThread(nodeId, 'system', 'Error', `Trigger ${triggerName} failed: ${e.message}`);
+    renderTree(true);
+  }
+}
+
+function runCheck(nodeId) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  const analyzer = getWorkerByRole('analyzer');
+  if (analyzer) requestWorkerCheck(nodeId, analyzer);
+}
+
+function requestAllWorkersCheck(nodeId) {
+  workers.forEach(w => requestWorkerCheck(nodeId, w));
+}
+
+/* Pin a thread message -> promote to child node */
+function pinThreadMessage(nodeId, threadIdx, pinnerName) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  const t = nd.thread[threadIdx]; if(!t) return;
+
+  if (!t.pins) t.pins = [];
+  if (t.pins.includes(pinnerName)) return;
+  t.pins.push(pinnerName);
+
+  const PIN_THRESHOLD = 1;
+  if (t.pins.length >= PIN_THRESHOLD && !t.promoted) {
+    t.promoted = true;
+
+    // Pin into parent's answer field (make visible)
+    nd.showAnswer = true;
+    setAnswer(nodeId, t.content, null, t.think || '');
+
+    // If content looks like a markdown table -> parse into entity child nodes
+    const hasTable = t.content.includes('|') && t.content.split('\n').filter(l => l.trim().startsWith('|')).length >= 3;
+    if (hasTable) {
+      parseTableToEntities(nodeId, t.content);
+    }
+
+    return;
+  }
+  renderTree();
+}
+
+function updateNode(nodeId, upd) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  Object.assign(nd, upd);
+  renderTree();
+}
+
+/* ================================================================
+   Render - full tree rebuild (simple & correct)
+   ================================================================ */
+function renderTree(scrollToBottom) {
+  const prevScroll = feed.scrollTop;
+  const roots = Object.values(nodes).filter(n => !n.parentId || !nodes[n.parentId]);
+  feed.innerHTML = '';
+  roots.forEach(n => feed.appendChild(renderNode(n)));
+  if (scrollToBottom) {
+    feed.scrollTop = feed.scrollHeight;
+  } else {
+    feed.scrollTop = prevScroll;
+  }
+  // Auto-resize all answer textareas to fit content
+  feed.querySelectorAll('.answer-ta').forEach(ta => {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  });
+  // Persist state to localStorage
+  try { localStorage.setItem('reactive_nodes', JSON.stringify({nodes, rootNodeId, idN})); } catch(_) {}
+}
+
+function renderNode(nd) {
+  const el = document.createElement('div');
+  el.className = 'node' + (nd.status==='done'?' done':'') + (nd.status==='fail'?' fail':'') + (nd.status==='active'?' active':'');
+  el.dataset.nid = nd.id;
+
+  const iconCls = nd.type==='root'?'root': nd.status==='done'?'ok': nd.status==='fail'?'err':'entity';
+  const iconCh = nd.type==='root'?'T':'#';
+  const badgeCls = nd.status||'pending';
+  const bodyOpen = !nd.collapsed;
+
+  /* header - tags toggle button pinned here on the right */
+  const tagEntries = Object.entries(nd.tags).filter(([k])=>!k.startsWith('_'));
+  const tagsCollapsed = nd.tagsCollapsed || false;
+
+  let h = `<div class="node-hdr" data-hdr="${nd.id}">`;
+  h += `<span class="node-arrow${bodyOpen?' open':''}">\u25B6</span>`;
+  h += `<span class="node-icon ${iconCls}">${iconCh}</span>`;
+  h += `<span class="node-title">${esc(nd.title)}</span>`;
+  if (nd.children.length) h += `<span class="node-collapse-hint">${nd.children.length} sub</span>`;
+  h += `<span class="node-badge ${badgeCls}">${badgeCls}</span>`;
+  h += `<span class="node-time">${nd.time}</span>`;
+  if (tagEntries.length) h += `<button class="tags-toggle-btn" data-tags-toggle="${nd.id}" title="Toggle scope">${tagsCollapsed?'\u25BC':'\u25B2'}</button>`;
+  h += `</div>`;
+
+  /* body */
+  h += `<div class="node-body${bodyOpen?' open':''}" data-body="${nd.id}">`;
+
+  /* tags (collapsible - toggle button is in header) */
+  if (tagEntries.length) {
+    h += `<div class="node-tags-wrap${tagsCollapsed?' collapsed':''}">`;
+    h += `<div class="node-tags${tagsCollapsed?' collapsed':''}">`;
+    tagEntries.forEach(([k,v]) => {
+      const display = Array.isArray(v) ? v.join(', ') : String(v);
+      const cls = k.startsWith('used_') ? 'green' : 'accent';
+      h += `<span class="tag ${cls}" title="${esc(k)}: ${esc(display)}">${esc(k)}: ${esc(display.length>30 ? display.slice(0,30)+'...' : display)}</span>`;
+    });
+    h += `</div></div>`;
+  }
+
+  /* structured lists (ENTITIES, AXIOMS, HYPOTHESES) */
+  if (nd.entities_list?.length || nd.axioms_list?.length || nd.hypotheses_list?.length) {
+    h += `<div class="node-lists">`;
+    [{name:'ENTITIES', items:nd.entities_list, cls:'entity'},
+     {name:'AXIOMS', items:nd.axioms_list, cls:'axiom'},
+     {name:'HYPOTHESES', items:nd.hypotheses_list, cls:'hypothesis'}
+    ].forEach(list => {
+      if (!list.items?.length) return;
+      const lOpen = nd['list_'+list.name+'_open'];
+      h += `<div class="node-list-section">`;
+      h += `<div class="node-list-header" data-list-toggle="${nd.id}:${list.name}"><span class="arrow${lOpen?' open':''}">\u25B6</span> ${list.name} <span class="list-count">${list.items.length}</span></div>`;
+      h += `<div class="node-list-body${lOpen?' open':''}">`;
+      list.items.forEach(item => {
+        h += `<div class="node-list-item ${list.cls}"><span class="li-bullet">\u2022</span>${esc(item)}</div>`;
+      });
+      h += `</div></div>`;
+    });
+    h += `</div>`;
+  }
+
+  /* question */
+  if (nd.question) {
+    h += `<div class="node-question">${esc(nd.question)}</div>`;
+  }
+
+  /* question form */
+  if (nd.questionForm && nd.questionForm.length) {
+    h += `<div class="node-form" data-form="${nd.id}">`;
+    nd.questionForm.forEach((q,i) => {
+      h += `<div class="qf-item">`;
+      h += `<label>${esc(q.question)}</label>`;
+      if (q.hint) h += `<div class="qf-hint">${esc(q.hint)}</div>`;
+      if (q.type==='textarea') h += `<textarea data-field="${esc(q.field)}" placeholder="${esc(q.placeholder||'')}"></textarea>`;
+      else h += `<input data-field="${esc(q.field)}" type="text" placeholder="${esc(q.placeholder||'')}" />`;
+      h += `</div>`;
+    });
+    h += `<button class="btn primary" style="margin-top:4px" data-submit="${nd.id}">Submit</button>`;
+    h += `</div>`;
+  }
+
+  /* think block (collapsed, above RESULT) */
+  if (nd.answerThink && nd.showAnswer) {
+    h += `<div class="think-block">`;
+    h += `<div class="think-toggle" data-think-toggle="${nd.id}"><span class="arrow">\u25B6</span> think (${nd.answerThink.length} chars)</div>`;
+    h += `<div class="think-body" data-think-body="${nd.id}">${esc(nd.answerThink)}</div>`;
+    h += `</div>`;
+  }
+
+  /* answer - code block */
+  if (nd.showAnswer) {
+    const acls = nd.answerStatus==='pass'?' pass': nd.answerStatus==='fail'?' fail':'';
+    const emptyCls = nd.answer ? '' : ' empty';
+    h += `<div class="node-answer">`;
+    h += `<div class="answer-block${acls}">`;
+    const ansOpen = nd.answerOpen !== false; // default open for now, will change
+    h += `<div class="answer-lang">`;
+    h += `<span>result</span>`;
+    h += `<span style="flex:1"></span>`;
+    if (nd.answer) {
+      h += `<button class="btn-small" data-verify="${nd.id}" title="Verify axioms & hypotheses">verify</button>`;
+      h += `<button class="btn-small" data-check="${nd.id}" title="Check with analyzer">check</button>`;
+      h += `<button class="btn-small" data-generate="${nd.id}" title="Generate images via ComfyUI" style="color:var(--purple,#b48ead)">generate</button>`;
+    }
+    h += `<button class="tags-toggle-btn" data-answer-toggle="${nd.id}">${ansOpen?'\u25B2':'\u25BC'}</button>`;
+    h += `</div>`;
+    if (ansOpen) {
+      h += `<textarea class="answer-ta${emptyCls}" data-ans="${nd.id}" placeholder="(pending...)">${esc(nd.answer)}</textarea>`;
+    }
+    h += `</div>`;
+    /* generated image */
+    if (nd.imageUrl) {
+      h += `<div class="node-image"><img src="${esc(nd.imageUrl)}" alt="Generated image" loading="lazy"></div>`;
+    }
+    h += `</div>`;
+
+    /* reactions bar */
+    if (nd.reactions.length) {
+      h += `<div class="reactions-bar">`;
+      const passed = nd.reactions.filter(r=>r.status==='pass').length;
+      const total = nd.reactions.length;
+      nd.reactions.forEach(r => {
+        const wcls = r.status||'pending';
+        h += `<span class="reaction ${wcls}" title="${esc(r.detail||'')}">`;
+        h += `<span class="reaction-emoji">${r.emoji||'\u2753'}</span>`;
+        h += `<span class="reaction-who ${wcls}">${esc(r.worker)}</span>`;
+        h += `</span>`;
+      });
+      h += `<span class="reactions-summary"><span class="count ${passed===total?'ok':'bad'}">${passed}/${total}</span></span>`;
+      h += `</div>`;
+    }
+  }
+
+  /* thread (before children - thread belongs to THIS node) */
+  const tc = nd.thread.length;
+  const tOpen = nd.threadOpen;
+  h += `<div class="thread-bar" data-thread-toggle="${nd.id}"><span class="arrow${tOpen?' open':''}">\u25B6</span> Thread <span class="thread-cnt">${tc}</span></div>`;
+  h += `<div class="thread-wrap${tOpen?' open':''}" data-thread="${nd.id}">`;
+  h += `<div class="thread-msgs">`;
+  nd.thread.forEach((t, i) => { h += tmsgHTML(t, nd.id, i); });
+  h += `</div>`;
+  h += `<div class="thread-input"><textarea placeholder="Reply..." data-tinp="${nd.id}" rows="1"></textarea><button class="btn" data-tsend="${nd.id}">Send</button></div>`;
+  h += `</div>`;
+
+  /* children (after thread) */
+  if (nd.children.length) {
+    h += `<div class="node-children" data-children="${nd.id}"></div>`;
+  }
+
+  h += `</div>`; // end body
+
+  el.innerHTML = h;
+
+  // Render children recursively
+  const childContainer = el.querySelector(`[data-children="${nd.id}"]`);
+  if (childContainer) {
+    nd.children.forEach(cid => {
+      if (nodes[cid]) childContainer.appendChild(renderNode(nodes[cid]));
+    });
+  }
+
+  // Bind events
+  bindNode(el, nd);
+  return el;
+}
+
+function tmsgHTML(t, nodeId, threadIdx) {
+  const r = t.role||'system';
+  const ini = (t.name||r)[0].toUpperCase();
+  let badge = '';
+  if (t.status==='pass') badge='<span class="tmsg-badge pass">PASS</span>';
+  if (t.status==='fail') badge='<span class="tmsg-badge fail">FAIL</span>';
+  const promoted = t.promoted ? ' promoted' : '';
+  const pinCls = t.pinned ? ' pinned' : '';
+  const pinCount = t.pins ? t.pins.length : 0;
+  const pinLabel = pinCount ? ` ${pinCount}` : '';
+  let thinkHtml = '';
+  if (t.think) {
+    const tid = `tthink-${nodeId}-${threadIdx}`;
+    thinkHtml = `<div class="think-block" style="margin:4px 0"><div class="think-toggle" data-think-toggle="${tid}"><span class="arrow">\u25B6</span> think (${t.think.length})</div><div class="think-body" data-think-body="${tid}">${esc(t.think)}</div></div>`;
+  }
+  let imageHtml = '';
+  if (t.image_url) {
+    const proxyUrl = `/api/comfyui/view?filename=${encodeURIComponent(t.image_url.split('filename=')[1]?.split('&')[0] || '')}`;
+    const imgSrc = t.image_url.startsWith('http') ? t.image_url : proxyUrl;
+    imageHtml = `<div class="tmsg-image"><img src="${esc(imgSrc)}" alt="Generated" loading="lazy"></div>`;
+  }
+  return `<div class="tmsg${promoted}"><div class="tmsg-ava ${r}">${ini}</div><div class="tmsg-body"><div class="tmsg-hdr"><span class="tmsg-nick ${r}">${esc(t.name||r)}</span>${badge}<span class="tmsg-time">${t.time||''}</span></div>${thinkHtml}<div class="tmsg-text">${esc(t.content||'')}</div>${imageHtml}<div class="tmsg-actions"><button class="pin-btn${pinCls}" data-pin="${nodeId}:${threadIdx}" title="Pin to parent">&#x1F4CC;${pinLabel}</button></div></div></div>`;
+}
+
+function bindNode(el, nd) {
+  // header click -> collapse/expand body
+  const hdr = el.querySelector(`[data-hdr="${nd.id}"]`);
+  if (hdr) hdr.addEventListener('click', () => {
+    nd.collapsed = !nd.collapsed;
+    const body = el.querySelector(`[data-body="${nd.id}"]`);
+    const arrow = hdr.querySelector('.node-arrow');
+    if (body) body.classList.toggle('open', !nd.collapsed);
+    if (arrow) arrow.classList.toggle('open', !nd.collapsed);
+  });
+
+  // thread toggle
+  const tbar = el.querySelector(`[data-thread-toggle="${nd.id}"]`);
+  if (tbar) tbar.addEventListener('click', () => {
+    nd.threadOpen = !nd.threadOpen;
+    const wrap = el.querySelector(`[data-thread="${nd.id}"]`);
+    const arrow = tbar.querySelector('.arrow');
+    if (wrap) wrap.classList.toggle('open', nd.threadOpen);
+    if (arrow) arrow.classList.toggle('open', nd.threadOpen);
+  });
+
+  // list toggles (ENTITIES, AXIOMS, HYPOTHESES)
+  el.querySelectorAll('[data-list-toggle]').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const [nid, listName] = toggle.dataset.listToggle.split(':');
+      const n = nodes[nid]; if (!n) return;
+      n['list_'+listName+'_open'] = !n['list_'+listName+'_open'];
+      renderTree();
+    });
+  });
+
+  // think block toggles (node-level + thread-level)
+  el.querySelectorAll('[data-think-toggle]').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const tid = toggle.dataset.thinkToggle;
+      const body = el.querySelector(`[data-think-body="${tid}"]`);
+      const arrow = toggle.querySelector('.arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  });
+
+  // tags collapse toggle
+  const tagsBtn = el.querySelector(`[data-tags-toggle="${nd.id}"]`);
+  if (tagsBtn) tagsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    nd.tagsCollapsed = !nd.tagsCollapsed;
+    renderTree();
+  });
+
+  // pin buttons in thread messages
+  el.querySelectorAll(`[data-pin^="${nd.id}:"]`).forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const [nid, idx] = btn.dataset.pin.split(':');
+      pinThreadMessage(nid, parseInt(idx), 'You');
+    });
+  });
+
+  // submit form
+  const sbtn = el.querySelector(`[data-submit="${nd.id}"]`);
+  if (sbtn) sbtn.addEventListener('click', () => submitForm(nd.id));
+
+  // verify button
+  const verifyBtn = el.querySelector(`[data-verify="${nd.id}"]`);
+  if (verifyBtn) verifyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    runVerify(nd.id);
+  });
+
+  // check button
+  const checkBtn = el.querySelector(`[data-check="${nd.id}"]`);
+  if (checkBtn) checkBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    runCheck(nd.id);
+  });
+
+  // generate button (ComfyUI)
+  const genBtn = el.querySelector(`[data-generate="${nd.id}"]`);
+  if (genBtn) genBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    runTrigger('generate', nd.id);
+  });
+
+  // answer toggle
+  const ansToggle = el.querySelector(`[data-answer-toggle="${nd.id}"]`);
+  if (ansToggle) ansToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    nd.answerOpen = !(nd.answerOpen !== false);
+    renderTree();
+  });
+
+  // thread send
+  const tsend = el.querySelector(`[data-tsend="${nd.id}"]`);
+  if (tsend) tsend.addEventListener('click', () => {
+    const ta = el.querySelector(`[data-tinp="${nd.id}"]`);
+    if (ta && ta.value.trim()) {
+      const text = ta.value.trim();
+      ta.value = '';
+      // Send through dialog - same as main input
+      handleInput(text);
+    }
+  });
+  const tinp = el.querySelector(`[data-tinp="${nd.id}"]`);
+  if (tinp) tinp.addEventListener('keydown', e => {
+    if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); tsend?.click(); }
+  });
+}
+
+/* ================================================================
+   Flow
+   ================================================================ */
+/* Parse a named list from claims text.
+   Handles both formats:
+     ENTITIES: [a, b, c]
+     AXIOMS:
+     - item1
+     - item2
+*/
+function parseListFromText(text, listName) {
+  const lines = text.split('\n');
+  const items = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Check if this line starts the section
+    if (trimmed.toUpperCase().startsWith(listName.toUpperCase() + ':')) {
+      inSection = true;
+      // Check for inline format: ENTITIES: [a, b, c]
+      const afterColon = trimmed.slice(listName.length + 1).trim();
+      if (afterColon.startsWith('[')) {
+        const inner = afterColon.replace(/^\[|\]$/g, '');
+        inner.split(',').forEach(s => { const t = s.trim(); if (t) items.push(t); });
+        inSection = false; // inline = done
+      }
+      continue;
+    }
+
+    // Check if we hit another section header -> stop
+    if (inSection && /^[A-Z_]+:/.test(trimmed)) {
+      inSection = false;
+      continue;
+    }
+
+    // Collect items (lines starting with -)
+    if (inSection && trimmed.startsWith('-')) {
+      items.push(trimmed.slice(1).trim());
+    }
+  }
+  return items;
+}
+
+/* Verify content by ALL workers - returns [{worker, pass, answer}] */
+
+/* Parse markdown table into entity child nodes */
+function parseTableToEntities(parentNodeId, tableText) {
+  // Parse markdown table: | Header1 | Header2 | ... |
+  const lines = tableText.trim().split('\n').filter(l => l.trim().startsWith('|'));
+  if (lines.length < 3) return; // need header + separator + at least 1 row
+
+  // Extract headers
+  const headers = lines[0].split('|').map(h => h.trim()).filter(h => h && !h.match(/^-+$/));
+  // Skip separator line (line 1)
+  const dataLines = lines.slice(2);
+
+  dataLines.forEach((line, i) => {
+    const cells = line.split('|').map(c => c.trim()).filter(c => c);
+    if (cells.length === 0) return;
+
+    const tags = {};
+    headers.forEach((h, j) => {
+      if (j < cells.length) tags[h] = cells[j];
+    });
+
+    const title = cells[0] || `entity-${i+1}`;
+    createNode(parentNodeId, {
+      type: 'entity',
+      title: title,
+      tags: tags,
+      question: '',
+      status: 'pending',
+    });
+  });
+
+  // Distribute parent's pinned answer to entities
+  distributeAnswerToEntities(parentNodeId);
+}
+
+/* Find each entity's section in the answer text by matching entity title */
+function distributeAnswerToEntities(parentNodeId) {
+  const parent = nodes[parentNodeId]; if (!parent) return;
+
+  const genMsg = parent.thread.find(t => t.name?.includes('(answer)'));
+  const fullText = genMsg?.content || '';
+  if (!fullText) return;
+
+  const children = parent.children.map(cid => nodes[cid]).filter(n => n?.type === 'entity');
+  if (children.length === 0) return;
+
+  // Find start LINE of each entity by its title in the text
+  // Match from the line that contains the title, not from the word itself
+  const lines = fullText.split('\n');
+  const lowerLines = lines.map(l => l.toLowerCase().replace(/[В«В»\*\#]/g, ''));
+
+  const positions = children.map(child => {
+    const title = child.title.toLowerCase().replace(/[В«В»\*\#]/g, '').trim();
+    let lineIdx = lowerLines.findIndex(l => l.includes(title));
+    if (lineIdx < 0) {
+      // Partial match: first 2 words
+      const words = title.split(/\s+/);
+      if (words.length >= 2) lineIdx = lowerLines.findIndex(l => l.includes(words.slice(0,2).join(' ')));
+    }
+    return { child, lineIdx };
+  }).filter(p => p.lineIdx >= 0).sort((a,b) => a.lineIdx - b.lineIdx);
+
+  // Extract from start line to next entity's start line
+  const generator = getWorkerByRole('generator');
+
+  // For each entity: find last line via think injection, trim, set answer
+  // All trim calls go to parent thread (where table is)
+  positions.forEach(async (p, i) => {
+    const startLine = p.lineIdx;
+    const roughEnd = i + 1 < positions.length ? positions[i+1].lineIdx : lines.length;
+    const section = lines.slice(startLine, roughEnd).join('\n').trim();
+    if (!section) return;
+
+    // Find end line via think injection - costs 1 token per entity
+    if (generator?.url) {
+      const url = generator.url.replace(/\/+$/,'') + '/v1/chat/completions';
+      const numberedText = lines.map((l,i) => `${i+1}. ${l}`).join('\n');
+      const startNum = startLine + 1; // 1-based
+      const firstLineText = lines[startLine]?.trim() || p.child.title;
+      const thinkQ = `<think>
+Разделю текст на блоки.
+Описание "${p.child.title}" начинается со строки под номером "${startNum}" "${firstLineText}" и длится до строки под номером "line number: `;
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            messages: [
+              {role: 'user', content: numberedText},
+              {role: 'assistant', content: thinkQ},
+            ],
+            continue_assistant_turn: true,
+            cache_prompt: false,
+            temperature: 0.1,
+            max_tokens: 10,
+            stop: ['\n', '"', ' '],
+            stream: false,
+          }),
+        });
+        const data = await res.json();
+        const endNum = parseInt((data.choices?.[0]?.message?.content || '').trim());
+
+        addThread(parentNodeId, 'worker', `${generator.name} (trim)`,
+          `В«${p.child.title}В» lines ${startNum}-${endNum}`,
+          {think: `Описание "${p.child.title}" начинается со строки "${startNum}", длится до строки "line number: ${endNum}"`});
+
+        if (endNum > startLine) {
+          // If end line is empty, include it but trim result
+          const trimmedSection = lines.slice(startLine, endNum).join('\n').trim();
+          if (trimmedSection) {
+            setAnswer(p.child.id, trimmedSection, null);
+            updateNode(p.child.id, {status: 'done'});
+            return;
+          }
+        }
+      } catch(_) {}
+    }
+    // Fallback
+    setAnswer(p.child.id, section, null);
+    updateNode(p.child.id, {status: 'done'});
+  });
+}
+
+/* ================================================================
+   Event-driven worker dispatch
+   Workers run in parallel. Listeners fire when data arrives.
+   ================================================================ */
+
+// Thread message listeners - fire when a new message with matching tag appears
+const threadListeners = [];
+
+function onThreadMessage(tag, callback) {
+  threadListeners.push({tag, callback});
+}
+
+// Override addThread to fire listeners
+const _origAddThread = addThread;
+addThread = function(nodeId, role, name, content, extra) {
+  _origAddThread(nodeId, role, name, content, extra);
+  if (extra?.source === 'workflow') return;
+  // Fire matching listeners
+  const tag = name || '';
+  threadListeners.forEach(l => {
+    if (tag.includes(l.tag)) {
+      try { l.callback(nodeId, {role, name, content, ...(extra||{})}); } catch(_) {}
+    }
+  });
+};
+
+/* Send task to a worker - returns promise, result appears in thread */
+function sendToWorker(nodeId, worker, prompt, tag, opts) {
+  if (!worker?.url) return Promise.resolve('');
+  const url = worker.url.replace(/\/+$/,'') + '/v1/chat/completions';
+  return (async () => {
+    try {
+      const {answer, think} = await fetchLLMWithContinue(
+        url, [{role:'user', content:prompt}],
+        {temperature: opts?.temperature ?? 0.3, max_tokens: opts?.max_tokens ?? getSettings().max_tokens}
+      );
+      addThread(nodeId, 'worker', `${worker.name} (${tag})`, answer, {think});
+      return answer;
+    } catch(e) {
+      addThread(nodeId, 'system', tag, 'Error: ' + e.message);
+      return '';
+    }
+  })();
+}
+
+let workflowYaml = ''; // loaded on init
+
+async function loadDefaultWorkflow() {
+  try {
+    const res = await get('/api/workflow/default');
+    workflowYaml = res.yaml || '';
+  } catch(_) {}
+}
+
+async function handleInput(text) {
+  setS('busy','Processing...');
+  document.getElementById('btnSend').disabled = true;
+
+  try {
+    // Create root node
+    if (!rootNodeId) {
+      const root = createNode(null, {
+        type:'root', title: text,
+        question: text, showAnswer: false, status: 'active',
+      });
+      rootNodeId = root.id;
+    } else {
+      addThread(rootNodeId, 'user', 'You', text);
+    }
+
+    if (!workflowYaml) await loadDefaultWorkflow();
+
+    // Build worker URLs map from sidebar
+    const workerUrls = {};
+    workers.forEach(w => {
+      if (w.role && w.url) workerUrls[w.role] = w.url;
+    });
+
+    // Execute workflow on server - all steps, all visible
+    setS('busy', 'Running workflow...');
+    const res = await post('/api/workflow/run', {
+      yaml: workflowYaml,
+      input: text,
+      workers: workerUrls,
+      settings: getSettings(),
+    });
+
+    applyWorkflowResult(rootNodeId, res, {markSource: true});
+
+  } catch(e) {
+    if (rootNodeId) addThread(rootNodeId, 'system', 'Error', e.message);
+    else createNode(null, {type:'root', title:'Error', question:e.message, showAnswer:false, status:'fail'});
+  } finally {
+    setS('ok','Ready');
+    document.getElementById('btnSend').disabled = false;
+  }
+}
+
+// Load default workflow on startup
+loadDefaultWorkflow();
+renderTree();
+
+// Worker actions - same prompts as multi_agent_chat.html (no new hardcode)
+const WORKER_PROMPTS = {
+  claims: (content) => `Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.
+Верни ТОЛЬКО в формате:
+ENTITIES: [сущностт1, сущностт2, ...]
+AXIOMS:
+- утверждение 1
+- утверждение 2
+HYPOTHESES:
+- гипотеза 1
+
+Требования:
+- Используй pos('Имя') для позиционных утверждений.
+- AXIOMS = факты, данные как условие.
+- HYPOTHESES = выводы, предположения.
+- Каждое утверждение атомарное и короткое.
+- Не выводи прозу или JSON.
+- Отвечай на языке текста.
+
+Текст для анализа:
+${content}`,
+
+  table: (content) => `Ты — экстрактор данных. Распарси текст в структурированную таблицу.
+Верни markdown-таблицу с подходящими колонками.
+Если есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |
+Если список: | # | Элемент | Детали |
+Кратко. Только таблица, без комментариев.
+Отвечай на языке текста.
+
+Текст:
+${content}`,
+};
+
+async function workerAction(actionType, nodeId, threadIdx) {
+  const nd = nodes[nodeId]; if(!nd) return;
+  const t = nd.thread[threadIdx]; if(!t) return;
+  const content = t.content;
+  const promptFn = WORKER_PROMPTS[actionType];
+  if (!promptFn) return;
+
+  // Use analyzer role for extraction actions
+  const worker = getWorkerByRole('analyzer');
+  if (!worker?.url) { addThread(nodeId, 'system', 'System', 'No worker available'); return; }
+  const workerUrl = worker.url;
+
+  addThread(nodeId, 'system', 'System', `Running ${actionType}...`);
+
+  try {
+    const prompt = promptFn(content);
+    const url = workerUrl.replace(/\/+$/,'') + '/v1/chat/completions';
+    const {answer, think} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {temperature:0.1, max_tokens:2048});
+
+    // Show result in thread
+    addThread(nodeId, 'worker', `Worker (${actionType})`, answer, {think});
+
+    // If claims -> parse entities only
+    if (actionType === 'claims' && answer.trim()) {
+      try {
+        const verifyRes = await post('/api/logic/verify', {raw_schema: answer});
+        if (verifyRes.manifest?.entities?.length) {
+          addThread(nodeId, 'system', 'Parsed', `Entities: ${verifyRes.manifest.entities.join(', ')}`);
+        }
+      } catch(e) {
+        addThread(nodeId, 'system', 'Verify', 'Verify error: '+e.message);
+      }
+    }
+  } catch(e) {
+    addThread(nodeId, 'system', 'Error', `${actionType} failed: ${e.message}`);
+  }
+}
+
+async function runTask() {
+  setS('busy','Running...');
+
+  try {
+    // Ensure workers registered before run
+    await Promise.all(workers.filter(w => w.status !== 'registered').map(w => probeAndRegisterWorker(w)));
+
+    const res = await post('/api/reactive/task/run?sync=true&session_id='+session, {});
+
+    // Update entity nodes
+    for (const [eid, e] of Object.entries(res.entities||{})) {
+      const nd = Object.values(nodes).find(n => n.title===eid);
+      if (!nd) continue;
+      setAnswer(nd.id, e.properties?.text||'', e.properties?.validated?'pass':null, e.properties?._think||'');
+      updateNode(nd.id, {status: e.status||'done', tags: e.properties||{}});
+      // Dialog -> thread
+      if (e.dialog) e.dialog.forEach(d => {
+        addThread(nd.id, d.role==='verifier'?'verifier':'worker',
+          d.role==='verifier'?'Verifier':'Worker', d.content, {status:d.status});
+      });
+    }
+
+    // Update root tags with accumulated constraints
+    if (rootNodeId && nodes[rootNodeId] && res.entities) {
+      const newTags = {...nodes[rootNodeId].tags};
+      // Refresh from task state
+      try {
+        const taskData = await get('/api/reactive/task?session_id='+session);
+        if (taskData.global_meta) {
+          for (const [k,v] of Object.entries(taskData.global_meta)) {
+            if (k.startsWith('used_')) newTags[k] = v;
+          }
+        }
+      } catch(_) {}
+      updateNode(rootNodeId, {tags:newTags, status:'done'});
+    }
+  } catch(e) {
+    if (rootNodeId) addThread(rootNodeId,'system','Error',e.message);
+  } finally {
+    setS('ok','Done');
+    }
+}
+
+async function exportTask() {
+  try {
+    const d = await get('/api/reactive/task?session_id='+session);
+    const b = new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(b);
+    a.download=(d.task_id||'task')+'.json'; a.click();
+  } catch(e) { alert(e.message); }
+}
+
+/* Events */
+async function runWorkflowFromCurrentInput() {
+  // Run workflow YAML from editor as-is (input is in let.input)
+  const editorYaml = document.getElementById('workflowEditor')?.value;
+  if (editorYaml) workflowYaml = editorYaml;
+  if (!workflowYaml) return;
+
+  // Extract input from YAML let.input for display
+  const inputMatch = workflowYaml.match(/input:\s*[>|]?\s*\n?\s*(.+)/);
+  const displayText = inputMatch?.[1]?.trim() || 'workflow';
+  await handleInput(displayText);
+}
+
+function exportWorkflowSnapshot() {
+  const snapshot = {
+    session,
+    workflow_yaml: workflowYaml,
+    root_node_id: rootNodeId,
+    nodes,
+    exported_at: new Date().toISOString(),
+  };
+  const b = new Blob([JSON.stringify(snapshot, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b);
+  a.download = 'reactive-workflow-snapshot.json';
+  a.click();
+}
+
+document.getElementById('btnSend').addEventListener('click', () => {
+  const t = document.getElementById('inp').value.trim();
+  if (t) { document.getElementById('inp').value=''; handleInput(t); }
+});
+document.getElementById('inp').addEventListener('keydown', e => {
+  if (e.key==='Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('btnSend').click();
+  }
+});
+document.getElementById('inp').addEventListener('input', function() {
+  this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,100)+'px';
+});
+document.getElementById('btnRun').addEventListener('click', runWorkflowFromCurrentInput);
+document.getElementById('btnExport').addEventListener('click', exportWorkflowSnapshot);
+document.getElementById('btnClear').addEventListener('click', async () => {
+  // Clear KV cache on all workers
+  for (const w of workers) {
+    try { await fetch(w.url.replace(/\/$/, '') + '/api/admin/clear_state', {method: 'POST'}); } catch(_) {}
+  }
+  nodes = {}; rootNodeId = null; idN = 0;
+  document.getElementById('feed').innerHTML = '';
+  document.getElementById('inp').value = '';
+  session = 'sess-' + Date.now();
+  renderTree();
+});
+
+/* Worker management */
+// Worker status: 'unknown' | 'reachable' | 'registered'
+function renderWorkers() {
+  const el = document.getElementById('workerList');
+  el.innerHTML = workers.map((w,i) => {
+    const dotCls = w.status === 'registered' ? 'ok' : w.status === 'reachable' ? 'busy' : '';
+    return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;font-size:11px">
+      <span class="dot ${dotCls}" style="width:6px;height:6px"></span>
+      <span style="color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70px" title="${esc(w.url)}">${esc(w.name)}</span>
+      <select style="background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);font-size:9px;padding:0 2px" onchange="workers[${i}].role=this.value">
+        <option value="generator"${w.role==='generator'?' selected':''}>generator</option>
+        <option value="analyzer"${w.role==='analyzer'?' selected':''}>analyzer</option>
+        <option value="verifier"${w.role==='verifier'?' selected':''}>verifier</option>
+      </select>
+      <button class="btn" style="padding:1px 5px;font-size:9px" onclick="workers.splice(${i},1);renderWorkers()">x</button>
+    </div>`;
+  }).join('');
+}
+
+function getWorkerByRole(role) {
+  const registered = workers.find(w => w.role === role && w.status === 'registered');
+  if (registered) return registered;
+  const any = workers.find(w => w.role === role);
+  if (any) return any;
+  console.warn(`No worker with role '${role}', available:`, workers.map(w => `${w.name}:${w.role}:${w.status}`));
+  return null;
+}
+
+let _probeInFlight = false;
+
+async function probeAndRegisterWorker(w) {
+  if (w._probing) return; // prevent concurrent probes on same worker
+  w._probing = true;
+  try {
+    // 1. Check if worker is reachable
+    try {
+      const r = await fetch(w.url.replace(/\/+$/,'') + '/v1/models', {signal: AbortSignal.timeout(3000)});
+      if (!r.ok) { w.status = 'unknown'; renderWorkers(); return; }
+      w.status = 'reachable';
+      renderWorkers();
+    } catch(_) { w.status = 'unknown'; renderWorkers(); return; }
+
+    // 2. Register on sandbox server
+    if (!serverUp) return;
+    try {
+      const reg = { [w.name]: w.url };
+      if (workers.indexOf(w) === 0) reg['small_context_worker'] = w.url;
+      await post('/api/behavior/agents', reg);
+      w.status = 'registered';
+      renderWorkers();
+    } catch(e) {
+      console.warn(`Worker registration failed for ${w.name}:`, e.message);
+      // Stay reachable but not registered
+    }
+  } finally {
+    w._probing = false;
+  }
+}
+
+async function probeAllWorkers() {
+  if (_probeInFlight) return;
+  _probeInFlight = true;
+  try {
+    await Promise.all(workers.map(w => probeAndRegisterWorker(w)));
+  } finally {
+    _probeInFlight = false;
+  }
+}
+
+document.getElementById('btnAddWorker').addEventListener('click', () => {
+  const inp = document.getElementById('newWorkerUrl');
+  const url = inp.value.trim();
+  if (!url) return;
+  const name = url.replace(/^https?:\/\//,'').replace(/\/+$/,'');
+  const w = {url, name, role: 'generator', status: 'unknown'};
+  workers.push(w);
+  inp.value = '';
+  renderWorkers();
+  probeAndRegisterWorker(w);
+});
+renderWorkers();
+// Probe workers after server check completes
+setTimeout(probeAllWorkers, 3000);
+// Re-probe periodically
+setInterval(probeAllWorkers, 15000);
+
+/* Resize handle drag */
+const resizeHandle = document.getElementById('resizeHandle');
+const rightSidebar = document.getElementById('rightSidebar');
+let resizing = false;
+resizeHandle.addEventListener('mousedown', (e) => {
+  resizing = true;
+  resizeHandle.classList.add('active');
+  e.preventDefault();
+});
+document.addEventListener('mousemove', (e) => {
+  if (!resizing) return;
+  const mainRect = document.querySelector('.main').getBoundingClientRect();
+  const newWidth = mainRect.right - e.clientX;
+  if (newWidth >= 200 && newWidth <= mainRect.width * 0.7) {
+    rightSidebar.style.width = newWidth + 'px';
+  }
+});
+document.addEventListener('mouseup', () => {
+  resizing = false;
+  resizeHandle.classList.remove('active');
+});
+
+/* Sidebar toggles */
+document.getElementById('btnToggleLeft').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.toggle('collapsed');
+});
+let savedRightWidth = null;
+function toggleRightSidebar() {
+  const rs = document.getElementById('rightSidebar');
+  if (!rs.classList.contains('collapsed')) {
+    // Collapsing — save current width
+    savedRightWidth = rs.offsetWidth;
+    rs.classList.add('collapsed');
+    rs.style.width = '';
+  } else {
+    // Expanding — restore saved width
+    rs.classList.remove('collapsed');
+    if (savedRightWidth) rs.style.width = savedRightWidth + 'px';
+    document.getElementById('workflowEditor').value = workflowYaml;
+  }
+}
+document.getElementById('btnToggleRight').addEventListener('click', toggleRightSidebar);
+document.getElementById('btnWorkflow').addEventListener('click', toggleRightSidebar);
+document.getElementById('btnWorkflowSave').addEventListener('click', () => {
+  workflowYaml = document.getElementById('workflowEditor').value;
+});
+document.getElementById('btnWorkflowReset').addEventListener('click', async () => {
+  await loadDefaultWorkflow();
+  document.getElementById('workflowEditor').value = workflowYaml;
+});
+// Workflow chat messages
+let wfChatMessages = []; // [{role, content}]
+
+function addWfChat(role, content) {
+  const chat = document.getElementById('workflowChat');
+  const cls = role === 'user' ? 'color:var(--accent)' : 'color:var(--text)';
+  const label = role === 'user' ? 'You' : 'Worker';
+  // Prepend — newest on top (Docker-style)
+  chat.insertAdjacentHTML('afterbegin', `<div style="margin-bottom:8px"><span style="font-weight:600;font-size:11px;${cls}">${esc(label)}</span><div style="white-space:pre-wrap;margin-top:2px">${esc(content)}</div></div>`);
+  wfChatMessages.push({role, content});
+}
+
+// Apply = instruct mode. Silently updates YAML, no chat log.
+document.getElementById('btnWorkflowApplyNL').addEventListener('click', async () => {
+  const nlInput = document.getElementById('workflowNL');
+  const instruction = nlInput.value.trim();
+  if (!instruction) return;
+
+  const editor = document.getElementById('workflowEditor');
+  const currentYaml = editor.value;
+  const applyRole = document.getElementById('settingYamlApplyRole').value;
+  const worker = getWorkerByRole(applyRole);
+  if (!worker?.url) return;
+
+  nlInput.value = '';
+  nlInput.disabled = true;
+
+  // Load DSL spec for instruct context
+  let spec = '';
+  try { spec = (await get('/api/workflow/spec')).spec || ''; } catch(_) {}
+
+  // Instruct: spec + current YAML + instruction. Expect YAML back.
+  const url = worker.url.replace(/\/+$/,'') + '/v1/chat/completions';
+  const prompt = (spec ? spec + '\n\n---\n\n' : '')
+    + `Current workflow YAML:\n\`\`\`yaml\n${currentYaml}\n\`\`\`\n\n${instruction}\n\nReturn only the modified YAML. No prose.`;
+
+  try {
+    const {answer} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {temperature:0.3, max_tokens:4096, noThink:false, continueOnLength:true});
+    let yaml = answer.trim();
+    if (yaml.startsWith('```')) yaml = yaml.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+    editor.value = yaml;
+    workflowYaml = yaml;
+  } catch(e) {
+    addWfChat('assistant', 'Apply error: ' + e.message);
+  }
+  nlInput.disabled = false;
+});
+
+// Chat about YAML (Ask button) - discuss, don't modify
+document.getElementById('btnWorkflowChatSend').addEventListener('click', async () => {
+  const chatInput = document.getElementById('workflowChatInput');
+  const question = chatInput.value.trim();
+  if (!question) return;
+
+  const editor = document.getElementById('workflowEditor');
+  const currentYaml = editor.value;
+  const askRole = document.getElementById('settingYamlAskRole').value;
+  const askWorker = getWorkerByRole(askRole);
+  if (!askWorker?.url) return;
+
+  addWfChat('user', question);
+  chatInput.value = '';
+  chatInput.disabled = true;
+
+  const url = askWorker.url.replace(/\/+$/,'') + '/v1/chat/completions';
+  const messages = [{role:'user', content: `Workflow YAML:\n\`\`\`yaml\n${currentYaml}\n\`\`\`\n\n${question}`}];
+
+  try {
+    const {answer} = await fetchLLMWithContinue(url, messages, {temperature:0.3, max_tokens:2048});
+    addWfChat('assistant', answer);
+  } catch(e) {
+    addWfChat('assistant', 'Error: ' + e.message);
+  } finally {
+    chatInput.disabled = false;
+  }
+});
+document.getElementById('workflowChatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnWorkflowChatSend').click(); }
+});
+
+/* Settings popup */
+document.getElementById('btnSettings').addEventListener('click', () => {
+  document.getElementById('settingsOverlay').classList.add('open');
+});
+document.getElementById('btnCloseSettings').addEventListener('click', () => {
+  document.getElementById('settingsOverlay').classList.remove('open');
+});
+document.getElementById('settingsOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+/* Server status + start/stop */
+const serverDot = document.getElementById('serverDot');
+const btnStart = document.getElementById('btnStartServer');
+const btnStop = document.getElementById('btnStopServer');
+let serverUp = false;
+
+function setServerStatus(status) {
+  // status: 'up' | 'down' | 'starting' | 'stopping'
+  serverUp = status === 'up';
+  serverDot.className = 'dot' + (status==='up'?' ok': status==='starting'||status==='stopping'?' busy':'');
+  btnStart.disabled = status === 'up' || status === 'starting';
+  btnStop.disabled = status === 'down' || status === 'stopping';
+}
+
+async function checkServer() {
+  try {
+    const r = await fetch(SB() + '/health', {signal: AbortSignal.timeout(2000)});
+    if (r.ok) { setServerStatus('up'); return true; }
+  } catch(_) {}
+  setServerStatus('down');
+  return false;
+}
+
+btnStart.addEventListener('click', async () => {
+  setServerStatus('starting');
+  // Show command to run
+  const cmd = 'python -c "import uvicorn; from kobold_sandbox.server import create_app; app = create_app(\'.\'); uvicorn.run(app, host=\'0.0.0.0\', port=5002)"';
+  try {
+    if (typeof require !== 'undefined') {
+      require('child_process').exec('start "" "tools/start_sandbox.bat"');
+    } else {
+      prompt('Run this in terminal (copied to clipboard):', cmd);
+      try { await navigator.clipboard.writeText(cmd); } catch(_) {}
+    }
+  } catch(_) {}
+  // Poll until up
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (await checkServer()) return;
+  }
+  setServerStatus('down');
+});
+
+btnStop.addEventListener('click', async () => {
+  setServerStatus('stopping');
+  try {
+    await fetch(SB() + '/shutdown', {method:'POST', signal: AbortSignal.timeout(3000)});
+  } catch(_) {}
+  await new Promise(r => setTimeout(r, 1000));
+  await checkServer();
+});
+
+// Periodic health check
+checkServer();
+setInterval(checkServer, 10000);
+
+// --- Thread message listeners (registered once, fire on matching messages) ---
+
+// Claims -> parse ENTITIES/AXIOMS/HYPOTHESES into node lists
+onThreadMessage('(claims)', (nodeId, msg) => {
+  if (!msg.content?.trim()) return;
+  const nd = nodes[nodeId]; if (!nd) return;
+  nd.entities_list = parseListFromText(msg.content, 'ENTITIES');
+  nd.axioms_list = parseListFromText(msg.content, 'AXIOMS');
+  nd.hypotheses_list = parseListFromText(msg.content, 'HYPOTHESES');
+  renderTree();
+});
+
+// Answer -> show in RESULT + trigger table
+onThreadMessage('(answer)', (nodeId, msg) => {
+  if (!msg.content?.trim()) return;
+  nodes[nodeId].showAnswer = true;
+  setAnswer(nodeId, msg.content, null, msg.think || '');
+  // Trigger table parse on analyzer
+  const analyzer = getWorkerByRole('analyzer');
+  if (analyzer?.url) {
+    sendToWorker(nodeId, analyzer, WORKER_PROMPTS.table(msg.content), 'table', {temperature:0.1, max_tokens:2048});
+  }
+});
+
+// Table → parse into entity child nodes
+onThreadMessage('(table)', (nodeId, msg) => {
+  if (!msg.content?.trim()) return;
+  parseTableToEntities(nodeId, msg.content);
+});
+
+setS('ok','Ready');
+</script>
+</body>
+</html>

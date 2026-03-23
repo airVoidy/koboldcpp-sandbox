@@ -1,0 +1,50 @@
+{
+  "flow": [
+    {
+      "id": "bootstrap",
+      "parallel": [
+        {"llm": "analyzer", "prompt": "claims($input)", "out": "$claims"},
+        {"llm": "generator", "prompt": "$input", "out": "$answer"}
+      ]
+    },
+    {"parse_claims": "$claims", "out": ["$entities", "$axioms", "$hypotheses"]},
+    {"set": "@root.answer", "value": "$answer"},
+    {"llm": "analyzer", "prompt": "table($answer)", "out": "$table"},
+    {"parse_table": "$table", "out": "$entity_nodes"},
+    {
+      "id": "trim",
+      "for_each": "$entity_nodes",
+      "as": "$entity",
+      "think_inject": {
+        "llm": "generator",
+        "user": "numbered($answer)",
+        "think": "Разделю текст на блоки.\nОписание \"$entity.title\" начинается со строки под номером \"$entity.start_line\" \"$entity.first_line_text\" и длится до строки под номером \"line number: ",
+        "stop": ["\n", "\"", " "],
+        "max_tokens": 10,
+        "out": "$end_line"
+      },
+      "set": "$entity.answer = slice($answer, $entity.start_line, $end_line)"
+    }
+  ],
+
+  "on_button": {
+    "verify": {
+      "think_inject": {
+        "llm": "analyzer",
+        "user": "$answer",
+        "think_prefix": "Summary table:\n$table\n\nVerification:\n",
+        "for_each": ["$axioms", "$hypotheses"],
+        "prepend": {"text": "Таблица соответствует истине"},
+        "per_item": "(($item) == 1) === ",
+        "stop": ["\n"],
+        "out": "$results"
+      }
+    },
+    "check": {
+      "for_each": "workers",
+      "llm": "$worker",
+      "prompt": "Evaluate this text. Reply PASS if good, FAIL + reason if not.\n\n$entity.answer",
+      "out": "$reactions"
+    }
+  }
+}

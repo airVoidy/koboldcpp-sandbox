@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Think Lab</title>
+<style>
+:root{--bg:#f4efe5;--paper:#fffaf1;--line:#d9cbb8;--ink:#221a14;--muted:#726559;--accent:#a14f25;--ok:#2e6647;--warn:#b36a18;--bad:#a12d2d;--code-bg:#201a17;--code-fg:#efe6d8}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 Georgia,"Palatino Linotype",serif}
+
+/* ── top bar ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--paper);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.topbar h1{font-size:22px;white-space:nowrap}
+.topbar .spacer{flex:1}
+.agent-sel{display:flex;align-items:center;gap:6px}
+.agent-sel select{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fbf6ee;font:13px/1.4 inherit}
+.agent-sel button{padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:12px}
+
+/* ── settings drawer ── */
+.drawer{display:none;padding:10px 20px;background:#faf5ec;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap;align-items:end}
+.drawer.open{display:flex}
+.drawer .f{display:flex;flex-direction:column;gap:2px}
+.drawer .f label{font-size:11px;color:var(--muted)}
+.drawer .f input,.drawer .f textarea{padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fbf6ee;font:12px/1.4 "Cascadia Code",Consolas,monospace}
+.drawer .f input[type=number]{width:70px}
+.drawer .f textarea{width:180px;height:46px;resize:vertical}
+.drawer .chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+
+/* ── layout ── */
+.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:14px;max-width:1200px;margin:0 auto;padding:14px}
+
+/* ── sidebar ── */
+.side{display:flex;flex-direction:column;gap:4px}
+.side h2{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;padding:6px 10px 2px}
+.tpl{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.tpl:hover{background:#f0e8dc}
+.tpl.on{background:var(--accent);color:#fff}
+.tpl .del{opacity:0;font-size:11px;cursor:pointer;padding:2px 5px;border-radius:4px}
+.tpl:hover .del{opacity:.5}
+.tpl .del:hover{opacity:1;background:rgba(0,0,0,.1)}
+.side .actions{display:flex;gap:6px;padding:6px 10px}
+.side .actions button{flex:1;padding:5px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-size:12px}
+
+/* ── cards ── */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.card h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+textarea,input[type=text],input[type=number]{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fbf6ee;color:var(--ink);font:12px/1.5 "Cascadia Code",Consolas,monospace}
+textarea{resize:vertical;min-height:60px}
+textarea.big{min-height:130px}
+select{font:inherit}
+
+/* ── slot cards ── */
+.slot{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:7px;background:#fffdf8}
+.slot.cur{border-color:var(--accent)}
+.slot-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.slot-head strong{font-size:13px}
+.slot-row{display:flex;gap:6px;margin-bottom:4px;align-items:end}
+.slot-row .f{display:flex;flex-direction:column;gap:2px;flex:1}
+.slot-row .f label{font-size:10px;color:var(--muted)}
+.slot-row .f input,.slot-row .f textarea{padding:5px 7px;font-size:11px;min-height:auto}
+.slot-row .f textarea{min-height:32px}
+.slot .chk{display:flex;gap:5px;align-items:center;font-size:11px;color:var(--muted)}
+
+/* ── controls ── */
+.controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+button{padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer;font:13px/1.4 inherit}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.4;cursor:default}
+.status{display:flex;gap:6px;flex-wrap:wrap;margin-left:8px}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line)}
+.chip.ok{background:#eef7f1;color:var(--ok);border-color:#c5e0cf}
+.chip.warn{background:#fbf2e6;color:var(--warn);border-color:#e8d5b5}
+.chip.bad{background:#faecec;color:var(--bad);border-color:#edc7c7}
+
+/* ── error ── */
+.err{padding:9px 11px;background:#faecec;border:1px solid #edc7c7;color:var(--bad);border-radius:8px;margin-bottom:10px;font-size:13px;display:none}
+.err.on{display:block}
+
+/* ── results ── */
+.res-item{padding:7px 0;border-bottom:1px solid #ede7dd;font-size:13px}
+.res-item:last-child{border-bottom:none}
+.res-item .val{font-family:"Cascadia Code",Consolas,monospace;font-size:12px;background:#fbf6ee;padding:2px 6px;border-radius:4px}
+.res-meta{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ── preview ── */
+.preview{background:var(--code-bg);color:var(--code-fg);border-radius:10px;padding:12px;font:12px/1.55 "Cascadia Code",Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:350px;overflow:auto;margin-top:8px}
+.mark{display:inline;padding:1px 4px;border-radius:5px}
+.mark.done{background:#214130;color:#9fdfb6}
+.mark.cur{background:#554125;color:#ffd18f}
+.mark.todo{background:#333a47;color:#d5deeb}
+
+/* ── trace ── */
+.trace details{border:1px solid var(--line);border-radius:10px;background:#fffdf8;margin-bottom:7px;overflow:hidden}
+.trace summary{cursor:pointer;padding:8px 10px;font-size:12px;display:flex;justify-content:space-between;gap:8px}
+pre.json{background:var(--code-bg);color:var(--code-fg);border-radius:8px;padding:10px;font:11px/1.5 "Cascadia Code",Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:250px;overflow:auto;margin-top:6px}
+
+/* ── footer actions ── */
+.foot{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── probe section ── */
+.probe-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.probe-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fffdf8;font-size:12px}
+.probe-item.running{opacity:.6}
+.probe-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.probe-head strong{font-size:13px}
+.probe-icon{font-size:16px;line-height:1}
+.probe-summary{color:var(--muted);font-size:11px;line-height:1.4;margin-bottom:4px}
+.probe-detail{margin-top:4px}
+.probe-bar{height:4px;border-radius:2px;background:#eee;margin-top:6px;overflow:hidden}
+.probe-bar .fill{height:100%;border-radius:2px;transition:width .3s}
+.probe-bar .fill.ok{background:var(--ok)}.probe-bar .fill.warn{background:var(--warn)}.probe-bar .fill.bad{background:var(--bad)}
+.probe-lp{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px}
+.probe-lp .tok{padding:2px 5px;border-radius:4px;font:10px/1.3 "Cascadia Code",Consolas,monospace}
+
+.mini{font-size:11px;color:var(--muted)}
+@media(max-width:800px){.layout{grid-template-columns:1fr}.side{flex-direction:row;flex-wrap:wrap}.probe-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div class="topbar">
+  <h1>Think Lab</h1>
+  <div class="spacer"></div>
+  <div class="agent-sel">
+    <select id="agentSel"></select>
+    <button id="addAgent" title="Add agent">+</button>
+    <button id="rmAgent" title="Remove agent">−</button>
+  </div>
+  <button id="probeBtn" title="Probe agent capabilities">🔬 Probe</button>
+  <button id="settingsBtn">⚙</button>
+</div>
+
+<!-- ── Settings Drawer ── -->
+<div class="drawer" id="drawer">
+  <div class="f"><label>Temperature</label><input id="temp" type="number" value="0" step="0.05"></div>
+  <div class="f"><label>Default Max Tokens</label><input id="max" type="number" value="16"></div>
+  <div class="f"><label>Default Stop Tokens</label><textarea id="gstop">\n</textarea></div>
+  <div class="chk"><input id="cache" type="checkbox"> cache_prompt</div>
+  <div class="chk"><input id="cont" type="checkbox" checked> continue_assistant_turn</div>
+  <div class="chk"><input id="wrap" type="checkbox" checked> wrap &lt;think&gt;</div>
+  <div class="chk"><input id="useSlots" type="checkbox"> Use KV cache slots (llama.cpp)</div>
+</div>
+
+<!-- ── Main Layout ── -->
+<div class="layout">
+
+  <!-- Sidebar: templates -->
+  <aside class="side">
+    <h2>Templates</h2>
+    <div id="tplList"></div>
+    <div class="actions">
+      <button id="saveBtn">💾 Save</button>
+      <button id="importBtn">📥</button>
+      <button id="exportBtn">📤</button>
+    </div>
+    <input type="file" id="importFile" accept=".json" style="display:none">
+  </aside>
+
+  <!-- Main editor + results -->
+  <main>
+    <div class="card" id="probeCard" style="display:none">
+      <h3>Agent Capabilities <span class="mini" id="probeMeta"></span></h3>
+      <div class="probe-grid" id="probeGrid"></div>
+    </div>
+
+    <div class="card">
+      <h3>Fixtures <span class="mini">JSON — template inputs</span></h3>
+      <textarea id="fixtures" class="big"></textarea>
+    </div>
+
+    <div class="card">
+      <h3>Messages <span class="mini">YAML-lite or JSON</span></h3>
+      <textarea id="messages"></textarea>
+    </div>
+
+    <div class="card">
+      <h3>Think Template <span class="mini">[[probe:id]] [[calc:id]] [[manual:id]]</span></h3>
+      <textarea id="template" class="big"></textarea>
+    </div>
+
+    <div class="card" id="slotsCard">
+      <h3>Slots</h3>
+      <div id="slots"><span class="mini">No slots — add [[probe:name]] markers to the template.</span></div>
+    </div>
+
+    <div class="controls">
+      <button class="primary" id="runAll">▶ Run All</button>
+      <button id="step">▶ Step</button>
+      <button id="reset">↺ Reset</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="err" id="err"></div>
+
+    <div class="card" id="resultsCard" style="display:none">
+      <h3>Results</h3>
+      <div id="results"></div>
+      <div class="preview" id="preview"></div>
+    </div>
+
+    <div class="card" id="traceCard" style="display:none">
+      <h3>Trace</h3>
+      <div class="trace" id="trace"></div>
+    </div>
+
+    <div class="foot">
+      <button id="copyDsl">Copy DSL</button>
+      <button id="previewReq">Preview Request</button>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   ENGINE — expression evaluation, template parsing, API proxy
+   ══════════════════════════════════════════════════════════════ */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const deep=v=>{try{return JSON.parse(JSON.stringify(v))}catch{return v}};
+const fmt=v=>typeof v==="string"?v:JSON.stringify(v,null,2);
+
+const H={
+  trim:v=>String(v??"").trim(),
+  int:(v,f=null)=>{const m=String(v??"").match(/-?\d+/);return m?parseInt(m[0],10):f},
+  lines:v=>String(v??"").replace(/\r\n/g,"\n").split("\n"),
+  numbered:v=>H.lines(v).map((x,i)=>`${i+1}: ${x}`).join("\n"),
+  sliceLines:(v,a,b)=>H.lines(v).slice(Math.max((+a||1)-1,0),Math.max(+b||H.lines(v).length,0)).join("\n"),
+  json:v=>JSON.stringify(v,null,2),
+  concat:(...a)=>a.join("")
+};
+
+/* ── path resolution ── */
+function path(obj,p){let c=obj;for(const k of String(p||"").replace(/^\$/,"").split(".")){if(!k)return c;c=c==null?undefined:/^\d+$/.test(k)?c[+k]:c[k]}return c}
+
+/* ── template interpolation ── */
+function tpl(text,sc){return String(text??"").replace(/\{\$([^}]+)\}/g,(_,p)=>{const v=path(sc,p);return v==null?`{$${p}}`:fmt(v)})}
+
+/* ── mini-expression parser ── */
+function splitArgs(t){let a=[],d=0,q="",c="";for(let i=0;i<t.length;i++){const ch=t[i],pr=t[i-1];if(q){c+=ch;if(ch===q&&pr!=="\\")q="";continue}if(ch==="'"||ch==='"'){q=ch;c+=ch;continue}if(ch==="(")d++;if(ch===")")d--;if(ch===","&&!d){a.push(c.trim());c="";continue}c+=ch}if(c.trim())a.push(c.trim());return a}
+function mini(expr,sc){const t=String(expr??"").trim();if(!t)return"";if(t.startsWith("$"))return path(sc,t);if((t.startsWith('"')&&t.endsWith('"'))||(t.startsWith("'")&&t.endsWith("'")))return tpl(t.slice(1,-1),sc);if(/^-?\d+(\.\d+)?$/.test(t))return+t;const m=t.match(/^([A-Za-z_]\w*)\(([\s\S]*)\)$/);if(m){const fn=sc[m[1]];if(typeof fn!=="function")throw Error(`Unknown helper: ${m[1]}`);return fn(...splitArgs(m[2]).map(x=>mini(x,sc)))}return tpl(t,sc)}
+function jsexpr(expr,sc){return Function("scope",`with(scope){return(${expr});}`)(sc)}
+function evalx(text,extra={},empty=""){const raw=String(text??""),trim=raw.trim(),sc=scope(extra);if(!trim)return empty;if(trim.startsWith("="))return jsexpr(trim.slice(1),sc);if(!raw.includes("\n")&&(trim.startsWith("$")||/^[A-Za-z_]\w*\(/.test(trim)))return mini(trim,sc);return tpl(raw,sc)}
+
+/* ── stop tokens encode/decode ── */
+function parseStop(text){return String(text??"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(x=>x.replace(/\\n/g,"\n").replace(/\\r/g,"\r").replace(/\\t/g,"\t"))}
+function encStop(arr){return(arr||[]).map(x=>String(x).replace(/\r/g,"\\r").replace(/\n/g,"\\n").replace(/\t/g,"\\t")).join("\n")}
+
+/* ── message parser ── */
+function parseMessages(){
+  const raw=$("messages").value.trim();if(!raw)return[];
+  if(raw.startsWith("[")){const arr=JSON.parse(raw);if(!Array.isArray(arr))throw Error("Messages JSON must be an array");return arr}
+  const lines=raw.replace(/\r\n/g,"\n").split("\n");let i=0;if(lines[i]&&lines[i].trim()==="messages:")i++;const out=[];
+  for(;i<lines.length;){if(!lines[i].trim()){i++;continue}
+    const m=lines[i].match(/^(\s*)-\s*(system|user|assistant)\s*:\s*(.*)$/i);if(!m)throw Error(`Bad message line ${i+1}`);
+    const base=m[1].length,role=m[2].toLowerCase(),tail=m[3];i++;let content="";
+    if(/^\|[-+]?$/.test(tail.trim())){const bl=[];for(;i<lines.length;i++){const n=lines[i].match(/^(\s*)-\s*(system|user|assistant)\s*:\s*(.*)$/i);if(n&&n[1].length<=base)break;bl.push(lines[i])}const non=bl.filter(x=>x.trim()),mn=non.length?Math.min(...non.map(x=>x.match(/^\s*/)[0].length)):0;content=bl.map(x=>x.trim()?x.slice(mn):"").join("\n")}
+    else content=tail;out.push({role,content})}
+  return out
+}
+
+/* ══════════════════════════════════════
+   STATE
+   ══════════════════════════════════════ */
+const S={seg:[],order:[],cfg:{},res:{},cur:0,paused:null,trace:[],err:"",run:false,last:null,slotNum:0};
+
+function fixtures(){const t=$("fixtures").value.trim();if(!t)return{};const v=JSON.parse(t);if(!v||typeof v!=="object"||Array.isArray(v))throw Error("Fixtures must be an object");return v}
+function vars(){const o={};for(const id of S.order)if(S.res[id])o[id]=S.res[id].value;return o}
+function scope(extra={}){const inp=fixtures(),cap={};for(const k of Object.keys(S.res))cap[k]=S.res[k].raw;return{...H,...inp,inputs:inp,vars:vars(),captures:cap,results:deep(S.res),last:S.last?deep(S.last):null,H,...extra}}
+
+function dcfg(kind){return kind==="probe"?{stopText:encStop(["\n"]),maxTokens:"16",transform:"=capture",expr:"",replacement:"",autoContinue:false}:kind==="calc"?{stopText:"",maxTokens:"",transform:"",expr:"",replacement:"",autoContinue:true}:{stopText:"",maxTokens:"",transform:"",expr:"",replacement:"",autoContinue:false}}
+
+function source(){const t=$("template").value.replace(/\r\n/g,"\n");return $("wrap").checked?`<think>\n${t}\n</think>`:t}
+
+function sync(){
+  const src=source(),re=/\[\[(probe|calc|manual):([A-Za-z0-9_.-]+)\]\]/g,seg=[],order=[],seen=new Set();let cur=0,m;
+  while((m=re.exec(src))){if(m.index>cur)seg.push({k:"lit",t:src.slice(cur,m.index)});if(seen.has(m[2]))throw Error(`Duplicate slot: ${m[2]}`);seen.add(m[2]);seg.push({k:"slot",kind:m[1],id:m[2]});order.push(m[2]);cur=m.index+m[0].length}
+  if(cur<src.length)seg.push({k:"lit",t:src.slice(cur)});
+  const cfg={};for(const id of order)cfg[id]={...(S.cfg[id]||dcfg(seg.find(x=>x.k==="slot"&&x.id===id).kind))};
+  for(const id of Object.keys(S.res))if(!cfg[id])delete S.res[id];
+  S.seg=seg;S.order=order;S.cfg=cfg;
+  if(S.cur>S.order.length)S.cur=S.order.length;
+  if(S.paused&&!S.cfg[S.paused])S.paused=null;
+  rebuild()
+}
+
+function rebuild(){S.last=null;for(const id of S.order)if(S.res[id])S.last=S.res[id]}
+function prefix(){let out="";for(const x of S.seg){if(x.k==="lit"){out+=tpl(x.t,scope());continue}if(!S.res[x.id])break;out+=String(S.res[x.id].replacement??"")}return out}
+
+/* ══════════════════════════════════════
+   API + EXECUTION
+   ══════════════════════════════════════ */
+function agentUrl(){const sel=$("agentSel");return sel.value||"http://127.0.0.1:5004"}  // llama.cpp with slots
+
+async function step(payload){
+  const r=await fetch("/api/think-lab/step",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:agentUrl(),payload})});
+  const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.detail||`Step failed (${r.status})`);return d
+}
+
+function resolvedMessages(){return parseMessages().map(m=>({role:m.role,content:String(evalx(m.content))}))}
+
+function detectStop(capture,stops){
+  if(!stops||!stops.length)return null;
+  const sorted=[...stops].sort((a,b)=>b.length-a.length);
+  for(const s of sorted)if(capture.endsWith(s))return s;
+  return null
+}
+
+async function probe(id,c){
+  const msgs=resolvedMessages();
+  // For llama.cpp with thinking models: send everything in user message to avoid prefill conflict
+  const isLlamaCpp=agentUrl().includes("5004");
+  const p=isLlamaCpp
+    ?{messages:[...msgs,{role:"user",content:prefix()+"\n\nRespond with the answer:"}],temperature:+$("temp").value||0,max_tokens:+(c.maxTokens||$("max").value||16)||16,cache_prompt:$("cache").checked,enable_thinking:false}
+    :{messages:[...msgs,{role:"assistant",content:prefix()}],temperature:+$("temp").value||0,max_tokens:+(c.maxTokens||$("max").value||16)||16,cache_prompt:$("cache").checked,continue_assistant_turn:$("cont").checked,enable_thinking:false};
+  const stop=parseStop(c.stopText||$("gstop").value);if(stop.length)p.stop=stop;
+  // Add slot support for llama.cpp
+  if($("useSlots")?.checked && isLlamaCpp){p.id_slot=S.slotNum;S.slotNum=(S.slotNum+1)%4}
+  const d=await step(p);
+  const raw=String(d.content??""),matchedStop=d.finish_reason==="stop"?detectStop(raw,stop):null;
+  const value=evalx(c.transform||"=capture",{capture:raw,rawCapture:raw,matchedStop,finishReason:d.finish_reason},raw);
+  const replacement=c.replacement.trim()?evalx(c.replacement,{capture:raw,rawCapture:raw,value,matchedStop,finishReason:d.finish_reason},""):value;
+  const res={kind:"probe",raw,value,replacement:String(replacement??""),finishReason:d.finish_reason||"",matchedStop,latencyMs:d.latency_ms,promptTokens:d.prompt_tokens??null,completionTokens:d.completion_tokens??null};
+  ok(id,res);trace({slotId:id,kind:"probe",latencyMs:d.latency_ms,finishReason:d.finish_reason||"",matchedStop,output:res,request:p,response:d.raw})
+}
+
+async function calc(id,c){
+  const value=evalx(c.expr||c.replacement||"",{},""),replacement=c.replacement.trim()?evalx(c.replacement,{value},""):value;
+  const res={kind:"calc",raw:"",value,replacement:String(replacement??""),finishReason:"",matchedStop:null,latencyMs:0};
+  ok(id,res);trace({slotId:id,kind:"calc",output:res})
+}
+
+async function manual(id,c){
+  const value=evalx(c.replacement||"",{},""),res={kind:"manual",raw:"",value,replacement:String(value??""),finishReason:"",matchedStop:null,latencyMs:0};
+  ok(id,res);trace({slotId:id,kind:"manual",output:res})
+}
+
+function ok(id,res){S.res[id]=res;S.cur=Math.min(S.cur+1,S.order.length);S.paused=id;rebuild()}
+function trace(obj){S.trace.push({at:new Date().toLocaleTimeString(),...obj})}
+function clearRun(){S.res={};S.cur=0;S.paused=null;S.last=null;S.trace=[];S.slotNum=0;setErr("");show()}
+
+async function runOne(){
+  const id=S.order[S.cur];if(!id)return false;
+  const kind=S.seg.find(x=>x.k==="slot"&&x.id===id).kind,c=S.cfg[id];
+  if(kind==="probe")await probe(id,c);else if(kind==="calc")await calc(id,c);else await manual(id,c);
+  return!!c.autoContinue
+}
+
+async function loop(reset,all){
+  try{parseMessages();fixtures();sync();if(reset)clearRun();if(!S.order.length){setErr("No slots in template.");return}
+    S.run=true;show();
+    while(S.cur<S.order.length){const auto=await runOne();show();if(!all&&!auto)break}
+  }catch(e){setErr(e.message)}finally{S.run=false;show()}
+}
+
+function setErr(msg){S.err=msg||"";$("err").textContent=S.err;$("err").className=`err${S.err?" on":""}`}
+
+/* ══════════════════════════════════════
+   AGENTS (localStorage)
+   ══════════════════════════════════════ */
+const AGENTS_KEY="thinklab_agents";
+function loadAgents(){
+  let list;try{list=JSON.parse(localStorage.getItem(AGENTS_KEY))}catch{}
+  if(!list||!list.length)list=[
+    {name:"llama.cpp + slots (5004)",url:"http://127.0.0.1:5004"},
+    {name:"Local KoboldCpp (5001)",url:"http://127.0.0.1:5001"},
+    {name:"LM Studio (8000)",url:"http://127.0.0.1:8000"}
+  ];
+  const sel=$("agentSel");sel.innerHTML="";
+  list.forEach(a=>{const o=document.createElement("option");o.value=a.url;o.textContent=`${a.name} (${a.url})`;sel.appendChild(o)});
+  return list
+}
+function saveAgents(){
+  const opts=[...$("agentSel").options].map(o=>({name:o.textContent.replace(/ \(.*\)$/,""),url:o.value}));
+  localStorage.setItem(AGENTS_KEY,JSON.stringify(opts))
+}
+$("addAgent").onclick=()=>{
+  const name=prompt("Agent name:","Worker");if(!name)return;
+  const url=prompt("Endpoint URL:","http://127.0.0.1:5001");if(!url)return;
+  const o=document.createElement("option");o.value=url;o.textContent=`${name} (${url})`;$("agentSel").appendChild(o);o.selected=true;saveAgents()
+};
+$("rmAgent").onclick=()=>{const s=$("agentSel");if(s.options.length<=1)return;s.remove(s.selectedIndex);saveAgents()};
+
+/* ══════════════════════════════════════
+   TEMPLATE LIBRARY (localStorage)
+   ══════════════════════════════════════ */
+const TPL_KEY="thinklab_templates",ACTIVE_KEY="thinklab_active";
+let templates=[], activeId=null;
+
+function captureState(){
+  try{sync()}catch{}
+  return{fixtures:$("fixtures").value,messages:$("messages").value,template:$("template").value,wrapThink:$("wrap").checked,slotConfigs:deep(S.cfg),
+    settings:{temperature:+$("temp").value,maxTokens:+$("max").value,defaultStop:$("gstop").value,cachePrompt:$("cache").checked,continueAssistantTurn:$("cont").checked}}
+}
+
+function applyState(t){
+  $("fixtures").value=t.fixtures||"";$("messages").value=t.messages||"";$("template").value=t.template||"";$("wrap").checked=t.wrapThink!==false;
+  if(t.settings){$("temp").value=t.settings.temperature??0;$("max").value=t.settings.maxTokens??16;$("gstop").value=t.settings.defaultStop??"\\n";$("cache").checked=!!t.settings.cachePrompt;$("cont").checked=t.settings.continueAssistantTurn!==false}
+  try{sync();if(t.slotConfigs)for(const[k,v]of Object.entries(t.slotConfigs))if(S.cfg[k])Object.assign(S.cfg[k],v)}catch{}
+  clearRun()
+}
+
+function loadTemplates(){try{templates=JSON.parse(localStorage.getItem(TPL_KEY))||[]}catch{templates=[]}if(!templates.length)templates=builtinTemplates();activeId=localStorage.getItem(ACTIVE_KEY)||null;renderSidebar()}
+function saveTemplates(){localStorage.setItem(TPL_KEY,JSON.stringify(templates));localStorage.setItem(ACTIVE_KEY,activeId||"")}
+function selectTemplate(id){const t=templates.find(x=>x.id===id);if(!t)return;activeId=id;applyState(t);saveTemplates();renderSidebar();show()}
+
+function builtinTemplates(){return[
+  {id:"probe-endline",name:"Probe End Line",
+    fixtures:'{\n  "answer": "Intro line\\nDescription \\"Silver Vessel\\" opens here\\nThe hull glows with pale edges\\nThe figure stands beside a cracked gate\\nA final closing sentence\\nTail",\n  "entity": {"_title": "Silver Vessel", "_startNum": 2, "_firstLine": "Description \\"Silver Vessel\\" opens here"}\n}',
+    messages:'messages:\n- user: numbered($answer)',
+    template:'Split the text into numbered blocks.\nDescription "{$entity._title}" starts at line "{$entity._startNum}" "{$entity._firstLine}"\nand ends at line "\n[[probe:endLine]]\n"\nNow I can recover the full block:\n[[calc:entityBlock]]',
+    wrapThink:true,
+    slotConfigs:{endLine:{stopText:'\\n\n"',maxTokens:"6",transform:"=H.int(capture,capture)",expr:"",replacement:"",autoContinue:false},entityBlock:{stopText:"",maxTokens:"",transform:"",expr:'=H.sliceLines(answer, entity._startNum, vars.endLine)',replacement:"",autoContinue:true}},
+    settings:{temperature:0,maxTokens:16,defaultStop:"\\n",cachePrompt:false,continueAssistantTurn:true}},
+  {id:"verify-claim",name:"Verify Claim",
+    fixtures:'{\n  "claim": "The sky is blue",\n  "context": "The sky appears blue due to Rayleigh scattering of sunlight in the atmosphere."\n}',
+    messages:'messages:\n- user: "{$context}"',
+    template:'I need to verify: "{$claim}"\nBased on the text above, this claim is ((true)) === \n[[probe:verdict]]',
+    wrapThink:true,
+    slotConfigs:{verdict:{stopText:"\\n",maxTokens:"4",transform:"=H.trim(capture)",expr:"",replacement:"",autoContinue:false}},
+    settings:{temperature:0,maxTokens:4,defaultStop:"\\n",cachePrompt:false,continueAssistantTurn:true}},
+  {id:"extract-number",name:"Extract Number",
+    fixtures:'{\n  "text": "The building has 42 floors and was built in 1998.",\n  "question": "How many floors does the building have?"\n}',
+    messages:'messages:\n- user: "{$text}"',
+    template:'Question: "{$question}"\nThe answer is: \n[[probe:answer]]\n[[calc:parsed]]',
+    wrapThink:true,
+    slotConfigs:{answer:{stopText:"\\n\n ",maxTokens:"8",transform:"=capture",expr:"",replacement:"",autoContinue:true},parsed:{stopText:"",maxTokens:"",transform:"",expr:'=H.int(vars.answer, null)',replacement:"",autoContinue:true}},
+    settings:{temperature:0,maxTokens:8,defaultStop:"\\n",cachePrompt:false,continueAssistantTurn:true}}
+]}
+
+/* ══════════════════════════════════════
+   UI RENDERING
+   ══════════════════════════════════════ */
+function renderSidebar(){
+  $("tplList").innerHTML=templates.map(t=>`<div class="tpl${t.id===activeId?" on":""}" data-id="${esc(t.id)}"><span>${esc(t.name)}</span><span class="del" data-del="${esc(t.id)}" title="Delete">✕</span></div>`).join("");
+  $("tplList").querySelectorAll(".tpl").forEach(el=>el.onclick=e=>{if(e.target.dataset.del)return;selectTemplate(el.dataset.id)});
+  $("tplList").querySelectorAll(".del").forEach(el=>el.onclick=e=>{e.stopPropagation();const id=el.dataset.del;if(!confirm(`Delete "${templates.find(t=>t.id===id)?.name}"?`))return;templates=templates.filter(t=>t.id!==id);if(activeId===id)activeId=null;saveTemplates();renderSidebar()})
+}
+
+function renderSlots(){
+  if(!S.order.length){$("slots").innerHTML='<span class="mini">No slots — add [[probe:name]] to template.</span>';return}
+  $("slots").innerHTML=S.order.map(id=>{
+    const meta=S.seg.find(x=>x.k==="slot"&&x.id===id),c=S.cfg[id],r=S.res[id],cur=id===S.order[S.cur]?" cur":"";
+    const isProbe=meta.kind==="probe",isCalc=meta.kind==="calc";
+    return`<div class="slot${cur}">
+      <div class="slot-head"><strong>${esc(id)}</strong><span class="chip">${esc(meta.kind)}</span></div>
+      ${isProbe?`<div class="slot-row"><div class="f"><label>Stop Tokens</label><textarea data-f="${id}:stopText">${esc(c.stopText)}</textarea></div><div class="f" style="flex:0 0 65px"><label>Max Tok</label><input type="number" data-f="${id}:maxTokens" value="${esc(c.maxTokens)}"></div></div>
+      <div class="slot-row"><div class="f"><label>Transform</label><input data-f="${id}:transform" value="${esc(c.transform)}"></div></div>`:""}
+      ${isCalc?`<div class="slot-row"><div class="f"><label>Expression</label><textarea data-f="${id}:expr">${esc(c.expr)}</textarea></div></div>`:""}
+      <div class="slot-row"><div class="f"><label>Replacement</label><input data-f="${id}:replacement" value="${esc(c.replacement)}"></div></div>
+      <div class="chk"><input type="checkbox" data-f="${id}:autoContinue" ${c.autoContinue?"checked":""}> auto-continue</div>
+      ${r?`<div class="res-item"><span class="val">${esc(String(r.value).slice(0,200))}</span>${finishChip(r)}</div>`:""}
+    </div>`
+  }).join("");
+  bindSlotInputs()
+}
+
+function finishChip(r){
+  if(r.kind!=="probe")return'<span class="chip ok">local</span>';
+  let cls="ok",label=`✓ stop`;
+  if(r.finishReason==="length"){cls="warn";label="max_tokens"}
+  else if(r.finishReason==="stop"&&!r.matchedStop){cls="warn";label="stop (no match)"}
+  if(r.matchedStop)label+=` [${esc(encStop([r.matchedStop]))}]`;
+  const ms=r.latencyMs!=null?` ${r.latencyMs}ms`:"";
+  const tok=r.promptTokens!=null?` ${r.promptTokens}→${r.completionTokens}t`:"";
+  return`<span class="res-meta">${ms}${tok}</span><span class="chip ${cls}">${label}</span>`
+}
+
+function bindSlotInputs(){
+  document.querySelectorAll("[data-f]").forEach(n=>{
+    const handler=e=>{const[id,f]=e.currentTarget.dataset.f.split(":");S.cfg[id][f]=e.currentTarget.type==="checkbox"?e.currentTarget.checked:e.currentTarget.value};
+    n.oninput=handler;n.onchange=handler
+  })
+}
+
+function previewHtml(){
+  const cur=S.order[S.cur]||null;
+  return S.seg.map(x=>{
+    if(x.k==="lit")return esc(tpl(x.t,scope()));
+    if(S.res[x.id])return`<span class="mark done">${esc(S.res[x.id].replacement)}</span>`;
+    return`<span class="mark ${x.id===cur?"cur":"todo"}">[[${esc(x.kind)}:${esc(x.id)}]]</span>`
+  }).join("")
+}
+
+function show(){
+  let pv="";try{pv=previewHtml()}catch(e){pv=esc(source())}
+  $("status").innerHTML=[
+    `<span class="chip">${S.order.length} slots</span>`,
+    `<span class="chip">${Math.min(S.cur,S.order.length)}/${S.order.length}</span>`,
+    `<span class="chip ${S.run?"warn":"ok"}">${S.run?"running…":"idle"}</span>`,
+    S.paused?`<span class="chip warn">@ ${esc(S.paused)}</span>`:""
+  ].join("");
+
+  renderSlots();
+
+  // results card
+  const hasResults=Object.keys(S.res).length>0;
+  $("resultsCard").style.display=hasResults?"":"none";
+  if(hasResults){
+    $("results").innerHTML=S.order.filter(id=>S.res[id]).map(id=>{const r=S.res[id];return`<div class="res-item"><strong>${esc(id)}</strong> <span class="val">${esc(String(r.value).slice(0,300))}</span>${finishChip(r)}</div>`}).join("");
+    $("preview").innerHTML=pv
+  }
+
+  // trace card
+  $("traceCard").style.display=S.trace.length?"":"none";
+  $("trace").innerHTML=S.trace.slice().reverse().map((t,i)=>`<details${i===0?" open":""}><summary><strong>${esc(t.kind)}:${esc(t.slotId)}</strong><span class="mini">${esc(t.at)}${t.latencyMs!=null?` | ${t.latencyMs}ms`:""}${t.finishReason?` | ${esc(t.finishReason)}`:""}</span></summary><div style="padding:0 10px 10px"><pre class="json">${esc(fmt(t.output))}</pre>${t.request?`<pre class="json">${esc(fmt(t.request))}</pre>`:""}${t.response?`<pre class="json">${esc(fmt(t.response))}</pre>`:""}</div></details>`).join("");
+
+  // button states
+  $("runAll").disabled=S.run;$("step").disabled=S.run||!S.order.length||S.cur>=S.order.length;$("reset").disabled=S.run
+}
+
+/* ══════════════════════════════════════
+   EXPORT / IMPORT / COPY DSL
+   ══════════════════════════════════════ */
+function exportJson(){
+  const state={format:"think-lab/v1",name:templates.find(t=>t.id===activeId)?.name||"Untitled",...captureState()};
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`think-lab-${Date.now()}.json`;a.click()
+}
+
+function importJson(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      const id="imported-"+Date.now();
+      templates.push({id,name:data.name||"Imported",...data});
+      saveTemplates();selectTemplate(id)
+    }catch(e){setErr("Import failed: "+e.message);show()}
+  };reader.readAsText(file)
+}
+
+function copyDsl(){
+  let yaml="# Generated from Think Lab\n";
+  for(const id of S.order){
+    const meta=S.seg.find(x=>x.k==="slot"&&x.id===id),c=S.cfg[id];
+    if(meta.kind==="probe"){
+      const stops=parseStop(c.stopText||$("gstop").value);
+      yaml+=`- generator -> $${id}:\n    mode: probe_continue\n    messages:\n`;
+      try{resolvedMessages().forEach(m=>yaml+=`      - ${m.role}: |\n          ${m.content.split("\n").join("\n          ")}\n`)}catch{}
+      yaml+=`      - assistant: |\n          ${prefix().split("\n").join("\n          ")}\n`;
+      yaml+=`    stop: [${stops.map(s=>JSON.stringify(s)).join(", ")}]\n`;
+      yaml+=`    max_tokens: ${c.maxTokens||$("max").value}\n    temperature: ${$("temp").value}\n`
+    }else if(meta.kind==="calc"){
+      yaml+=`- set:\n    "$${id}": ${c.expr||c.replacement||'""'}\n`
+    }
+  }
+  navigator.clipboard.writeText(yaml).then(()=>setErr(""),()=>{});
+  alert("DSL copied to clipboard!")
+}
+
+function previewRequest(){
+  try{
+    parseMessages();fixtures();sync();
+    const msgs=resolvedMessages(),pfx=prefix();
+    const payload={messages:[...msgs,{role:"assistant",content:pfx}],temperature:+$("temp").value||0,max_tokens:+($("max").value)||16,cache_prompt:$("cache").checked,continue_assistant_turn:$("cont").checked};
+    const stops=parseStop($("gstop").value);if(stops.length)payload.stop=stops;
+    alert(JSON.stringify({url:agentUrl(),payload},null,2))
+  }catch(e){setErr(e.message);show()}
+}
+
+/* ══════════════════════════════════════
+   EVENTS
+   ══════════════════════════════════════ */
+$("settingsBtn").onclick=()=>$("drawer").classList.toggle("open");
+$("runAll").onclick=()=>loop(true,true);
+$("step").onclick=()=>loop(false,false);
+$("reset").onclick=()=>{try{sync()}catch{};clearRun();show()};
+$("saveBtn").onclick=()=>{
+  const name=prompt("Template name:",templates.find(t=>t.id===activeId)?.name||"New Template");if(!name)return;
+  const state=captureState();
+  if(activeId&&templates.find(t=>t.id===activeId)){
+    const t=templates.find(t=>t.id===activeId);Object.assign(t,{name,...state})
+  }else{
+    const id="tpl-"+Date.now();templates.push({id,name,...state});activeId=id
+  }
+  saveTemplates();renderSidebar()
+};
+$("exportBtn").onclick=exportJson;
+$("importBtn").onclick=()=>$("importFile").click();
+$("importFile").onchange=e=>{if(e.target.files[0])importJson(e.target.files[0]);e.target.value=""};
+$("copyDsl").onclick=copyDsl;
+$("previewReq").onclick=previewRequest;
+
+// auto-sync on editor changes
+[$("messages"),$("template"),$("fixtures"),$("wrap")].forEach(n=>n.oninput=()=>{try{sync();setErr("")}catch(e){setErr(e.message)}show()});
+
+// keyboard shortcuts
+document.addEventListener("keydown",e=>{
+  if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT")return;
+  if(e.ctrlKey&&e.shiftKey&&e.key==="Enter"){e.preventDefault();loop(true,true)}
+  else if(e.ctrlKey&&e.key==="Enter"){e.preventDefault();loop(true,false)}
+  else if(e.shiftKey&&e.key==="Enter"){e.preventDefault();loop(false,false)}
+});
+
+/* ══════════════════════════════════════
+   AGENT CAPABILITY PROBE
+   ══════════════════════════════════════ */
+const PROBE_MSG=[{role:"user",content:"What is 2+2? Reply with just the number."}];
+
+async function probeStep(payload){
+  const r=await fetch("/api/think-lab/step",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:agentUrl(),payload})});
+  const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.detail||`${r.status}`);return d
+}
+
+const PROBE_TESTS=[
+  {id:"basic",name:"Basic Generation",desc:"Can the agent generate text?",
+    run:async()=>{
+      const d=await probeStep({messages:PROBE_MSG,max_tokens:16,temperature:0});
+      return{ok:!!d.content,icon:d.content?"✅":"❌",
+        summary:`"${d.content.slice(0,80)}" — ${d.latency_ms}ms, ${d.completion_tokens}t`,
+        detail:{content:d.content,latency:d.latency_ms,finish:d.finish_reason,tokens:d.completion_tokens}}
+    }},
+  {id:"continue",name:"Continue Turn",desc:"continue_assistant_turn appends to assistant prefill",
+    run:async()=>{
+      // Skip think phase with prefill, model should continue the count
+      const d=await probeStep({messages:[
+        {role:"user",content:"Count: 1, 2, 3, 4, 5, 6, 7, 8, 9,"},
+        {role:"assistant",content:"<think>\n</think>\n\n1, 2, 3, 4, 5, 6, 7, 8, 9,"}
+      ],max_tokens:8,temperature:0,continue_assistant_turn:true,stop:["\n"]});
+      const looks_ok=/10/.test(d.content);
+      return{ok:!!d.content,icon:looks_ok?"✅":"⚠️",
+        summary:`prefill "...8, 9," → continued: "${d.content}" — ${d.latency_ms}ms`,
+        detail:{content:d.content,latency:d.latency_ms,finish:d.finish_reason}}
+    }},
+  {id:"stop",name:"Stop Tokens",desc:"Stop sequences truncate generation (comparison test)",
+    run:async()=>{
+      // KoboldCpp may report finish_reason:"length" even when stop fires (continue_assistant_turn quirk).
+      // So we test by COMPARISON: same prompt with vs without stop tokens.
+      const msgs=[
+        {role:"user",content:"1: Apple\n2: Banana\n3: Cherry\n4: Date\n5: Elderberry"},
+        {role:"assistant",content:'<think>\nLet me list all items with positions.\nItem at line 1: "'}
+      ];
+      const base={messages:msgs,max_tokens:60,temperature:0,continue_assistant_turn:true};
+      // Baseline: no stop tokens — model generates freely
+      const free=await probeStep(base);
+      // With stop on " — should truncate at first closing quote
+      const d1=await probeStep({...base,stop:['"']});
+      // With stop on \n — should truncate at first newline
+      const d2=await probeStep({...base,stop:["\n"]});
+      const q_truncated=d1.content.length<free.content.length&&!d1.content.includes('"')&&d1.content.length>0;
+      const n_truncated=d2.content.length<free.content.length&&!d2.content.includes("\n")&&d2.content.length>0;
+      const ok=q_truncated||n_truncated;
+      return{ok,icon:(q_truncated&&n_truncated)?"✅":ok?"⚠️":"❌",
+        summary:`Free: ${free.content.length}ch "${free.content.slice(0,50)}${free.content.length>50?"…":""}" | stop ": ${q_truncated?"✓":"✗"} ${d1.content.length}ch "${d1.content}" | stop \\n: ${n_truncated?"✓":"✗"} ${d2.content.length}ch "${d2.content.slice(0,30)}"`,
+        detail:{free:{content:free.content,len:free.content.length,finish:free.finish_reason},
+          quote_stop:{content:d1.content,len:d1.content.length,finish:d1.finish_reason},
+          newline_stop:{content:d2.content,len:d2.content.length,finish:d2.finish_reason},
+          note:"finish_reason may show 'length' instead of 'stop' — this is a KoboldCpp quirk with continue_assistant_turn. The comparison proves stop tokens work."}}
+    }},
+  {id:"cache",name:"KV Cache",desc:"cache_prompt reuses prefix — measures speedup",
+    run:async()=>{
+      // Use a long prompt so cache effect is measurable
+      const padding="The quick brown fox jumps over the lazy dog. ".repeat(20);
+      const msgs=[
+        {role:"user",content:padding+"Now count: 1, 2, 3,"},
+        {role:"assistant",content:"<think>\n</think>\n\n1, 2, 3,"}
+      ];
+      const base={messages:msgs,max_tokens:4,temperature:0,continue_assistant_turn:true,stop:["\n"]};
+      const d1=await probeStep({...base,cache_prompt:false});
+      await probeStep({...base,cache_prompt:true}); // warm up
+      const d3=await probeStep({...base,cache_prompt:true}); // measure warm
+      const speedup=d1.latency_ms/Math.max(d3.latency_ms,1);
+      const works=speedup>1.5;
+      return{ok:works,icon:works?"✅":"⚠️",
+        summary:`Cold: ${d1.latency_ms}ms → Warm: ${d3.latency_ms}ms (${speedup.toFixed(1)}x)`,
+        detail:{cold:d1.latency_ms,warm:d3.latency_ms,speedup:speedup.toFixed(1),
+          cold_pt:d1.prompt_tokens,warm_pt:d3.prompt_tokens,cold_ct:d1.completion_tokens,warm_ct:d3.completion_tokens},
+        bar:{value:Math.min(speedup/10,1),cls:works?"ok":"warn"}}
+    }},
+  {id:"branch",name:"Branching",desc:"Different continuations from same cached prefix, both fast via cache",
+    run:async()=>{
+      const userMsg={role:"user",content:"What is 2+2 and what is 3+3?"};
+      const prefixA="<think>\nLet me calculate step by step.\n2+2 = ";
+      const prefixB="<think>\nLet me calculate step by step.\n2+2 = 4\nNow 3+3 = ";
+      // Seed the cache with the shared prefix
+      await probeStep({messages:[userMsg,{role:"assistant",content:prefixA}],max_tokens:1,temperature:0,continue_assistant_turn:true,cache_prompt:true,stop:["\n"]});
+      // Branch A
+      const a=await probeStep({messages:[userMsg,{role:"assistant",content:prefixA}],max_tokens:4,temperature:0,continue_assistant_turn:true,cache_prompt:true,stop:["\n"]});
+      // Branch B — different continuation from same user msg
+      const b=await probeStep({messages:[userMsg,{role:"assistant",content:prefixB}],max_tokens:4,temperature:0,continue_assistant_turn:true,cache_prompt:true,stop:["\n"]});
+      const aOk=/4/.test(a.content),bOk=/6/.test(b.content);
+      return{ok:!!a.content&&!!b.content,icon:(aOk&&bOk)?"✅":"⚠️",
+        summary:`A: "2+2 = ${a.content}" (${a.latency_ms}ms) | B: "3+3 = ${b.content}" (${b.latency_ms}ms)`,
+        detail:{branchA:a.content,branchB:b.content,latA:a.latency_ms,latB:b.latency_ms,ptA:a.prompt_tokens,ptB:b.prompt_tokens}}
+    }},
+  {id:"logprobs",name:"Logprobs",desc:"Token probabilities — confidence measurement",
+    run:async()=>{
+      // Use continue to get logprobs on the actual answer, not <think>
+      const d=await probeStep({messages:[
+        {role:"user",content:"What is 2+2? Just the number."},
+        {role:"assistant",content:"<think>\n</think>\n\n"}
+      ],max_tokens:4,temperature:0,continue_assistant_turn:true,logprobs:true,top_logprobs:5});
+      const lp=d.raw?.choices?.[0]?.logprobs;
+      const tokens=lp?.content||lp?.tokens||null;
+      if(!tokens)return{ok:false,icon:"❌",summary:"Not returned in response",detail:{raw_keys:Object.keys(d.raw?.choices?.[0]||{})}};
+      let topStr="";
+      if(Array.isArray(tokens)){
+        const first=tokens[0];
+        if(first?.top_logprobs){
+          topStr=first.top_logprobs.slice(0,5).map(t=>`"${t.token}" (${t.logprob.toFixed(2)})`).join(", ");
+        }else if(first?.logprob!=null){
+          topStr=tokens.slice(0,3).map(t=>`"${t.token}" (${t.logprob.toFixed(2)})`).join(", ");
+        }
+      }
+      return{ok:true,icon:"✅",summary:topStr||"Logprobs available",detail:{logprobs:tokens,answer:d.content},
+        logprobs:Array.isArray(tokens)?tokens[0]?.top_logprobs||[tokens[0]]:[]}
+    }},
+  {id:"multi",name:"Multi-completion (n>1)",desc:"Multiple choices in one request",
+    run:async()=>{
+      try{
+        const d=await probeStep({messages:PROBE_MSG,max_tokens:8,temperature:0.8,n:3});
+        const choices=d.raw?.choices||[];
+        const ok=choices.length>1;
+        return{ok,icon:ok?"✅":"⚠️",
+          summary:`${choices.length} choice(s): ${choices.map(c=>`"${(c.message?.content||"").slice(0,30)}"`).join(", ")}`,
+          detail:{count:choices.length,choices:choices.map(c=>c.message?.content)}}
+      }catch(e){return{ok:false,icon:"❌",summary:`Not supported: ${e.message.slice(0,80)}`,detail:{error:e.message}}}
+    }},
+  {id:"seed",name:"Seed Reproducibility",desc:"Same seed + same prompt = same output",
+    run:async()=>{
+      const payload={messages:PROBE_MSG,max_tokens:12,temperature:0.5,seed:42};
+      const a=await probeStep(payload);
+      const b=await probeStep(payload);
+      const match=a.content===b.content;
+      return{ok:match,icon:match?"✅":"⚠️",
+        summary:match?`Match ✓ — both "${a.content.slice(0,40)}"`:`Mismatch: "${a.content.slice(0,30)}" vs "${b.content.slice(0,30)}"`,
+        detail:{a:a.content,b:b.content,match}}
+    }},
+  {id:"grammar",name:"Grammar (GBNF)",desc:"Constrain output to formal grammar",
+    run:async()=>{
+      try{
+        const d=await probeStep({messages:[{role:"user",content:"What is 123+456?"}],
+          max_tokens:8,temperature:0,grammar:'root ::= [0-9]+'});
+        const digits=/^\d+$/.test(d.content.trim());
+        return{ok:digits,icon:digits?"✅":"⚠️",
+          summary:`"${d.content}" — ${digits?"all digits, constrained":"not fully constrained"}`,
+          detail:{content:d.content,constrained:digits,finish:d.finish_reason}}
+      }catch(e){return{ok:false,icon:"❌",summary:`Not supported: ${e.message.slice(0,80)}`,detail:{error:e.message}}}
+    }},
+  {id:"bias",name:"Logit Bias",desc:"Suppress/boost specific tokens by ID",
+    run:async()=>{
+      try{
+        // Step 1: get baseline with logprobs to find actual first token ID
+        const base=await probeStep({messages:[
+          {role:"user",content:"What is 2+2?"},
+          {role:"assistant",content:"<think>\n</think>\n\n"}
+        ],max_tokens:4,temperature:0,continue_assistant_turn:true,logprobs:true});
+        const firstTok=base.raw?.choices?.[0]?.logprobs?.content?.[0];
+        if(!firstTok?.token_id)return{ok:false,icon:"⚠️",summary:"Need logprobs to identify token IDs for bias test",detail:{hint:"Logprobs not available"}};
+        // Step 2: bias against that exact token
+        const biased=await probeStep({messages:[
+          {role:"user",content:"What is 2+2?"},
+          {role:"assistant",content:"<think>\n</think>\n\n"}
+        ],max_tokens:4,temperature:0,continue_assistant_turn:true,
+          logit_bias:{[String(firstTok.token_id)]:-100}});
+        const changed=base.content!==biased.content;
+        return{ok:changed,icon:changed?"✅":"⚠️",
+          summary:changed
+            ?`Suppressed "${firstTok.token}" (id:${firstTok.token_id}) → "${base.content}" became "${biased.content}"`
+            :`Both "${base.content}" — bias accepted but output unchanged`,
+          detail:{baseline:base.content,biased:biased.content,suppressedToken:firstTok.token,tokenId:firstTok.token_id,changed}}
+      }catch(e){return{ok:false,icon:"❌",summary:`Not supported: ${e.message.slice(0,80)}`,detail:{error:e.message}}}
+    }},
+];
+
+let probeRunning=false;
+
+function renderProbeItem(id,icon,name,summary,detail,extra){
+  const el=document.getElementById(`probe-${id}`);
+  if(!el)return;
+  let html=`<div class="probe-head"><strong>${esc(name)}</strong><span class="probe-icon">${icon}</span></div>`;
+  html+=`<div class="probe-summary">${esc(summary)}</div>`;
+  if(extra?.bar){
+    html+=`<div class="probe-bar"><div class="fill ${extra.bar.cls}" style="width:${(extra.bar.value*100).toFixed(0)}%"></div></div>`;
+  }
+  if(extra?.logprobs?.length){
+    html+=`<div class="probe-lp">`;
+    for(const t of extra.logprobs.slice(0,5)){
+      const p=t.logprob!=null?t.logprob:0;
+      const pct=Math.exp(p);
+      const bg=pct>0.8?"#d4edda":pct>0.3?"#fff3cd":"#f8d7da";
+      html+=`<span class="tok" style="background:${bg}">${esc(t.token||"")} ${(pct*100).toFixed(0)}%</span>`;
+    }
+    html+=`</div>`;
+  }
+  if(detail){
+    html+=`<details class="probe-detail"><summary class="mini">raw</summary><pre class="json">${esc(fmt(detail))}</pre></details>`;
+  }
+  el.innerHTML=html;
+  el.classList.remove("running");
+}
+
+async function runProbe(){
+  if(probeRunning)return;
+  probeRunning=true;
+  $("probeCard").style.display="";
+  $("probeMeta").textContent="running…";
+
+  // init grid with placeholder items
+  $("probeGrid").innerHTML=PROBE_TESTS.map(t=>
+    `<div class="probe-item running" id="probe-${t.id}">
+      <div class="probe-head"><strong>${esc(t.name)}</strong><span class="probe-icon">⏳</span></div>
+      <div class="probe-summary">${esc(t.desc)}</div>
+    </div>`
+  ).join("");
+
+  let passed=0,failed=0;
+  for(const test of PROBE_TESTS){
+    try{
+      const r=await test.run();
+      renderProbeItem(test.id,r.icon,test.name,r.summary,r.detail,r);
+      if(r.ok)passed++;else failed++;
+    }catch(e){
+      renderProbeItem(test.id,"💥",test.name,`Error: ${e.message}`,{error:e.message});
+      failed++;
+    }
+    $("probeMeta").textContent=`${passed} passed, ${failed} failed, ${PROBE_TESTS.length-passed-failed} remaining…`;
+  }
+  $("probeMeta").textContent=`Done: ${passed}/${PROBE_TESTS.length} passed`;
+  probeRunning=false;
+}
+
+$("probeBtn").onclick=runProbe;
+
+/* ══════════════════════════════════════
+   INIT
+   ══════════════════════════════════════ */
+loadAgents();
+loadTemplates();
+if(activeId&&templates.find(t=>t.id===activeId)){selectTemplate(activeId)}
+else if(templates.length){selectTemplate(templates[0].id)}
+else{try{sync()}catch{};show()}
+</script>
+</body>
+</html>

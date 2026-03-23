@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -839,10 +840,13 @@ def create_app(root: str) -> FastAPI:
 
         if sync:
             try:
+                available = list(tree.nodes.keys())
+                if node_id not in tree.nodes:
+                    raise HTTPException(404, f"Node '{node_id}' not in tree. Available: {available}")
                 record = behavior_orchestrator.run_node(tree, node_id)
                 return {"record": record.model_dump(), "node": tree.node(node_id).to_serialized_dict(), "tree_meta": tree.global_meta}
             except KeyError as exc:
-                raise HTTPException(404, f"Behavior node not found: {node_id}") from exc
+                raise HTTPException(404, f"Behavior node not found: {node_id}. Available: {list(tree.nodes.keys())}") from exc
 
         if _run_status["running"]:
             raise HTTPException(409, "A run is already in progress")
@@ -985,27 +989,86 @@ def create_app(root: str) -> FastAPI:
         except Exception as exc:
             raise HTTPException(500, f"Edit failed: {exc}") from exc
 
+    def _collect_valid_paths(tree_dict: dict, node_id: str | None = None) -> list[str]:
+        """Collect sample valid set_path paths for the model to learn from."""
+        paths = []
+        gm = tree_dict.get("global_meta", {})
+        for k in list(gm.keys())[:5]:
+            paths.append(f"global_meta.{k}")
+        if node_id and node_id in tree_dict.get("nodes", {}):
+            node = tree_dict["nodes"][node_id]
+            for k in list(node.get("data", {}).keys())[:8]:
+                paths.append(f"nodes.{node_id}.data.{k}")
+            els = node.get("elements", [])
+            if els:
+                paths.append(f"nodes.{node_id}.elements[0].meta.do")
+        else:
+            for nid in list(tree_dict.get("nodes", {}).keys())[:3]:
+                for k in list(tree_dict["nodes"][nid].get("data", {}).keys())[:4]:
+                    paths.append(f"nodes.{nid}.data.{k}")
+        return paths
+
     @app.post("/api/behavior/nl/edit-node")
     async def nl_edit_node(request: Request) -> dict:
-        """Edit node via NL chat instruction."""
-        from .nl_to_dsl import edit_node_via_chat
+        """Edit tree/node via NL instruction using set_path patches."""
+        from .nl_to_dsl import edit_tree_via_chat, apply_set_patches
 
         body = await request.json()
-        node_json = body.get("node")
         instruction = body.get("instruction", "")
+        node_id = body.get("node_id")
         agent = body.get("agent", "small_context_worker")
+        session_id = body.get("session_id", "default")
 
-        if not node_json or not instruction:
-            raise HTTPException(400, "node and instruction are required")
+        if not instruction:
+            raise HTTPException(400, "instruction is required")
+
+        tree = behavior_trees.get(session_id)
+        if tree is None:
+            raise HTTPException(404, "No active tree")
 
         try:
-            result = edit_node_via_chat(
+            tree_dict = tree.to_serialized_dict()
+            patches = edit_tree_via_chat(
                 behavior_orchestrator.llm,
-                node_json,
+                tree_dict,
                 instruction,
                 agent,
+                node_id=node_id,
             )
-            return {"status": "ok", "node": result}
+            result = apply_set_patches(tree_dict, patches)
+
+            # Retry failed patches: show errors to model, ask to fix
+            if result.failed and result.applied > 0:
+                # Some worked, some didn't — retry failed ones
+                available_paths = _collect_valid_paths(tree_dict, node_id)
+                retry_instruction = (
+                    f"Некоторые патчи не удалось применить. Исправь пути.\n"
+                    f"Ошибки:\n" +
+                    "\n".join(f"  {p['set_path']}: {p['_error']}" for p in result.failed) +
+                    f"\n\nДоступные пути:\n{json.dumps(available_paths, ensure_ascii=False)}"
+                )
+                try:
+                    retry_patches = edit_tree_via_chat(
+                        behavior_orchestrator.llm,
+                        tree_dict,
+                        retry_instruction,
+                        agent,
+                        node_id=node_id,
+                    )
+                    retry_result = apply_set_patches(tree_dict, retry_patches)
+                    result.applied += retry_result.applied
+                    result.failed = retry_result.failed
+                except Exception:
+                    pass  # retry is best-effort
+
+            tree.refresh_from_serialized(tree_dict)
+            return {
+                "status": "ok",
+                "patches": patches,
+                "applied": result.applied,
+                "failed": [{"set_path": p["set_path"], "error": p["_error"]} for p in result.failed],
+                "tree": tree.to_serialized_dict(),
+            }
         except Exception as exc:
             raise HTTPException(500, f"Edit failed: {exc}") from exc
 
@@ -1036,6 +1099,496 @@ def create_app(root: str) -> FastAPI:
     @app.get("/behavior", response_class=HTMLResponse)
     def behavior_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "behavior_tree.html"
+        return html_path.read_text(encoding="utf-8")
+
+    # ------------------------------------------------------------------
+    # Reactive Entity endpoints
+    # ------------------------------------------------------------------
+    from .reactive_entity import ReactiveTask, VerifyConfig
+    from .reactive_runner import ReactiveRunner
+
+    reactive_tasks: dict[str, ReactiveTask] = {}
+    _reactive_run_status: dict[str, Any] = {"running": False}
+    reactive_runner = ReactiveRunner(behavior_orchestrator)
+
+    @app.post("/api/reactive/task")
+    async def create_reactive_task(request: Request) -> dict:
+        """Create a ReactiveTask from JSON spec."""
+        body = await request.json()
+        session_id = body.pop("session_id", "default")
+        try:
+            task = ReactiveTask.from_dict(body)
+            reactive_tasks[session_id] = task
+            return {
+                "status": "created",
+                "task_id": task.task_id,
+                "entity_count": len(task.entities),
+                "session_id": session_id,
+            }
+        except Exception as exc:
+            raise HTTPException(400, f"Invalid task spec: {exc}") from exc
+
+    @app.get("/api/reactive/task")
+    def get_reactive_task(session_id: str | None = None) -> dict:
+        """Get current reactive task state."""
+        sid = session_id or "default"
+        task = reactive_tasks.get(sid)
+        if task is None:
+            raise HTTPException(404, "No active reactive task")
+        return task.to_dict()
+
+    @app.post("/api/reactive/task/run")
+    async def run_reactive_task(request: Request, session_id: str | None = None, sync: bool = False) -> dict:
+        """Execute the reactive task."""
+        import threading
+
+        sid = session_id or "default"
+        task = reactive_tasks.get(sid)
+        if task is None:
+            raise HTTPException(404, "No active reactive task")
+
+        if _reactive_run_status["running"]:
+            raise HTTPException(409, "A reactive task is already running")
+
+        # Apply optional runtime settings from body
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+
+        if "verify_config" in body:
+            task.verify_config = VerifyConfig.from_dict(body["verify_config"])
+
+        if sync:
+            _reactive_run_status["running"] = True
+            try:
+                result = reactive_runner.run_task(task)
+                return {"status": "done", **result}
+            finally:
+                _reactive_run_status["running"] = False
+
+        # Async
+        def _bg_run():
+            _reactive_run_status["running"] = True
+            _reactive_run_status["error"] = None
+            try:
+                reactive_runner.run_task(task)
+            except Exception as exc:
+                _reactive_run_status["error"] = str(exc)
+            finally:
+                _reactive_run_status["running"] = False
+
+        threading.Thread(target=_bg_run, daemon=True).start()
+        return {"status": "started", "task_id": task.task_id}
+
+    @app.get("/api/reactive/task/status")
+    def reactive_task_status() -> dict:
+        return dict(_reactive_run_status)
+
+    @app.post("/api/reactive/task/entity/{entity_id}")
+    async def set_reactive_entity(entity_id: str, request: Request, session_id: str | None = None) -> dict:
+        """Manually set entity properties (triggers events)."""
+        sid = session_id or "default"
+        task = reactive_tasks.get(sid)
+        if task is None:
+            raise HTTPException(404, "No active reactive task")
+        entity = task.entities.get(entity_id)
+        if entity is None:
+            raise HTTPException(404, f"Entity {entity_id} not found")
+
+        body = await request.json()
+        for key, value in body.items():
+            entity.set(key, value)
+        return entity.to_dict()
+
+    @app.post("/api/reactive/task/pipeline/add")
+    async def add_reactive_pipeline_layer(request: Request, session_id: str | None = None) -> dict:
+        """Add a pipeline layer at runtime."""
+        from .reactive_entity import PipelineLayer
+
+        sid = session_id or "default"
+        task = reactive_tasks.get(sid)
+        if task is None:
+            raise HTTPException(404, "No active reactive task")
+
+        body = await request.json()
+        try:
+            layer = PipelineLayer.from_dict(body)
+            task.add_layer(layer)
+            return {"status": "added", "layer_id": layer.layer_id, "total_layers": len(task.pipeline)}
+        except Exception as exc:
+            raise HTTPException(400, f"Invalid layer: {exc}") from exc
+
+    @app.get("/api/reactive/task/events")
+    def get_reactive_events(session_id: str | None = None, limit: int = 100) -> dict:
+        """Get event log."""
+        sid = session_id or "default"
+        task = reactive_tasks.get(sid)
+        if task is None:
+            raise HTTPException(404, "No active reactive task")
+        return {"events": task.event_bus.event_log[-limit:]}
+
+    # ------------------------------------------------------------------
+    # Reactive Chat — server-side task parsing + question generation
+    # ------------------------------------------------------------------
+    from .reactive_task_parser import (
+        new_dialog_state, add_worker_response, add_user_message,
+        call_worker, build_task_from_parsed, create_next_entity,
+        extract_structure_from_response,
+    )
+
+    # Per-session dialog state
+    _reactive_chat_state: dict[str, dict] = {}
+
+    @app.post("/api/reactive/chat/send")
+    async def reactive_chat_send(request: Request) -> dict:
+        """Send message in dialog. Proxies to worker, all visible in thread.
+
+        First message: creates dialog state, sends to worker.
+        Follow-up: adds to conversation, sends to worker.
+        Worker response returned for UI to display in thread.
+        If worker returns parseable structure → task is built.
+        """
+        body = await request.json()
+        message = body.get("message", "").strip()
+        sid = body.get("session_id", "default")
+        settings = body.get("settings", {})
+
+        if not message:
+            return {"type": "error", "message": "Empty message"}
+
+        # Get or create dialog state
+        state = _reactive_chat_state.get(sid)
+        if not state:
+            state = new_dialog_state(message)
+        else:
+            add_user_message(state, message)
+
+        # Send to worker — no system prompt, just conversation
+        worker_answer = ""
+        worker_think = ""
+        agent_name = settings.get("agent", "small_context_worker")
+        if behavior_orchestrator.llm.get(agent_name):
+            try:
+                worker_answer, worker_think = call_worker(
+                    state, behavior_orchestrator.llm,
+                    agent_name=agent_name,
+                    settings=settings,
+                )
+                add_worker_response(state, worker_answer, worker_think)
+            except Exception as exc:
+                worker_answer = f"Error: {exc}"
+                add_worker_response(state, worker_answer)
+        else:
+            worker_answer = "(no worker registered)"
+            add_worker_response(state, worker_answer)
+
+        _reactive_chat_state[sid] = state
+
+        # Build response
+        result: dict[str, Any] = {
+            "type": "dialog",
+            "worker_answer": worker_answer,
+            "worker_think": worker_think,
+            "phase": state["phase"],
+            "message_count": len(state["messages"]),
+        }
+
+        # If structure was extracted → build task
+        if state["phase"] == "ready" and state.get("parsed"):
+            task_dict = build_task_from_parsed(state)
+            if task_dict:
+                for k in ("temperature", "max_tokens", "max_continue", "no_think"):
+                    if k in settings:
+                        task_dict.setdefault("global_meta", {})[k] = settings[k]
+                task = ReactiveTask.from_dict(task_dict)
+                reactive_tasks[sid] = task
+                result["type"] = "task_ready"
+                result["task"] = task.to_dict()
+                result["parsed"] = state["parsed"]
+
+        return result
+
+    @app.post("/api/reactive/chat/next-entity")
+    async def reactive_chat_next_entity(request: Request) -> dict:
+        """Create next entity after previous one completes. Iterative."""
+        body = await request.json()
+        sid = body.get("session_id", "default")
+
+        state = _reactive_chat_state.get(sid)
+        if not state:
+            raise HTTPException(404, "No active task session")
+
+        task = reactive_tasks.get(sid)
+        if not task:
+            raise HTTPException(404, "No active reactive task")
+
+        entity_spec = create_next_entity(state)
+        if not entity_spec:
+            return {"type": "complete", "message": f"All {state.get('entity_count', 0)} entities created"}
+
+        # Add entity to task
+        eid = entity_spec["entity_id"]
+        task.add_entity(eid, entity_spec["properties"])
+        _reactive_chat_state[sid] = state
+
+        return {
+            "type": "entity_created",
+            "entity_id": eid,
+            "entity": task.entities[eid].to_dict(),
+            "entities_created": state["entities_created"],
+            "entity_count": state["entity_count"],
+        }
+
+    # ------------------------------------------------------------------
+    # Workflow DSL executor
+    # ------------------------------------------------------------------
+
+    @app.post("/api/workflow/run")
+    async def run_workflow_endpoint(request: Request) -> dict:
+        """Execute a workflow DSL YAML. All steps visible via thread callback."""
+        from .workflow_dsl import run_workflow
+
+        body = await request.json()
+        yaml_text = body.get("yaml", "")
+        input_text = body.get("input", "")
+        settings = body.get("settings", {})
+        worker_urls = body.get("workers", {})  # role → url
+
+        if not yaml_text:
+            raise HTTPException(400, "yaml is required")
+
+        # Collect thread messages
+        thread: list[dict] = []
+        def on_thread(role, name, content, extra=None):
+            thread.append({
+                "role": role, "name": name, "content": content, **(extra or {}),
+            })
+
+        try:
+            # Execute YAML as-is. Input comes from let.input in the YAML.
+            ctx = run_workflow(
+                yaml_text,
+                workers=worker_urls,
+                settings=settings,
+                on_thread=on_thread,
+            )
+
+            result = {
+                "status": "done",
+                "thread": thread,
+                "vars": {k: _serialize(v) for k, v in ctx.vars.items()},
+                "state": ctx.state,
+            }
+            ctx.close()
+            return result
+        except Exception as exc:
+            return {"status": "error", "error": str(exc), "thread": thread}
+
+    @app.post("/api/workflow/trigger")
+    async def run_workflow_trigger(request: Request) -> dict:
+        """Execute a named trigger from a workflow. Requires prior workflow run context."""
+        from .workflow_dsl import run_workflow, run_trigger
+
+        body = await request.json()
+        yaml_text = body.get("yaml", "")
+        trigger_name = body.get("trigger", "")
+        settings = body.get("settings", {})
+        worker_urls = body.get("workers", {})
+        prev_vars = body.get("vars", {})
+
+        if not yaml_text or not trigger_name:
+            raise HTTPException(400, "yaml and trigger are required")
+
+        thread: list[dict] = []
+        def on_thread(role, name, content, extra=None):
+            thread.append({
+                "role": role, "name": name, "content": content, **(extra or {}),
+            })
+
+        try:
+            # Re-create context with stored vars
+            ctx = run_workflow.__wrapped__(yaml_text, worker_urls, settings, None, on_thread) if hasattr(run_workflow, '__wrapped__') else None
+            if ctx is None:
+                # Just parse and set up context without running flow
+                import yaml as _yaml
+                spec = _yaml.safe_load(yaml_text)
+                from .workflow_dsl import WorkflowContext
+                default_builtins = {
+                    "concat": lambda *args: sum((list(a) if isinstance(a, list) else [a] for a in args), []),
+                    "slice_lines": lambda text, start, end: "\n".join(str(text).split("\n")[int(start):int(end)]).strip(),
+                    "join": lambda lst, sep=", ": sep.join(str(x) for x in lst),
+                    "len": lambda x: len(x) if x else 0,
+                }
+                ctx = WorkflowContext(
+                    workers=worker_urls,
+                    settings=settings,
+                    builtins=default_builtins,
+                    on_thread=on_thread,
+                )
+                ctx.triggers = spec.get("triggers", {})
+                # Restore vars from previous run
+                for k, v in prev_vars.items():
+                    ctx.set(k, v)
+
+            run_trigger(ctx, trigger_name)
+
+            result = {
+                "status": "done",
+                "thread": thread,
+                "vars": {k: _serialize(v) for k, v in ctx.vars.items()},
+                "state": ctx.state,
+            }
+            ctx.close()
+            return result
+        except Exception as exc:
+            return {"status": "error", "error": str(exc), "thread": thread}
+
+    @app.get("/api/workflow/default")
+    def get_default_workflow() -> dict:
+        """Return the default demo workflow YAML."""
+        yaml_path = Path(__file__).resolve().parents[2] / "examples" / "behavior_case" / "demo_workflow.yaml"
+        if yaml_path.exists():
+            return {"yaml": yaml_path.read_text(encoding="utf-8")}
+        return {"yaml": ""}
+
+    @app.get("/api/workflow/spec")
+    def get_workflow_spec() -> dict:
+        """Return the workflow DSL spec for LLM context."""
+        spec_path = Path(__file__).resolve().parents[2] / "examples" / "behavior_case" / "WORKFLOW_DSL_SPEC.md"
+        if spec_path.exists():
+            return {"spec": spec_path.read_text(encoding="utf-8")}
+        return {"spec": ""}
+
+    @app.get("/api/comfyui/view")
+    async def comfyui_proxy_view(
+        filename: str,
+        subfolder: str = "",
+        type: str = "output",
+        server: str = "http://127.0.0.1:8188",
+    ) -> Response:
+        """Proxy ComfyUI image view to avoid CORS issues."""
+        url = f"{server}/view?filename={filename}&subfolder={subfolder}&type={type}"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, timeout=30)
+                return Response(
+                    content=resp.content,
+                    media_type=resp.headers.get("content-type", "image/png"),
+                )
+        except Exception as exc:
+            raise HTTPException(502, f"ComfyUI proxy error: {exc}")
+
+    @app.get("/api/comfyui/history/{prompt_id}")
+    async def comfyui_proxy_history(
+        prompt_id: str,
+        server: str = "http://127.0.0.1:8188",
+    ) -> dict:
+        """Proxy ComfyUI history to check generation status."""
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{server}/history/{prompt_id}", timeout=10)
+                return resp.json()
+        except Exception as exc:
+            raise HTTPException(502, f"ComfyUI proxy error: {exc}")
+
+    @app.post("/api/think-lab/step")
+    async def think_lab_step(request: Request) -> dict:
+        """Proxy a single OpenAI-compatible chat completion step for Think Lab."""
+        body = await request.json()
+        url = str(body.get("url", "")).strip().rstrip("/")
+        payload = body.get("payload")
+
+        if not url:
+            raise HTTPException(400, "url is required")
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "payload must be an object")
+
+        # Fix for llama.cpp with thinking models (port 5004 only):
+        # Remove assistant prefill and disable thinking via chat_template_kwargs
+        if "5004" in url:
+            import copy
+            payload = copy.deepcopy(payload)
+            if payload.get("continue_assistant_turn"):
+                msgs = payload.get("messages", [])
+                if msgs and msgs[-1].get("role") == "assistant":
+                    prefill = msgs[-1].get("content", "")
+                    msgs = msgs[:-1]
+                    if msgs and msgs[-1].get("role") == "user":
+                        msgs[-1]["content"] = msgs[-1]["content"] + "\n\nContinue from: " + prefill
+                    payload["messages"] = msgs
+                payload.pop("continue_assistant_turn", None)
+            payload.pop("enable_thinking", None)
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+
+        started_at = time.perf_counter()
+        try:
+            response = httpx.post(
+                f"{url}/v1/chat/completions",
+                json=payload,
+                timeout=180.0,
+                trust_env=False,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            remote_text = exc.response.text[:2000] if exc.response is not None else ""
+            detail = str(exc)
+            if remote_text:
+                detail = f"{detail}: {remote_text}"
+            raise HTTPException(502, detail) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        raw = response.json()
+        choice = (raw.get("choices") or [{}])[0]
+        message = choice.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, list):
+            text = "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("text")
+            )
+        else:
+            text = str(content or "")
+        # Extract token metrics from usage block (if present)
+        usage = raw.get("usage") or {}
+        prompt_tokens = usage.get("prompt_tokens")
+        completion_tokens = usage.get("completion_tokens")
+        tokens_per_second = None
+        if completion_tokens and latency_ms > 0:
+            tokens_per_second = round(completion_tokens / (latency_ms / 1000), 1)
+
+        return {
+            "status": "ok",
+            "content": text,
+            "finish_reason": choice.get("finish_reason"),
+            "latency_ms": latency_ms,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "tokens_per_second": tokens_per_second,
+            "raw": raw,
+        }
+
+    def _serialize(v: Any) -> Any:
+        if isinstance(v, (str, int, float, bool, type(None))):
+            return v
+        if isinstance(v, list):
+            return [_serialize(x) for x in v]
+        if isinstance(v, dict):
+            return {k: _serialize(val) for k, val in v.items()}
+        return str(v)
+
+    @app.get("/reactive-chat", response_class=HTMLResponse)
+    def reactive_chat_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "reactive_chat.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/think-lab", response_class=HTMLResponse)
+    def think_lab_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "think_lab.html"
         return html_path.read_text(encoding="utf-8")
 
     @app.get("/chat", response_class=HTMLResponse)

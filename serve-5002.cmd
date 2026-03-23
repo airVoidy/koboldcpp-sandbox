@@ -11,7 +11,9 @@ setlocal
 set "SCRIPT_DIR=%~dp0"
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
-if "%~1"=="" (
+if defined KOBOLD_SANDBOX_ROOT (
+    set "ROOT=%KOBOLD_SANDBOX_ROOT%"
+) else if "%~1"=="" (
     set "ROOT=%SCRIPT_DIR%"
 ) else (
     set "ROOT=%~1"
@@ -22,7 +24,7 @@ set "PORT=5002"
 set "KOBOLD_URL=http://localhost:5001"
 
 if not exist "%ROOT%\.sandbox\state.json" (
-    echo Sandbox not initialised in %ROOT% — running init...
+    echo Sandbox not initialised in %ROOT% -- running init...
     set "PYTHONPATH=%SCRIPT_DIR%\src"
     python -m kobold_sandbox.cli init --root "%ROOT%" --kobold-url "%KOBOLD_URL%"
 )
@@ -33,4 +35,4 @@ echo Sandbox root: %ROOT%
 echo ---
 
 set "PYTHONPATH=%SCRIPT_DIR%\src"
-python -c "import os,uvicorn;from kobold_sandbox.server import create_app;uvicorn.run(create_app(r'%ROOT%'),host='%HOST%',port=%PORT%)"
+python -c "import uvicorn; from kobold_sandbox.server import create_app; uvicorn.run(create_app(r'%ROOT%'), host='%HOST%', port=%PORT%)"
