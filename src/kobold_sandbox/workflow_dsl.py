@@ -47,6 +47,15 @@ def _probe_regex(grammar: str | None) -> re.Pattern[str] | None:
         return None
 
 
+def _has_unclosed_think(text: str) -> bool:
+    value = str(text or "")
+    start = re.search(r"<think\b[^>]*>", value, re.IGNORECASE)
+    if not start:
+        return False
+    end = re.search(r"</think>", value[start.end():], re.IGNORECASE)
+    return end is None
+
+
 def _coerce_intlike(value: Any, default: int | None = None) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -75,6 +84,12 @@ def _clean_probe_result(text: str, grammar: str | None = None) -> str:
         match = pattern.search(value)
         if match:
             return match.group(0).strip()
+        lowered = value.lower()
+        if "[01]" in pattern.pattern:
+            if lowered.startswith("true"):
+                return "1"
+            if lowered.startswith("false"):
+                return "0"
     return value
 
 
@@ -257,6 +272,7 @@ class WorkflowContext:
         normalized_grammar = _normalize_grammar(grammar)
         if normalized_grammar:
             payload["grammar"] = normalized_grammar
+            payload["grammar_string"] = normalized_grammar
 
         # Execute
         resp = self._http.post(url, json=payload)
@@ -270,12 +286,14 @@ class WorkflowContext:
         full_assistant = result
         if messages and messages[-1]["role"] == "assistant":
             full_assistant = messages[-1]["content"] + result
-        should_continue = continue_on_length if continue_on_length is not None else (mode in {"continue", "probe_continue"})
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
         for cont_i in range(continue_limit):
-            if not should_continue:
-                break
             if not _is_token_limit_finish(finish):
+                break
+            if continue_on_length is not None:
+                if not continue_on_length:
+                    break
+            elif mode not in {"continue", "probe_continue"} and not _has_unclosed_think(full_assistant):
                 break
             cont_messages = list(messages[:-1]) if messages and messages[-1]["role"] == "assistant" else list(messages)
             cont_messages.append({"role": "assistant", "content": full_assistant})
@@ -323,6 +341,11 @@ class WorkflowContext:
             if end_idx > idx:
                 think = result[idx + 7:end_idx].strip()
                 answer = result[end_idx + 8:].strip()
+        elif _has_unclosed_think(result):
+            start_match = re.search(r"<think\b[^>]*>", result, re.IGNORECASE)
+            if start_match:
+                think = result[start_match.end():].strip()
+                answer = result[:start_match.start()].strip()
 
         self.on_thread("worker", f"{role} ({tag or mode})", answer, {"think": think, "tag": tag})
         return answer

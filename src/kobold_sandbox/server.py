@@ -1511,12 +1511,10 @@ def create_app(root: str) -> FastAPI:
                 # Just parse and set up context without running flow
                 import yaml as _yaml
                 spec = _yaml.safe_load(yaml_text)
-                from .workflow_dsl import WorkflowContext
+                from .workflow_dsl import WorkflowContext, _slice_lines
                 default_builtins = {
                     "concat": lambda *args: sum((list(a) if isinstance(a, list) else [a] for a in args), []),
-                    "slice_lines": lambda text, start, end: "\n".join(
-                        str(text).split("\n")[max(0, int(start) - 1):int(end)]
-                    ).strip(),
+                    "slice_lines": lambda text, start, end: _slice_lines(text, start, end),
                     "join": lambda lst, sep=", ": sep.join(str(x) for x in lst),
                     "len": lambda x: len(x) if x else 0,
                 }

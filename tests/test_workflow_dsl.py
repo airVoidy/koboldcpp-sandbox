@@ -139,6 +139,20 @@ class _ProbeGrammarHttpClient:
         return None
 
 
+class _PromptOpenThinkHttpClient:
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def post(self, _url: str, json: dict[str, Any]) -> _FakeResponse:
+        self.calls.append(json)
+        if len(self.calls) == 1:
+            return _FakeResponse("<think>\nreasoning...", finish_reason="max_tokens")
+        return _FakeResponse("</think>\nENTITIES: [demo]\nAXIOMS:\n- fact\nHYPOTHESES:\n- guess", finish_reason="stop")
+
+    def close(self) -> None:
+        return None
+
+
 class _PromptCaptureHttpClient:
     last_instance: "_PromptCaptureHttpClient | None" = None
 
@@ -233,7 +247,28 @@ def test_probe_continue_normalizes_shorthand_grammar_and_sanitizes_result(monkey
     assert result == "10"
     assert len(http_client.calls) == 2
     assert http_client.calls[0]["grammar"] == "root ::= [0-9]+"
+    assert http_client.calls[0]["grammar_string"] == "root ::= [0-9]+"
     assert http_client.calls[1]["continue_assistant_turn"] is True
+
+
+def test_prompt_mode_recovers_when_response_stops_inside_think(monkeypatch) -> None:
+    import kobold_sandbox.workflow_dsl as workflow_dsl
+
+    monkeypatch.setattr(workflow_dsl.httpx, "Client", _PromptOpenThinkHttpClient)
+
+    ctx = workflow_dsl.WorkflowContext(workers={"analyzer": "http://fake-worker"})
+    result = ctx.llm_call(
+        "analyzer",
+        prompt="claims($input)",
+        mode="prompt",
+        max_tokens=32,
+    )
+    http_client = ctx._http
+    ctx.close()
+
+    assert "ENTITIES: [demo]" in result
+    assert "AXIOMS:" in result
+    assert len(http_client.calls) == 2
 
 
 def test_run_workflow_can_override_input_var(monkeypatch) -> None:

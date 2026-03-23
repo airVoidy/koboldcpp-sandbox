@@ -1394,6 +1394,7 @@ function parseTableToEntities(parentNodeId, tableText) {
   // Skip separator line (line 1)
   const dataLines = lines.slice(2);
 
+  const parsed = [];
   dataLines.forEach((line, i) => {
     const cells = line.split('|').map(c => c.trim()).filter(c => c);
     if (cells.length === 0) return;
@@ -1404,15 +1405,10 @@ function parseTableToEntities(parentNodeId, tableText) {
     });
 
     const title = cells[0] || `entity-${i+1}`;
-    createNode(parentNodeId, {
-      type: 'entity',
-      title: title,
-      tags: tags,
-      question: '',
-      status: 'pending',
-    });
+    parsed.push({_title: title, ...tags});
   });
 
+  syncEntityChildren(parentNodeId, parsed);
   // Distribute parent's pinned answer to entities
   distributeAnswerToEntities(parentNodeId);
 }
@@ -1651,9 +1647,13 @@ async function executeWorkflowRun(displayText, yamlText, inputText = '') {
         type:'root', title: displayText,
         question: displayText, showAnswer: false, status: 'active',
       });
+      root.workflowDriven = true;
       rootNodeId = root.id;
     } else if (inputText) {
+      nodes[rootNodeId].workflowDriven = true;
       addThread(rootNodeId, 'user', 'You', inputText);
+    } else if (nodes[rootNodeId]) {
+      nodes[rootNodeId].workflowDriven = true;
     }
 
     // Build worker URLs map from sidebar
@@ -2192,6 +2192,7 @@ setInterval(checkServer, 10000);
 
 // Claims -> parse ENTITIES/AXIOMS/HYPOTHESES into node lists
 onThreadMessage('(claims)', (nodeId, msg) => {
+  if (nodes[nodeId]?.workflowDriven) return;
   if (!msg.content?.trim()) return;
   const nd = nodes[nodeId]; if (!nd) return;
   nd.entities_list = parseListFromText(msg.content, 'ENTITIES');
@@ -2202,6 +2203,7 @@ onThreadMessage('(claims)', (nodeId, msg) => {
 
 // Answer -> show in RESULT + trigger table
 onThreadMessage('(answer)', (nodeId, msg) => {
+  if (nodes[nodeId]?.workflowDriven) return;
   if (!msg.content?.trim()) return;
   nodes[nodeId].showAnswer = true;
   setAnswer(nodeId, msg.content, null, msg.think || '');
@@ -2214,6 +2216,7 @@ onThreadMessage('(answer)', (nodeId, msg) => {
 
 // Table → parse into entity child nodes
 onThreadMessage('(table)', (nodeId, msg) => {
+  if (nodes[nodeId]?.workflowDriven) return;
   if (!msg.content?.trim()) return;
   parseTableToEntities(nodeId, msg.content);
 });
