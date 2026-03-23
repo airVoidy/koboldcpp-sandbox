@@ -108,7 +108,8 @@ Supported config keys:
 - `temperature`
 - `max_tokens`
 - `stop`
-- `grammar` — GBNF grammar constraint (e.g. `"[0-9]+"`, `"[01]"`)
+- `grammar` — transport-level GBNF grammar constraint
+- `capture` — post-processing rule for probe output
 - `tag`
 
 ### 3. Continue Call
@@ -131,6 +132,13 @@ Use `continue` when the worker must continue an existing assistant turn until Eo
 ```yaml
 - generator -> $end_line:
     mode: probe_continue
+    grammar: |
+      root ::= digits term?
+      digits ::= [0-9]+
+      term ::= " " | "\n" | "\""
+    capture:
+      regex: "[0-9]+"
+      coerce: int
     messages:
       - user: numbered($answer)
       - assistant: |
@@ -138,8 +146,8 @@ Use `continue` when the worker must continue an existing assistant turn until Eo
           Описание "{$entity.title}" начинается со строки
           под номером "{$entity.startNum}" "{$entity.firstLineText}"
           и длится до строки под номером "line number:
-    stop: ["\n", "\"", " "]
-    max_tokens: 10
+    stop: [" ", "\n", "\""]
+    max_tokens: 5
     temperature: 0.1
 ```
 
@@ -313,23 +321,30 @@ It is model-family specific.
 - generator -> $result:
     mode: probe_continue
     profile: qwen_fastpath
-    grammar: "[0-9]+"
+    grammar: |
+      root ::= digits term?
+      digits ::= [0-9]+
+      term ::= " " | "\n" | "\""
+    capture:
+      regex: "[0-9]+"
+      coerce: int
     messages:
       - user: ...
       - assistant: |
           <think>
           ...injected question...
-    max_tokens: 3
+    stop: [" ", "\n", "\""]
+    max_tokens: 5
     temperature: 0.1
 ```
 
-When `grammar` is specified, the model can ONLY generate tokens matching the GBNF rule.
-This replaces `stop` tokens for format-constrained probes (numbers, booleans).
+When `grammar` is specified, it constrains generation at the transport layer.
+Use `stop` to terminate at the boundary, then use `capture` to extract the value to keep.
 
-Grammar examples:
-- `"[0-9]+"` — digits only (line numbers)
-- `"[01]"` — single bit (true/false confirmation)
-- `"(true|false)"` — boolean string
+`capture` examples:
+- `regex: "[0-9]+"` — extract line number
+- `regex: "[01]"` — extract single-bit confirmation
+- `coerce: int` — convert extracted value to integer
 
 ### Profiles
 
@@ -353,6 +368,8 @@ Use when:
 - context is already in KV cache (continuation of same conversation)
 - model supports stable `<think>` prefix continuation
 - `stop` tokens reliably terminate at answer boundary
+- `grammar` can constrain generation when needed
+- `capture` can normalize the final value
 
 Do not use when:
 
@@ -403,6 +420,13 @@ flow:
   - for $entity in $entity_nodes:
       - generator -> $endLineNumber:
           mode: probe_continue
+          grammar: |
+            root ::= digits term?
+            digits ::= [0-9]+
+            term ::= " " | "\n" | "\""
+          capture:
+            regex: "[0-9]+"
+            coerce: int
           messages:
             - user: numbered($answer)
             - assistant: |
@@ -411,8 +435,8 @@ flow:
                 Описание "{$entity.title}" начинается со строки
                 под номером "{$entity.startNum}" "{$entity.firstLineText}"
                 и длится до строки под номером "line number:
-          stop: ["\n", "\"", " "]
-          max_tokens: 10
+          stop: [" ", "\n", "\""]
+          max_tokens: 5
           temperature: 0.1
       - $entity.answer = slice_lines($answer, $entity.startNum, $endLineNumber)
 

@@ -34,7 +34,27 @@ def _normalize_grammar(grammar: str | None) -> str | None:
         return None
     if "::=" in text:
         return text
-    return f"root ::= {text}"
+    return None
+
+
+def _capture_regex(capture: Any, grammar: str | None = None) -> re.Pattern[str] | None:
+    capture_value = capture
+    if isinstance(capture, dict):
+        capture_value = capture.get("regex", "")
+    text = str(capture_value or "").strip()
+    if not text:
+        return _probe_regex(grammar)
+    try:
+        return re.compile(text)
+    except re.error:
+        return _probe_regex(grammar)
+
+
+def _capture_coerce(capture: Any) -> str | None:
+    if isinstance(capture, dict):
+        value = str(capture.get("coerce", "") or "").strip().lower()
+        return value or None
+    return None
 
 
 def _probe_regex(grammar: str | None) -> re.Pattern[str] | None:
@@ -70,7 +90,7 @@ def _coerce_intlike(value: Any, default: int | None = None) -> int:
     raise ValueError(f"Cannot parse int from {value!r}")
 
 
-def _clean_probe_result(text: str, grammar: str | None = None) -> str:
+def _clean_probe_result(text: str, grammar: str | None = None, capture: Any = None) -> str:
     value = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not value:
         return value
@@ -79,17 +99,20 @@ def _clean_probe_result(text: str, grammar: str | None = None) -> str:
     while len(value) >= 2 and ((value[0], value[-1]) in {('"', '"'), ("'", "'")}):
         value = value[1:-1].strip()
     value = value.rstrip("\"' \t")
-    pattern = _probe_regex(grammar)
+    pattern = _capture_regex(capture, grammar)
     if pattern is not None:
         match = pattern.search(value)
         if match:
-            return match.group(0).strip()
+            value = match.group(0).strip()
         lowered = value.lower()
         if "[01]" in pattern.pattern:
             if lowered.startswith("true"):
-                return "1"
+                value = "1"
             if lowered.startswith("false"):
-                return "0"
+                value = "0"
+    coerce = _capture_coerce(capture)
+    if coerce == "int":
+        return str(_coerce_intlike(value))
     return value
 
 
@@ -243,6 +266,7 @@ class WorkflowContext:
         max_tokens: int = 2048,
         stop: list[str] | None = None,
         grammar: str | None = None,
+        capture: Any = None,
         tag: str = "",
         max_continue: int | None = None,
     ) -> str:
@@ -313,7 +337,7 @@ class WorkflowContext:
             finish = cont_data.get("choices", [{}])[0].get("finish_reason", "stop")
 
         if mode == "probe_continue":
-            probe_value = _clean_probe_result(result, grammar)
+            probe_value = _clean_probe_result(result, grammar, capture)
             self.on_thread(
                 "worker",
                 f"{role} ({tag or 'probe'})",
@@ -362,6 +386,8 @@ def _resolve_params(ctx: WorkflowContext, step: dict) -> dict:
         params["stop"] = step["stop"]
     if "grammar" in step:
         params["grammar"] = str(step["grammar"])
+    if "capture" in step:
+        params["capture"] = step["capture"]
     if "max_continue" in step:
         params["max_continue"] = int(step["max_continue"])
     return params

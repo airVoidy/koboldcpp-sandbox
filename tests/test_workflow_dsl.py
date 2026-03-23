@@ -225,7 +225,7 @@ def test_continue_mode_auto_continues_on_max_tokens(monkeypatch) -> None:
     assert len(http_client.calls) == 2
 
 
-def test_probe_continue_normalizes_shorthand_grammar_and_sanitizes_result(monkeypatch) -> None:
+def test_probe_continue_supports_generation_grammar_and_capture_regex(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _ProbeGrammarHttpClient)
@@ -238,7 +238,8 @@ def test_probe_continue_normalizes_shorthand_grammar_and_sanitizes_result(monkey
             {"role": "assistant", "content": "<think>\nline number:"},
         ],
         mode="probe_continue",
-        grammar="[0-9]+",
+        grammar='root ::= digits term?\ndigits ::= [0-9]+\nterm ::= " " | "\\n" | "\\""',
+        capture={"regex": "[0-9]+", "coerce": "int"},
         max_tokens=3,
     )
     http_client = ctx._http
@@ -246,8 +247,8 @@ def test_probe_continue_normalizes_shorthand_grammar_and_sanitizes_result(monkey
 
     assert result == "10"
     assert len(http_client.calls) == 2
-    assert http_client.calls[0]["grammar"] == "root ::= [0-9]+"
-    assert http_client.calls[0]["grammar_string"] == "root ::= [0-9]+"
+    assert "root ::= digits term?" in http_client.calls[0]["grammar"]
+    assert "root ::= digits term?" in http_client.calls[0]["grammar_string"]
     assert http_client.calls[1]["continue_assistant_turn"] is True
 
 

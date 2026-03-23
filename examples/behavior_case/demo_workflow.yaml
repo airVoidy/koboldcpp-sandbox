@@ -44,7 +44,14 @@ flow:
   - "for $entity in $entity_nodes":
       - generator -> $endLineNumber:
           mode: probe_continue
-          grammar: "[0-9]+"
+          grammar: |
+            root ::= digits term?
+            digits ::= [0-9]+
+            term ::= " " | "\n" | "\""
+          capture:
+            regex: "[0-9]+"
+            coerce: int
+          stop: [" ", "\n", "\""]
           messages:
             - user: numbered($answer)
             - assistant: |
@@ -53,7 +60,7 @@ flow:
                 Описание "{$entity._title}" начинается со строки
                 под номером "{$entity._startNum}" "{$entity._firstLine}"
                 и длится до строки под номером "line number:
-          max_tokens: 3
+          max_tokens: 5
           temperature: 0.1
           tag: trim
       - set:
@@ -61,7 +68,14 @@ flow:
       # Confirm answer was generated (1-token self-check via reaction)
       - generator -> $confirmed:
           mode: probe_continue
-          grammar: "[01]"
+          grammar: |
+            root ::= digit term?
+            digit ::= "0" | "1"
+            term ::= " " | "\n" | "\""
+          capture:
+            regex: "[01]"
+            coerce: int
+          stop: [" ", "\n", "\""]
           messages:
             - user: numbered($answer)
             - assistant: |
