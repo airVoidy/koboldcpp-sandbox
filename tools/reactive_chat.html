@@ -1771,13 +1771,11 @@ document.getElementById('inp').addEventListener('input', function() {
 document.getElementById('btnRun').addEventListener('click', runWorkflowFromCurrentInput);
 document.getElementById('btnExport').addEventListener('click', exportWorkflowSnapshot);
 document.getElementById('btnClear').addEventListener('click', async () => {
-  // Clear KV cache on all workers
-  for (const w of workers) {
-    try { await fetch(w.url.replace(/\/$/, '') + '/api/admin/clear_state', {method: 'POST'}); } catch(_) {}
-  }
+  // Clear KV cache on all workers via server
+  const workerUrls = {};
+  workers.forEach(w => { if (w.role && w.url) workerUrls[w.role] = w.url; });
+  try { await post('/api/workflow/clear', {workers: workerUrls}); } catch(_) {}
   nodes = {}; rootNodeId = null; idN = 0;
-  document.getElementById('feed').innerHTML = '';
-  document.getElementById('inp').value = '';
   session = 'sess-' + Date.now();
   renderTree();
 });

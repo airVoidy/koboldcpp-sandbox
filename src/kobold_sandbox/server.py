@@ -1386,6 +1386,22 @@ def create_app(root: str) -> FastAPI:
         except Exception as exc:
             return {"status": "error", "error": str(exc), "thread": thread}
 
+    @app.post("/api/workflow/clear")
+    async def clear_workflow(request: Request) -> dict:
+        """Clear KV cache on all workers."""
+        import httpx
+        body = await request.json()
+        worker_urls = body.get("workers", {})
+        cleared = []
+        for role, url in worker_urls.items():
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    await client.post(f"{url.rstrip('/')}/api/admin/clear_state")
+                cleared.append(role)
+            except Exception:
+                pass
+        return {"status": "cleared", "workers": cleared}
+
     @app.post("/api/workflow/trigger")
     async def run_workflow_trigger(request: Request) -> dict:
         """Execute a named trigger from a workflow. Requires prior workflow run context."""
