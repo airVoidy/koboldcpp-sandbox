@@ -45,8 +45,8 @@ flow:
       - generator -> $endLineNumber:
           mode: probe_continue
           grammar: |
-            root ::= digits term?
-            digits ::= [0-9]+
+            root ::= digits term
+            digits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]
             term ::= " " | "\n" | "\""
           capture:
             regex: "[0-9]+"
@@ -60,8 +60,8 @@ flow:
                 Описание "{$entity._title}" начинается со строки
                 под номером "{$entity._startNum}" "{$entity._firstLine}"
                 и длится до строки под номером "line number:
-          max_tokens: 5
-          temperature: 0.1
+          max_tokens: 4
+          temperature: 0
           tag: trim
       - set:
           "$entity.answer": slice_lines($answer, $entity._startNum, $endLineNumber)
@@ -69,7 +69,7 @@ flow:
       - generator -> $confirmed:
           mode: probe_continue
           grammar: |
-            root ::= digit term?
+            root ::= digit term
             digit ::= "0" | "1"
             term ::= " " | "\n" | "\""
           capture:
@@ -84,7 +84,7 @@ flow:
                 {$entity.answer}
                 ((answer generated) == true) ===
           max_tokens: 1
-          temperature: 0.1
+          temperature: 0
           tag: confirm
 
   - verify_axioms:

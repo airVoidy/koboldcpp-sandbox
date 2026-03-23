@@ -992,7 +992,7 @@ async function runTrigger(triggerName, nodeId) {
   };
 
   try {
-    const res = await fetch(`${sandboxUrl}/api/workflow/trigger`, {
+    const res = await fetch(`${SB()}/api/workflow/trigger`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -1024,7 +1024,7 @@ async function runTrigger(triggerName, nodeId) {
     if (Array.isArray(res.vars?.entity_nodes)) {
       syncTriggerEntityResults(nodeId, res.vars.entity_nodes);
     }
-    renderTree(true);
+    renderTree();
   } catch(e) {
     addThread(nodeId, 'system', 'Error', `Trigger ${triggerName} failed: ${e.message}`);
     renderTree(true);

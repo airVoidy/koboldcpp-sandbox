@@ -133,8 +133,8 @@ Use `continue` when the worker must continue an existing assistant turn until Eo
 - generator -> $end_line:
     mode: probe_continue
     grammar: |
-      root ::= digits term?
-      digits ::= [0-9]+
+      root ::= digits term
+      digits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]
       term ::= " " | "\n" | "\""
     capture:
       regex: "[0-9]+"
@@ -147,8 +147,8 @@ Use `continue` when the worker must continue an existing assistant turn until Eo
           под номером "{$entity.startNum}" "{$entity.firstLineText}"
           и длится до строки под номером "line number:
     stop: [" ", "\n", "\""]
-    max_tokens: 5
-    temperature: 0.1
+    max_tokens: 4
+    temperature: 0
 ```
 
 Use `mode: probe_continue` to inject into think and get a short answer (1-10 tokens).
@@ -322,8 +322,8 @@ It is model-family specific.
     mode: probe_continue
     profile: qwen_fastpath
     grammar: |
-      root ::= digits term?
-      digits ::= [0-9]+
+      root ::= digits term
+      digits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]
       term ::= " " | "\n" | "\""
     capture:
       regex: "[0-9]+"
@@ -334,8 +334,8 @@ It is model-family specific.
           <think>
           ...injected question...
     stop: [" ", "\n", "\""]
-    max_tokens: 5
-    temperature: 0.1
+    max_tokens: 4
+    temperature: 0
 ```
 
 When `grammar` is specified, it constrains generation at the transport layer.
@@ -421,8 +421,8 @@ flow:
       - generator -> $endLineNumber:
           mode: probe_continue
           grammar: |
-            root ::= digits term?
-            digits ::= [0-9]+
+            root ::= digits term
+            digits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]
             term ::= " " | "\n" | "\""
           capture:
             regex: "[0-9]+"
@@ -436,8 +436,8 @@ flow:
                 под номером "{$entity.startNum}" "{$entity.firstLineText}"
                 и длится до строки под номером "line number:
           stop: [" ", "\n", "\""]
-          max_tokens: 5
-          temperature: 0.1
+          max_tokens: 4
+          temperature: 0
       - $entity.answer = slice_lines($answer, $entity.startNum, $endLineNumber)
 
   - for $item in concat($axioms, $hypotheses):
