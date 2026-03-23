@@ -1839,6 +1839,43 @@ function exportWorkflowSnapshot() {
   a.click();
 }
 
+async function clearReactiveUiState() {
+  nodes = {};
+  rootNodeId = null;
+  idN = 0;
+  session = 'sess-' + Date.now();
+  workflowYaml = '';
+  wfChatMessages = [];
+  window.__encodingTrace = [];
+
+  try {
+    localStorage.removeItem('reactive_nodes');
+    localStorage.removeItem('reactive_encoding_trace');
+  } catch(_) {}
+
+  const idsToClear = [
+    'inp',
+    'workflowEditor',
+    'workflowNL',
+    'workflowChatInput',
+    'newWorkerUrl',
+  ];
+  idsToClear.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if ('value' in el) el.value = '';
+  });
+
+  const workflowChat = document.getElementById('workflowChat');
+  if (workflowChat) workflowChat.innerHTML = '';
+
+  await loadDefaultWorkflow();
+  const editor = document.getElementById('workflowEditor');
+  if (editor) editor.value = workflowYaml;
+
+  renderTree();
+}
+
 document.getElementById('btnSend').addEventListener('click', () => {
   const t = document.getElementById('inp').value.trim();
   if (t) { document.getElementById('inp').value=''; handleInput(t); }
@@ -1855,13 +1892,14 @@ document.getElementById('inp').addEventListener('input', function() {
 document.getElementById('btnRun').addEventListener('click', runWorkflowFromCurrentInput);
 document.getElementById('btnExport').addEventListener('click', exportWorkflowSnapshot);
 document.getElementById('btnClear').addEventListener('click', async () => {
-  // Clear KV cache on all workers via server
+  setS('busy', 'Clearing...');
+  const oldSession = session;
   const workerUrls = {};
   workers.forEach(w => { if (w.role && w.url) workerUrls[w.role] = w.url; });
   try { await post('/api/workflow/clear', {workers: workerUrls}); } catch(_) {}
-  nodes = {}; rootNodeId = null; idN = 0;
-  session = 'sess-' + Date.now();
-  renderTree();
+  try { await post('/api/reactive/reset?session_id=' + encodeURIComponent(oldSession), {session_id: oldSession}); } catch(_) {}
+  await clearReactiveUiState();
+  setS('ok','Ready');
 });
 
 /* Worker management */

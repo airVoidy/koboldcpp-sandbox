@@ -1274,6 +1274,29 @@ def create_app(root: str) -> FastAPI:
             raise HTTPException(404, "No active reactive task")
         return {"events": task.event_bus.event_log[-limit:]}
 
+    @app.post("/api/reactive/reset")
+    async def reset_reactive_state(request: Request, session_id: str | None = None) -> dict:
+        """Reset reactive task/chat state for a session."""
+        sid = session_id or "default"
+        try:
+            body = await request.json()
+            sid = body.get("session_id", sid) or sid
+        except Exception:
+            pass
+
+        task_existed = reactive_tasks.pop(sid, None) is not None
+        chat_existed = _reactive_chat_state.pop(sid, None) is not None
+
+        if not _reactive_run_status.get("running"):
+            _reactive_run_status.pop("error", None)
+
+        return {
+            "status": "reset",
+            "session_id": sid,
+            "reactive_task_cleared": task_existed,
+            "reactive_chat_cleared": chat_existed,
+        }
+
     # ------------------------------------------------------------------
     # Reactive Chat — server-side task parsing + question generation
     # ------------------------------------------------------------------

@@ -81,3 +81,36 @@ def test_atom_api_evaluates_single_and_batch(tmp_path) -> None:
     assert batch.status_code == 200
     assert batch.json()["results"][0]["passed"] is True
     assert batch.json()["results"][1]["passed"] is False
+
+
+def test_reactive_reset_clears_task_and_chat_state(tmp_path) -> None:
+    app = create_app(str(tmp_path))
+    client = TestClient(app)
+    session_id = "reset-case"
+
+    create_task = client.post(
+        "/api/reactive/task",
+        json={
+            "session_id": session_id,
+            "task_id": "task-reset",
+            "entities": {},
+            "pipeline": [],
+            "extractors": [],
+            "constraints": [],
+        },
+    )
+    chat = client.post(
+        "/api/reactive/chat/send",
+        json={"session_id": session_id, "message": "test message", "settings": {}},
+    )
+    reset = client.post(f"/api/reactive/reset?session_id={session_id}", json={})
+    get_task = client.get(f"/api/reactive/task?session_id={session_id}")
+    next_entity = client.post("/api/reactive/chat/next-entity", json={"session_id": session_id})
+
+    assert create_task.status_code == 200
+    assert chat.status_code == 200
+    assert reset.status_code == 200
+    assert reset.json()["reactive_task_cleared"] is True
+    assert reset.json()["reactive_chat_cleared"] is True
+    assert get_task.status_code == 404
+    assert next_entity.status_code == 404
