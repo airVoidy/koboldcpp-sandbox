@@ -642,6 +642,7 @@ function syncEntityChildren(parentId, entityList) {
 
 function applyWorkflowResult(rootId, res, opts = {}) {
   const markSource = opts.markSource !== false;
+  const root = nodes[rootId];
   if (res.thread) {
     for (const t of res.thread) {
       addThread(
@@ -652,8 +653,8 @@ function applyWorkflowResult(rootId, res, opts = {}) {
         {think: t.think || '', tag: t.tag || '', image_url: t.image_url || '', ...(markSource ? {source: 'workflow'} : {})},
       );
       // Show ComfyUI images inline in thread messages
-      if (t.image_url) {
-        const last = nd.thread[nd.thread.length - 1];
+      if (t.image_url && root) {
+        const last = root.thread[root.thread.length - 1];
         if (last) last.image_url = t.image_url;
       }
     }
@@ -917,11 +918,13 @@ async function runTrigger(triggerName, nodeId) {
   const nd = nodes[nodeId]; if(!nd) return;
   addThread(nodeId, 'system', 'Trigger', `Running trigger: ${triggerName}...`);
   renderTree(true);
+  const activeYaml = await ensureWorkflowYaml();
+  traceEncoding(`workflow.trigger.${triggerName}.yaml.before_post`, activeYaml);
 
   // Collect vars from current state
   const entityNodes = nd.children.map(cid => {
     const cn = nodes[cid];
-    return cn ? {_title: cn.question, answer: cn.answer, imageUrl: cn.imageUrl || ''} : null;
+    return cn ? {_title: cn.title || cn.question, answer: cn.answer, imageUrl: cn.imageUrl || ''} : null;
   }).filter(Boolean);
 
   const vars = {
@@ -938,18 +941,19 @@ async function runTrigger(triggerName, nodeId) {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
-        yaml: workflowYaml,
+        yaml: activeYaml,
         trigger: triggerName,
         settings: getSettings(),
         workers: getWorkerMap(),
         vars,
       }),
     }).then(r => r.json());
+    if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/trigger yaml', res.diagnostics.yaml);
 
     if (res.thread) {
       res.thread.forEach(t => {
         addThread(nodeId, t.role||'system', t.name||'System', t.content||'',
-          {think: t.think||'', tag: t.tag||'', image_url: t.image_url||''});
+          {think: t.think||'', tag: t.tag||'', image_url: t.image_url||'', source:'workflow'});
         // If ComfyUI returned image, set on matching entity by prompt snippet
         if (t.image_url && t.tag === 'comfyui') {
           const snippet = t.prompt_snippet || '';
@@ -1548,31 +1552,109 @@ function sendToWorker(nodeId, worker, prompt, tag, opts) {
 }
 
 let workflowYaml = ''; // loaded on init
+window.__encodingTrace = window.__encodingTrace || [];
+
+function detectEncodingIssue(text) {
+  const value = String(text || '');
+  const markers =
+    (value.match(/Р[А-Яа-яЁё]/g) || []).length +
+    (value.match(/С[А-Яа-яЁё]/g) || []).length +
+    (value.match(/вЂ./g) || []).length +
+    (value.match(/Ñ./g) || []).length +
+    (value.match(/Ð./g) || []).length;
+  let repairPreview = '';
+  try {
+    const bytes = new Uint8Array([...value].map(ch => ch.charCodeAt(0) & 0xFF));
+    repairPreview = new TextDecoder('utf-8', {fatal:false}).decode(bytes).slice(0, 240);
+  } catch(_) {}
+  return {
+    length: value.length,
+    hasCyrillic: /[А-Яа-яЁё]/.test(value),
+    mojibakeMarkers: markers,
+    suspectMojibake: markers >= 3 && !!repairPreview && repairPreview !== value,
+    repairPreview,
+    sample: value.slice(0, 240),
+  };
+}
+
+function traceEncoding(label, text, extra = {}) {
+  const report = detectEncodingIssue(text);
+  const entry = {at: new Date().toISOString(), label, report, extra};
+  window.__encodingTrace.push(entry);
+  if (window.__encodingTrace.length > 100) window.__encodingTrace.shift();
+  try {
+    localStorage.setItem('reactive_encoding_trace', JSON.stringify(window.__encodingTrace.slice(-50)));
+  } catch(_) {}
+  const logger = report.suspectMojibake ? console.warn : console.info;
+  logger('[encoding]', label, report, extra);
+  return report;
+}
 
 async function loadDefaultWorkflow() {
   try {
     const res = await get('/api/workflow/default');
     workflowYaml = res.yaml || '';
+    if (res.encoding) console.info('[encoding][server] /api/workflow/default', res.encoding);
+    traceEncoding('workflow.default.loaded', workflowYaml, {server: res.encoding || null});
   } catch(_) {}
 }
 
-async function handleInput(text) {
+async function ensureWorkflowYaml() {
+  const editor = document.getElementById('workflowEditor');
+  const editorYaml = editor?.value || '';
+  if (editorYaml.trim()) {
+    traceEncoding('workflow.editor.read', editorYaml);
+    workflowYaml = editorYaml;
+  }
+  if (!workflowYaml) {
+    await loadDefaultWorkflow();
+  }
+  if (editor && workflowYaml && !editor.value.trim()) {
+    editor.value = workflowYaml;
+    traceEncoding('workflow.editor.filled', workflowYaml);
+  }
+  return workflowYaml;
+}
+
+function extractYamlInputPreview(yamlText) {
+  const lines = String(yamlText || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const inline = line.match(/^(\s*)input:\s+(.*)$/);
+    if (!inline) continue;
+    const baseIndent = inline[1].length;
+    const tail = (inline[2] || '').trim();
+    if (tail && tail !== '>' && tail !== '|') return tail;
+    const parts = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j];
+      if (!next.trim()) continue;
+      const indent = next.match(/^(\s*)/)?.[1]?.length || 0;
+      if (indent <= baseIndent) break;
+      parts.push(next.trim());
+    }
+    return parts.join(' ').trim();
+  }
+  return '';
+}
+
+async function executeWorkflowRun(displayText, yamlText, inputText = '') {
   setS('busy','Processing...');
   document.getElementById('btnSend').disabled = true;
+  traceEncoding('workflow.run.yaml.before_post', yamlText, {displayText, hasInput: !!inputText});
+  if (inputText) traceEncoding('workflow.run.input.before_post', inputText);
 
   try {
     // Create root node
     if (!rootNodeId) {
       const root = createNode(null, {
-        type:'root', title: text,
-        question: text, showAnswer: false, status: 'active',
+        type:'root', title: displayText,
+        question: displayText, showAnswer: false, status: 'active',
       });
       rootNodeId = root.id;
-    } else {
-      addThread(rootNodeId, 'user', 'You', text);
+    } else if (inputText) {
+      addThread(rootNodeId, 'user', 'You', inputText);
     }
-
-    if (!workflowYaml) await loadDefaultWorkflow();
 
     // Build worker URLs map from sidebar
     const workerUrls = {};
@@ -1583,11 +1665,13 @@ async function handleInput(text) {
     // Execute workflow on server - all steps, all visible
     setS('busy', 'Running workflow...');
     const res = await post('/api/workflow/run', {
-      yaml: workflowYaml,
-      input: text,
+      yaml: yamlText,
+      input: inputText,
       workers: workerUrls,
       settings: getSettings(),
     });
+    if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/run yaml', res.diagnostics.yaml);
+    if (res.diagnostics?.input) console.info('[encoding][server] /api/workflow/run input', res.diagnostics.input);
 
     applyWorkflowResult(rootNodeId, res, {markSource: true});
 
@@ -1598,6 +1682,11 @@ async function handleInput(text) {
     setS('ok','Ready');
     document.getElementById('btnSend').disabled = false;
   }
+}
+
+async function handleInput(text) {
+  const activeYaml = await ensureWorkflowYaml();
+  await executeWorkflowRun(text, activeYaml, text);
 }
 
 // Load default workflow on startup
@@ -1729,15 +1818,10 @@ async function exportTask() {
 
 /* Events */
 async function runWorkflowFromCurrentInput() {
-  // Run workflow YAML from editor as-is (input is in let.input)
-  const editorYaml = document.getElementById('workflowEditor')?.value;
-  if (editorYaml) workflowYaml = editorYaml;
-  if (!workflowYaml) return;
-
-  // Extract input from YAML let.input for display
-  const inputMatch = workflowYaml.match(/input:\s*[>|]?\s*\n?\s*(.+)/);
-  const displayText = inputMatch?.[1]?.trim() || 'workflow';
-  await handleInput(displayText);
+  const activeYaml = await ensureWorkflowYaml();
+  if (!activeYaml) return;
+  const displayText = extractYamlInputPreview(activeYaml) || 'workflow';
+  await executeWorkflowRun(displayText, activeYaml, '');
 }
 
 function exportWorkflowSnapshot() {
@@ -1911,10 +1995,12 @@ document.getElementById('btnToggleRight').addEventListener('click', toggleRightS
 document.getElementById('btnWorkflow').addEventListener('click', toggleRightSidebar);
 document.getElementById('btnWorkflowSave').addEventListener('click', () => {
   workflowYaml = document.getElementById('workflowEditor').value;
+  traceEncoding('workflow.editor.saved', workflowYaml);
 });
 document.getElementById('btnWorkflowReset').addEventListener('click', async () => {
   await loadDefaultWorkflow();
   document.getElementById('workflowEditor').value = workflowYaml;
+  traceEncoding('workflow.editor.reset', workflowYaml);
 });
 // Workflow chat messages
 let wfChatMessages = []; // [{role, content}]
@@ -1958,6 +2044,7 @@ document.getElementById('btnWorkflowApplyNL').addEventListener('click', async ()
     if (yaml.startsWith('```')) yaml = yaml.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
     editor.value = yaml;
     workflowYaml = yaml;
+    traceEncoding('workflow.apply_nl.response', yaml, {worker: applyRole});
   } catch(e) {
     addWfChat('assistant', 'Apply error: ' + e.message);
   }

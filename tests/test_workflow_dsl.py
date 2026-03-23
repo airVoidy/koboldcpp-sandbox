@@ -125,6 +125,35 @@ class _MaxTokensThenStopHttpClient:
         return None
 
 
+class _ProbeGrammarHttpClient:
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def post(self, _url: str, json: dict[str, Any]) -> _FakeResponse:
+        self.calls.append(json)
+        if len(self.calls) == 1:
+            return _FakeResponse("10", finish_reason="length")
+        return _FakeResponse('"', finish_reason="stop")
+
+    def close(self) -> None:
+        return None
+
+
+class _PromptCaptureHttpClient:
+    last_instance: "_PromptCaptureHttpClient | None" = None
+
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        self.calls: list[dict[str, Any]] = []
+        _PromptCaptureHttpClient.last_instance = self
+
+    def post(self, _url: str, json: dict[str, Any]) -> _FakeResponse:
+        self.calls.append(json)
+        return _FakeResponse("ok")
+
+    def close(self) -> None:
+        return None
+
+
 def test_prompt_mode_does_not_auto_continue_on_length(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
@@ -180,3 +209,57 @@ def test_continue_mode_keeps_auto_continue_on_max_tokens(monkeypatch) -> None:
 
     assert result == "partial tail"
     assert len(http_client.calls) == 2
+
+
+def test_probe_continue_normalizes_shorthand_grammar_and_sanitizes_result(monkeypatch) -> None:
+    import kobold_sandbox.workflow_dsl as workflow_dsl
+
+    monkeypatch.setattr(workflow_dsl.httpx, "Client", _ProbeGrammarHttpClient)
+
+    ctx = workflow_dsl.WorkflowContext(workers={"generator": "http://fake-worker"})
+    result = ctx.llm_call(
+        "generator",
+        messages=[
+            {"role": "user", "content": "numbered answer"},
+            {"role": "assistant", "content": "<think>\nline number:"},
+        ],
+        mode="probe_continue",
+        grammar="[0-9]+",
+        max_tokens=3,
+    )
+    http_client = ctx._http
+    ctx.close()
+
+    assert result == "10"
+    assert len(http_client.calls) == 2
+    assert http_client.calls[0]["grammar"] == "root ::= [0-9]+"
+    assert http_client.calls[1]["continue_assistant_turn"] is True
+
+
+def test_run_workflow_can_override_input_var(monkeypatch) -> None:
+    import kobold_sandbox.workflow_dsl as workflow_dsl
+
+    monkeypatch.setattr(workflow_dsl.httpx, "Client", _PromptCaptureHttpClient)
+
+    yaml_text = """
+dsl: workflow/v2
+
+let:
+  input: "from yaml"
+
+flow:
+  - generator -> $answer:
+      prompt: $input
+      max_tokens: 8
+"""
+
+    ctx = run_workflow(
+        yaml_text=yaml_text,
+        workers={"generator": "http://fake-worker"},
+        initial_vars={"$input": "from request"},
+    )
+    http_client = _PromptCaptureHttpClient.last_instance
+    ctx.close()
+
+    assert http_client is not None
+    assert http_client.calls[0]["messages"][0]["content"] == "from request"

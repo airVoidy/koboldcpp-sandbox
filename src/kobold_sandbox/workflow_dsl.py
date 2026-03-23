@@ -20,6 +20,64 @@ def _is_token_limit_finish(finish_reason: str | None) -> bool:
     return str(finish_reason or "").strip().lower() in {"length", "max_tokens"}
 
 
+_EXACT_CALL_RE = re.compile(r"^[A-Za-z_]\w*\((.*)\)$", re.DOTALL)
+
+
+def _looks_like_expr(text: str) -> bool:
+    text = str(text or "").strip()
+    return text.startswith(("$", "@")) or bool(_EXACT_CALL_RE.match(text))
+
+
+def _normalize_grammar(grammar: str | None) -> str | None:
+    text = str(grammar or "").strip()
+    if not text:
+        return None
+    if "::=" in text:
+        return text
+    return f"root ::= {text}"
+
+
+def _probe_regex(grammar: str | None) -> re.Pattern[str] | None:
+    text = str(grammar or "").strip()
+    if not text or "::=" in text:
+        return None
+    try:
+        return re.compile(text)
+    except re.error:
+        return None
+
+
+def _coerce_intlike(value: Any, default: int | None = None) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value or "").strip()
+    match = re.search(r"-?\d+", text)
+    if match:
+        return int(match.group(0))
+    if default is not None:
+        return default
+    raise ValueError(f"Cannot parse int from {value!r}")
+
+
+def _clean_probe_result(text: str, grammar: str | None = None) -> str:
+    value = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not value:
+        return value
+    if "\n" in value:
+        value = value.split("\n", 1)[0].strip()
+    while len(value) >= 2 and ((value[0], value[-1]) in {('"', '"'), ("'", "'")}):
+        value = value[1:-1].strip()
+    value = value.rstrip("\"' \t")
+    pattern = _probe_regex(grammar)
+    if pattern is not None:
+        match = pattern.search(value)
+        if match:
+            return match.group(0).strip()
+    return value
+
+
 class WorkflowContext:
     """Runtime state for a workflow execution."""
 
@@ -196,8 +254,9 @@ class WorkflowContext:
             payload["continue_assistant_turn"] = True
         if stop:
             payload["stop"] = stop
-        if grammar:
-            payload["grammar"] = grammar
+        normalized_grammar = _normalize_grammar(grammar)
+        if normalized_grammar:
+            payload["grammar"] = normalized_grammar
 
         # Execute
         resp = self._http.post(url, json=payload)
@@ -208,17 +267,10 @@ class WorkflowContext:
 
         result = chunk
 
-        # For probe_continue: single call, stop tokens handle it
-        if mode == "probe_continue":
-            self.on_thread("worker", f"{role} (probe)", result.strip(), {"tag": tag})
-            return result.strip()
-
-        # Plain prompt calls should be single-shot by default.
-        # Auto-continuation is only enabled explicitly or for mode="continue".
         full_assistant = result
         if messages and messages[-1]["role"] == "assistant":
             full_assistant = messages[-1]["content"] + result
-        should_continue = continue_on_length if continue_on_length is not None else (mode == "continue")
+        should_continue = continue_on_length if continue_on_length is not None else (mode in {"continue", "probe_continue"})
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
         for cont_i in range(continue_limit):
             if not should_continue:
@@ -247,6 +299,16 @@ class WorkflowContext:
             result += new_chunk
             full_assistant += new_chunk
             finish = cont_data.get("choices", [{}])[0].get("finish_reason", "stop")
+
+        if mode == "probe_continue":
+            probe_value = _clean_probe_result(result, grammar)
+            self.on_thread(
+                "worker",
+                f"{role} ({tag or 'probe'})",
+                probe_value,
+                {"tag": tag, "finish_reason": finish, "raw": result},
+            )
+            return probe_value
 
         # Strip think
         think = ""
@@ -298,8 +360,7 @@ def _build_messages(ctx: WorkflowContext, msg_list: list[dict]) -> list[dict]:
             if role in m:
                 content = m[role]
                 if isinstance(content, str):
-                    # Check if it's an expression
-                    if content.startswith("$") or "(" in content:
+                    if _looks_like_expr(content):
                         resolved = ctx.eval_expr(content)
                         content = str(resolved) if resolved is not None else content
                     content = ctx.interpolate(content)
@@ -362,7 +423,11 @@ def execute_step(ctx: WorkflowContext, step: Any) -> None:
             mode = config.get("mode", "prompt")
 
             if "prompt" in config:
-                prompt = ctx.eval_expr(config["prompt"]) if isinstance(config["prompt"], str) else config["prompt"]
+                prompt_expr = config["prompt"]
+                if isinstance(prompt_expr, str) and _looks_like_expr(prompt_expr):
+                    prompt = ctx.eval_expr(prompt_expr)
+                else:
+                    prompt = prompt_expr
                 prompt = ctx.interpolate(str(prompt))
                 result = ctx.llm_call(role, prompt=prompt, mode=mode, tag=tag, **params)
             elif "messages" in config:
@@ -625,6 +690,7 @@ def run_workflow(
     settings: dict[str, Any] | None = None,
     builtins: dict[str, Callable] | None = None,
     on_thread: Callable | None = None,
+    initial_vars: dict[str, Any] | None = None,
 ) -> WorkflowContext:
     """Parse YAML workflow and execute it."""
     spec = parse_spec(yaml_text)
@@ -657,7 +723,7 @@ def run_workflow(
         ),
         "numbered": lambda text: "\n".join(f"{i+1}. {l}" for i, l in enumerate(str(text).split("\n"))),
         "concat": lambda *args: sum((list(a) if isinstance(a, list) else [a] for a in args), []),
-        "slice_lines": lambda text, start, end: "\n".join(str(text).split("\n")[max(0, int(start) - 1):int(end)]).strip(),
+        "slice_lines": lambda text, start, end: _slice_lines(text, start, end),
         "enrich_entities": lambda entities, answer: _enrich_entities(entities, answer),
         "join": lambda lst, sep=", ": sep.join(str(x) for x in lst),
         "len": lambda x: len(x) if x else 0,
@@ -676,6 +742,9 @@ def run_workflow(
     # Load let vars
     for key, val in spec.get("let", {}).items():
         ctx.set("$" + key, val)
+    for key, val in (initial_vars or {}).items():
+        ref = key if str(key).startswith(("$", "@")) else "$" + str(key)
+        ctx.set(ref, val)
 
     # Store triggers for later execution
     ctx.triggers = spec.get("triggers", {})
@@ -720,6 +789,13 @@ def _enrich_entities(entities: list[dict], answer: str) -> list[dict]:
                 entity["_firstLine"] = line.strip()
                 break
     return entities
+
+
+def _slice_lines(text: Any, start: Any, end: Any) -> str:
+    lines = str(text).split("\n")
+    start_idx = max(0, _coerce_intlike(start, 1) - 1)
+    end_idx = _coerce_intlike(end, len(lines))
+    return "\n".join(lines[start_idx:end_idx]).strip()
 
 
 def _parse_list_from_text(text: str, section: str) -> list[str]:

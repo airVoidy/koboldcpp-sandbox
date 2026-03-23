@@ -58,6 +58,51 @@ class RunRequest(BaseModel):
     commit: bool = False
 
 
+def _mojibake_marker_count(text: str) -> int:
+    value = str(text or "")
+    patterns = (
+        r"Р[А-Яа-яЁё]",
+        r"С[А-Яа-яЁё]",
+        r"вЂ.",
+        r"Ñ.",
+        r"Ð.",
+    )
+    return sum(len(re.findall(pattern, value)) for pattern in patterns)
+
+
+def _encoding_report(text: Any) -> dict[str, Any]:
+    value = str(text or "")
+    repaired_cp1251 = None
+    repaired_latin1 = None
+
+    try:
+        candidate = value.encode("cp1251").decode("utf-8")
+        if candidate != value:
+            repaired_cp1251 = candidate
+    except UnicodeError:
+        repaired_cp1251 = None
+
+    try:
+        candidate = value.encode("latin1").decode("utf-8")
+        if candidate != value:
+            repaired_latin1 = candidate
+    except UnicodeError:
+        repaired_latin1 = None
+
+    markers = _mojibake_marker_count(value)
+    suspect = bool(repaired_cp1251 or repaired_latin1) and markers >= 3
+    repair_preview = repaired_cp1251 or repaired_latin1 or ""
+
+    return {
+        "length": len(value),
+        "has_cyrillic": bool(re.search(r"[А-Яа-яЁё]", value)),
+        "mojibake_markers": markers,
+        "suspect_mojibake": suspect,
+        "repair_preview": repair_preview[:240],
+        "sample": value[:240],
+    }
+
+
 class NotesRequest(BaseModel):
     content: str
 
@@ -1373,6 +1418,7 @@ def create_app(root: str) -> FastAPI:
                 workers=worker_urls,
                 settings=settings,
                 on_thread=on_thread,
+                initial_vars={"$input": input_text} if input_text else None,
             )
 
             result = {
@@ -1380,11 +1426,23 @@ def create_app(root: str) -> FastAPI:
                 "thread": thread,
                 "vars": {k: _serialize(v) for k, v in ctx.vars.items()},
                 "state": ctx.state,
+                "diagnostics": {
+                    "yaml": _encoding_report(yaml_text),
+                    "input": _encoding_report(input_text),
+                },
             }
             ctx.close()
             return result
         except Exception as exc:
-            return {"status": "error", "error": str(exc), "thread": thread}
+            return {
+                "status": "error",
+                "error": str(exc),
+                "thread": thread,
+                "diagnostics": {
+                    "yaml": _encoding_report(yaml_text),
+                    "input": _encoding_report(input_text),
+                },
+            }
 
     @app.post("/api/workflow/clear")
     async def clear_workflow(request: Request) -> dict:
@@ -1433,7 +1491,9 @@ def create_app(root: str) -> FastAPI:
                 from .workflow_dsl import WorkflowContext
                 default_builtins = {
                     "concat": lambda *args: sum((list(a) if isinstance(a, list) else [a] for a in args), []),
-                    "slice_lines": lambda text, start, end: "\n".join(str(text).split("\n")[int(start):int(end)]).strip(),
+                    "slice_lines": lambda text, start, end: "\n".join(
+                        str(text).split("\n")[max(0, int(start) - 1):int(end)]
+                    ).strip(),
                     "join": lambda lst, sep=", ": sep.join(str(x) for x in lst),
                     "len": lambda x: len(x) if x else 0,
                 }
@@ -1455,27 +1515,41 @@ def create_app(root: str) -> FastAPI:
                 "thread": thread,
                 "vars": {k: _serialize(v) for k, v in ctx.vars.items()},
                 "state": ctx.state,
+                "diagnostics": {
+                    "yaml": _encoding_report(yaml_text),
+                    "trigger": trigger_name,
+                },
             }
             ctx.close()
             return result
         except Exception as exc:
-            return {"status": "error", "error": str(exc), "thread": thread}
+            return {
+                "status": "error",
+                "error": str(exc),
+                "thread": thread,
+                "diagnostics": {
+                    "yaml": _encoding_report(yaml_text),
+                    "trigger": trigger_name,
+                },
+            }
 
     @app.get("/api/workflow/default")
     def get_default_workflow() -> dict:
         """Return the default demo workflow YAML."""
         yaml_path = Path(__file__).resolve().parents[2] / "examples" / "behavior_case" / "demo_workflow.yaml"
         if yaml_path.exists():
-            return {"yaml": yaml_path.read_text(encoding="utf-8")}
-        return {"yaml": ""}
+            yaml_text = yaml_path.read_text(encoding="utf-8")
+            return {"yaml": yaml_text, "encoding": _encoding_report(yaml_text)}
+        return {"yaml": "", "encoding": _encoding_report("")}
 
     @app.get("/api/workflow/spec")
     def get_workflow_spec() -> dict:
         """Return the workflow DSL spec for LLM context."""
         spec_path = Path(__file__).resolve().parents[2] / "examples" / "behavior_case" / "WORKFLOW_DSL_SPEC.md"
         if spec_path.exists():
-            return {"spec": spec_path.read_text(encoding="utf-8")}
-        return {"spec": ""}
+            spec_text = spec_path.read_text(encoding="utf-8")
+            return {"spec": spec_text, "encoding": _encoding_report(spec_text)}
+        return {"spec": "", "encoding": _encoding_report("")}
 
     @app.get("/api/comfyui/view")
     async def comfyui_proxy_view(
