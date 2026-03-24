@@ -28,8 +28,6 @@ body {
   background: var(--bg); color: var(--text);
   height: 100vh; display: flex; flex-direction: column; overflow: hidden;
 }
-@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
 /* Header */
 .header {
@@ -41,7 +39,7 @@ body {
 .status { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
 .dot { width:8px; height:8px; border-radius:50%; background:var(--text-dim); }
 .dot.ok { background:var(--green); }
-.dot.busy { background:var(--orange); animation:pulse 1.5s infinite; }
+.dot.busy { background:var(--orange); }
 
 /* Buttons */
 .btn {
@@ -150,7 +148,6 @@ body {
 .node {
   border:1px solid var(--border); border-radius:8px;
   background:var(--surface); margin-bottom:8px;
-  animation:fadeIn .2s ease;
 }
 .node.active { border-color:var(--accent); }
 .node.done   { border-color:var(--green); }
@@ -431,15 +428,21 @@ body {
       <label>Verify max rounds</label>
       <input id="settingVerifyRounds" type="number" value="3" step="1" min="1" max="10" />
       <label>YAML Apply worker</label>
-      <select id="settingYamlApplyRole" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:12px">
-        <option value="generator">generator</option>
-        <option value="analyzer">analyzer</option>
-      </select>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="settingYamlApplyRole" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:12px">
+          <option value="generator">generator</option>
+          <option value="analyzer">analyzer</option>
+        </select>
+        <label style="font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="settingApplyNoThink"> no_think</label>
+      </div>
       <label>YAML Ask worker</label>
-      <select id="settingYamlAskRole" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:12px">
-        <option value="generator">generator</option>
-        <option value="analyzer">analyzer</option>
-      </select>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="settingYamlAskRole" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:12px">
+          <option value="generator">generator</option>
+          <option value="analyzer">analyzer</option>
+        </select>
+        <label style="font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="settingAskNoThink"> no_think</label>
+      </div>
     </div>
   </div>
 </div>
@@ -520,6 +523,7 @@ let session = 'default';
 let nodes = {};   // id -> node data
 let idN = 0;
 let rootNodeId = null;
+let _activeAbort = null; // AbortController for cancelling all worker requests
 // Restore state from localStorage
 try {
   const saved = JSON.parse(localStorage.getItem('reactive_nodes') || '{}');
@@ -672,9 +676,19 @@ function applyWorkflowResult(rootId, res, opts = {}) {
   const entityNodes = syncEntityChildren(rootId, res.state?.root?.entities || []);
   if (res.vars?.entity_nodes && Array.isArray(res.vars.entity_nodes)) {
     res.vars.entity_nodes.forEach((en, i) => {
-      if (i < entityNodes.length && en.answer) {
-        setAnswer(entityNodes[i].id, en.answer);
-        updateNode(entityNodes[i].id, {status: 'done'});
+      if (i < entityNodes.length) {
+        if (en.answer) {
+          setAnswer(entityNodes[i].id, en.answer);
+          updateNode(entityNodes[i].id, {status: 'done'});
+        }
+        if (en.imageUrl) {
+          entityNodes[i].imageUrl = en.imageUrl;
+        }
+        if (en.reaction) {
+          const status = en.reactionStatus || inferCheckStatus(en.reaction);
+          const emoji = status === 'pass' ? '✅' : status === 'fail' ? '❌' : '⚠️';
+          addReaction(entityNodes[i].id, 'analyzer', emoji, status, en.reaction);
+        }
       }
     });
   }
@@ -684,6 +698,53 @@ function applyWorkflowResult(rootId, res, opts = {}) {
   }
 
   updateNode(rootId, {status: res.status === 'done' ? 'done' : 'active'});
+}
+
+function applyWorkflowState(rootId, res) {
+  const root = nodes[rootId]; if(!root) return;
+
+  // Set root answer from state, or fallback from thread tag 'answer'
+  const stateAnswer = res.state?.root?.answer;
+  if (stateAnswer) {
+    root.showAnswer = true;
+    setAnswer(rootId, stateAnswer);
+  } else if (!root.answer && root.thread.length) {
+    const answerMsg = root.thread.find(t => t.tag === 'answer');
+    if (answerMsg?.content) {
+      root.showAnswer = true;
+      setAnswer(rootId, answerMsg.content);
+    }
+  }
+
+  root.entities_list = Array.isArray(res.vars?.entities) ? res.vars.entities : [];
+  root.axioms_list = Array.isArray(res.vars?.axioms) ? res.vars.axioms : [];
+  root.hypotheses_list = Array.isArray(res.vars?.hypotheses) ? res.vars.hypotheses : [];
+
+  const entityNodes = syncEntityChildren(rootId, res.state?.root?.entities || []);
+  if (res.vars?.entity_nodes && Array.isArray(res.vars.entity_nodes)) {
+    res.vars.entity_nodes.forEach((en, i) => {
+      if (i < entityNodes.length) {
+        if (en.answer) {
+          setAnswer(entityNodes[i].id, en.answer);
+          updateNode(entityNodes[i].id, {status: 'done'});
+        }
+        if (en.imageUrl) {
+          entityNodes[i].imageUrl = en.imageUrl;
+        }
+        if (en.reaction) {
+          const status = en.reactionStatus || inferCheckStatus(en.reaction);
+          const emoji = status === 'pass' ? '✅' : status === 'fail' ? '❌' : '⚠️';
+          addReaction(entityNodes[i].id, 'analyzer', emoji, status, en.reaction);
+        }
+      }
+    });
+  }
+
+  if (res.status === 'error') {
+    addThread(rootId, 'system', 'Error', res.error || 'Unknown error', {source: 'workflow'});
+  }
+
+  updateNode(rootId, {status: res.status === 'done' ? 'done' : res.status === 'error' ? 'fail' : 'active'});
 }
 
 function addThread(nodeId, role, name, content, extra) {
@@ -761,6 +822,13 @@ function syncTriggerEntityResults(nodeId, entityVars) {
         existing.detail = entity.reaction;
       } else {
         target.reactions.push({worker: analyzerName, emoji, status, detail: entity.reaction});
+      }
+      const threadName = `${analyzerName} (check)`;
+      const lastThread = Array.isArray(target.thread) && target.thread.length
+        ? target.thread[target.thread.length - 1]
+        : null;
+      if (!lastThread || lastThread.name !== threadName || lastThread.content !== entity.reaction) {
+        addThread(target.id, 'worker', threadName, entity.reaction, {tag: 'check', source: 'workflow'});
       }
       target.answerStatus = status === 'pass' ? 'pass' : status === 'fail' ? 'fail' : target.answerStatus;
     }
@@ -992,7 +1060,7 @@ async function runTrigger(triggerName, nodeId) {
   };
 
   try {
-    const res = await fetch(`${SB()}/api/workflow/trigger`, {
+    const startRes = await fetch(`${SB()}/api/workflow/trigger`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -1001,30 +1069,41 @@ async function runTrigger(triggerName, nodeId) {
         settings: getSettings(),
         workers: buildWorkerMap(),
         vars,
+        async_progress: true,
       }),
     }).then(r => r.json());
-    if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/trigger yaml', res.diagnostics.yaml);
-
-    if (res.thread) {
-      res.thread.forEach(t => {
-        addThread(nodeId, t.role||'system', t.name||'System', t.content||'',
-          {think: t.think||'', tag: t.tag||'', image_url: t.image_url||'', source:'workflow'});
-        // If ComfyUI returned image, set on matching entity by prompt snippet
-        if (t.image_url && t.tag === 'comfyui') {
-          const snippet = t.prompt_snippet || '';
-          nd.children.forEach(cid => {
-            const cn = nodes[cid];
-            if (cn && !cn.imageUrl && cn.answer && snippet && cn.answer.startsWith(snippet.substring(0, 30))) {
-              cn.imageUrl = t.image_url;
+    const runId = startRes.run_id;
+    let cursor = 0;
+    while (true) {
+      const res = await get(`/api/workflow/progress?run_id=${encodeURIComponent(runId)}&cursor=${cursor}`);
+      if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/trigger yaml', res.diagnostics.yaml);
+      beginRenderBatch();
+      try {
+        if (Array.isArray(res.thread)) {
+          res.thread.forEach(t => {
+            addThread(nodeId, t.role||'system', t.name||'System', t.content||'',
+              {think: t.think||'', tag: t.tag||'', image_url: t.image_url||'', source:'workflow'});
+            if (t.image_url && t.tag === 'comfyui') {
+              const snippet = t.prompt_snippet || '';
+              nd.children.forEach(cid => {
+                const cn = nodes[cid];
+                if (cn && !cn.imageUrl && cn.answer && snippet && cn.answer.startsWith(snippet.substring(0, 30))) {
+                  cn.imageUrl = t.image_url;
+                }
+              });
             }
           });
         }
-      });
+        cursor = Number.isFinite(res.next_cursor) ? res.next_cursor : cursor + (res.thread?.length || 0);
+        if (Array.isArray(res.vars?.entity_nodes)) {
+          syncTriggerEntityResults(nodeId, res.vars.entity_nodes);
+        }
+      } finally {
+        endRenderBatch();
+      }
+      if (res.status !== 'running') break;
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
-    if (Array.isArray(res.vars?.entity_nodes)) {
-      syncTriggerEntityResults(nodeId, res.vars.entity_nodes);
-    }
-    renderTree();
   } catch(e) {
     addThread(nodeId, 'system', 'Error', `Trigger ${triggerName} failed: ${e.message}`);
     renderTree(true);
@@ -1075,10 +1154,34 @@ function updateNode(nodeId, upd) {
   renderTree();
 }
 
+let _renderBatchDepth = 0;
+let _renderPending = false;
+let _renderPendingScroll = false;
+
+function beginRenderBatch() {
+  _renderBatchDepth += 1;
+}
+
+function endRenderBatch(scrollToBottom) {
+  if (_renderBatchDepth > 0) _renderBatchDepth -= 1;
+  if (scrollToBottom) _renderPendingScroll = true;
+  if (_renderBatchDepth === 0 && _renderPending) {
+    const shouldScroll = _renderPendingScroll;
+    _renderPending = false;
+    _renderPendingScroll = false;
+    renderTree(shouldScroll);
+  }
+}
+
 /* ================================================================
    Render - full tree rebuild (simple & correct)
    ================================================================ */
 function renderTree(scrollToBottom) {
+  if (_renderBatchDepth > 0) {
+    _renderPending = true;
+    _renderPendingScroll = _renderPendingScroll || !!scrollToBottom;
+    return;
+  }
   const prevScroll = feed.scrollTop;
   const roots = Object.values(nodes).filter(n => !n.parentId || !nodes[n.parentId]);
   feed.innerHTML = '';
@@ -1721,18 +1824,42 @@ async function executeWorkflowRun(displayText, yamlText, inputText = '') {
     }
 
     // Build worker URLs map from sidebar
-    // Execute workflow on server - all steps, all visible
+    // Execute workflow on server with incremental progress polling
     setS('busy', 'Running workflow...');
-    const res = await post('/api/workflow/run', {
+    const startRes = await post('/api/workflow/run', {
       yaml: yamlText,
       input: inputText,
       workers: buildWorkerMap(),
       settings: getSettings(),
+      async_progress: true,
     });
-    if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/run yaml', res.diagnostics.yaml);
-    if (res.diagnostics?.input) console.info('[encoding][server] /api/workflow/run input', res.diagnostics.input);
-
-    applyWorkflowResult(rootNodeId, res, {markSource: true});
+    const runId = startRes.run_id;
+    let cursor = 0;
+    while (true) {
+      const res = await get(`/api/workflow/progress?run_id=${encodeURIComponent(runId)}&cursor=${cursor}`);
+      if (res.diagnostics?.yaml) console.info('[encoding][server] /api/workflow/run yaml', res.diagnostics.yaml);
+      if (res.diagnostics?.input) console.info('[encoding][server] /api/workflow/run input', res.diagnostics.input);
+      beginRenderBatch();
+      try {
+        if (Array.isArray(res.thread)) {
+          res.thread.forEach(t => {
+            addThread(
+              rootNodeId,
+              t.role || 'system',
+              t.name || t.role || 'System',
+              t.content || '',
+              {think: t.think || '', tag: t.tag || '', image_url: t.image_url || '', source: 'workflow'},
+            );
+          });
+        }
+        cursor = Number.isFinite(res.next_cursor) ? res.next_cursor : cursor + (res.thread?.length || 0);
+        applyWorkflowState(rootNodeId, res);
+      } finally {
+        endRenderBatch();
+      }
+      if (res.status !== 'running') break;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
 
   } catch(e) {
     if (rootNodeId) addThread(rootNodeId, 'system', 'Error', e.message);
@@ -1952,6 +2079,8 @@ document.getElementById('inp').addEventListener('input', function() {
 document.getElementById('btnRun').addEventListener('click', runWorkflowFromCurrentInput);
 document.getElementById('btnExport').addEventListener('click', exportWorkflowSnapshot);
 document.getElementById('btnClear').addEventListener('click', async () => {
+  // Abort all in-flight worker requests
+  if (_activeAbort) { _activeAbort.abort(); _activeAbort = null; }
   setS('busy', 'Clearing...');
   const oldSession = session;
   const workerUrls = {};
@@ -2136,19 +2265,51 @@ document.getElementById('btnWorkflowApplyNL').addEventListener('click', async ()
   let spec = '';
   try { spec = (await get('/api/workflow/spec')).spec || ''; } catch(_) {}
 
-  // Instruct: spec + current YAML + instruction. Expect YAML back.
+  // Instruct: spec + current YAML + instruction.
+  // Model chooses: full YAML or set_path patches (cheaper for large workflows).
   const url = worker.url.replace(/\/+$/,'') + '/v1/chat/completions';
   const prompt = (spec ? spec + '\n\n---\n\n' : '')
-    + `Current workflow YAML:\n\`\`\`yaml\n${currentYaml}\n\`\`\`\n\n${instruction}\n\nReturn only the modified YAML. No prose.`;
+    + `Current workflow YAML:\n\`\`\`yaml\n${currentYaml}\n\`\`\`\n\n${instruction}\n\n`
+    + `You can respond in one of two formats:\n`
+    + `1. Full modified YAML (for large changes)\n`
+    + `2. JSON array of patches (for small changes): [{"set_path": "flow[0].temperature", "value": 0.3}, {"set_path": "let.input", "value": "new text"}]\n`
+    + `Choose the most efficient format. No prose.`;
 
   try {
-    const {answer} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {temperature:0.3, max_tokens:4096, noThink:false, continueOnLength:true});
-    let yaml = answer.trim();
-    if (yaml.startsWith('```')) yaml = yaml.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
-    editor.value = yaml;
-    workflowYaml = yaml;
-    workflowEditorDirty = true;
-    traceEncoding('workflow.apply_nl.response', yaml, {worker: applyRole});
+    const applyNoThink = document.getElementById('settingApplyNoThink')?.checked || false;
+    const {answer} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {temperature:0.3, max_tokens:4096, noThink:applyNoThink, continueOnLength:true});
+    let text = answer.trim();
+    if (text.startsWith('```')) text = text.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+
+    // Detect patches vs full YAML
+    let patches = null;
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed) && parsed.length && parsed[0].set_path) patches = parsed;
+    } catch(_) {}
+
+    if (patches) {
+      // Apply set_path patches to current YAML
+      try {
+        const patchRes = await post('/api/workflow/patch', {yaml: currentYaml, patches});
+        if (patchRes.yaml) {
+          editor.value = patchRes.yaml;
+          workflowYaml = patchRes.yaml;
+          workflowEditorDirty = true;
+          addWfChat('system', `Applied ${patches.length} patch(es)`);
+        } else {
+          addWfChat('system', 'Patch error: ' + (patchRes.error || 'unknown'));
+        }
+      } catch(e) {
+        addWfChat('system', 'Patch apply error: ' + e.message);
+      }
+    } else {
+      // Full YAML replacement
+      editor.value = text;
+      workflowYaml = text;
+      workflowEditorDirty = true;
+    }
+    traceEncoding('workflow.apply_nl.response', text, {worker: applyRole});
   } catch(e) {
     addWfChat('assistant', 'Apply error: ' + e.message);
   }
@@ -2175,7 +2336,8 @@ document.getElementById('btnWorkflowChatSend').addEventListener('click', async (
   const messages = [{role:'user', content: `Workflow YAML:\n\`\`\`yaml\n${currentYaml}\n\`\`\`\n\n${question}`}];
 
   try {
-    const {answer} = await fetchLLMWithContinue(url, messages, {temperature:0.3, max_tokens:2048});
+    const askNoThink = document.getElementById('settingAskNoThink')?.checked || false;
+    const {answer} = await fetchLLMWithContinue(url, messages, {temperature:0.3, max_tokens:2048, noThink:askNoThink, continueOnLength:true});
     addWfChat('assistant', answer);
   } catch(e) {
     addWfChat('assistant', 'Error: ' + e.message);

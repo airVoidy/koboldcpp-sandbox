@@ -246,10 +246,29 @@ def test_probe_continue_supports_generation_grammar_and_capture_regex(monkeypatc
     ctx.close()
 
     assert result == "10"
-    assert len(http_client.calls) == 2
+    assert len(http_client.calls) == 1
     assert "root ::= digits term?" in http_client.calls[0]["grammar"]
     assert "root ::= digits term?" in http_client.calls[0]["grammar_string"]
-    assert http_client.calls[1]["continue_assistant_turn"] is True
+
+
+def test_slice_lines_treats_end_as_inclusive() -> None:
+    yaml_text = """
+dsl: workflow/v2
+let:
+  text: |
+    line 1
+    line 2
+    line 3
+flow:
+  - set:
+      "@result": slice_lines($text, 2, 3)
+"""
+
+    ctx = run_workflow(yaml_text=yaml_text, workers={})
+    try:
+        assert ctx.state["result"] == "line 2\nline 3"
+    finally:
+        ctx.close()
 
 
 def test_prompt_mode_recovers_when_response_stops_inside_think(monkeypatch) -> None:

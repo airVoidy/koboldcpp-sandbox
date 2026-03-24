@@ -1413,38 +1413,61 @@ def create_app(root: str) -> FastAPI:
     # Workflow DSL executor
     # ------------------------------------------------------------------
 
-    @app.post("/api/workflow/run")
-    async def run_workflow_endpoint(request: Request) -> dict:
-        """Execute a workflow DSL YAML. All steps visible via thread callback."""
+    import threading as _workflow_threading
+    import uuid as _workflow_uuid
+
+    _workflow_runs_lock = _workflow_threading.Lock()
+    _workflow_runs: dict[str, dict] = {}
+
+    def _workflow_run_set(run_id: str, **updates) -> None:
+        with _workflow_runs_lock:
+            state = _workflow_runs.setdefault(run_id, {"thread": []})
+            state.update(updates)
+
+    def _workflow_run_append(run_id: str, item: dict) -> None:
+        with _workflow_runs_lock:
+            state = _workflow_runs.setdefault(run_id, {"thread": []})
+            state.setdefault("thread", []).append(item)
+
+    def _workflow_run_snapshot(run_id: str) -> dict | None:
+        with _workflow_runs_lock:
+            state = _workflow_runs.get(run_id)
+            if state is None:
+                return None
+            return {
+                "status": state.get("status", "running"),
+                "thread": list(state.get("thread", [])),
+                "vars": dict(state.get("vars", {})) if isinstance(state.get("vars"), dict) else state.get("vars"),
+                "state": state.get("state"),
+                "error": state.get("error"),
+                "diagnostics": state.get("diagnostics", {}),
+            }
+
+    def _run_workflow_sync(
+        yaml_text: str,
+        input_text: str,
+        settings: dict,
+        worker_urls: dict,
+        on_thread,
+    ) -> dict:
         from .workflow_dsl import run_workflow
 
-        body = await request.json()
-        yaml_text = body.get("yaml", "")
-        input_text = body.get("input", "")
-        settings = body.get("settings", {})
-        worker_urls = body.get("workers", {})  # role → url
-
-        if not yaml_text:
-            raise HTTPException(400, "yaml is required")
-
-        # Collect thread messages
         thread: list[dict] = []
-        def on_thread(role, name, content, extra=None):
-            thread.append({
-                "role": role, "name": name, "content": content, **(extra or {}),
-            })
 
+        def _thread_cb(role, name, content, extra=None):
+            item = {"role": role, "name": name, "content": content, **(extra or {})}
+            thread.append(item)
+            on_thread(item)
+
+        ctx = run_workflow(
+            yaml_text,
+            workers=worker_urls,
+            settings=settings,
+            on_thread=_thread_cb,
+            initial_vars={"$input": input_text} if input_text else None,
+        )
         try:
-            # Execute YAML as-is. Input comes from let.input in the YAML.
-            ctx = run_workflow(
-                yaml_text,
-                workers=worker_urls,
-                settings=settings,
-                on_thread=on_thread,
-                initial_vars={"$input": input_text} if input_text else None,
-            )
-
-            result = {
+            return {
                 "status": "done",
                 "thread": thread,
                 "vars": {k: _serialize(v) for k, v in ctx.vars.items()},
@@ -1454,18 +1477,89 @@ def create_app(root: str) -> FastAPI:
                     "input": _encoding_report(input_text),
                 },
             }
+        finally:
             ctx.close()
-            return result
+
+    def _start_workflow_run(yaml_text: str, input_text: str, settings: dict, worker_urls: dict) -> str:
+        run_id = _workflow_uuid.uuid4().hex
+        diagnostics = {
+            "yaml": _encoding_report(yaml_text),
+            "input": _encoding_report(input_text),
+        }
+        _workflow_run_set(run_id, status="running", thread=[], vars={}, state={}, error=None, diagnostics=diagnostics)
+
+        def _worker() -> None:
+            try:
+                result = _run_workflow_sync(yaml_text, input_text, settings, worker_urls, lambda item: _workflow_run_append(run_id, item))
+                _workflow_run_set(
+                    run_id,
+                    status=result["status"],
+                    vars=result["vars"],
+                    state=result["state"],
+                    diagnostics=result["diagnostics"],
+                    error=None,
+                )
+            except Exception as exc:
+                _workflow_run_set(run_id, status="error", error=str(exc))
+
+        _workflow_threading.Thread(target=_worker, daemon=True).start()
+        return run_id
+
+    @app.post("/api/workflow/run")
+    async def run_workflow_endpoint(request: Request) -> dict:
+        """Execute a workflow DSL YAML. All steps visible via thread callback."""
+        body = await request.json()
+        yaml_text = body.get("yaml", "")
+        input_text = body.get("input", "")
+        settings = body.get("settings", {})
+        worker_urls = body.get("workers", {})  # role → url
+        async_progress = bool(body.get("async_progress"))
+
+        if not yaml_text:
+            raise HTTPException(400, "yaml is required")
+
+        if async_progress:
+            run_id = _start_workflow_run(yaml_text, input_text, settings, worker_urls)
+            return {"status": "started", "run_id": run_id}
+
+        try:
+            return _run_workflow_sync(yaml_text, input_text, settings, worker_urls, lambda item: None)
         except Exception as exc:
             return {
                 "status": "error",
                 "error": str(exc),
-                "thread": thread,
+                "thread": [],
                 "diagnostics": {
                     "yaml": _encoding_report(yaml_text),
                     "input": _encoding_report(input_text),
                 },
             }
+
+    @app.post("/api/workflow/patch")
+    async def patch_workflow(request: Request) -> dict:
+        """Apply set_path patches to YAML workflow."""
+        import yaml as _yaml
+        body = await request.json()
+        yaml_text = body.get("yaml", "")
+        patches = body.get("patches", [])
+        try:
+            spec = _yaml.safe_load(yaml_text)
+            for patch in patches:
+                path = patch.get("set_path", "")
+                value = patch.get("value")
+                # Navigate dotted/bracket path
+                parts = []
+                for p in re.split(r'\.|\[', path):
+                    p = p.rstrip(']')
+                    if p:
+                        parts.append(int(p) if p.isdigit() else p)
+                target = spec
+                for p in parts[:-1]:
+                    target = target[p]
+                target[parts[-1]] = value
+            return {"yaml": _yaml.dump(spec, allow_unicode=True, default_flow_style=False, sort_keys=False)}
+        except Exception as e:
+            return {"error": str(e)}
 
     @app.post("/api/workflow/clear")
     async def clear_workflow(request: Request) -> dict:
@@ -1483,49 +1577,41 @@ def create_app(root: str) -> FastAPI:
                 pass
         return {"status": "cleared", "workers": cleared}
 
-    @app.post("/api/workflow/trigger")
-    async def run_workflow_trigger(request: Request) -> dict:
-        """Execute a named trigger from a workflow. Requires prior workflow run context."""
+    def _run_trigger_sync(
+        yaml_text: str,
+        trigger_name: str,
+        settings: dict,
+        worker_urls: dict,
+        prev_vars: dict,
+        on_thread,
+    ) -> dict:
         from .workflow_dsl import run_workflow, run_trigger
 
-        body = await request.json()
-        yaml_text = body.get("yaml", "")
-        trigger_name = body.get("trigger", "")
-        settings = body.get("settings", {})
-        worker_urls = body.get("workers", {})
-        prev_vars = body.get("vars", {})
-
-        if not yaml_text or not trigger_name:
-            raise HTTPException(400, "yaml and trigger are required")
-
         thread: list[dict] = []
-        def on_thread(role, name, content, extra=None):
-            thread.append({
-                "role": role, "name": name, "content": content, **(extra or {}),
-            })
+
+        def _thread_cb(role, name, content, extra=None):
+            item = {"role": role, "name": name, "content": content, **(extra or {})}
+            thread.append(item)
+            on_thread(item)
+
+        ctx = run_workflow.__wrapped__(yaml_text, worker_urls, settings, None, _thread_cb) if hasattr(run_workflow, '__wrapped__') else None
+        if ctx is None:
+            import yaml as _yaml
+            spec = _yaml.safe_load(yaml_text)
+            from .workflow_dsl import WorkflowContext, build_default_builtins
+            ctx = WorkflowContext(
+                workers=worker_urls,
+                settings=settings,
+                builtins=build_default_builtins(),
+                on_thread=_thread_cb,
+            )
+            ctx.triggers = spec.get("triggers", {})
+            for k, v in prev_vars.items():
+                ctx.set(k, v)
 
         try:
-            # Re-create context with stored vars
-            ctx = run_workflow.__wrapped__(yaml_text, worker_urls, settings, None, on_thread) if hasattr(run_workflow, '__wrapped__') else None
-            if ctx is None:
-                # Just parse and set up context without running flow
-                import yaml as _yaml
-                spec = _yaml.safe_load(yaml_text)
-                from .workflow_dsl import WorkflowContext, build_default_builtins
-                ctx = WorkflowContext(
-                    workers=worker_urls,
-                    settings=settings,
-                    builtins=build_default_builtins(),
-                    on_thread=on_thread,
-                )
-                ctx.triggers = spec.get("triggers", {})
-                # Restore vars from previous run
-                for k, v in prev_vars.items():
-                    ctx.set(k, v)
-
             run_trigger(ctx, trigger_name)
-
-            result = {
+            return {
                 "status": "done",
                 "thread": thread,
                 "vars": {k: _serialize(v) for k, v in ctx.vars.items()},
@@ -1535,18 +1621,81 @@ def create_app(root: str) -> FastAPI:
                     "trigger": trigger_name,
                 },
             }
+        finally:
             ctx.close()
-            return result
+
+    def _start_workflow_trigger(yaml_text: str, trigger_name: str, settings: dict, worker_urls: dict, prev_vars: dict) -> str:
+        run_id = _workflow_uuid.uuid4().hex
+        diagnostics = {
+            "yaml": _encoding_report(yaml_text),
+            "trigger": trigger_name,
+        }
+        _workflow_run_set(run_id, status="running", thread=[], vars={}, state={}, error=None, diagnostics=diagnostics)
+
+        def _worker() -> None:
+            try:
+                result = _run_trigger_sync(yaml_text, trigger_name, settings, worker_urls, prev_vars, lambda item: _workflow_run_append(run_id, item))
+                _workflow_run_set(
+                    run_id,
+                    status=result["status"],
+                    vars=result["vars"],
+                    state=result["state"],
+                    diagnostics=result["diagnostics"],
+                    error=None,
+                )
+            except Exception as exc:
+                _workflow_run_set(run_id, status="error", error=str(exc))
+
+        _workflow_threading.Thread(target=_worker, daemon=True).start()
+        return run_id
+
+    @app.post("/api/workflow/trigger")
+    async def run_workflow_trigger(request: Request) -> dict:
+        """Execute a named trigger from a workflow. Requires prior workflow run context."""
+        body = await request.json()
+        yaml_text = body.get("yaml", "")
+        trigger_name = body.get("trigger", "")
+        settings = body.get("settings", {})
+        worker_urls = body.get("workers", {})
+        prev_vars = body.get("vars", {})
+        async_progress = bool(body.get("async_progress"))
+
+        if not yaml_text or not trigger_name:
+            raise HTTPException(400, "yaml and trigger are required")
+
+        if async_progress:
+            run_id = _start_workflow_trigger(yaml_text, trigger_name, settings, worker_urls, prev_vars)
+            return {"status": "started", "run_id": run_id}
+
+        try:
+            return _run_trigger_sync(yaml_text, trigger_name, settings, worker_urls, prev_vars, lambda item: None)
         except Exception as exc:
             return {
                 "status": "error",
                 "error": str(exc),
-                "thread": thread,
+                "thread": [],
                 "diagnostics": {
                     "yaml": _encoding_report(yaml_text),
                     "trigger": trigger_name,
                 },
             }
+
+    @app.get("/api/workflow/progress")
+    def get_workflow_progress(run_id: str, cursor: int = 0) -> dict:
+        snapshot = _workflow_run_snapshot(run_id)
+        if snapshot is None:
+            raise HTTPException(404, "Unknown workflow run")
+        all_thread = snapshot.get("thread", [])
+        safe_cursor = max(0, int(cursor))
+        return {
+            "status": snapshot.get("status", "running"),
+            "thread": all_thread[safe_cursor:],
+            "next_cursor": len(all_thread),
+            "vars": snapshot.get("vars") or {},
+            "state": snapshot.get("state") or {},
+            "error": snapshot.get("error"),
+            "diagnostics": snapshot.get("diagnostics") or {},
+        }
 
     @app.get("/api/workflow/default")
     def get_default_workflow() -> dict:

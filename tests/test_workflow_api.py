@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import time
 
 from kobold_sandbox.server import create_app
 
@@ -104,3 +105,44 @@ triggers:
     assert payload["status"] == "done"
     assert payload["vars"]["entity_nodes"][0]["reaction"] == "PASS"
     assert payload["vars"]["entity_nodes"][0]["reactionStatus"] == "pass"
+
+
+def test_workflow_run_async_progress_streams_thread_items(tmp_path, monkeypatch) -> None:
+    import kobold_sandbox.workflow_dsl as workflow_dsl
+
+    monkeypatch.setattr(workflow_dsl.httpx, "Client", _PassHttpClient)
+    client = TestClient(create_app(str(tmp_path)))
+    yaml_text = """
+dsl: workflow/v2
+let: {}
+flow:
+  - analyzer -> $claims:
+      prompt: "claims"
+      tag: claims
+"""
+
+    start = client.post(
+        "/api/workflow/run",
+        json={
+            "yaml": yaml_text,
+            "workers": {"analyzer": "http://fake-worker"},
+            "settings": {},
+            "async_progress": True,
+        },
+    )
+    assert start.status_code == 200
+    run_id = start.json()["run_id"]
+
+    payload = None
+    for _ in range(20):
+        response = client.get("/api/workflow/progress", params={"run_id": run_id, "cursor": 0})
+        assert response.status_code == 200
+        payload = response.json()
+        if payload["status"] != "running":
+            break
+        time.sleep(0.05)
+
+    assert payload is not None
+    assert payload["status"] == "done"
+    assert payload["next_cursor"] >= 1
+    assert any(item["name"] == "analyzer (claims)" for item in payload["thread"])

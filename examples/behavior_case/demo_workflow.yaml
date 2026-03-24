@@ -83,7 +83,7 @@ flow:
                 Описание "{$entity._title}":
                 {$entity.answer}
                 ((answer generated) == true) ===
-          max_tokens: 1
+          max_tokens: 2
           temperature: 0
           tag: confirm
 
@@ -105,6 +105,7 @@ triggers:
             tag: check
         - set:
             "$entity.reaction": $reaction
+            "$entity.reactionStatus": check_status($reaction)
 
   generate:
     - "for $entity in $entity_nodes":

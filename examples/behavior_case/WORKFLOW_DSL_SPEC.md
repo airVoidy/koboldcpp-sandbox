@@ -110,6 +110,7 @@ Supported config keys:
 - `stop`
 - `grammar` — transport-level GBNF grammar constraint
 - `capture` — post-processing rule for probe output
+- `no_think` — skip reasoning: adds `<think>\n\n</think>\n\n` prefill + continue
 - `tag`
 
 ### 3. Continue Call

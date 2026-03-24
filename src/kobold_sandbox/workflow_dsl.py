@@ -116,6 +116,15 @@ def _clean_probe_result(text: str, grammar: str | None = None, capture: Any = No
     return value
 
 
+def _probe_value_ready(text: str, grammar: str | None = None, capture: Any = None) -> bool:
+    if _capture_regex(capture, grammar) is None and _capture_coerce(capture) is None:
+        return False
+    try:
+        return bool(str(_clean_probe_result(text, grammar, capture)).strip())
+    except Exception:
+        return False
+
+
 def _check_status(text: Any) -> str:
     value = str(text or "").strip()
     if re.search(r"\bPASS\b", value, re.IGNORECASE):
@@ -318,6 +327,7 @@ class WorkflowContext:
         capture: Any = None,
         tag: str = "",
         max_continue: int | None = None,
+        no_think: bool = False,
     ) -> str:
         """Call an LLM worker. Returns answer text (think stripped)."""
         base_url = self.workers.get(role, "").rstrip("/")
@@ -329,7 +339,11 @@ class WorkflowContext:
         if messages is None:
             messages = [{"role": "user", "content": prompt or ""}]
 
-        is_continue = mode in ("continue", "probe_continue")
+        # no_think: add assistant prefill to skip reasoning
+        if no_think and (not messages or messages[-1]["role"] != "assistant"):
+            messages = list(messages) + [{"role": "assistant", "content": "<think>\n\n</think>\n\n"}]
+
+        is_continue = mode in ("continue", "probe_continue") or no_think
         payload: dict[str, Any] = {
             "messages": messages,
             "temperature": temperature,
@@ -361,6 +375,8 @@ class WorkflowContext:
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
         for cont_i in range(continue_limit):
             if not _is_token_limit_finish(finish):
+                break
+            if mode == "probe_continue" and _probe_value_ready(result, grammar, capture):
                 break
             cont_messages = list(messages[:-1]) if messages and messages[-1]["role"] == "assistant" else list(messages)
             cont_messages.append({"role": "assistant", "content": full_assistant})
@@ -439,6 +455,8 @@ def _resolve_params(ctx: WorkflowContext, step: dict) -> dict:
         params["capture"] = step["capture"]
     if "max_continue" in step:
         params["max_continue"] = int(step["max_continue"])
+    if "no_think" in step:
+        params["no_think"] = bool(step["no_think"])
     return params
 
 
@@ -836,20 +854,34 @@ def _enrich_entities(entities: list[dict], answer: str) -> list[dict]:
         title = entity.get("_title", "")
         if not title:
             continue
-        # Case-insensitive search for title in lines
-        title_lower = title.lower().strip()
+        # Strip markdown formatting and extract core name for matching
+        clean_title = re.sub(r'\*+', '', title).strip()  # remove ** bold
+        clean_title = re.sub(r'^\d+\.\s*', '', clean_title).strip()  # remove "1. " prefix
+        clean_title = clean_title.split('(')[0].strip()  # remove "(english name)" suffix
+        clean_title = clean_title.strip('«»""\':').strip()  # remove quotes
+        title_lower = clean_title.lower() if clean_title else title.lower().strip()
+        found = False
         for i, line in enumerate(lines):
             if title_lower in line.lower():
                 entity["_startNum"] = i + 1  # 1-based
                 entity["_firstLine"] = line.strip()
+                found = True
                 break
+        if not found:
+            # Fallback: default to line 1
+            entity.setdefault("_startNum", 1)
+            entity.setdefault("_firstLine", lines[0].strip() if lines else "")
+            import logging
+            logging.warning(f"enrich_entities: title '{title_lower}' not found in answer ({len(lines)} lines)")
     return entities
 
 
 def _slice_lines(text: Any, start: Any, end: Any) -> str:
     lines = str(text).split("\n")
     start_idx = max(0, _coerce_intlike(start, 1) - 1)
-    end_idx = _coerce_intlike(end, len(lines))
+    end_idx = min(len(lines), _coerce_intlike(end, len(lines)))
+    if end_idx < start_idx + 1:
+        end_idx = start_idx + 1
     return "\n".join(lines[start_idx:end_idx]).strip()
 
 
@@ -892,7 +924,11 @@ def _parse_markdown_table(text: str) -> list[dict]:
             if j < len(cells):
                 row[h] = cells[j]
         if row:
-            row["_title"] = cells[0] if cells else ""
+            # Use second column as title if first is numeric (e.g. row number)
+            if len(cells) >= 2 and re.match(r"^\d+$", cells[0].strip()):
+                row["_title"] = cells[1]
+            else:
+                row["_title"] = cells[0] if cells else ""
             row["_index"] = len(rows)
             rows.append(row)
     return rows
