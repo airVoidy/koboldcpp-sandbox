@@ -3697,28 +3697,63 @@ async function applyAtomicTool(toolName, args) {
 }
 
 /* --- Data Tools (no LLM) --- */
-/* System prompts live in Global Params as named templates.
-   Use {input} placeholder for substitution. Editable on Global Params page. */
+/* Prompt templates live in Global Params. Use @name refs as slots.
+   renderPrompt('claims', {input: 'source'}) → replaces @input with @source content.
+   Two-pass: 1) slot mapping (@input → @source.content)  2) entity resolve (@source.content → actual text) */
 const DEFAULT_PROMPTS = {
-  claims: "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста.\n\nТекст для анализа:\n{input}",
-  table: "Ты — экстрактор данных. Распарси текст в структурированную таблицу.\nВерни markdown-таблицу с подходящими колонками.\nЕсли есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |\nЕсли список: | # | Элемент | Детали |\n\nТекст:\n{input}",
+  claims: "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста.\n\nТекст для анализа:\n@input",
+  table: "Ты — экстрактор данных. Распарси текст в структурированную таблицу.\nВерни markdown-таблицу с подходящими колонками.\nЕсли есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |\nЕсли список: | # | Элемент | Детали |\n\nТекст:\n@input",
 };
-// Init prompts in globalItems if not present
-if (!globalItems.find(it => it.type === 'text' && it.name === 'prompt_claims')) {
-  globalItems.push({type: 'text', name: 'prompt_claims', text: DEFAULT_PROMPTS.claims});
-  saveGlobalItems();
-}
-if (!globalItems.find(it => it.type === 'text' && it.name === 'prompt_table')) {
-  globalItems.push({type: 'text', name: 'prompt_table', text: DEFAULT_PROMPTS.table});
-  saveGlobalItems();
-}
+// Init prompts in globalItems if not present; migrate {input} → @input
+Object.entries(DEFAULT_PROMPTS).forEach(([key, defaultText]) => {
+  const name = 'prompt_' + key;
+  const existing = globalItems.find(it => it.type === 'text' && it.name === name);
+  if (!existing) {
+    globalItems.push({type: 'text', name, text: defaultText});
+    saveGlobalItems();
+  } else if (existing.text.includes('{input}')) {
+    // Migrate old {slot} format to @slot
+    existing.text = existing.text.replace(/\{(\w+)\}/g, '@$1');
+    saveGlobalItems();
+  }
+});
 function getPromptTemplate(name) {
   const item = globalItems.find(it => it.type === 'text' && it.name === 'prompt_' + name);
-  return item?.text || DEFAULT_PROMPTS[name] || '{input}';
+  return item?.text || DEFAULT_PROMPTS[name] || '@input';
 }
-function renderPrompt(templateName, vars) {
+/* Resolve @ref to string: entity text, data_area as markdown table, tag value, or $param */
+function resolveRefToString(refName) {
+  // $param
+  if (refName.startsWith('$')) return atomicParams[refName.slice(1)] || refName;
+  const resolved = resolveRef(refName);
+  if (resolved === null) return '@' + refName; // unresolved, keep as-is
+  if (typeof resolved === 'string') return resolved;
+  if (resolved?.text) return resolved.text; // text_area
+  if (resolved?.rows) { // data_area → markdown table
+    let t = '| ' + resolved.headers.join(' | ') + ' |\n';
+    t += '|' + resolved.headers.map(() => '---').join('|') + '|\n';
+    resolved.rows.forEach(r => { t += '| ' + r.join(' | ') + ' |\n'; });
+    return t;
+  }
+  // Full entity → concat all text_areas
+  if (resolved?.text_areas) return resolved.text_areas.map(ta => ta.text).join('\n');
+  return JSON.stringify(resolved);
+}
+/* Two-pass render:
+   Pass 1 — slot mapping: @input → @source (from vars {input:'source'})
+   Pass 2 — resolve all @refs to actual content */
+function renderPrompt(templateName, slotMap) {
   let tmpl = getPromptTemplate(templateName);
-  Object.entries(vars).forEach(([k, v]) => { tmpl = tmpl.replace(new RegExp('\\{' + k + '\\}', 'g'), v); });
+  // Pass 1: replace slot @names with mapped entity @names
+  // e.g. @input → @source, @columns → @entities.items
+  Object.entries(slotMap).forEach(([slot, entityRef]) => {
+    const ref = entityRef.startsWith('@') ? entityRef : '@' + entityRef;
+    tmpl = tmpl.replace(new RegExp('@' + slot + '\\b', 'g'), ref);
+  });
+  // Pass 2: resolve all remaining @refs to actual content
+  tmpl = tmpl.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => {
+    return resolveRefToString(refName);
+  });
   return tmpl;
 }
 
@@ -3739,7 +3774,7 @@ async function toolClaims(args) {
     addAtomicMsg('tool', `claims(@${ref}) → no local sections, calling LLM...`);
     renderAtomicFeed();
     const {answer} = await fetchLLMWithContinue(worker.url + '/v1/chat/completions',
-      [{role: 'user', content: renderPrompt('claims', {input: text})}],
+      [{role: 'user', content: renderPrompt('claims', {input: ref})}],
       {temperature: 0.1, max_tokens: 2048, noThink: true, maxContinues: 5}
     );
     entities = parseListFromText(answer, 'ENTITIES', 'worker:analyzer', 'worker');
@@ -3871,23 +3906,10 @@ async function toolGenerate(args) {
     messages.push({role: 'user', content: text});
   }
 
-  // Resolve @refs in message content
+  // Resolve @refs in message content (reuse resolveRefToString)
   messages = messages.map(m => ({
     ...m,
-    content: m.content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => {
-      const resolved = resolveRef(refName);
-      if (resolved === null) return match;
-      if (typeof resolved === 'string') return resolved;
-      if (resolved?.text) return resolved.text;
-      if (resolved?.rows) {
-        // Format data_area as markdown table
-        let t = '| ' + resolved.headers.join(' | ') + ' |\n';
-        t += '|' + resolved.headers.map(() => '---').join('|') + '|\n';
-        resolved.rows.forEach(r => { t += '| ' + r.join(' | ') + ' |\n'; });
-        return t;
-      }
-      return JSON.stringify(resolved);
-    })
+    content: m.content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => resolveRefToString(refName))
   }));
 
   addAtomicMsg('tool', `generate(@${ref}, mode:${mode}) → calling ${workerRole}...`);
