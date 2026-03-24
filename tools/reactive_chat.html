@@ -35,6 +35,15 @@ body {
   background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0;
 }
 .header h1 { font-size:16px; font-weight:600; color:var(--accent); }
+.header-tabs { display:flex; gap:2px; margin-left:12px; }
+.header-tab {
+  padding:4px 14px; border:none; border-radius:4px 4px 0 0;
+  background:transparent; color:var(--text-dim); cursor:pointer;
+  font-size:12px; font-family:inherit; font-weight:500;
+  border-bottom:2px solid transparent; transition:color .15s,border-color .15s;
+}
+.header-tab:hover { color:var(--text); }
+.header-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
 .hdr-right { display:flex; gap:8px; margin-left:auto; align-items:center; }
 .status { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
 .dot { width:8px; height:8px; border-radius:50%; background:var(--text-dim); }
@@ -415,6 +424,93 @@ body {
 .admin-ctx-item.danger { color:var(--red); }
 .admin-ctx-item.danger:hover { background:var(--red); color:#fff; }
 
+/* ============================================================
+   ATOMIC TASKS PAGE
+   ============================================================ */
+.atomic-feed-area { flex:1; display:flex; flex-direction:column; overflow:hidden; display:none; }
+.atomic-feed { flex:1; overflow-y:auto; padding:12px 16px; }
+.atomic-msg {
+  margin-bottom:8px; padding:8px 12px; border-radius:6px;
+  background:var(--surface); border:1px solid var(--border); font-size:13px;
+}
+.atomic-msg.role-user { border-left:3px solid var(--accent); }
+.atomic-msg.role-tool { border-left:3px solid var(--accent2); }
+.atomic-msg.role-llm { border-left:3px solid var(--green); }
+.atomic-msg-hdr { display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:11px; color:var(--text-dim); }
+.atomic-msg-hdr .role { font-weight:600; text-transform:uppercase; }
+.atomic-msg-content { white-space:pre-wrap; word-break:break-word; }
+.atomic-ref { color:var(--accent3); cursor:pointer; font-weight:500; }
+.atomic-ref:hover { text-decoration:underline; }
+
+/* Entity card */
+.at-entity {
+  margin:6px 0; padding:8px; border:1px solid var(--border); border-radius:6px;
+  background:var(--bg);
+}
+.at-entity-hdr {
+  display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:12px; font-weight:600;
+}
+.at-entity-name { color:var(--accent3); cursor:pointer; }
+.at-entity-name:hover { text-decoration:underline; }
+.at-reactions { display:flex; gap:4px; margin-left:auto; }
+.at-reaction { font-size:11px; padding:1px 4px; border-radius:3px; background:var(--surface2); }
+/* Tags */
+.at-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:4px; }
+.at-tag {
+  font-size:10px; padding:1px 6px; border-radius:3px;
+  background:var(--surface2); border:1px solid var(--border); color:var(--text-dim);
+  cursor:pointer;
+}
+.at-tag:hover { border-color:var(--accent); color:var(--text); }
+.at-tag .key { color:var(--accent2); }
+/* Text areas */
+.at-text-area { margin:4px 0; }
+.at-text-area-label { font-size:10px; color:var(--text-dim); margin-bottom:2px; }
+.at-text-area-content {
+  background:var(--surface); border:1px solid var(--border); border-radius:4px;
+  padding:4px 8px; font-size:12px; white-space:pre-wrap; word-break:break-word;
+  min-height:20px; cursor:text;
+}
+.at-text-area-content:focus { outline:none; border-color:var(--accent); }
+/* Data areas (tables) */
+.at-data-area { margin:4px 0; }
+.at-data-label { font-size:10px; color:var(--text-dim); margin-bottom:2px; }
+.at-table {
+  width:100%; border-collapse:collapse; font-size:11px;
+  font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;
+}
+.at-table th {
+  background:var(--surface2); color:var(--accent); padding:3px 8px;
+  border:1px solid var(--border); font-weight:600; text-align:left; font-size:10px;
+}
+.at-table td {
+  padding:3px 8px; border:1px solid var(--border); cursor:text;
+}
+.at-table td:focus { outline:none; background:var(--surface2); }
+.at-table td[contenteditable="true"]:focus { outline:1px solid var(--accent); }
+
+/* Tool palette (right sidebar for atomic page) */
+.tool-palette { display:none; flex-direction:column; overflow-y:auto; padding:8px; }
+.tool-palette.active { display:flex; }
+.tp-section { margin-bottom:10px; }
+.tp-section-title { font-size:10px; font-weight:600; color:var(--text-dim); text-transform:uppercase; margin-bottom:4px; letter-spacing:.5px; }
+.tp-grid { display:flex; flex-wrap:wrap; gap:4px; }
+.tp-btn {
+  padding:3px 8px; border:1px solid var(--border); border-radius:4px;
+  background:var(--surface2); color:var(--text); cursor:pointer;
+  font-size:11px; font-family:inherit;
+}
+.tp-btn:hover { border-color:var(--accent); color:var(--accent); }
+.tp-btn.llm { border-color:var(--accent2); color:var(--accent2); }
+.tp-btn.llm:hover { background:var(--accent2); color:#fff; }
+.tp-scope { margin-top:8px; }
+.tp-scope-title { font-size:10px; font-weight:600; color:var(--text-dim); text-transform:uppercase; margin-bottom:4px; }
+.tp-scope-item {
+  font-size:11px; color:var(--accent3); cursor:pointer; padding:1px 4px;
+  border-radius:3px;
+}
+.tp-scope-item:hover { background:var(--surface2); }
+
 .thread-input {
   display:flex; gap:4px; padding:4px 12px 6px 28px; border-top:1px solid var(--border);
 }
@@ -430,6 +526,11 @@ body {
 
 <div class="header">
   <h1>Reactive Task Builder</h1>
+  <div class="header-tabs">
+    <button class="header-tab active" data-page="workflow">Workflow</button>
+    <button class="header-tab" data-page="atomic">Atomic Tasks</button>
+    <button class="header-tab" data-page="params">Global Params</button>
+  </div>
   <div class="status"><span class="dot" id="dot"></span><span id="stxt">Ready</span></div>
   <div class="hdr-right">
     <button class="btn" id="btnExport">Export</button>
@@ -507,39 +608,119 @@ body {
       <button class="btn" style="margin-top:8px;width:100%;font-size:11px;padding:4px 0;background:#c44;border-color:#c44" id="btnStopWorkers">Stop All</button>
     </div>
   </div>
-  <div class="feed-area">
+  <div class="feed-area" id="workflowFeedArea">
     <div class="feed" id="feed"></div>
     <div class="main-input">
       <textarea id="inp" placeholder="Describe your task... (Enter)" rows="2"></textarea>
       <button class="btn primary" id="btnSend">Send</button>
     </div>
   </div>
+  <!-- Atomic Tasks feed area (hidden by default) -->
+  <div class="atomic-feed-area" id="atomicFeedArea">
+    <div class="atomic-feed" id="atomicFeed"></div>
+    <div class="main-input">
+      <textarea id="atomicInp" placeholder="Type message, @entity reference, or tool command..." rows="2"></textarea>
+      <button class="btn primary" id="btnAtomicSend">Send</button>
+    </div>
+  </div>
+  <!-- Global Params page (hidden by default) -->
+  <div class="atomic-feed-area" id="paramsFeedArea">
+    <div class="atomic-feed" id="paramsFeed" style="padding:16px 24px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <h2 style="font-size:16px;font-weight:600;color:var(--accent3);margin:0">Global Params</h2>
+        <button class="btn" id="btnParamsExport" style="font-size:10px">Export</button>
+        <button class="btn" id="btnParamsImport" style="font-size:10px">Import</button>
+        <input type="file" id="paramsFileInput" accept=".json" style="display:none">
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Named tables and text areas accessible from all pages via $key or @config.name. Right-click items to edit/delete.</p>
+      <div id="paramsContent"></div>
+      <div style="display:flex;gap:6px;margin-top:12px">
+        <button class="btn" id="btnParamsAddTable">+ Table</button>
+        <button class="btn" id="btnParamsAddText">+ Text Area</button>
+        <button class="btn" id="btnParamsAddParam">+ Key:Value Param</button>
+      </div>
+    </div>
+  </div>
   <!-- Resize handle -->
   <div class="resize-handle" id="resizeHandle"></div>
-  <!-- Right sidebar: YAML → NL change → Chat -->
+  <!-- Right sidebar: YAML editor (workflow) / Tool palette (atomic) -->
   <div class="right-sidebar collapsed" id="rightSidebar">
-    <div class="right-sidebar-hdr">
-      <span>Workflow</span>
-      <button class="btn primary" id="btnRun" style="font-size:10px;padding:2px 8px">Run</button>
-      <div style="display:flex;gap:4px;margin-left:auto">
-        <button class="btn" id="btnWorkflowSave" style="font-size:10px;padding:1px 6px">Save</button>
-        <button class="btn" id="btnWorkflowReset" style="font-size:10px;padding:1px 6px">Reset</button>
+    <!-- === Workflow sidebar content === -->
+    <div id="workflowSidebarContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div class="right-sidebar-hdr" id="workflowSidebarHdr">
+        <span>Workflow</span>
+        <button class="btn primary" id="btnRun" style="font-size:10px;padding:2px 8px">Run</button>
+        <div style="display:flex;gap:4px;margin-left:auto">
+          <button class="btn" id="btnWorkflowSave" style="font-size:10px;padding:1px 6px">Save</button>
+          <button class="btn" id="btnWorkflowReset" style="font-size:10px;padding:1px 6px">Reset</button>
+        </div>
       </div>
-    </div>
-    <!-- 1. YAML editor (top) -->
-    <textarea id="workflowEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2"></textarea>
-    <!-- 2. NL change processor (middle) -->
-    <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
-      <textarea id="workflowNL" placeholder="Describe YAML change..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
-      <button class="btn primary" id="btnWorkflowApplyNL" style="font-size:10px;padding:2px 8px">Apply</button>
-    </div>
-    <!-- 3. Chat (bottom) — input on top, messages flow down (newest first) -->
-    <div style="flex:0 0 35%;min-height:100px;display:flex;flex-direction:column">
+      <textarea id="workflowEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2"></textarea>
       <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
-        <textarea id="workflowChatInput" placeholder="Ask about this workflow..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
-        <button class="btn" id="btnWorkflowChatSend" style="font-size:10px;padding:2px 8px">Ask</button>
+        <textarea id="workflowNL" placeholder="Describe YAML change..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+        <button class="btn primary" id="btnWorkflowApplyNL" style="font-size:10px;padding:2px 8px">Apply</button>
       </div>
-      <div id="workflowChat" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px"></div>
+      <div style="flex:0 0 35%;min-height:100px;display:flex;flex-direction:column">
+        <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
+          <textarea id="workflowChatInput" placeholder="Ask about this workflow..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+          <button class="btn" id="btnWorkflowChatSend" style="font-size:10px;padding:2px 8px">Ask</button>
+        </div>
+        <div id="workflowChat" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px"></div>
+      </div>
+    </div>
+    <!-- === Atomic Tasks tool palette === -->
+    <div class="tool-palette" id="atomicToolPalette">
+      <div class="right-sidebar-hdr">
+        <span style="color:var(--accent3)">Tools</span>
+        <button class="btn" id="btnAtomicClear" style="font-size:10px;padding:1px 6px;margin-left:auto">Clear</button>
+      </div>
+      <div style="padding:8px;overflow-y:auto;flex:1">
+        <div class="tp-section">
+          <div class="tp-section-title">Data Tools</div>
+          <div class="tp-grid">
+            <button class="tp-btn" data-tool="claims">claims</button>
+            <button class="tp-btn" data-tool="numbered">numbered</button>
+            <button class="tp-btn" data-tool="slice">slice</button>
+            <button class="tp-btn" data-tool="check_status">check</button>
+            <button class="tp-btn" data-tool="parse_logic">parse</button>
+          </div>
+        </div>
+        <div class="tp-section">
+          <div class="tp-section-title">LLM Tools</div>
+          <div class="tp-grid">
+            <button class="tp-btn llm" data-tool="generate">generate</button>
+            <button class="tp-btn llm" data-tool="table_as_query">table-as-query</button>
+            <button class="tp-btn llm" data-tool="probe_continue">probe</button>
+            <button class="tp-btn llm" data-tool="transpose">transpose</button>
+            <button class="tp-btn llm" data-tool="verify">verify</button>
+          </div>
+        </div>
+        <div class="tp-section">
+          <div class="tp-section-title">Compose</div>
+          <div class="tp-grid">
+            <button class="tp-btn" data-tool="merge">merge</button>
+            <button class="tp-btn" data-tool="add_entity">+ entity</button>
+            <button class="tp-btn" data-tool="add_table">+ table</button>
+          </div>
+        </div>
+        <div class="tp-section">
+          <div class="tp-section-title">Global Params <span style="font-size:9px;color:var(--text-dim);text-transform:none">($key in tools)</span></div>
+          <table class="at-table" id="atomicParamsTable" style="width:100%">
+            <thead><tr><th>Key</th><th>Value</th></tr></thead>
+            <tbody id="atomicParamsBody"></tbody>
+          </table>
+          <button class="tp-btn" id="btnAddParam" style="margin-top:4px;width:100%;font-size:10px">+ param</button>
+        </div>
+        <div class="tp-section">
+          <div class="tp-section-title">Grammar Presets <span style="font-size:9px;color:var(--text-dim);text-transform:none">($grammar.name)</span></div>
+          <div id="atomicGrammarList" style="font-size:11px"></div>
+          <button class="tp-btn" id="btnAddGrammar" style="margin-top:4px;width:100%;font-size:10px">+ grammar</button>
+        </div>
+        <div class="tp-scope" id="atomicScopeList">
+          <div class="tp-scope-title">Scope (@names)</div>
+          <div id="atomicScopeItems" style="font-size:11px;color:var(--text-dim)">No entities yet</div>
+        </div>
+      </div>
     </div>
   </div>
   <!-- Right sidebar collapse button -->
@@ -3132,6 +3313,1383 @@ onThreadMessage('(table)', (nodeId, msg) => {
   if (nodes[nodeId]?.workflowDriven) return;
   if (!msg.content?.trim()) return;
   parseTableToEntities(nodeId, msg.content);
+});
+
+/* ================================================================
+   ATOMIC TASKS — Creator Mode
+   ================================================================ */
+let activePage = 'workflow';
+let atomicMessages = [];
+let atomicEntities = {};  // name -> Entity
+let atomicIdN = 0;
+
+// Global Params & Grammar Presets (must init before switchPage)
+var atomicParams = {temperature: '0.6', max_tokens: '2048', max_continue: '20'};
+var atomicGrammars = {
+  binary: 'root ::= digit term\ndigit ::= "0" | "1"\nterm ::= " " | "\\n" | "\\""',
+  number: 'root ::= digits term\ndigits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]\nterm ::= " " | "\\n" | "\\""',
+  yesno: 'root ::= word term\nword ::= "yes" | "no" | "Yes" | "No"\nterm ::= " " | "\\n"',
+  pass_fail: 'root ::= word term\nword ::= "PASS" | "FAIL"\nterm ::= " " | "\\n"',
+};
+var globalItems = [];
+var macroRecording = false;
+var macroSteps = [];
+var atomicMacros = {};
+try { const sc = JSON.parse(localStorage.getItem('atomic_config') || '{}'); if (sc.params) atomicParams = sc.params; if (sc.grammars) atomicGrammars = sc.grammars; } catch(_) {}
+try { const si = JSON.parse(localStorage.getItem('global_items') || '[]'); if (Array.isArray(si)) globalItems = si; } catch(_) {}
+try { atomicMacros = JSON.parse(localStorage.getItem('atomic_macros') || '{}'); } catch(_) {}
+
+// Restore atomic state
+try {
+  const saved = JSON.parse(localStorage.getItem('atomic_state') || '{}');
+  if (saved.atomicMessages) atomicMessages = saved.atomicMessages;
+  if (saved.atomicEntities) atomicEntities = saved.atomicEntities;
+  if (saved.atomicIdN) atomicIdN = saved.atomicIdN;
+} catch(_) {}
+
+function atomicGid() { return 'am_' + (++atomicIdN); }
+function entityGid() { return 'e_' + (++atomicIdN); }
+
+function saveAtomicState() {
+  try { localStorage.setItem('atomic_state', JSON.stringify({atomicMessages, atomicEntities, atomicIdN})); } catch(_) {}
+}
+
+/* --- Page switching --- */
+function switchPage(page) {
+  activePage = page;
+  document.querySelectorAll('.header-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
+  document.getElementById('workflowFeedArea').style.display = page === 'workflow' ? '' : 'none';
+  document.getElementById('atomicFeedArea').style.display = page === 'atomic' ? 'flex' : 'none';
+  document.getElementById('paramsFeedArea').style.display = page === 'params' ? 'flex' : 'none';
+  // Right sidebar content
+  document.getElementById('workflowSidebarContent').style.display = page === 'workflow' ? 'flex' : 'none';
+  const tp = document.getElementById('atomicToolPalette');
+  tp.classList.toggle('active', page === 'atomic');
+  if (page === 'atomic') {
+    const rs = document.getElementById('rightSidebar');
+    if (rs.classList.contains('collapsed')) {
+      rs.classList.remove('collapsed');
+      if (savedRightWidth) rs.style.width = savedRightWidth + 'px';
+    }
+    renderAtomicFeed();
+    updateScopeList();
+  }
+  if (page === 'params') {
+    // Collapse right sidebar on params page — content is full-width
+    const rs = document.getElementById('rightSidebar');
+    if (!rs.classList.contains('collapsed')) {
+      savedRightWidth = rs.offsetWidth;
+      rs.classList.add('collapsed');
+      rs.style.width = '';
+    }
+    renderParamsPage();
+  }
+}
+
+document.querySelectorAll('.header-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchPage(tab.dataset.page));
+});
+
+/* --- Entity CRUD --- */
+function createEntity(name, opts = {}) {
+  if (!name) name = 'entity_' + entityGid();
+  // Ensure unique name
+  let baseName = name;
+  let i = 1;
+  while (atomicEntities[name]) { name = baseName + '_' + (i++); }
+  const entity = {
+    name,
+    tags: opts.tags || {},
+    text_areas: opts.text_areas || [],
+    data_areas: opts.data_areas || [],
+    reactions: opts.reactions || [],
+    parentId: opts.parentId || null,
+    source: opts.source || null,
+    imageUrl: opts.imageUrl || null,
+    ts: new Date().toISOString(),
+  };
+  atomicEntities[name] = entity;
+  saveAtomicState();
+  updateScopeList();
+  return entity;
+}
+
+function addTextArea(entityName, areaName, text) {
+  const e = atomicEntities[entityName];
+  if (!e) return;
+  e.text_areas.push({name: areaName, text});
+  saveAtomicState();
+}
+
+function addDataArea(entityName, areaName, headers, rows) {
+  const e = atomicEntities[entityName];
+  if (!e) return;
+  e.data_areas.push({name: areaName, headers, rows});
+  saveAtomicState();
+}
+
+function addTag(entityName, key, value) {
+  const e = atomicEntities[entityName];
+  if (!e) return;
+  e.tags[key] = value;
+  saveAtomicState();
+}
+
+function addReaction(entityName, emoji, author, detail) {
+  const e = atomicEntities[entityName];
+  if (!e) return;
+  e.reactions.push({emoji, author: author || 'user', detail: detail || ''});
+  saveAtomicState();
+}
+
+/* --- Reference resolution --- */
+function resolveRef(ref) {
+  // @name or @name.field or @name.field.subfield
+  const clean = ref.replace(/^@/, '');
+  const parts = clean.split('.');
+  const entity = atomicEntities[parts[0]];
+  if (!entity) return null;
+  if (parts.length === 1) return entity;
+  const field = parts[1];
+  // Check text_areas
+  const ta = entity.text_areas.find(a => a.name === field);
+  if (ta) return ta.text;
+  // Check data_areas
+  const da = entity.data_areas.find(a => a.name === field);
+  if (da) return da;
+  // Check tags
+  if (field === 'tags') return entity.tags;
+  if (entity.tags[field] !== undefined) return entity.tags[field];
+  // Check reactions
+  if (field === 'reactions') return entity.reactions;
+  return null;
+}
+
+function getScope() {
+  return Object.keys(atomicEntities);
+}
+
+/* --- Rendering --- */
+function renderAtomicFeed() {
+  const feed = document.getElementById('atomicFeed');
+  feed.innerHTML = '';
+  atomicMessages.forEach(msg => feed.appendChild(renderAtomicMsg(msg)));
+  // Scroll to bottom
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function renderAtomicMsg(msg) {
+  const el = document.createElement('div');
+  el.className = 'atomic-msg role-' + msg.role;
+  el.dataset.id = msg.id;
+  let h = `<div class="atomic-msg-hdr"><span class="role">${esc(msg.role)}</span>`;
+  h += `<span>${new Date(msg.ts).toLocaleTimeString()}</span>`;
+  h += `</div>`;
+  // Content with @ref highlighting
+  const content = msg.content.replace(/@([\w]+(?:\.[\w]+)*)/g, '<span class="atomic-ref">@$1</span>');
+  h += `<div class="atomic-msg-content">${content}</div>`;
+  // Render attached entities
+  if (msg.entities && msg.entities.length) {
+    msg.entities.forEach(eName => {
+      const entity = atomicEntities[eName];
+      if (entity) h += renderEntityCard(entity);
+    });
+  }
+  el.innerHTML = h;
+  // Bind @ref clicks
+  el.querySelectorAll('.atomic-ref').forEach(ref => {
+    ref.addEventListener('click', () => {
+      const name = ref.textContent.replace(/^@/, '');
+      // Scroll to entity or insert into input
+      document.getElementById('atomicInp').value += '@' + name + ' ';
+      document.getElementById('atomicInp').focus();
+    });
+  });
+  // Bind table cell editing
+  el.querySelectorAll('.at-table td[contenteditable]').forEach(td => {
+    td.addEventListener('blur', () => {
+      const eName = td.closest('.at-entity').dataset.entity;
+      const daName = td.closest('.at-data-area').dataset.area;
+      const row = parseInt(td.dataset.row);
+      const col = parseInt(td.dataset.col);
+      const entity = atomicEntities[eName];
+      if (!entity) return;
+      const da = entity.data_areas.find(a => a.name === daName);
+      if (!da || !da.rows[row]) return;
+      da.rows[row][col] = td.textContent;
+      saveAtomicState();
+    });
+  });
+  // Bind tag editing
+  el.querySelectorAll('.at-tag').forEach(tagEl => {
+    tagEl.addEventListener('dblclick', () => {
+      const eName = tagEl.closest('.at-entity').dataset.entity;
+      const key = tagEl.dataset.key;
+      const entity = atomicEntities[eName];
+      if (!entity) return;
+      const newVal = prompt(`Edit tag "${key}":`, entity.tags[key]);
+      if (newVal !== null) {
+        entity.tags[key] = newVal;
+        saveAtomicState();
+        renderAtomicFeed();
+      }
+    });
+  });
+  // Bind text_area editing
+  el.querySelectorAll('.at-text-area-content').forEach(div => {
+    div.addEventListener('blur', () => {
+      const eName = div.closest('.at-entity').dataset.entity;
+      const aName = div.dataset.area;
+      const entity = atomicEntities[eName];
+      if (!entity) return;
+      const ta = entity.text_areas.find(a => a.name === aName);
+      if (ta) { ta.text = div.textContent; saveAtomicState(); }
+    });
+  });
+  return el;
+}
+
+function renderEntityCard(entity) {
+  let h = `<div class="at-entity" data-entity="${esc(entity.name)}">`;
+  // Header
+  h += `<div class="at-entity-hdr">`;
+  h += `<span class="at-entity-name">@${esc(entity.name)}</span>`;
+  if (entity.reactions.length) {
+    h += `<div class="at-reactions">`;
+    entity.reactions.forEach(r => { h += `<span class="at-reaction" title="${esc(r.detail || '')}">${r.emoji}</span>`; });
+    h += `</div>`;
+  }
+  h += `</div>`;
+  // Tags
+  const tagKeys = Object.keys(entity.tags);
+  if (tagKeys.length) {
+    h += `<div class="at-tags">`;
+    tagKeys.forEach(k => {
+      h += `<span class="at-tag" data-key="${esc(k)}"><span class="key">${esc(k)}:</span>${esc(String(entity.tags[k]))}</span>`;
+    });
+    h += `</div>`;
+  }
+  // Text areas
+  entity.text_areas.forEach(ta => {
+    h += `<div class="at-text-area">`;
+    h += `<div class="at-text-area-label">${esc(ta.name)}</div>`;
+    h += `<div class="at-text-area-content" contenteditable="true" data-area="${esc(ta.name)}">${esc(ta.text)}</div>`;
+    h += `</div>`;
+  });
+  // Data areas (tables)
+  entity.data_areas.forEach(da => {
+    h += `<div class="at-data-area" data-area="${esc(da.name)}">`;
+    h += `<div class="at-data-label">${esc(da.name)}</div>`;
+    h += `<table class="at-table"><thead><tr>`;
+    da.headers.forEach(hdr => { h += `<th>${esc(hdr)}</th>`; });
+    h += `</tr></thead><tbody>`;
+    da.rows.forEach((row, ri) => {
+      h += `<tr>`;
+      row.forEach((cell, ci) => {
+        h += `<td contenteditable="true" data-row="${ri}" data-col="${ci}">${esc(String(cell))}</td>`;
+      });
+      h += `</tr>`;
+    });
+    h += `</tbody></table></div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function updateScopeList() {
+  const el = document.getElementById('atomicScopeItems');
+  if (!el) return;
+  const names = getScope();
+  if (names.length === 0) {
+    el.innerHTML = '<span style="color:var(--text-dim)">No entities yet</span>';
+  } else {
+    el.innerHTML = names.map(n =>
+      `<div class="tp-scope-item" data-name="${esc(n)}">@${esc(n)}</div>`
+    ).join('');
+    el.querySelectorAll('.tp-scope-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const inp = document.getElementById('atomicInp');
+        inp.value += '@' + item.dataset.name + ' ';
+        inp.focus();
+      });
+    });
+  }
+}
+
+/* --- Message handling --- */
+function addAtomicMsg(role, content, entities) {
+  const msg = {
+    id: atomicGid(),
+    role,
+    content,
+    entities: entities || [],
+    refs: (content.match(/@([\w]+)/g) || []).map(r => r.slice(1)),
+    parentId: null,
+    ts: new Date().toISOString(),
+  };
+  atomicMessages.push(msg);
+  saveAtomicState();
+  return msg;
+}
+
+/* --- Atomic input handler --- */
+async function handleAtomicInput(text) {
+  if (!text.trim()) return;
+  // Check if it's a tool command
+  const toolMatch = text.match(/^(\w+)\((.+)\)$/);
+  if (toolMatch) {
+    const [, toolName, argsStr] = toolMatch;
+    const args = argsStr.split(',').map(s => s.trim());
+    addAtomicMsg('user', text);
+    renderAtomicFeed();
+    await applyAtomicTool(toolName, args);
+    return;
+  }
+  // Regular message — create as user message, check for entity creation syntax
+  // "entity_name: content" creates entity with text_area
+  const entityMatch = text.match(/^@(\w+)\s*:\s*([\s\S]+)/);
+  if (entityMatch) {
+    const [, name, content] = entityMatch;
+    const entity = createEntity(name);
+    addTextArea(name, 'content', content.trim());
+    addAtomicMsg('user', text, [name]);
+    renderAtomicFeed();
+    return;
+  }
+  // Plain message
+  addAtomicMsg('user', text);
+  renderAtomicFeed();
+}
+
+/* --- Tool execution --- */
+// --- Macro recording (state initialized at top of Atomic section) ---
+function saveMacros() { try { localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros)); } catch(_) {} }
+
+async function applyAtomicTool(toolName, args) {
+  // Record macro step (use generic ref $1, $2 etc for entity names)
+  if (macroRecording) {
+    macroSteps.push({tool: toolName, args: [...args]});
+  }
+  setS('busy', 'Running ' + toolName + '...');
+  try {
+    switch (toolName) {
+      case 'claims': await toolClaims(args); break;
+      case 'numbered': await toolNumbered(args); break;
+      case 'slice': await toolSlice(args); break;
+      case 'check_status': case 'check': await toolCheckStatus(args); break;
+      case 'table_as_query': case 'table-as-query': await toolTableAsQuery(args); break;
+      case 'generate': case 'gen': await toolGenerate(args); break;
+      case 'probe_continue': case 'probe': await toolProbe(args); break;
+      case 'transpose': await toolTranspose(args); break;
+      case 'verify': await toolVerify(args); break;
+      case 'add_entity': toolAddEntity(args); break;
+      case 'add_table': toolAddTable(args); break;
+      case 'merge': toolMerge(args); break;
+      default:
+        addAtomicMsg('tool', `Unknown tool: ${toolName}`);
+    }
+  } catch (e) {
+    addAtomicMsg('tool', `Error in ${toolName}: ${e.message}`);
+  }
+  renderAtomicFeed();
+  updateScopeList();
+  setS('ok', 'Ready');
+}
+
+/* --- Data Tools (no LLM) --- */
+/* System prompts live in Global Params as named templates.
+   Use {input} placeholder for substitution. Editable on Global Params page. */
+const DEFAULT_PROMPTS = {
+  claims: "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста.\n\nТекст для анализа:\n{input}",
+  table: "Ты — экстрактор данных. Распарси текст в структурированную таблицу.\nВерни markdown-таблицу с подходящими колонками.\nЕсли есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |\nЕсли список: | # | Элемент | Детали |\n\nТекст:\n{input}",
+};
+// Init prompts in globalItems if not present
+if (!globalItems.find(it => it.type === 'text' && it.name === 'prompt_claims')) {
+  globalItems.push({type: 'text', name: 'prompt_claims', text: DEFAULT_PROMPTS.claims});
+  saveGlobalItems();
+}
+if (!globalItems.find(it => it.type === 'text' && it.name === 'prompt_table')) {
+  globalItems.push({type: 'text', name: 'prompt_table', text: DEFAULT_PROMPTS.table});
+  saveGlobalItems();
+}
+function getPromptTemplate(name) {
+  const item = globalItems.find(it => it.type === 'text' && it.name === 'prompt_' + name);
+  return item?.text || DEFAULT_PROMPTS[name] || '{input}';
+}
+function renderPrompt(templateName, vars) {
+  let tmpl = getPromptTemplate(templateName);
+  Object.entries(vars).forEach(([k, v]) => { tmpl = tmpl.replace(new RegExp('\\{' + k + '\\}', 'g'), v); });
+  return tmpl;
+}
+
+async function toolClaims(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+  if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
+  // Try local parse first
+  let entities = parseListFromText(text, 'ENTITIES', 'tool:claims', 'tool');
+  let axioms = parseListFromText(text, 'AXIOMS', 'tool:claims', 'tool');
+  let hypotheses = parseListFromText(text, 'HYPOTHESES', 'tool:claims', 'tool');
+  // If no sections found locally → call LLM with claims prompt
+  if (!entities.length && !axioms.length && !hypotheses.length) {
+    const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
+    if (!worker?.url) { addAtomicMsg('tool', 'No worker available for claims extraction'); return; }
+    addAtomicMsg('tool', `claims(@${ref}) → no local sections, calling LLM...`);
+    renderAtomicFeed();
+    const {answer} = await fetchLLMWithContinue(worker.url + '/v1/chat/completions',
+      [{role: 'user', content: renderPrompt('claims', {input: text})}],
+      {temperature: 0.1, max_tokens: 2048, noThink: true, maxContinues: 5}
+    );
+    entities = parseListFromText(answer, 'ENTITIES', 'worker:analyzer', 'worker');
+    axioms = parseListFromText(answer, 'AXIOMS', 'worker:analyzer', 'worker');
+    hypotheses = parseListFromText(answer, 'HYPOTHESES', 'worker:analyzer', 'worker');
+  }
+  const created = [];
+  if (entities.length) {
+    const e = createEntity('entities', {source: {entityId: ref, tool: 'claims'}});
+    e.data_areas.push({name: 'items', headers: ['#', 'Entity'], rows: entities.map((it, i) => [String(i+1), it.text])});
+    created.push('entities');
+  }
+  if (axioms.length) {
+    const e = createEntity('axioms', {source: {entityId: ref, tool: 'claims'}});
+    e.data_areas.push({name: 'items', headers: ['#', 'Axiom'], rows: axioms.map((it, i) => [String(i+1), it.text])});
+    created.push('axioms');
+  }
+  if (hypotheses.length) {
+    const e = createEntity('hypotheses', {source: {entityId: ref, tool: 'claims'}});
+    e.data_areas.push({name: 'items', headers: ['#', 'Hypothesis'], rows: hypotheses.map((it, i) => [String(i+1), it.text])});
+    created.push('hypotheses');
+  }
+  addAtomicMsg('tool', `claims(@${ref}) → ${created.length ? created.map(n => '@'+n).join(', ') : 'no claims found'}`, created);
+}
+
+function toolNumbered(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+  const lines = text.split('\n');
+  const numbered = lines.map((l, i) => `${i+1}. ${l}`).join('\n');
+  const e = createEntity(ref + '_numbered', {source: {entityId: ref, tool: 'numbered'}});
+  addTextArea(e.name, 'content', numbered);
+  addAtomicMsg('tool', `numbered(@${ref}) → @${e.name} (${lines.length} lines)`, [e.name]);
+}
+
+function toolSlice(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const from = parseInt(args[1]) || 1;
+  const to = parseInt(args[2]) || undefined;
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+  const lines = text.split('\n');
+  const sliced = lines.slice(from - 1, to).join('\n');
+  const e = createEntity(ref + '_slice', {source: {entityId: ref, tool: 'slice'}});
+  addTextArea(e.name, 'content', sliced);
+  addTag(e.name, 'from', from);
+  addTag(e.name, 'to', to || lines.length);
+  addAtomicMsg('tool', `slice(@${ref}, ${from}, ${to || 'end'}) → @${e.name}`, [e.name]);
+}
+
+function toolCheckStatus(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+  const match = text.match(/\b(PASS|FAIL|PENDING)\b/i);
+  const status = match ? match[1].toUpperCase() : 'UNKNOWN';
+  addTag(ref, 'status', status);
+  const emoji = status === 'PASS' ? '✓' : status === 'FAIL' ? '✗' : '?';
+  addReaction(ref, emoji, 'tool:check', status);
+  addAtomicMsg('tool', `check(@${ref}) → ${status}`, [ref]);
+}
+
+/* --- LLM Tools --- */
+/* Generic LLM call supporting all DSL modes: prompt, continue, probe_continue
+   Usage: generate(@entity)                         — standard prompt, no_think
+          generate(@entity, analyzer)               — pick worker role
+          generate(@entity, mode:probe_continue)    — probe mode
+          generate(@entity, no_think:false)          — allow think
+          generate(@entity, grammar:root ::= ...)   — GBNF grammar
+          generate(@entity, stop:" ","\n")           — stop sequences
+          generate(@entity, temperature:0.1)         — override temp
+          generate(@entity, max_tokens:4)            — override tokens
+          generate(@entity, capture:[0-9]+)          — regex capture
+   Supports messages entity: if @entity has text_areas named "user"/"assistant"/"system"
+   they become the message list (for continue/probe_continue modes). */
+async function toolGenerate(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  // Parse key:value options from remaining args
+  const opts = {};
+  let workerRole = 'generator';
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i].trim();
+    const kv = a.match(/^(\w+):(.+)$/);
+    if (kv) {
+      // Resolve $param references in values
+      let val = kv[2].trim();
+      if (val.startsWith('$')) val = resolveParam(val.slice(1));
+      opts[kv[1]] = val;
+    } else if (['generator','analyzer','verifier'].includes(a)) {
+      workerRole = a;
+    }
+  }
+  const mode = opts.mode || 'prompt';
+  const noThink = opts.no_think !== undefined ? opts.no_think !== 'false' : (mode === 'prompt');
+  const s = getSettings();
+  const temperature = opts.temperature ? parseFloat(opts.temperature) : (mode === 'probe_continue' ? 0.1 : parseFloat(atomicParams.temperature || s.temperature));
+  const max_tokens = opts.max_tokens ? parseInt(opts.max_tokens) : (mode === 'probe_continue' ? 4 : parseInt(atomicParams.max_tokens || s.max_tokens));
+  const stop = opts.stop ? opts.stop.split(',').map(s => s.trim().replace(/^"|"$/g, '')) : undefined;
+  // Grammar: resolve $grammar.name presets
+  let grammar = opts.grammar || undefined;
+  if (grammar && grammar.startsWith('$grammar.')) grammar = atomicGrammars[grammar.slice(9)] || grammar;
+  const captureRegex = opts.capture || undefined;
+  const coerce = opts.coerce || undefined;
+
+  const worker = getWorkerByRole(workerRole) || getWorkerByRole('generator') || getWorkerByRole('analyzer');
+  if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
+  const workerUrl = worker.url + '/v1/chat/completions';
+
+  // Build messages from entity text_areas
+  let messages = [];
+  const userArea = entity.text_areas.find(ta => ta.name === 'user');
+  const assistantArea = entity.text_areas.find(ta => ta.name === 'assistant');
+  const systemArea = entity.text_areas.find(ta => ta.name === 'system');
+  if (userArea || assistantArea || systemArea) {
+    // Structured messages mode (for continue/probe_continue)
+    if (systemArea) messages.push({role: 'system', content: systemArea.text});
+    if (userArea) messages.push({role: 'user', content: userArea.text});
+    if (assistantArea) messages.push({role: 'assistant', content: assistantArea.text});
+  } else {
+    // Simple prompt mode — first text_area as user message
+    const text = entity.text_areas.map(ta => ta.text).join('\n');
+    if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
+    messages.push({role: 'user', content: text});
+  }
+
+  // Resolve @refs in message content
+  messages = messages.map(m => ({
+    ...m,
+    content: m.content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => {
+      const resolved = resolveRef(refName);
+      if (resolved === null) return match;
+      if (typeof resolved === 'string') return resolved;
+      if (resolved?.text) return resolved.text;
+      if (resolved?.rows) {
+        // Format data_area as markdown table
+        let t = '| ' + resolved.headers.join(' | ') + ' |\n';
+        t += '|' + resolved.headers.map(() => '---').join('|') + '|\n';
+        resolved.rows.forEach(r => { t += '| ' + r.join(' | ') + ' |\n'; });
+        return t;
+      }
+      return JSON.stringify(resolved);
+    })
+  }));
+
+  addAtomicMsg('tool', `generate(@${ref}, mode:${mode}) → calling ${workerRole}...`);
+  renderAtomicFeed();
+
+  if (mode === 'probe_continue' || mode === 'continue') {
+    // Direct fetch with continue_assistant_turn
+    const lastIsAssistant = messages[messages.length - 1]?.role === 'assistant';
+    const body = {
+      messages,
+      continue_assistant_turn: lastIsAssistant,
+      cache_prompt: false,
+      temperature, max_tokens, stream: false,
+    };
+    if (stop) body.stop = stop;
+    if (grammar) body.grammar = grammar;
+    let result = '';
+    try {
+      const res = await fetch(workerUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      result = data.choices?.[0]?.message?.content || '';
+    } catch (e) {
+      addAtomicMsg('tool', `Error: ${e.message}`);
+      return;
+    }
+    // Apply capture regex
+    let finalValue = result;
+    if (captureRegex) {
+      const m = result.match(new RegExp(captureRegex));
+      if (m) {
+        finalValue = m[0];
+        if (coerce === 'int') finalValue = parseInt(finalValue);
+      }
+    }
+    const resultEntity = createEntity(ref + '_probe', {source: {entityId: ref, tool: 'generate'}});
+    addTextArea(resultEntity.name, 'result', String(finalValue));
+    if (captureRegex) addTag(resultEntity.name, 'captured', String(finalValue));
+    addTag(resultEntity.name, 'mode', mode);
+    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name}: ${String(finalValue).slice(0, 100)}`, [resultEntity.name]);
+  } else {
+    // Standard prompt mode with fetchLLMWithContinue
+    const {answer, think} = await fetchLLMWithContinue(workerUrl, messages,
+      {temperature, max_tokens, noThink, maxContinues: s.max_continue, ...(stop ? {stop} : {})}
+    );
+    const resultEntity = createEntity(ref + '_answer', {source: {entityId: ref, tool: 'generate'}});
+    addTextArea(resultEntity.name, 'answer', answer);
+    if (think) addTextArea(resultEntity.name, 'think', think);
+    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name} (${answer.length} chars)`, [resultEntity.name]);
+  }
+}
+
+async function toolTableAsQuery(args) {
+  // table-as-query(@entity, columns: col1, col2, ...)
+  // or table-as-query(@entity, @columns_entity)
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  // Get content to inject into think
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+  if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
+  // Columns: remaining args, or from a referenced entity's data_area
+  let columns = [];
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i].trim();
+    if (a.startsWith('@')) {
+      const colEntity = atomicEntities[a.replace(/^@/, '')];
+      if (colEntity) {
+        // Get column names from entity's data_area rows or text_areas
+        const da = colEntity.data_areas[0];
+        if (da) columns.push(...da.rows.map(r => r[r.length - 1] || r[0]));
+        else columns.push(...colEntity.text_areas.map(ta => ta.text));
+      }
+    } else {
+      columns.push(a);
+    }
+  }
+  if (columns.length === 0) {
+    addAtomicMsg('tool', 'table-as-query needs columns. Usage: table-as-query(@entity, col1, col2, ...)');
+    return;
+  }
+  // Number lines
+  const lines = text.split('\n');
+  const numbered = lines.map((l, i) => `${i+1}. ${l}`).join('\n');
+  // Build table header
+  const header = '| # | ' + columns.join(' | ') + ' |';
+  const sep = '|---' + '|---'.repeat(columns.length) + '|';
+  // Compose assistant message: think(numbered answer) + table header
+  const assistantContent = '<think>\n' + numbered + '\n</think>\n\nСоставлю таблицу:\n\n' + header + '\n' + sep + '\n| 1 |';
+  // Get worker URL
+  const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
+  if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
+  const workerUrl = worker.url + '/v1/chat/completions';
+  addAtomicMsg('tool', `table-as-query(@${ref}, [${columns.join(', ')}]) → calling worker...`);
+  renderAtomicFeed();
+  const res = await fetch(workerUrl, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      messages: [
+        {role: 'user', content: text.slice(0, 200) + '...'},
+        {role: 'assistant', content: assistantContent}
+      ],
+      continue_assistant_turn: true,
+      cache_prompt: false,
+      temperature: 0.1,
+      max_tokens: 1024,
+      stop: ['**', '\n\n\n'],
+      stream: false,
+    }),
+  });
+  const data = await res.json();
+  const result = '| 1 |' + (data.choices?.[0]?.message?.content || '');
+  // Parse result into table
+  const tableLines = (header + '\n' + sep + '\n' + result).split('\n').filter(l => l.trim().startsWith('|'));
+  const parsedHeaders = ['#', ...columns];
+  const dataRows = tableLines.slice(2).map(line => {
+    const cells = line.split('|').map(c => c.trim()).filter(c => c);
+    return cells;
+  }).filter(r => r.length > 0);
+  // Create result entity
+  const resultEntity = createEntity(ref + '_table', {source: {entityId: ref, tool: 'table-as-query'}});
+  resultEntity.data_areas.push({name: 'result', headers: parsedHeaders, rows: dataRows});
+  addAtomicMsg('tool', `table-as-query(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
+}
+
+async function toolProbe(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const inject = args.slice(1).join(', ').trim();
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+  if (!text && !inject) { addAtomicMsg('tool', 'Need text to probe'); return; }
+  const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
+  if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
+  const assistantContent = '<think>\n' + text + '\n</think>\n\n' + (inject || '');
+  addAtomicMsg('tool', `probe(@${ref}${inject ? ', ' + inject : ''}) → calling worker...`);
+  renderAtomicFeed();
+  const res = await fetch(worker.url + '/v1/chat/completions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      messages: [
+        {role: 'user', content: 'Analyze the following.'},
+        {role: 'assistant', content: assistantContent}
+      ],
+      continue_assistant_turn: true,
+      cache_prompt: false,
+      temperature: 0.1,
+      max_tokens: 512,
+      stream: false,
+    }),
+  });
+  const data = await res.json();
+  const result = data.choices?.[0]?.message?.content || '';
+  const resultEntity = createEntity(ref + '_probe', {source: {entityId: ref, tool: 'probe'}});
+  addTextArea(resultEntity.name, 'result', (inject || '') + result);
+  addAtomicMsg('tool', `probe(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
+}
+
+function toolTranspose(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const da = entity.data_areas[0];
+  if (!da || !da.rows.length) { addAtomicMsg('tool', `@${ref} has no data_area to transpose`); return; }
+  // Transpose: first column becomes headers, headers become first column
+  const newHeaders = ['property', ...da.rows.map(r => r[0] || '')];
+  const newRows = [];
+  for (let c = 1; c < da.headers.length; c++) {
+    const row = [da.headers[c]];
+    da.rows.forEach(r => row.push(r[c] || ''));
+    newRows.push(row);
+  }
+  const resultEntity = createEntity(ref + '_T', {source: {entityId: ref, tool: 'transpose'}});
+  resultEntity.data_areas.push({name: 'transposed', headers: newHeaders, rows: newRows});
+  addAtomicMsg('tool', `transpose(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
+}
+
+async function toolVerify(args) {
+  if (args.length < 2) { addAtomicMsg('tool', 'verify needs 2 entities: verify(@table1, @table2)'); return; }
+  const ref1 = args[0]?.replace(/^@/, '');
+  const ref2 = args[1]?.replace(/^@/, '');
+  const e1 = atomicEntities[ref1];
+  const e2 = atomicEntities[ref2];
+  if (!e1 || !e2) { addAtomicMsg('tool', `Entity not found`); return; }
+  const da1 = e1.data_areas[0];
+  const da2 = e2.data_areas[0];
+  if (!da1 || !da2) { addAtomicMsg('tool', 'Both entities need data_areas'); return; }
+  // Compare cell values
+  let matches = 0, mismatches = 0, details = [];
+  // Find common properties between the two tables
+  da1.headers.forEach((h1, c1) => {
+    if (c1 === 0) return; // skip row index
+    da2.headers.forEach((h2, c2) => {
+      if (c2 === 0) return;
+      if (h1.toLowerCase().trim() === h2.toLowerCase().trim()) {
+        da1.rows.forEach((r1, ri) => {
+          da2.rows.forEach((r2, rj) => {
+            // Match by first column (entity name)
+            if (r1[0]?.toLowerCase().trim() === r2[0]?.toLowerCase().trim()) {
+              const v1 = (r1[c1] || '').trim().toLowerCase();
+              const v2 = (r2[c2] || '').trim().toLowerCase();
+              if (v1 === v2) { matches++; }
+              else {
+                mismatches++;
+                details.push(`${h1}: "${r1[c1]}" vs "${r2[c2]}" (${r1[0]})`);
+              }
+            }
+          });
+        });
+      }
+    });
+  });
+  const total = matches + mismatches;
+  const pct = total > 0 ? Math.round(matches / total * 100) : 0;
+  let msg = `verify(@${ref1}, @${ref2}): ${pct}% consistent (${matches}/${total})`;
+  if (details.length) msg += '\nMismatches:\n' + details.join('\n');
+  addReaction(ref1, pct === 100 ? '✓' : '⚠', 'tool:verify', `${pct}%`);
+  addAtomicMsg('tool', msg, [ref1, ref2]);
+}
+
+/* --- Compose tools --- */
+function toolAddEntity(args) {
+  const name = args[0]?.replace(/^@/, '') || undefined;
+  const entity = createEntity(name);
+  addAtomicMsg('tool', `Created @${entity.name}`, [entity.name]);
+}
+
+function toolAddTable(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  if (!ref) {
+    // Create new entity with empty table
+    const entity = createEntity('table');
+    entity.data_areas.push({name: 'data', headers: ['Col1', 'Col2'], rows: [['', '']]});
+    addAtomicMsg('tool', `Created @${entity.name} with empty table`, [entity.name]);
+    return;
+  }
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const colsStr = args.slice(1).join(', ').trim();
+  const headers = colsStr ? colsStr.split(',').map(s => s.trim()) : ['Col1', 'Col2'];
+  entity.data_areas.push({name: 'data_' + entity.data_areas.length, headers, rows: [headers.map(() => '')]});
+  addAtomicMsg('tool', `Added table to @${ref}`, [ref]);
+}
+
+function toolMerge(args) {
+  if (args.length < 2) { addAtomicMsg('tool', 'merge needs 2+ entities'); return; }
+  const refs = args.map(a => a.replace(/^@/, ''));
+  const merged = createEntity('merged');
+  refs.forEach(ref => {
+    const e = atomicEntities[ref];
+    if (!e) return;
+    Object.assign(merged.tags, e.tags);
+    merged.text_areas.push(...e.text_areas.map(ta => ({...ta, name: ref + '.' + ta.name})));
+    merged.data_areas.push(...e.data_areas.map(da => ({...da, name: ref + '.' + da.name})));
+    merged.reactions.push(...e.reactions);
+  });
+  saveAtomicState();
+  addAtomicMsg('tool', `merge(${refs.map(r => '@'+r).join(', ')}) → @${merged.name}`, [merged.name]);
+}
+
+/* --- Input bindings --- */
+document.getElementById('btnAtomicSend').addEventListener('click', () => {
+  const inp = document.getElementById('atomicInp');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  handleAtomicInput(text);
+});
+document.getElementById('atomicInp').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('btnAtomicSend').click();
+  }
+});
+
+/* --- Tool palette buttons --- */
+document.querySelectorAll('.tp-btn[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tool = btn.dataset.tool;
+    const inp = document.getElementById('atomicInp');
+    // Insert tool command template
+    if (['add_entity', 'add_table'].includes(tool)) {
+      applyAtomicTool(tool, []);
+      return;
+    }
+    inp.value = tool + '(@)';
+    inp.focus();
+    // Position cursor inside @
+    inp.setSelectionRange(inp.value.length - 1, inp.value.length - 1);
+  });
+});
+
+/* --- Clear atomic state --- */
+document.getElementById('btnAtomicClear').addEventListener('click', () => {
+  atomicMessages = [];
+  atomicEntities = {};
+  atomicIdN = 0;
+  saveAtomicState();
+  renderAtomicFeed();
+  updateScopeList();
+});
+
+/* --- Global Params & Grammar Presets (state initialized at top of Atomic section) --- */
+
+function saveAtomicConfig() {
+  try { localStorage.setItem('atomic_config', JSON.stringify({params: atomicParams, grammars: atomicGrammars})); } catch(_) {}
+}
+
+function resolveParam(key) {
+  // $key → atomicParams[key], $grammar.name → atomicGrammars[name]
+  if (key.startsWith('grammar.')) return atomicGrammars[key.slice(8)] || key;
+  return atomicParams[key] || key;
+}
+
+function renderParamsTable() {
+  const tbody = document.getElementById('atomicParamsBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  Object.entries(atomicParams).forEach(([k, v]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td contenteditable="true" data-pk="${esc(k)}" style="color:var(--accent2);font-size:10px">${esc(k)}</td><td contenteditable="true" data-pv="${esc(k)}" style="font-size:10px">${esc(v)}</td>`;
+    // Edit value on blur
+    tr.querySelector('[data-pv]').addEventListener('blur', function() {
+      atomicParams[k] = this.textContent.trim();
+      saveAtomicConfig();
+    });
+    // Edit key on blur (rename)
+    tr.querySelector('[data-pk]').addEventListener('blur', function() {
+      const newKey = this.textContent.trim();
+      if (newKey && newKey !== k) {
+        atomicParams[newKey] = atomicParams[k];
+        delete atomicParams[k];
+        saveAtomicConfig();
+        renderParamsTable();
+      }
+    });
+    // Right-click to delete
+    tr.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (confirm(`Delete param "${k}"?`)) {
+        delete atomicParams[k];
+        saveAtomicConfig();
+        renderParamsTable();
+      }
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function renderGrammarList() {
+  const el = document.getElementById('atomicGrammarList');
+  if (!el) return;
+  const names = Object.keys(atomicGrammars);
+  if (!names.length) { el.innerHTML = '<span style="color:var(--text-dim)">No presets</span>'; return; }
+  el.innerHTML = names.map(n =>
+    `<div class="tp-scope-item" data-grammar="${esc(n)}" title="${esc(atomicGrammars[n])}" style="color:var(--accent2)">$grammar.${esc(n)}</div>`
+  ).join('');
+  el.querySelectorAll('.tp-scope-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const inp = document.getElementById('atomicInp');
+      inp.value += '$grammar.' + item.dataset.grammar + ' ';
+      inp.focus();
+    });
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const name = item.dataset.grammar;
+      showAtomicCtx(e.clientX, e.clientY, [
+        {label: 'Edit', action: () => {
+          const newGrammar = prompt(`Grammar "${name}":`, atomicGrammars[name]);
+          if (newGrammar !== null) { atomicGrammars[name] = newGrammar; saveAtomicConfig(); renderGrammarList(); }
+        }},
+        {label: 'Rename', action: () => {
+          const newName = prompt('New name:', name);
+          if (newName && newName !== name) {
+            atomicGrammars[newName] = atomicGrammars[name];
+            delete atomicGrammars[name];
+            saveAtomicConfig(); renderGrammarList();
+          }
+        }},
+        {label: 'Copy to input', action: () => {
+          const inp = document.getElementById('atomicInp');
+          inp.value += 'grammar:' + atomicGrammars[name].replace(/\n/g, '\\n') + ' ';
+          inp.focus();
+        }},
+        {label: 'Delete', danger: true, action: () => {
+          delete atomicGrammars[name]; saveAtomicConfig(); renderGrammarList();
+        }},
+      ]);
+    });
+  });
+}
+
+document.getElementById('btnAddParam').addEventListener('click', () => {
+  const key = prompt('Param key:');
+  if (!key) return;
+  const val = prompt('Value:', '');
+  if (val === null) return;
+  atomicParams[key] = val;
+  saveAtomicConfig();
+  renderParamsTable();
+});
+
+document.getElementById('btnAddGrammar').addEventListener('click', () => {
+  const name = prompt('Grammar preset name:');
+  if (!name) return;
+  const grammar = prompt('GBNF grammar (use \\n for newlines):', 'root ::= digit term\ndigit ::= "0" | "1"\nterm ::= " " | "\\n"');
+  if (!grammar) return;
+  atomicGrammars[name] = grammar;
+  saveAtomicConfig();
+  renderGrammarList();
+});
+
+// Init render
+renderParamsTable();
+renderGrammarList();
+
+/* --- Global Params Page (state initialized at top of Atomic section) --- */
+function saveGlobalItems() {
+  try { localStorage.setItem('global_items', JSON.stringify(globalItems)); } catch(_) {}
+}
+
+function renderParamsPage() {
+  const el = document.getElementById('paramsContent');
+  if (!el) return;
+  el.innerHTML = '';
+  // Key:Value params table
+  const paramsCard = document.createElement('div');
+  paramsCard.className = 'at-entity';
+  paramsCard.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name" style="color:var(--accent2)">$params</span></div>
+    <div class="at-data-label">Key:Value parameters (use $key in tools)</div>
+    <table class="at-table" style="width:100%"><thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>${Object.entries(atomicParams).map(([k,v]) =>
+      `<tr><td contenteditable="true" data-gpk="${esc(k)}" style="color:var(--accent2)">${esc(k)}</td><td contenteditable="true" data-gpv="${esc(k)}">${esc(v)}</td></tr>`
+    ).join('')}</tbody></table>`;
+  el.appendChild(paramsCard);
+  // Bind editing
+  paramsCard.querySelectorAll('[data-gpv]').forEach(td => {
+    td.addEventListener('blur', () => { atomicParams[td.dataset.gpv] = td.textContent.trim(); saveAtomicConfig(); });
+  });
+  // Grammar presets
+  const gramCard = document.createElement('div');
+  gramCard.className = 'at-entity';
+  gramCard.style.marginTop = '12px';
+  gramCard.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name" style="color:var(--accent2)">$grammars</span></div>
+    <div class="at-data-label">GBNF grammar presets (use grammar:$grammar.name in tools)</div>`;
+  Object.entries(atomicGrammars).forEach(([name, grammar]) => {
+    const item = document.createElement('div');
+    item.className = 'at-text-area';
+    item.innerHTML = `<div class="at-text-area-label" style="color:var(--accent2)">$grammar.${esc(name)}</div>
+      <div class="at-text-area-content" contenteditable="true" data-gname="${esc(name)}" style="font-family:'Cascadia Code',monospace;font-size:11px">${esc(grammar)}</div>`;
+    item.querySelector('[data-gname]').addEventListener('blur', function() {
+      atomicGrammars[name] = this.textContent; saveAtomicConfig();
+    });
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showAtomicCtx(e.clientX, e.clientY, [
+        {label: 'Rename', action: () => {
+          const n = prompt('New name:', name); if (!n || n === name) return;
+          atomicGrammars[n] = atomicGrammars[name]; delete atomicGrammars[name];
+          saveAtomicConfig(); renderParamsPage();
+        }},
+        {label: 'Delete', danger: true, action: () => {
+          delete atomicGrammars[name]; saveAtomicConfig(); renderParamsPage();
+        }},
+      ]);
+    });
+    gramCard.appendChild(item);
+  });
+  el.appendChild(gramCard);
+  // Custom global items (user-created tables and text areas)
+  globalItems.forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'at-entity';
+    card.style.marginTop = '12px';
+    if (item.type === 'table') {
+      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">@config.${esc(item.name)}</span></div>
+        <table class="at-table" style="width:100%"><thead><tr>${item.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${item.rows.map((row, ri) => `<tr>${row.map((cell, ci) =>
+          `<td contenteditable="true" data-gi="${idx}" data-gr="${ri}" data-gc="${ci}">${esc(String(cell))}</td>`
+        ).join('')}</tr>`).join('')}</tbody></table>`;
+      // Add row button
+      const addRow = document.createElement('button');
+      addRow.className = 'tp-btn';
+      addRow.style.cssText = 'margin-top:4px;font-size:10px';
+      addRow.textContent = '+ row';
+      addRow.addEventListener('click', () => {
+        item.rows.push(item.headers.map(() => ''));
+        saveGlobalItems(); renderParamsPage();
+      });
+      card.appendChild(addRow);
+    } else {
+      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">@config.${esc(item.name)}</span></div>
+        <div class="at-text-area-content" contenteditable="true" data-gti="${idx}" style="min-height:40px">${esc(item.text || '')}</div>`;
+    }
+    // Context menu
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showAtomicCtx(e.clientX, e.clientY, [
+        {label: 'Rename', action: () => {
+          const n = prompt('New name:', item.name); if (!n) return;
+          item.name = n; saveGlobalItems(); renderParamsPage();
+        }},
+        ...(item.type === 'table' ? [{label: 'Add column', action: () => {
+          const col = prompt('Column name:'); if (!col) return;
+          item.headers.push(col);
+          item.rows.forEach(r => r.push(''));
+          saveGlobalItems(); renderParamsPage();
+        }}] : []),
+        {label: 'Delete', danger: true, action: () => {
+          globalItems.splice(idx, 1); saveGlobalItems(); renderParamsPage();
+        }},
+      ]);
+    });
+    el.appendChild(card);
+  });
+  // Bind cell editing for custom tables
+  el.querySelectorAll('[data-gi]').forEach(td => {
+    td.addEventListener('blur', () => {
+      const i = parseInt(td.dataset.gi), r = parseInt(td.dataset.gr), c = parseInt(td.dataset.gc);
+      if (globalItems[i]?.rows?.[r]) { globalItems[i].rows[r][c] = td.textContent; saveGlobalItems(); }
+    });
+  });
+  el.querySelectorAll('[data-gti]').forEach(div => {
+    div.addEventListener('blur', () => {
+      const i = parseInt(div.dataset.gti);
+      if (globalItems[i]) { globalItems[i].text = div.textContent; saveGlobalItems(); }
+    });
+  });
+}
+
+// Params page buttons
+document.getElementById('btnParamsAddTable').addEventListener('click', () => {
+  const name = prompt('Table name:'); if (!name) return;
+  const cols = prompt('Columns (comma-separated):', 'Col1, Col2'); if (!cols) return;
+  const headers = cols.split(',').map(s => s.trim());
+  globalItems.push({type: 'table', name, headers, rows: [headers.map(() => '')]});
+  saveGlobalItems(); renderParamsPage();
+});
+document.getElementById('btnParamsAddText').addEventListener('click', () => {
+  const name = prompt('Text area name:'); if (!name) return;
+  globalItems.push({type: 'text', name, text: ''});
+  saveGlobalItems(); renderParamsPage();
+});
+document.getElementById('btnParamsAddParam').addEventListener('click', () => {
+  const key = prompt('Param key:'); if (!key) return;
+  const val = prompt('Value:', ''); if (val === null) return;
+  atomicParams[key] = val; saveAtomicConfig(); renderParamsPage(); renderParamsTable();
+});
+// Export/Import
+document.getElementById('btnParamsExport').addEventListener('click', () => {
+  const data = {params: atomicParams, grammars: atomicGrammars, items: globalItems};
+  const b = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = 'global-params.json'; a.click();
+});
+document.getElementById('btnParamsImport').addEventListener('click', () => {
+  document.getElementById('paramsFileInput').click();
+});
+document.getElementById('paramsFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  try {
+    const data = JSON.parse(text);
+    if (data.params) { atomicParams = data.params; saveAtomicConfig(); }
+    if (data.grammars) { atomicGrammars = data.grammars; saveAtomicConfig(); }
+    if (data.items) { globalItems = data.items; saveGlobalItems(); }
+    renderParamsPage(); renderParamsTable(); renderGrammarList();
+  } catch (err) { alert('Invalid JSON: ' + err.message); }
+  e.target.value = '';
+});
+
+/* --- Atomic context menu (right-click) --- */
+function showAtomicCtx(x, y, items) {
+  document.querySelectorAll('.admin-ctx').forEach(m => m.remove());
+  const menu = document.createElement('div');
+  menu.className = 'admin-ctx';
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  items.forEach(it => {
+    const el = document.createElement('div');
+    el.className = 'admin-ctx-item' + (it.danger ? ' danger' : '');
+    el.textContent = it.label;
+    el.addEventListener('click', () => { menu.remove(); it.action(); });
+    menu.appendChild(el);
+  });
+  document.body.appendChild(menu);
+  const dismiss = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
+  setTimeout(() => document.addEventListener('click', dismiss), 0);
+}
+
+document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
+  if (activePage !== 'atomic') return;
+  e.preventDefault();
+  // Check if right-clicked on a message (not on entity card inside it)
+  const msgEl = e.target.closest('.atomic-msg');
+  const entityCard = e.target.closest('.at-entity');
+  const entityName = entityCard?.dataset.entity;
+  if (msgEl && !entityCard) {
+    const msgId = msgEl.dataset.id;
+    const msg = atomicMessages.find(m => m.id === msgId);
+    if (msg) {
+      const items = [
+        {label: 'Set as @entity', action: () => {
+          const name = prompt('Entity name:', 'input');
+          if (!name) return;
+          const entity = createEntity(name);
+          addTextArea(name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
+          msg.entities = msg.entities || [];
+          msg.entities.push(entity.name);
+          saveAtomicState();
+          renderAtomicFeed();
+          updateScopeList();
+        }},
+        {label: 'Set as @entity + table', action: () => {
+          const name = prompt('Entity name:');
+          if (!name) return;
+          const cols = prompt('Table columns (comma-separated):', 'Col1, Col2');
+          if (!cols) return;
+          const headers = cols.split(',').map(s => s.trim());
+          const entity = createEntity(name);
+          addTextArea(name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
+          addDataArea(name, 'data', headers, [headers.map(() => '')]);
+          msg.entities = msg.entities || [];
+          msg.entities.push(entity.name);
+          saveAtomicState();
+          renderAtomicFeed();
+          updateScopeList();
+        }},
+        {label: 'Delete message', danger: true, action: () => {
+          const idx = atomicMessages.indexOf(msg);
+          if (idx >= 0) atomicMessages.splice(idx, 1);
+          saveAtomicState();
+          renderAtomicFeed();
+        }},
+      ];
+      showAtomicCtx(e.clientX, e.clientY, items);
+      return;
+    }
+  }
+  if (entityCard && entityName) {
+    // Context menu for existing entity — tools first, then structural ops
+    const hasText = atomicEntities[entityName]?.text_areas?.length > 0;
+    const hasTable = atomicEntities[entityName]?.data_areas?.length > 0;
+    const toolItems = [];
+    // Tool actions (discoverable, no DSL knowledge needed)
+    if (hasText) {
+      toolItems.push(
+        {label: '▶ Extract Claims', action: () => { applyAtomicTool('claims', [entityName]); }},
+        {label: '▶ Generate answer', action: () => { applyAtomicTool('generate', [entityName]); }},
+        {label: '▶ Number lines', action: () => { applyAtomicTool('numbered', [entityName]); }},
+        {label: '▶ Check status', action: () => { applyAtomicTool('check_status', [entityName]); }},
+      );
+    }
+    if (hasTable) {
+      toolItems.push(
+        {label: '▶ Transpose table', action: () => { applyAtomicTool('transpose', [entityName]); }},
+      );
+    }
+    if (hasText) {
+      toolItems.push(
+        {label: '▶ Table-as-query...', action: () => {
+          const cols = prompt('Table columns (comma-separated):');
+          if (!cols) return;
+          applyAtomicTool('table_as_query', [entityName, ...cols.split(',').map(s => s.trim())]);
+        }},
+        {label: '▶ Probe continue...', action: () => {
+          const inject = prompt('Inject text after think (optional):');
+          applyAtomicTool('probe_continue', inject ? [entityName, inject] : [entityName]);
+        }},
+      );
+    }
+    if (hasTable && getScope().length > 1) {
+      toolItems.push(
+        {label: '▶ Verify against...', action: () => {
+          const other = prompt('Compare with entity (@name):', '');
+          if (!other) return;
+          applyAtomicTool('verify', [entityName, other.replace(/^@/, '')]);
+        }},
+      );
+    }
+    showAtomicCtx(e.clientX, e.clientY, [
+      ...toolItems,
+      // Structural operations
+      {label: 'Add tag', action: () => {
+        const key = prompt('Tag key:');
+        if (!key) return;
+        const val = prompt('Tag value:');
+        if (val === null) return;
+        addTag(entityName, key, val);
+        renderAtomicFeed();
+      }},
+      {label: 'Add text area', action: () => {
+        const name = prompt('Text area name:', 'content');
+        if (!name) return;
+        const text = prompt('Text:');
+        if (text === null) return;
+        addTextArea(entityName, name, text);
+        renderAtomicFeed();
+      }},
+      {label: 'Add table', action: () => {
+        const name = prompt('Table name:', 'data');
+        if (!name) return;
+        const colsStr = prompt('Columns (comma-separated):', 'Col1, Col2');
+        if (!colsStr) return;
+        const headers = colsStr.split(',').map(s => s.trim());
+        addDataArea(entityName, name, headers, [headers.map(() => '')]);
+        renderAtomicFeed();
+      }},
+      {label: 'Rename', action: () => {
+        const newName = prompt('New name:', entityName);
+        if (!newName || newName === entityName) return;
+        const entity = atomicEntities[entityName];
+        if (!entity) return;
+        delete atomicEntities[entityName];
+        entity.name = newName;
+        atomicEntities[newName] = entity;
+        atomicMessages.forEach(m => {
+          const idx = m.entities?.indexOf(entityName);
+          if (idx >= 0) m.entities[idx] = newName;
+        });
+        saveAtomicState();
+        renderAtomicFeed();
+        updateScopeList();
+      }},
+      {label: 'Delete', danger: true, action: () => {
+        delete atomicEntities[entityName];
+        saveAtomicState();
+        renderAtomicFeed();
+        updateScopeList();
+      }},
+    ]);
+  } else {
+    // Context menu on empty space — create entity + macros
+    const macroItems = Object.keys(atomicMacros).map(name => ({
+      label: '⏵ ' + name,
+      action: async () => {
+        const inputEntity = prompt('Run macro on entity (@name):', getScope()[0] || '');
+        if (!inputEntity) return;
+        addAtomicMsg('user', `Running macro "${name}" on @${inputEntity}`);
+        renderAtomicFeed();
+        for (const step of atomicMacros[name]) {
+          // Replace first arg with the input entity
+          const args = [...step.args];
+          if (args.length > 0) args[0] = inputEntity;
+          await applyAtomicTool(step.tool, args);
+        }
+        renderAtomicFeed();
+        updateScopeList();
+      }
+    }));
+    showAtomicCtx(e.clientX, e.clientY, [
+      {label: 'Create Entity', action: () => {
+        const name = prompt('Entity name:');
+        if (!name) return;
+        const entity = createEntity(name);
+        const text = prompt('Content (optional):');
+        if (text) addTextArea(name, 'content', text);
+        addAtomicMsg('user', `@${entity.name}: ${text || '(empty)'}`, [entity.name]);
+        renderAtomicFeed();
+        updateScopeList();
+      }},
+      {label: 'Create Entity + Table', action: () => {
+        const name = prompt('Entity name:');
+        if (!name) return;
+        const colsStr = prompt('Table columns (comma-separated):', 'Col1, Col2');
+        if (!colsStr) return;
+        const headers = colsStr.split(',').map(s => s.trim());
+        const entity = createEntity(name);
+        addDataArea(name, 'data', headers, [headers.map(() => '')]);
+        addAtomicMsg('user', `@${entity.name} with table [${headers.join(', ')}]`, [entity.name]);
+        renderAtomicFeed();
+        updateScopeList();
+      }},
+      // Macro controls
+      {label: macroRecording ? '⏹ Stop Recording' : '⏺ Record Macro', action: () => {
+        if (macroRecording) {
+          macroRecording = false;
+          const name = prompt('Save macro as:', 'my_macro');
+          if (name && macroSteps.length) {
+            atomicMacros[name] = [...macroSteps];
+            saveMacros();
+            addAtomicMsg('tool', `Macro "${name}" saved (${macroSteps.length} steps: ${macroSteps.map(s => s.tool).join(' → ')})`);
+          } else {
+            addAtomicMsg('tool', 'Macro recording cancelled (no steps)');
+          }
+          macroSteps = [];
+          renderAtomicFeed();
+        } else {
+          macroRecording = true;
+          macroSteps = [];
+          addAtomicMsg('tool', '⏺ Recording macro... Perform actions, then right-click → Stop Recording');
+          renderAtomicFeed();
+        }
+      }},
+      ...macroItems,
+    ]);
+  }
 });
 
 setS('ok','Ready');
