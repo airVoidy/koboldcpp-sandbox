@@ -557,9 +557,15 @@ def execute_step(ctx: WorkflowContext, step: Any) -> None:
             from_expr = str(inner) if inner else ""
             export = step.get("export", [])
         text = str(ctx.eval_expr(from_expr))
-        entities = _parse_list_from_text(text, "ENTITIES")
-        axioms = _parse_list_from_text(text, "AXIOMS")
-        hypotheses = _parse_list_from_text(text, "HYPOTHESES")
+        # Determine author from which worker produced the claims
+        author = "analyzer"
+        for wname, wurl in ctx.workers.items():
+            if wname == "analyzer":
+                author = f"worker:{wname}"
+                break
+        entities = _parse_list_from_text(text, "ENTITIES", author=author, policy="worker")
+        axioms = _parse_list_from_text(text, "AXIOMS", author=author, policy="worker")
+        hypotheses = _parse_list_from_text(text, "HYPOTHESES", author=author, policy="worker")
         if isinstance(export, list) and len(export) >= 3:
             ctx.set(export[0], entities)
             ctx.set(export[1], axioms)
@@ -624,11 +630,11 @@ def execute_step(ctx: WorkflowContext, step: Any) -> None:
         all_items = []
         if table_text:
             all_items.append("Table matches truth")
-        all_items.extend(str(item["_value"] if isinstance(item, dict) and "_value" in item else item) for item in items)
+        all_items.extend(item_text(item) for item in items)
 
         results = []
-        for item_text in all_items:
-            question = f"\n(({item_text}) == 1) === "
+        for it_text in all_items:
+            question = f"\n(({it_text}) == 1) === "
             full_assistant += question
 
             resp = ctx._http.post(url, json={
@@ -648,7 +654,7 @@ def execute_step(ctx: WorkflowContext, step: Any) -> None:
             verdict = (data.get("choices", [{}])[0].get("message", {}).get("content", "")).strip()
 
             passed = verdict.startswith("1") or verdict.lower().startswith("true")
-            results.append({"text": item_text, "verdict": verdict, "pass": passed})
+            results.append({"text": it_text, "verdict": verdict, "pass": passed})
             think_accum += question + verdict + "\n"
             full_assistant += verdict + "\n"
 
@@ -885,10 +891,28 @@ def _slice_lines(text: Any, start: Any, end: Any) -> str:
     return "\n".join(lines[start_idx:end_idx]).strip()
 
 
-def _parse_list_from_text(text: str, section: str) -> list[str]:
-    """Parse ENTITIES/AXIOMS/HYPOTHESES from claims text."""
+def make_item(text: str, author: str = "system", policy: str = "system") -> dict:
+    """Create a structured item with metadata."""
+    from datetime import datetime
+    return {
+        "text": text,
+        "author": author,
+        "policy": policy,
+        "ts": datetime.now().isoformat(),
+    }
+
+
+def item_text(item) -> str:
+    """Extract text from item (handles both str and dict formats)."""
+    if isinstance(item, dict):
+        return item.get("text", item.get("_value", str(item)))
+    return str(item)
+
+
+def _parse_list_from_text(text: str, section: str, author: str = "system", policy: str = "system") -> list[dict]:
+    """Parse ENTITIES/AXIOMS/HYPOTHESES from claims text. Returns structured items."""
     lines = text.split("\n")
-    items = []
+    raw_items = []
     in_section = False
     for line in lines:
         trimmed = line.strip()
@@ -897,15 +921,15 @@ def _parse_list_from_text(text: str, section: str) -> list[str]:
             after = trimmed[len(section) + 1:].strip()
             if after.startswith("["):
                 inner = after.strip("[]")
-                items.extend(s.strip() for s in inner.split(",") if s.strip())
+                raw_items.extend(s.strip() for s in inner.split(",") if s.strip())
                 in_section = False
             continue
         if in_section and re.match(r"^[A-Z_]+:", trimmed):
             in_section = False
             continue
         if in_section and trimmed.startswith("-"):
-            items.append(trimmed[1:].strip())
-    return items
+            raw_items.append(trimmed[1:].strip())
+    return [make_item(t, author=author, policy=policy) for t in raw_items]
 
 
 def _parse_markdown_table(text: str) -> list[dict]:

@@ -386,6 +386,34 @@ body {
 .pin-count { font-size:10px; color:var(--text-dim); }
 .tmsg.promoted { opacity:.6; border-left:2px solid var(--orange); padding-left:6px; }
 .tmsg.promoted .tmsg-text::before { content:"[pinned] "; color:var(--orange); font-size:10px; }
+.reply-btn {
+  background:none; border:1px solid transparent; border-radius:4px;
+  color:var(--text-dim); cursor:pointer; font-size:12px; padding:1px 6px;
+  display:inline-flex; align-items:center; font-family:inherit;
+}
+.reply-btn:hover { color:var(--blue); border-color:var(--blue); }
+.tmsg.has-replies { border:1px solid var(--border); border-radius:6px; padding:6px; margin-bottom:4px; position:relative; flex-wrap:wrap; }
+.tmsg.has-replies .replies-section { width:100%; }
+.tmsg-reply { margin-left:24px; border-left:2px solid var(--border); padding-left:8px; }
+.replies-section { margin-top:4px; }
+.replies-toggle { font-size:11px; color:var(--text-dim); cursor:pointer; padding:2px 0; margin-left:24px; }
+.replies-toggle .arrow { display:inline-block; transition:transform .15s; font-size:8px; margin-right:4px; }
+.replies-toggle .arrow.open { transform:rotate(90deg); }
+.replies-wrap { display:none; }
+.replies-wrap.open { display:block; }
+.reply-input { display:flex; gap:4px; padding:4px 0 0; width:100%; border-top:1px solid var(--border); margin-top:4px; }
+.reply-input textarea { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:11px; padding:4px 6px; resize:none; font-family:inherit; min-height:28px; }
+.btn-sm { font-size:10px; padding:2px 8px; }
+.btn-apply-answer { position:absolute; bottom:6px; right:6px; background:var(--blue); color:#fff; border:none; border-radius:4px; padding:4px 10px; font-size:11px; cursor:pointer; font-family:inherit; }
+.btn-apply-answer:hover { opacity:.9; }
+.item-author { font-size:9px; color:var(--text-dim); margin-left:4px; opacity:.6; }
+.discussion-bar { border-top:1px solid var(--blue); margin-top:8px; padding-top:4px; }
+/* Admin context menu */
+.admin-ctx { position:fixed; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:4px 0; z-index:1000; min-width:120px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+.admin-ctx-item { padding:5px 12px; font-size:12px; color:var(--text); cursor:pointer; }
+.admin-ctx-item:hover { background:var(--blue); color:#fff; }
+.admin-ctx-item.danger { color:var(--red); }
+.admin-ctx-item.danger:hover { background:var(--red); color:#fff; }
 
 .thread-input {
   display:flex; gap:4px; padding:4px 12px 6px 28px; border-top:1px solid var(--border);
@@ -443,6 +471,9 @@ body {
         </select>
         <label style="font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="settingAskNoThink"> no_think</label>
       </div>
+      <hr style="border-color:var(--border);margin:8px 0">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="settingAdminMode"> Admin Mode</label>
+      <span style="font-size:10px;color:var(--text-dim)">Right-click elements to edit/delete</span>
     </div>
   </div>
 </div>
@@ -473,6 +504,7 @@ body {
         <input id="settingNoThink" type="checkbox" style="width:auto;margin:0" />
         <label style="margin:0;font-size:11px;color:var(--text-dim)">No-think prefill</label>
       </div>
+      <button class="btn" style="margin-top:8px;width:100%;font-size:11px;padding:4px 0;background:#c44;border-color:#c44" id="btnStopWorkers">Stop All</button>
     </div>
   </div>
   <div class="feed-area">
@@ -543,8 +575,10 @@ function getSettings() {
     max_continue: parseInt(document.getElementById('settingMaxContinue').value) || 20,
     verify_max_rounds: parseInt(document.getElementById('settingVerifyRounds').value) || 3,
     no_think: document.getElementById('settingNoThink').checked,
+    admin_mode: document.getElementById('settingAdminMode')?.checked || false,
   };
 }
+function isAdminMode() { return document.getElementById('settingAdminMode')?.checked || false; }
 
 /* Workers - multiple validator endpoints */
 let workers = [
@@ -947,8 +981,8 @@ async function verifyAxiomsViaThink(nodeId) {
 
   // Collect all items to verify
   const items = [];
-  (nd.axioms_list || []).forEach(a => items.push({type:'AXIOM', text:a}));
-  (nd.hypotheses_list || []).forEach(h => items.push({type:'HYPOTHESIS', text:h}));
+  (nd.axioms_list || []).forEach(a => items.push({type:'AXIOM', text:itemText(a)}));
+  (nd.hypotheses_list || []).forEach(h => items.push({type:'HYPOTHESIS', text:itemText(h)}));
   if (items.length === 0) return;
 
   addThread(nodeId, 'system', 'Verify', `Verifying ${items.length} items step by step...`);
@@ -1018,6 +1052,13 @@ async function verifyAxiomsViaThink(nodeId) {
   }
 }
 
+// Helper: extract text from structured item (supports string and {text} formats)
+function itemText(item) {
+  if (typeof item === 'string') return item;
+  if (item && typeof item === 'object') return item.text || item._value || String(item);
+  return String(item);
+}
+
 function runVerify(nodeId) {
   const nd = nodes[nodeId]; if(!nd) return;
   // For root node: verify axioms via think injection
@@ -1025,13 +1066,120 @@ function runVerify(nodeId) {
     verifyAxiomsViaThink(nodeId);
     return;
   }
-  // For entity nodes: inherit from root and verify
+  // For entity nodes: extract properties then verify
   const root = Object.values(nodes).find(n => n.type === 'task');
-  if (root && (root.axioms_list?.length || root.hypotheses_list?.length)) {
-    // Copy lists to entity for verification context
-    nd.axioms_list = root.axioms_list;
-    nd.hypotheses_list = root.hypotheses_list;
-    verifyAxiomsViaThink(nodeId);
+  if (root && nd.answer) {
+    verifyEntityViaExtract(nodeId, root);
+  }
+}
+
+async function verifyEntityViaExtract(nodeId, root) {
+  const nd = nodes[nodeId]; if (!nd?.answer) return;
+  const worker = getWorkerByRole('analyzer');
+  if (!worker?.url) return;
+  const url = worker.url.replace(/\/+$/,'') + '/v1/chat/completions';
+
+  // Get properties to check from root entities
+  const properties = (root.entities_list || []).map(e => itemText(e)).filter(e =>
+    !['демоница','демонша','демон','образ','раса'].includes(e.toLowerCase())
+  );
+  if (!properties.length) {
+    addThread(nodeId, 'system', 'Verify', 'No properties to extract from root entities');
+    return;
+  }
+
+  addThread(nodeId, 'system', 'Verify', `Extracting ${properties.length} properties...`);
+  renderTree();
+
+  const extracted = {};
+  let fullAssistant = '<think>\nExtract properties from description:\n';
+
+  try {
+    for (const prop of properties) {
+      const question = `\n${prop}: `;
+      fullAssistant += question;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          messages: [
+            {role: 'user', content: nd.answer},
+            {role: 'assistant', content: fullAssistant},
+          ],
+          continue_assistant_turn: true,
+          cache_prompt: false,
+          temperature: 0.1,
+          max_tokens: 50,
+          stop: ['\n'],
+          stream: false,
+        }),
+      });
+      const data = await res.json();
+      const value = (data.choices?.[0]?.message?.content || '').trim();
+      extracted[prop] = value;
+      fullAssistant += value + '\n';
+    }
+
+    // Build extracted table
+    const tableRows = Object.entries(extracted).map(([k,v]) => `| ${k} | ${v} |`);
+    const extractedTable = `| Property | Value |\n|---|---|\n` + tableRows.join('\n');
+
+    // Store on node as extracted_properties for display
+    nd.extracted_properties = extracted;
+
+    // Now verify against root axioms if available
+    const axioms = root.axioms_list || [];
+    const hypotheses = root.hypotheses_list || [];
+    const verifyItems = [];
+    axioms.forEach(a => verifyItems.push({type:'AXIOM', text:a}));
+    hypotheses.forEach(h => verifyItems.push({type:'HYPOTHESIS', text:h}));
+
+    let verifyResults = [];
+    if (verifyItems.length) {
+      let verifyAssistant = '<think>\nExtracted properties:\n' + extractedTable + '\n\nVerification:\n';
+      for (const item of verifyItems) {
+        const q = `((${item.text}) == 1) === `;
+        verifyAssistant += q;
+        const vres = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            messages: [
+              {role: 'user', content: nd.answer},
+              {role: 'assistant', content: verifyAssistant},
+            ],
+            continue_assistant_turn: true,
+            cache_prompt: false,
+            temperature: 0.1,
+            max_tokens: 100,
+            stop: ['\n'],
+            stream: false,
+          }),
+        });
+        const vdata = await vres.json();
+        const verdict = (vdata.choices?.[0]?.message?.content || '').trim();
+        const pass = verdict.startsWith('1') || /^true/i.test(verdict);
+        verifyResults.push({item, verdict, pass});
+        verifyAssistant += verdict + '\n';
+      }
+    }
+
+    // Summary
+    const propSummary = Object.entries(extracted).map(([k,v]) => `\u2022 ${k}: ${v}`).join('\n');
+    const verifySummary = verifyResults.length
+      ? '\n\n' + verifyResults.map(r => `${r.pass?'\u2705':'\u274C'} ${r.item.text} = ${r.verdict}`).join('\n')
+      : '';
+    const allPass = !verifyResults.length || verifyResults.every(r => r.pass);
+
+    addThread(nodeId, 'verifier', worker.name + ' (entity-verify)',
+      propSummary + verifySummary,
+      {think: fullAssistant, status: allPass ? 'pass' : 'fail'});
+    renderTree();
+
+  } catch(e) {
+    addThread(nodeId, 'system', 'Verify', 'Error: ' + e.message);
+    renderTree();
   }
 }
 
@@ -1240,7 +1388,9 @@ function renderNode(nd) {
   }
 
   /* structured lists (ENTITIES, AXIOMS, HYPOTHESES) */
-  if (nd.entities_list?.length || nd.axioms_list?.length || nd.hypotheses_list?.length) {
+  const hasLists = nd.entities_list?.length || nd.axioms_list?.length || nd.hypotheses_list?.length;
+  const hasExtracted = nd.extracted_properties && Object.keys(nd.extracted_properties).length;
+  if (hasLists || hasExtracted) {
     h += `<div class="node-lists">`;
     [{name:'ENTITIES', items:nd.entities_list, cls:'entity'},
      {name:'AXIOMS', items:nd.axioms_list, cls:'axiom'},
@@ -1252,10 +1402,23 @@ function renderNode(nd) {
       h += `<div class="node-list-header" data-list-toggle="${nd.id}:${list.name}"><span class="arrow${lOpen?' open':''}">\u25B6</span> ${list.name} <span class="list-count">${list.items.length}</span></div>`;
       h += `<div class="node-list-body${lOpen?' open':''}">`;
       list.items.forEach(item => {
-        h += `<div class="node-list-item ${list.cls}"><span class="li-bullet">\u2022</span>${esc(item)}</div>`;
+        const txt = typeof item === 'string' ? item : (item.text || String(item));
+        const author = typeof item === 'object' && item.author ? ` <span class="item-author">${esc(item.author)}</span>` : '';
+        h += `<div class="node-list-item ${list.cls}"><span class="li-bullet">\u2022</span>${esc(txt)}${author}</div>`;
       });
       h += `</div></div>`;
     });
+    if (hasExtracted) {
+      const epItems = Object.entries(nd.extracted_properties).map(([k,v]) => `${k}: ${v}`);
+      const epOpen = nd['list_EXTRACTED_open'];
+      h += `<div class="node-list-section">`;
+      h += `<div class="node-list-header" data-list-toggle="${nd.id}:EXTRACTED"><span class="arrow${epOpen?' open':''}">\u25B6</span> EXTRACTED <span class="list-count">${epItems.length}</span></div>`;
+      h += `<div class="node-list-body${epOpen?' open':''}">`;
+      epItems.forEach(item => {
+        h += `<div class="node-list-item extracted"><span class="li-bullet">\u2022</span>${esc(item)}</div>`;
+      });
+      h += `</div></div>`;
+    }
     h += `</div>`;
   }
 
@@ -1305,7 +1468,10 @@ function renderNode(nd) {
     h += `<button class="tags-toggle-btn" data-answer-toggle="${nd.id}">${ansOpen?'\u25B2':'\u25BC'}</button>`;
     h += `</div>`;
     if (ansOpen) {
+      h += `<div style="position:relative">`;
       h += `<textarea class="answer-ta${emptyCls}" data-ans="${nd.id}" placeholder="(pending...)">${esc(nd.answer)}</textarea>`;
+      h += `<button class="btn-apply-answer" data-apply-ans="${nd.id}" style="display:none">Apply changes</button>`;
+      h += `</div>`;
     }
     h += `</div>`;
     /* generated image */
@@ -1347,6 +1513,20 @@ function renderNode(nd) {
     h += `<div class="node-children" data-children="${nd.id}"></div>`;
   }
 
+  /* discussion thread (after entities, for root/task nodes with children) */
+  if (nd.children.length && (nd.type === 'task' || nd.type === 'root')) {
+    if (!nd.discussion) nd.discussion = [];
+    const dc = nd.discussion.length;
+    const dOpen = nd.discussionOpen;
+    h += `<div class="thread-bar discussion-bar" data-disc-toggle="${nd.id}"><span class="arrow${dOpen?' open':''}">\u25B6</span> Discussion <span class="thread-cnt">${dc}</span></div>`;
+    h += `<div class="thread-wrap${dOpen?' open':''}" data-disc="${nd.id}">`;
+    h += `<div class="thread-msgs">`;
+    nd.discussion.forEach((t, i) => { h += tmsgHTML(t, nd.id, 'd' + i); });
+    h += `</div>`;
+    h += `<div class="thread-input"><textarea placeholder="Discuss results..." data-dinp="${nd.id}" rows="1"></textarea><button class="btn" data-dsend="${nd.id}">Send</button></div>`;
+    h += `</div>`;
+  }
+
   h += `</div>`; // end body
 
   el.innerHTML = h;
@@ -1364,7 +1544,8 @@ function renderNode(nd) {
   return el;
 }
 
-function tmsgHTML(t, nodeId, threadIdx) {
+function tmsgHTML(t, nodeId, threadIdx, depth) {
+  depth = depth || 0;
   const r = t.role||'system';
   const ini = (t.name||r)[0].toUpperCase();
   let badge = '';
@@ -1385,7 +1566,50 @@ function tmsgHTML(t, nodeId, threadIdx) {
     const imgSrc = t.image_url.startsWith('http') ? t.image_url : proxyUrl;
     imageHtml = `<div class="tmsg-image"><img src="${esc(imgSrc)}" alt="Generated" loading="lazy"></div>`;
   }
-  return `<div class="tmsg${promoted}"><div class="tmsg-ava ${r}">${ini}</div><div class="tmsg-body"><div class="tmsg-hdr"><span class="tmsg-nick ${r}">${esc(t.name||r)}</span>${badge}<span class="tmsg-time">${t.time||''}</span></div>${thinkHtml}<div class="tmsg-text">${esc(t.content||'')}</div>${imageHtml}<div class="tmsg-actions"><button class="pin-btn${pinCls}" data-pin="${nodeId}:${threadIdx}" title="Pin to parent">&#x1F4CC;${pinLabel}</button></div></div></div>`;
+  // Reply button (only at depth 0)
+  const replyBtn = depth === 0 ? `<button class="reply-btn" data-reply="${nodeId}:${threadIdx}" title="Reply">\u21A9</button>` : '';
+  let repliesHtml = '';
+  if (depth === 0) {
+    const hasReplies = t.replies?.length > 0;
+    const rOpen = t.repliesOpen;
+    if (hasReplies || rOpen) {
+      repliesHtml += `<div class="replies-section">`;
+      if (hasReplies) {
+        repliesHtml += `<div class="replies-toggle" data-replies-toggle="${nodeId}:${threadIdx}"><span class="arrow${rOpen?' open':''}">\u25B6</span> Replies <span class="thread-cnt">${t.replies.length}</span></div>`;
+      }
+      repliesHtml += `<div class="replies-wrap${rOpen?' open':''}">`;
+      (t.replies||[]).forEach((rep, ri) => {
+        repliesHtml += tmsgHTML(rep, nodeId, `${threadIdx}_r${ri}`, 1);
+      });
+      repliesHtml += `<div class="reply-input"><textarea placeholder="Reply..." data-replyinp="${nodeId}:${threadIdx}" rows="1"></textarea><button class="btn btn-sm" data-replysend="${nodeId}:${threadIdx}">Send</button></div>`;
+      repliesHtml += `</div></div>`;
+    }
+  }
+  const depthCls = depth > 0 ? ' tmsg-reply' : '';
+  const hasRepliesCls = (depth === 0 && (t.replies?.length || t.repliesOpen)) ? ' has-replies' : '';
+  return `<div class="tmsg${promoted}${depthCls}${hasRepliesCls}"><div class="tmsg-ava ${r}">${ini}</div><div class="tmsg-body"><div class="tmsg-hdr"><span class="tmsg-nick ${r}">${esc(t.name||r)}</span>${badge}<span class="tmsg-time">${t.time||''}</span></div>${thinkHtml}<div class="tmsg-text">${esc(t.content||'')}</div>${imageHtml}<div class="tmsg-actions"><button class="pin-btn${pinCls}" data-pin="${nodeId}:${threadIdx}" title="Pin to parent">&#x1F4CC;${pinLabel}</button>${replyBtn}</div></div>${repliesHtml}</div>`;
+}
+
+function serializeTreeContext(nd) {
+  let ctx = '';
+  ctx += `Task: ${nd.question || nd.title || ''}\n`;
+  if (nd.entities_list?.length) ctx += `ENTITIES: [${nd.entities_list.map(e => itemText(e)).join(', ')}]\n`;
+  if (nd.axioms_list?.length) ctx += `AXIOMS:\n${nd.axioms_list.map(a => '- ' + itemText(a)).join('\n')}\n`;
+  if (nd.hypotheses_list?.length) ctx += `HYPOTHESES:\n${nd.hypotheses_list.map(h => '- ' + itemText(h)).join('\n')}\n`;
+  if (nd.answer) ctx += `\nResult:\n${nd.answer}\n`;
+  if (nd.children.length) {
+    ctx += '\nEntities:\n';
+    nd.children.forEach((cid, i) => {
+      const cn = nodes[cid]; if (!cn) return;
+      ctx += `\n--- Entity ${i+1}: ${cn.title || cn.question || ''} [${cn.status}] ---\n`;
+      if (cn.tags?.length) ctx += `Tags: ${cn.tags.map(t => t.text || t).join(', ')}\n`;
+      if (cn.extracted_properties) {
+        ctx += 'Extracted: ' + Object.entries(cn.extracted_properties).map(([k,v]) => `${k}=${v}`).join(', ') + '\n';
+      }
+      if (cn.answer) ctx += `Answer:\n${cn.answer}\n`;
+    });
+  }
+  return ctx;
 }
 
 function bindNode(el, nd) {
@@ -1472,6 +1696,23 @@ function bindNode(el, nd) {
     runTrigger('generate', nd.id);
   });
 
+  // answer edit → show Apply button
+  const ansTa = el.querySelector(`[data-ans="${nd.id}"]`);
+  const applyBtn = el.querySelector(`[data-apply-ans="${nd.id}"]`);
+  if (ansTa && applyBtn) {
+    ansTa.addEventListener('input', () => {
+      const changed = ansTa.value !== (nd.answer || '');
+      applyBtn.style.display = changed ? 'block' : 'none';
+    });
+    applyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      nd.answer = ansTa.value;
+      applyBtn.style.display = 'none';
+      addThread(nd.id, 'system', 'Admin', 'Answer edited manually');
+      renderTree();
+    });
+  }
+
   // answer toggle
   const ansToggle = el.querySelector(`[data-answer-toggle="${nd.id}"]`);
   if (ansToggle) ansToggle.addEventListener('click', (e) => {
@@ -1495,6 +1736,150 @@ function bindNode(el, nd) {
   if (tinp) tinp.addEventListener('keydown', e => {
     if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); tsend?.click(); }
   });
+
+  // Helper: find message by nodeId:idx in thread or discussion
+  function findMsg(nid, idxStr) {
+    const n = nodes[nid]; if (!n) return null;
+    const idx = parseInt(idxStr);
+    // Check if idx refers to discussion (prefixed with 'd')
+    if (idxStr.startsWith('d')) {
+      return n.discussion?.[parseInt(idxStr.slice(1))];
+    }
+    return n.thread?.[idx] || n.discussion?.[idx];
+  }
+
+  // reply buttons on thread messages
+  el.querySelectorAll('[data-reply]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const [nid, idx] = btn.dataset.reply.split(':');
+      const msg = findMsg(nid, idx);
+      if (!msg) return;
+      if (!msg.replies) msg.replies = [];
+      msg.repliesOpen = true;
+      renderTree();
+    });
+  });
+
+  // replies toggle
+  el.querySelectorAll('[data-replies-toggle]').forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const [nid, idx] = toggle.dataset.repliesToggle.split(':');
+      const msg = findMsg(nid, idx);
+      if (!msg) return;
+      msg.repliesOpen = !msg.repliesOpen;
+      const wrap = toggle.nextElementSibling;
+      const arrow = toggle.querySelector('.arrow');
+      if (wrap) wrap.classList.toggle('open', msg.repliesOpen);
+      if (arrow) arrow.classList.toggle('open', msg.repliesOpen);
+    });
+  });
+
+  // reply send buttons - user reply + auto worker reply in sub-thread
+  el.querySelectorAll('[data-replysend]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const [nid, idx] = btn.dataset.replysend.split(':');
+      const ta = el.querySelector(`[data-replyinp="${nid}:${idx}"]`);
+      if (!ta || !ta.value.trim()) return;
+      const text = ta.value.trim();
+      ta.value = '';
+      const msg = findMsg(nid, idx);
+      if (!msg) return;
+      if (!msg.replies) msg.replies = [];
+      const ts = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      msg.replies.push({role:'user', name:'You', content:text, time:ts});
+      renderTree();
+
+      // Auto worker reply
+      const worker = getWorkerByRole('generator');
+      if (!worker?.url) return;
+      const n = nodes[nid]; if (!n) return;
+      const ctx = serializeTreeContext(n);
+      const chatMessages = [{role: 'user', content: ctx}];
+      // Parent message as context
+      chatMessages.push({role: 'user', content: msg.content});
+      // All replies as chat history
+      for (const r of msg.replies) {
+        chatMessages.push({role: r.role === 'user' ? 'user' : 'assistant', content: r.content});
+      }
+
+      try {
+        const res = await fetchLLMWithContinue(
+          worker.url.replace(/\/+$/,'') + '/v1/chat/completions',
+          chatMessages,
+          {temperature: 0.6, max_tokens: 2048}
+        );
+        const ts2 = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        msg.replies.push({role:'assistant', name:worker.name, content: res.answer || String(res), time:ts2, think: res.think || ''});
+        renderTree();
+      } catch(e) {
+        msg.replies.push({role:'system', name:'Error', content:e.message, time:ts});
+        renderTree();
+      }
+    });
+  });
+
+  // discussion toggle
+  const dbar = el.querySelector(`[data-disc-toggle="${nd.id}"]`);
+  if (dbar) dbar.addEventListener('click', () => {
+    nd.discussionOpen = !nd.discussionOpen;
+    const wrap = el.querySelector(`[data-disc="${nd.id}"]`);
+    const arrow = dbar.querySelector('.arrow');
+    if (wrap) wrap.classList.toggle('open', nd.discussionOpen);
+    if (arrow) arrow.classList.toggle('open', nd.discussionOpen);
+  });
+
+  // discussion send - creates post with auto worker reply in sub-thread
+  const dsend = el.querySelector(`[data-dsend="${nd.id}"]`);
+  if (dsend) dsend.addEventListener('click', async () => {
+    const ta = el.querySelector(`[data-dinp="${nd.id}"]`);
+    if (!ta || !ta.value.trim()) return;
+    const text = ta.value.trim();
+    ta.value = '';
+
+    if (!nd.discussion) nd.discussion = [];
+    const ts = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const post = {role:'user', name:'You', content:text, time:ts, replies:[], repliesOpen:true};
+    nd.discussion.push(post);
+    nd.discussionOpen = true;
+    renderTree();
+
+    // Auto-reply from worker in sub-thread
+    const worker = getWorkerByRole('generator');
+    if (!worker?.url) return;
+
+    const ctx = serializeTreeContext(nd);
+    // Build chat: context + all previous discussion posts + this question
+    const chatMessages = [{role: 'user', content: ctx}];
+    for (const m of nd.discussion) {
+      chatMessages.push({role: 'user', content: m.content});
+      if (m.replies) {
+        for (const r of m.replies) {
+          chatMessages.push({role: r.role === 'user' ? 'user' : 'assistant', content: r.content});
+        }
+      }
+    }
+
+    try {
+      const res = await fetchLLMWithContinue(
+        worker.url.replace(/\/+$/,'') + '/v1/chat/completions',
+        chatMessages,
+        {temperature: 0.6, max_tokens: 2048}
+      );
+      const ts2 = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      post.replies.push({role:'assistant', name:worker.name, content: res.answer || String(res), time:ts2, think: res.think || ''});
+      renderTree();
+    } catch(e) {
+      post.replies.push({role:'system', name:'Error', content:e.message, time:ts});
+      renderTree();
+    }
+  });
+  const dinp = el.querySelector(`[data-dinp="${nd.id}"]`);
+  if (dinp) dinp.addEventListener('keydown', e => {
+    if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); dsend?.click(); }
+  });
 }
 
 /* ================================================================
@@ -1507,9 +1892,11 @@ function bindNode(el, nd) {
      - item1
      - item2
 */
-function parseListFromText(text, listName) {
+function parseListFromText(text, listName, author, policy) {
+  author = author || 'system';
+  policy = policy || 'system';
   const lines = text.split('\n');
-  const items = [];
+  const rawItems = [];
   let inSection = false;
 
   for (const line of lines) {
@@ -1522,7 +1909,7 @@ function parseListFromText(text, listName) {
       const afterColon = trimmed.slice(listName.length + 1).trim();
       if (afterColon.startsWith('[')) {
         const inner = afterColon.replace(/^\[|\]$/g, '');
-        inner.split(',').forEach(s => { const t = s.trim(); if (t) items.push(t); });
+        inner.split(',').forEach(s => { const t = s.trim(); if (t) rawItems.push(t); });
         inSection = false; // inline = done
       }
       continue;
@@ -1536,10 +1923,10 @@ function parseListFromText(text, listName) {
 
     // Collect items (lines starting with -)
     if (inSection && trimmed.startsWith('-')) {
-      items.push(trimmed.slice(1).trim());
+      rawItems.push(trimmed.slice(1).trim());
     }
   }
-  return items;
+  return rawItems.map(t => ({text: t, author, policy, ts: new Date().toISOString()}));
 }
 
 /* Verify content by ALL workers - returns [{worker, pass, answer}] */
@@ -1879,6 +2266,291 @@ async function handleInput(text) {
 loadDefaultWorkflow();
 renderTree();
 
+/* ================================================================
+   Admin Mode - inline edit popup + right-click context menu
+   ================================================================ */
+function showInlineEdit(anchorEl, oldValue, onSave) {
+  // Remove any existing edit popup
+  document.querySelectorAll('.inline-edit-popup').forEach(p => p.remove());
+  const rect = anchorEl.getBoundingClientRect();
+  const popup = document.createElement('div');
+  popup.className = 'inline-edit-popup';
+  popup.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.bottom+4}px;z-index:1001;background:var(--surface);border:1px solid var(--blue);border-radius:6px;padding:6px;display:flex;gap:4px;box-shadow:0 4px 12px rgba(0,0,0,.4);min-width:${Math.max(rect.width, 200)}px`;
+  const inp = document.createElement('textarea');
+  inp.value = oldValue;
+  inp.rows = Math.max(1, Math.ceil(oldValue.length / 40));
+  inp.style.cssText = 'flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:4px 6px;resize:vertical;font-family:inherit;min-height:28px';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn btn-sm';
+  saveBtn.textContent = 'Save';
+  saveBtn.style.alignSelf = 'flex-end';
+  saveBtn.onclick = () => { onSave(inp.value); popup.remove(); };
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-sm';
+  cancelBtn.textContent = '\u2715';
+  cancelBtn.style.cssText = 'align-self:flex-end;background:none;color:var(--text-dim)';
+  cancelBtn.onclick = () => popup.remove();
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
+    if (e.key === 'Escape') cancelBtn.click();
+  });
+  popup.appendChild(inp);
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;flex-direction:column;gap:2px';
+  btns.appendChild(saveBtn);
+  btns.appendChild(cancelBtn);
+  popup.appendChild(btns);
+  document.body.appendChild(popup);
+  inp.focus();
+  inp.select();
+  // Keep in viewport
+  const pr = popup.getBoundingClientRect();
+  if (pr.right > window.innerWidth) popup.style.left = (window.innerWidth - pr.width - 4) + 'px';
+  if (pr.bottom > window.innerHeight) popup.style.top = (rect.top - pr.height - 4) + 'px';
+}
+let _adminCtx = null;
+function closeAdminCtx() { if (_adminCtx) { _adminCtx.remove(); _adminCtx = null; } }
+document.addEventListener('click', closeAdminCtx);
+document.addEventListener('contextmenu', (e) => {
+  if (!isAdminMode()) return;
+  closeAdminCtx();
+
+  // Find what was right-clicked
+  const tmsg = e.target.closest('.tmsg');
+  const tag = e.target.closest('.tag');
+  const nodeEl = e.target.closest('.node');
+  const listItem = e.target.closest('.node-list-item');
+  const tagsBar = !tag && e.target.closest('.node-tags');
+  const listSection = !listItem && e.target.closest('.node-list-section');
+
+  if (!tmsg && !tag && !listItem && !tagsBar && !listSection && !nodeEl) return;
+  e.preventDefault();
+
+  const menu = document.createElement('div');
+  menu.className = 'admin-ctx';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+
+  if (tmsg) {
+    // Thread/discussion message
+    const pinBtn = tmsg.querySelector('[data-pin]');
+    const pinData = pinBtn?.dataset?.pin;
+    let nid, idx;
+    if (pinData) [nid, idx] = pinData.split(':');
+
+    const editItem = document.createElement('div');
+    editItem.className = 'admin-ctx-item';
+    editItem.textContent = 'Edit message';
+    editItem.onclick = () => {
+      closeAdminCtx();
+      const textEl = tmsg.querySelector('.tmsg-text');
+      if (!textEl) return;
+      const orig = textEl.textContent;
+      textEl.contentEditable = true;
+      textEl.focus();
+      textEl.style.outline = '1px solid var(--blue)';
+      textEl.onblur = () => {
+        textEl.contentEditable = false;
+        textEl.style.outline = '';
+        if (nid && idx !== undefined) {
+          const n = nodes[nid]; if (!n) return;
+          const isDisc = idx.startsWith('d');
+          const arr = isDisc ? n.discussion : n.thread;
+          const i = parseInt(isDisc ? idx.slice(1) : idx);
+          if (arr?.[i]) { arr[i].content = textEl.textContent; }
+        }
+      };
+    };
+    menu.appendChild(editItem);
+
+    const delItem = document.createElement('div');
+    delItem.className = 'admin-ctx-item danger';
+    delItem.textContent = 'Delete message';
+    delItem.onclick = () => {
+      closeAdminCtx();
+      if (nid && idx !== undefined) {
+        const n = nodes[nid]; if (!n) return;
+        const isDisc = idx.startsWith('d');
+        const arr = isDisc ? n.discussion : n.thread;
+        const i = parseInt(isDisc ? idx.slice(1) : idx);
+        if (arr) { arr.splice(i, 1); renderTree(); }
+      }
+    };
+    menu.appendChild(delItem);
+
+  } else if (tag) {
+    // Tag on node
+    const nodeId = nodeEl?.dataset?.nid || nodeEl?.querySelector('[data-hdr]')?.dataset?.hdr;
+    const tagText = tag.textContent.trim();
+
+    const editItem = document.createElement('div');
+    editItem.className = 'admin-ctx-item';
+    editItem.textContent = 'Edit tag';
+    editItem.onclick = () => {
+      closeAdminCtx();
+      showInlineEdit(tag, tagText, (newText) => {
+        if (nodeId) {
+          const n = nodes[nodeId]; if (!n) return;
+          const ti = n.tags?.findIndex(t => (t.text || t) === tagText);
+          if (ti >= 0) { n.tags[ti] = {text: newText, cls: n.tags[ti].cls || ''}; renderTree(); }
+        }
+      });
+    };
+    menu.appendChild(editItem);
+
+    const delItem = document.createElement('div');
+    delItem.className = 'admin-ctx-item danger';
+    delItem.textContent = 'Delete tag';
+    delItem.onclick = () => {
+      closeAdminCtx();
+      if (nodeId) {
+        const n = nodes[nodeId]; if (!n) return;
+        n.tags = (n.tags||[]).filter(t => (t.text || t) !== tagText);
+        renderTree();
+      }
+    };
+    menu.appendChild(delItem);
+
+    const addItem = document.createElement('div');
+    addItem.className = 'admin-ctx-item';
+    addItem.textContent = 'Add tag';
+    addItem.onclick = () => {
+      closeAdminCtx();
+      showInlineEdit(tag, '', (newText) => {
+        if (newText && nodeId) {
+          const n = nodes[nodeId]; if (!n) return;
+          if (!n.tags) n.tags = [];
+          n.tags.push({text: newText, cls: ''});
+          renderTree();
+        }
+      });
+    };
+    menu.appendChild(addItem);
+
+  } else if (listItem) {
+    // ENTITIES/AXIOMS/HYPOTHESES list item
+    const listItemText = listItem.textContent.replace(/^\u2022\s*/, '').trim().replace(/\s*\S+$/, '').trim(); // strip author suffix
+    const section = listItem.closest('.node-list-section');
+    const header = section?.querySelector('.node-list-header');
+    const listToggle = header?.dataset?.listToggle;
+    let nid, listName;
+    if (listToggle) [nid, listName] = listToggle.split(':');
+
+    // Find item index by text (supports both string and {text} format)
+    function findItemIdx(arr, txt) {
+      return arr.findIndex(it => (typeof it === 'string' ? it : it.text) === txt);
+    }
+
+    const editItem = document.createElement('div');
+    editItem.className = 'admin-ctx-item';
+    editItem.textContent = 'Edit item';
+    editItem.onclick = () => {
+      closeAdminCtx();
+      showInlineEdit(listItem, listItemText, (newText) => {
+        if (nid && listName) {
+          const n = nodes[nid]; if (!n) return;
+          const key = listName.toLowerCase() + '_list';
+          const arr = n[key];
+          if (arr) {
+            const i = findItemIdx(arr, listItemText);
+            if (i >= 0) {
+              if (typeof arr[i] === 'object') arr[i].text = newText;
+              else arr[i] = newText;
+              renderTree();
+            }
+          }
+        }
+      });
+    };
+    menu.appendChild(editItem);
+
+    const delItem = document.createElement('div');
+    delItem.className = 'admin-ctx-item danger';
+    delItem.textContent = 'Delete item';
+    delItem.onclick = () => {
+      closeAdminCtx();
+      if (nid && listName) {
+        const n = nodes[nid]; if (!n) return;
+        const key = listName.toLowerCase() + '_list';
+        const arr = n[key];
+        if (arr) {
+          const i = findItemIdx(arr, listItemText);
+          if (i >= 0) { arr.splice(i, 1); renderTree(); }
+        }
+      }
+    };
+    menu.appendChild(delItem);
+
+    const addListItem = document.createElement('div');
+    addListItem.className = 'admin-ctx-item';
+    addListItem.textContent = 'Add item';
+    addListItem.onclick = () => {
+      closeAdminCtx();
+      showInlineEdit(listItem, '', (newText) => {
+        if (newText && nid && listName) {
+          const n = nodes[nid]; if (!n) return;
+          const key = listName.toLowerCase() + '_list';
+          if (!n[key]) n[key] = [];
+          n[key].push({text: newText, author: 'user:You', policy: 'admin', ts: new Date().toISOString()});
+          renderTree();
+        }
+      });
+    };
+    menu.appendChild(addListItem);
+
+  } else if (tagsBar) {
+    // Right-click on tags area (not on specific tag) → Add tag
+    const nodeId = nodeEl?.dataset?.nid || nodeEl?.querySelector('[data-hdr]')?.dataset?.hdr;
+    const addTag = document.createElement('div');
+    addTag.className = 'admin-ctx-item';
+    addTag.textContent = 'Add tag';
+    addTag.onclick = () => {
+      closeAdminCtx();
+      showInlineEdit(tagsBar, '', (newText) => {
+        if (newText && nodeId) {
+          const n = nodes[nodeId]; if (!n) return;
+          if (!n.tags) n.tags = [];
+          n.tags.push({text: newText, cls: ''});
+          renderTree();
+        }
+      });
+    };
+    menu.appendChild(addTag);
+
+  } else if (listSection) {
+    // Right-click on list section header → Add item
+    const header = listSection.querySelector('.node-list-header');
+    const listToggle = header?.dataset?.listToggle;
+    let nid, listName;
+    if (listToggle) [nid, listName] = listToggle.split(':');
+    const addItem = document.createElement('div');
+    addItem.className = 'admin-ctx-item';
+    addItem.textContent = 'Add item';
+    addItem.onclick = () => {
+      closeAdminCtx();
+      showInlineEdit(listSection, '', (newText) => {
+        if (newText && nid && listName) {
+          const n = nodes[nid]; if (!n) return;
+          const key = listName.toLowerCase() + '_list';
+          if (!n[key]) n[key] = [];
+          n[key].push({text: newText, author: 'user:You', policy: 'admin', ts: new Date().toISOString()});
+          renderTree();
+        }
+      });
+    };
+    menu.appendChild(addItem);
+  }
+
+  if (menu.children.length) {
+    document.body.appendChild(menu);
+    _adminCtx = menu;
+    // Keep menu in viewport
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 4) + 'px';
+    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 4) + 'px';
+  }
+});
+
 // Worker actions - same prompts as multi_agent_chat.html (no new hardcode)
 const WORKER_PROMPTS = {
   claims: (content) => `Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.
@@ -2172,6 +2844,18 @@ document.getElementById('btnAddWorker').addEventListener('click', () => {
   probeAndRegisterWorker(w);
 });
 renderWorkers();
+
+document.getElementById('btnStopWorkers').addEventListener('click', async () => {
+  // Abort JS-side fetches
+  if (_activeAbort) { _activeAbort.abort(); _activeAbort = null; }
+  // Abort generation on all workers (KoboldCpp-specific)
+  for (const w of workers) {
+    if (!w.url) continue;
+    try { await fetch(w.url.replace(/\/+$/, '') + '/api/extra/abort', {method: 'POST'}); } catch(_) {}
+  }
+  setS('ok', 'Stopped');
+});
+
 // Probe workers after server check completes
 setTimeout(probeAllWorkers, 3000);
 // Re-probe periodically
@@ -2423,9 +3107,10 @@ onThreadMessage('(claims)', (nodeId, msg) => {
   if (nodes[nodeId]?.workflowDriven) return;
   if (!msg.content?.trim()) return;
   const nd = nodes[nodeId]; if (!nd) return;
-  nd.entities_list = parseListFromText(msg.content, 'ENTITIES');
-  nd.axioms_list = parseListFromText(msg.content, 'AXIOMS');
-  nd.hypotheses_list = parseListFromText(msg.content, 'HYPOTHESES');
+  const claimsAuthor = msg.name || 'analyzer';
+  nd.entities_list = parseListFromText(msg.content, 'ENTITIES', 'worker:' + claimsAuthor, 'worker');
+  nd.axioms_list = parseListFromText(msg.content, 'AXIOMS', 'worker:' + claimsAuthor, 'worker');
+  nd.hypotheses_list = parseListFromText(msg.content, 'HYPOTHESES', 'worker:' + claimsAuthor, 'worker');
   renderTree();
 });
 

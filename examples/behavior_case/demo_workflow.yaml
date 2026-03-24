@@ -1,11 +1,11 @@
 dsl: workflow/v2
-
 let:
   input: >
-    написать 4 описания внешности демонши в разных образах
+    написать 4 описания внешности демониц в разных образах
     [проверить, что разные образы, разный цвет глаз,
-    разный цвет волос, разные позы]
-
+    разный цвет волос, разные позы,
+    в описании должны быть элементы, по которым даже без указания расы понятно, что перед тобой демоница,
+    стиль: аниме, должен быть явно указан в описании]
 flow:
   - bootstrap:
       in_parallel:
@@ -19,28 +19,22 @@ flow:
             temperature: $settings.temperature
             max_tokens: $settings.max_tokens
             tag: answer
-
   - parse_claims:
       from: $claims
       export: [$entities, $axioms, $hypotheses]
-
   - set:
       "@root.answer": $answer
-
   - analyzer -> $table:
       prompt: table($answer)
       temperature: 0.1
       max_tokens: 2048
       tag: table
-
   - parse_table:
       from: $table
       into: "@root.entities"
       export: $entity_nodes
-
   - set:
       "$entity_nodes": enrich_entities($entity_nodes, $answer)
-
   - "for $entity in $entity_nodes":
       - generator -> $endLineNumber:
           mode: probe_continue
@@ -65,7 +59,6 @@ flow:
           tag: trim
       - set:
           "$entity.answer": slice_lines($answer, $entity._startNum, $endLineNumber)
-      # Confirm answer was generated (1-token self-check via reaction)
       - generator -> $confirmed:
           mode: probe_continue
           grammar: |
@@ -86,42 +79,71 @@ flow:
           max_tokens: 2
           temperature: 0
           tag: confirm
-
   - verify_axioms:
       items: concat($axioms, $hypotheses)
       answer: $answer
       table: $table
       worker: analyzer
       tag: verify
-
+  - "for $entity in $entity_nodes":
+      - analyzer -> $style_check:
+          mode: probe_continue
+          grammar: |
+            root ::= digit term
+            digit ::= "0" | "1"
+            term ::= " " | "\n" | "\""
+          capture:
+            regex: "[01]"
+            coerce: int
+          stop: [" ", "\n", "\""]
+          messages:
+            - user: |
+                Описание:
+                {$entity.answer}
+                Вопрос: Соответствует ли стиль "аниме"?
+            - assistant: |
+                <think>
+                ((стиль аниме) == true) ===
+          max_tokens: 2
+          temperature: 0
+          tag: style_check
+      - set:
+          "$entity.style_check": $style_check
+  - "for $entity in $entity_nodes":
+      - analyzer -> $reaction:
+          prompt: |
+            Evaluate this text. Reply PASS if good, FAIL + reason if not.
+            {$entity.answer}
+          temperature: 0.2
+          max_tokens: 512
+          no_think: true
+          tag: check
+      - set:
+          "$entity.reaction": $reaction
+          "$entity.reactionStatus": check_status($reaction)
+      - comfyui:
+          workflow: "C:/Users/vAiry/.lmstudio/models/Z-Image +LoRA.json"
+          node: "6"
+          field: "text"
+          value: $entity.answer
+          server: "http://127.0.0.1:8188"
+          export: $entity.imageUrl
 triggers:
   check:
     - "for $entity in $entity_nodes":
         - analyzer -> $reaction:
             prompt: |
               Evaluate this text. Reply PASS if good, FAIL + reason if not.
-
               {$entity.answer}
+            no_think: true
             tag: check
         - set:
             "$entity.reaction": $reaction
             "$entity.reactionStatus": check_status($reaction)
-
   generate:
     - "for $entity in $entity_nodes":
-        - analyzer -> $reaction:
-            prompt: |
-              Evaluate this text. Reply PASS if good, FAIL + reason if not.
-
-              {$entity.answer}
-            temperature: 0.2
-            max_tokens: 512
-            tag: check
-        - set:
-            "$entity.reaction": $reaction
-            "$entity.reactionStatus": check_status($reaction)
         - comfyui:
-            workflow: "C:/Users/vAiry/.lmstudio/models/qwen t2i.json"
+            workflow: "C:/Users/vAiry/.lmstudio/models/Z-Image +LoRA.json"
             node: "6"
             field: "text"
             value: $entity.answer
