@@ -987,6 +987,11 @@ body {
   <div style="display:flex;gap:4px;padding:4px 8px;align-items:center;flex-shrink:0;cursor:pointer" id="atomicChatHeader">
     <span id="atomicChatToggle" style="font-size:9px;color:var(--text-dim)">▾</span>
     <span style="font-size:10px;color:var(--accent3);font-weight:600">Pipeline Chat</span>
+    <select id="atomicChatContextMode" title="Atomic chat context mode" style="font-size:9px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px" onclick="event.stopPropagation()">
+      <option value="compact">compact</option>
+      <option value="full">full</option>
+      <option value="full_recipes">full+recipes</option>
+    </select>
     <select id="atomicChatRole" style="font-size:9px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;margin-left:auto" onclick="event.stopPropagation()">
       <option value="analyzer">analyzer</option>
       <option value="generator">generator</option>
@@ -1609,13 +1614,24 @@ function buildAtomicWorkerTraceSummary() {
   return `Atomic pipeline steps:\n${stepLines}\n\nAtomic entities:\n${entitySummary}`;
 }
 
+function getAtomicChatContextMode() {
+  return localStorage.getItem('atomic_chat_context_mode') || document.getElementById('atomicChatContextMode')?.value || 'compact';
+}
+
 function expandWorkerAliases(text, worker) {
   let out = String(text || '');
+  const compactHelp = globalItems.find(g => g.name === 'dsl_help')?.text || NORMALIZED_DSL_HELP;
+  const fullHelp = globalItems.find(g => g.name === 'dsl_help_full')?.text || DEFAULT_DSL_HELP_FULL;
+  const recipesHelp = globalItems.find(g => g.name === 'atomic_recipes')?.text || DEFAULT_ATOMIC_RECIPES;
   const aliases = {
     '@alias.atomic.console_recent': formatAtomicConsoleRecent(worker?.console_lines || 8) || 'none',
     '@alias.atomic.trace_summary': buildAtomicWorkerTraceSummary(),
     '@alias.atomic.pipeline_steps': pipelineSteps.map((s, i) => `${i + 1}. ${s.cmd}`).join('\n') || 'none',
     '@alias.atomic.scope': Object.keys(atomicEntities || {}).map(n => '@' + n).join(', ') || 'empty',
+    '@alias.atomic.dsl_help': compactHelp,
+    '@alias.atomic.dsl_help_full': fullHelp,
+    '@alias.atomic.recipes': recipesHelp,
+    '@alias.atomic.chat_context_mode': getAtomicChatContextMode(),
   };
   Object.entries(aliases).forEach(([key, value]) => {
     out = out.split(key).join(value);
@@ -3635,7 +3651,7 @@ function renderWorkers() {
       <button class="btn" style="padding:1px 5px;font-size:9px" onclick="workers.splice(${i},1);saveWorkers();renderWorkers()">x</button>
     </div>${badges ? `<div style="margin:-1px 0 4px 12px;font-size:9px;color:var(--text-dim)">${esc(badges)}</div>` : ''}`;
   }).join('');
-  const aliasHint = `<div style="margin-top:6px;font-size:9px;color:var(--text-dim);line-height:1.35">aliases: <code>@alias.atomic.console_recent</code>, <code>@alias.atomic.trace_summary</code>, <code>@alias.atomic.pipeline_steps</code>, <code>@alias.atomic.scope</code></div>`;
+  const aliasHint = `<div style="margin-top:6px;font-size:9px;color:var(--text-dim);line-height:1.35">aliases: <code>@alias.atomic.console_recent</code>, <code>@alias.atomic.trace_summary</code>, <code>@alias.atomic.pipeline_steps</code>, <code>@alias.atomic.scope</code>, <code>@alias.atomic.dsl_help_full</code>, <code>@alias.atomic.recipes</code></div>`;
   el.innerHTML = rows + aliasHint;
 }
 
@@ -3643,7 +3659,7 @@ function editWorkerSettings(index, anchorEl) {
   const worker = workers[index];
   if (!worker) return;
   showNamePopup(anchorEl, {label: `Worker settings: ${worker.name}`, fields: [
-    {name: 'prompt_prefix', label: 'Prompt prefix', default: worker.prompt_prefix || '', multiline: true, placeholder: 'Optional system guidance. Supports @alias.atomic.console_recent and @alias.atomic.trace_summary'},
+    {name: 'prompt_prefix', label: 'Prompt prefix', default: worker.prompt_prefix || '', multiline: true, placeholder: 'Optional system guidance. Supports @alias.atomic.console_recent, @alias.atomic.trace_summary, @alias.atomic.dsl_help_full, @alias.atomic.recipes'},
     {name: 'prompt_suffix', label: 'Prompt suffix', default: worker.prompt_suffix || '', multiline: true, placeholder: 'Optional closing note'},
     {name: 'include_atomic_console', label: 'Include recent atomic console (0/1)', default: worker.include_atomic_console ? '1' : '0', placeholder: '0 or 1'},
     {name: 'include_atomic_trace', label: 'Include atomic trace summary (0/1)', default: worker.include_atomic_trace ? '1' : '0', placeholder: '0 or 1'},
@@ -4391,10 +4407,12 @@ function renderAtomicMsg(msg) {
   let h = `<div class="atomic-msg-hdr"><span class="role">${esc(msg.role)}</span>`;
   h += `<span>${new Date(msg.ts).toLocaleTimeString()}</span>`;
   h += `</div>`;
-  // Content — editable for user/tool messages, hidden if user msg has entities (text lives in entity)
+  // Content — editable for user/tool messages
+  // Hide content only for assign_value user msgs (text lives in entity), show for tool commands
   const hasEntities = msg.entities && msg.entities.length > 0;
   const content = msg.content.replace(/@([\w]+(?:\.[\w]+)*)/g, '<span class="atomic-ref">@$1</span>');
-  if (!hasEntities || msg.role !== 'user') {
+  const isAssignValue = msg.role === 'user' && hasEntities && !msg._showContent;
+  if (!isAssignValue || msg.role !== 'user') {
     h += `<div class="atomic-msg-content" contenteditable="true" data-msg-id="${msg.id}">${content}</div>`;
   }
   // Call params + debug (collapsed by default)
@@ -6367,16 +6385,34 @@ async function handleAtomicInput(text, options = {}) {
   }
 
   if (parsed.kind === 'assign_tool') {
-    if (opts.showUser) addAtomicMsg('user', parsed.canonical);
+    const entsBefore = new Set(Object.keys(atomicEntities));
+    const userMsg = opts.showUser ? addAtomicMsg('user', parsed.canonical) : null;
+    if (userMsg) userMsg._showContent = true;
     renderAtomicFeed();
     await applyAtomicTool(parsed.tool, parsed.args, {record: opts.recordPipeline, recordCmd: parsed.canonical, outName: parsed.name});
+    if (userMsg) {
+      const newEnts = Object.keys(atomicEntities).filter(n => !entsBefore.has(n));
+      const inputRefs = (parsed.args || []).filter(a => a.startsWith('@')).map(a => a.slice(1)).filter(n => atomicEntities[n]);
+      userMsg.entities = [...new Set([...inputRefs, ...newEnts])];
+      saveAtomicState();
+      renderAtomicFeed();
+    }
     return;
   }
 
   if (parsed.kind === 'tool') {
-    if (opts.showUser) addAtomicMsg('user', parsed.canonical);
+    const entsBefore = new Set(Object.keys(atomicEntities));
+    const userMsg = opts.showUser ? addAtomicMsg('user', parsed.canonical) : null;
+    if (userMsg) userMsg._showContent = true;
     renderAtomicFeed();
     await applyAtomicTool(parsed.tool, parsed.args, {record: opts.recordPipeline, recordCmd: parsed.canonical});
+    if (userMsg) {
+      const newEnts = Object.keys(atomicEntities).filter(n => !entsBefore.has(n));
+      const inputRefs = (parsed.args || []).filter(a => a.startsWith('@')).map(a => a.slice(1)).filter(n => atomicEntities[n]);
+      userMsg.entities = [...new Set([...inputRefs, ...newEnts])];
+      saveAtomicState();
+      renderAtomicFeed();
+    }
     return;
   }
 
@@ -8240,7 +8276,7 @@ async function toolGenerate(args, meta = {}) {
   }
   let grammar = opts.grammar || undefined;
   if (grammar && grammar.startsWith('$grammar.')) grammar = atomicGrammars[grammar.slice(9)] || grammar;
-  const continueOn = opts.continue !== undefined ? opts.continue !== 'false' : noThink;
+  const continueOn = opts.continue !== undefined ? opts.continue !== 'false' : (mode === 'continue');
   const captureRegex = opts.capture || undefined;
   const coerce = opts.coerce || undefined;
   let untilContains = opts.until_contains ?? opts.until ?? undefined;
@@ -10468,12 +10504,285 @@ Rules:
 - All generate() must have explicit @result = assignment
 - Options as key:value, not positional`;
 
+const DEFAULT_DSL_HELP_FULL = `You are a senior Atomic DSL builder. Generate valid, minimal, executable Atomic DSL for the user's request.
+
+Atomic DSL is the low-level runtime/data language. Treat it as a dataflow pipeline over entities.
+
+Core model:
+- @name is a local entity or value
+- $config.name is a global text/table config item
+- @name.field accesses a derived field such as @constraints.entities
+- Every generated result should be bound with explicit assignment
+- Prefer plain local transforms over bespoke helper tools when possible
+
+Assignment:
+  @input = $config.prompt
+  @note = "short text"
+  @doc = """multi
+line
+text"""
+
+Important:
+- Do not write @a = @b
+- Assignment supports literals and $config.* sources
+- If an entity already exists, pass it directly to tools: generate(@a), parse_sections(@a, ...)
+
+Main tool calls:
+  @answer = generate(@input)
+  @claims = generate($config.prompt_claims, worker:analyzer, input:@input, think:true)
+  @sections = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
+  @parts = split(@answer)
+  @slice = slice(@answer, "FROM:", "TO:")
+  @table = parse_table(@md_table)
+  @rows = row_count(@table)
+  @col = get_column(@table, "prompt")
+
+In-place calls:
+  set_text(@chat, user, $config.prompt)
+  append_text(@chat, assistant, @draft.answer)
+  tag(@entity, key:"value")
+  untag(@entity, key)
+
+Reactive form:
+  on @input -> @draft = generate(@input)
+  on @draft -> @constraints = parse_sections(@draft, entities:"ENTITIES:", axioms:"AXIOMS:")
+
+Loop form:
+  loop(while:@need_more, max_iters:4) {
+    @parsed = parse_table(@table_text)
+    @rows = row_count(@parsed)
+    @need_more = lt(@rows, $config.target_rows)
+  }
+
+Generate options:
+- worker:generator|analyzer|verifier
+- think:true|false
+- no_think:true|false
+- temperature:0.2
+- max_tokens:2048
+- mode:prompt|continue|probe_continue
+- continue:true|false
+- input:@ref
+- grammar:$grammar.name
+- stop:"\\n"
+- capture:"regex"
+- coerce:"int|string|float"
+
+Table/data helpers:
+- concat, prepend, join, lines, len, repeat, chunk, flatten
+- take, slice_list, unique, first, last, zip, map_template, sort, reverse
+- find_in_table, pick_fields, to_kv_table, table_header, reshape_grid
+- filter_rows, reject_reasons, accepted_list
+- add, sub, eq, lt, lte, gt, gte, not, guard
+
+Preferred patterns:
+1. Start from config refs, not long inline prompts
+2. Keep the pipeline minimal
+3. Use explicit outputs
+4. Use key:value options
+5. Prefer think:true instead of legacy no_think:false wording
+6. If the user wants staged continuation, use set_text/append_text with a chat entity
+7. If the user wants table/header logic, build it from transforms, unless a dedicated helper is already appropriate
+
+Output contract:
+- Return only DSL inside a \`\`\`pipeline code block
+- No prose inside the block
+- If explanation is needed, keep it to 1-2 short sentences before the block
+- Do not emit editor commands unless explicitly requested
+
+Editor commands that exist but are not runtime DSL:
+- /save_macro(name)
+- /run_macro(name)
+- /rename_macro(old, new)
+- /delete_macro(name)
+- /export_macro(name)
+- /import_macro(json)
+- /export_dsl(name)
+- /export_trace(json|md)
+- /diff_trace(json|md)
+
+When in doubt:
+- prefer valid short pipelines over ambitious but invalid ones
+- prefer existing config refs over invented long prompt text
+- prefer direct entity usage over aliasing`;
+
+const DEFAULT_ATOMIC_RECIPES = `Atomic recipes, patterns and complete workflows:
+
+== TOOL REFERENCE ==
+
+LLM tools (call server, return text):
+  @answer = generate(@input)                          — basic generation from entity text
+  @answer = generate(@input, worker:analyzer)         — use specific worker role
+  @answer = generate(@input, think:true)              — enable thinking
+  @answer = generate(@input, temperature:0.2)         — custom temperature
+  @answer = generate(@input, max_tokens:2048)         — limit output length
+  @answer = generate(@input, stop:"\\n")               — stop at delimiter
+  @answer = generate(@input, mode:continue)           — continue existing text
+  @answer = generate(@chat, mode:probe_continue)      — probe then continue
+  @answer = generate($config.prompt, input:@src)      — use config prompt, inject @src as @input
+
+Text parsing tools (no LLM, instant):
+  @sections = parse_sections(@text, sec1:"HEADER1:", sec2:"HEADER2:")  — split by headers into named entities
+  @parts = split(@text)                               — auto-detect list format, return items table
+  @slice = slice(@text, "FROM:", "TO:")                — extract text between delimiters
+  @numbered = numbered(@text)                         — add line numbers
+
+Table tools:
+  @parsed = parse_table(@md_text)                     — parse markdown table into data_area
+  @rows = row_count(@parsed)                          — count rows
+  @col = get_column(@parsed, "column_name")           — extract single column as list
+  @found = find_in_table(@parsed, "col", "val", match:contains)  — search rows
+  @accepted = accepted_list(@table, checks:@axioms)   — rows where all checks = yes
+  @rejected = reject_reasons(@table, checks:@axioms)  — rows with rejection details
+  @filtered = filter_rows(@table, where:all_yes, checks:@axioms) — filter passing rows
+  @split = split_rows(@table)                         — each row becomes separate entity
+
+List tools:
+  @merged = concat(@list1, @list2)                    — merge two lists
+  @with_prefix = prepend(@list, "prefix_item")        — add item at start
+  @str = join(@list, sep:" | ", prefix:"| ", suffix:" |")  — join into string
+  @n = len(@list)                                     — count items
+  @repeated = repeat("---", count:5)                  — repeat value N times
+  @chunks = chunk(@list, size:3)                      — split into groups
+  @top = take(@list, count:3)                         — first N items
+  @sub = slice_list(@list, start:1, end:3)            — range of items
+  @uniq = unique(@list)                               — deduplicate
+  @first_item = first(@list)                          — first item
+  @last_item = last(@list)                            — last item
+  @pairs = zip(@list1, @list2)                        — pair items
+  @mapped = map_template(@list, "[$n] {$item}")       — format each item
+  @sorted = sort(@list, mode:text)                    — sort items
+  @rev = reverse(@list)                               — reverse order
+  @flat = flatten(@nested)                            — flatten nested list
+
+Entity mutation tools (modify in place):
+  set_text(@entity, user, "text")                     — set text_area by name
+  append_text(@entity, assistant, @other.answer)      — append to text_area
+  tag(@entity, key:"value")                           — set tag
+  untag(@entity, key)                                 — remove tag
+  add_text(@entity, area_name, "content")             — add new text_area
+  merge(@target, @source)                             — merge source into target
+  rename(@old, @new)                                  — rename entity
+  drop(@entity)                                       — delete entity
+
+Data transform tools:
+  @fields = pick_fields(@entity, field1, field2)      — select specific fields
+  @kv = to_kv_table(@fields)                          — convert to key-value table
+  @header = table_header(@list)                       — list to markdown header row
+  @grid = reshape_grid(@list, cols:3)                 — reshape into grid
+
+Math/logic tools:
+  @sum = add(@a, @b)        @diff = sub(@a, @b)
+  @ok = eq(@a, @b)          @less = lt(@a, @b)
+  @lte = lte(@a, @b)        @more = gt(@a, @b)
+  @gte = gte(@a, @b)        @neg = not(@flag)
+  guard(@flag, "error message if false")              — halt pipeline if false
+
+Control flow:
+  on @input -> @result = generate(@input)             — reactive trigger
+  loop(while:@flag, max_iters:5) { ... }              — conditional loop
+
+== WORKFLOW EXAMPLES ==
+
+WORKFLOW 1: Analyze text → extract claims → verify
+Step by step: load prompt, generate analysis, parse into sections, check
+
+\`\`\`pipeline
+@input = $config.prompt
+@claims = generate($config.prompt_claims, worker:analyzer, input:@input, think:true)
+@constraints = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
+\`\`\`
+
+Result: @constraints.entities (list), @constraints.axioms (list), @constraints.hypotheses (list)
+
+WORKFLOW 2: Generate answer with seeded chat (think injection)
+Step by step: create session, set user prompt, seed assistant with think tags, continue generation
+
+\`\`\`pipeline
+@chat = "session"
+set_text(@chat, user, $config.prompt)
+set_text(@chat, assistant, "<think>\\n\\n</think>\\n\\n")
+@draft = generate(@chat, mode:continue, continue:true, temperature:0.6, max_tokens:2048)
+\`\`\`
+
+Result: @draft.answer has the generated text, @chat has full conversation
+
+WORKFLOW 3: Build markdown table from extracted entities
+Step by step: take column names from entities+axioms, build header row, build separator row
+
+\`\`\`pipeline
+@cols = concat(@constraints.entities, @constraints.axioms)
+@cols1 = prepend(@cols, "#")
+@header = join(@cols1, sep:" | ", prefix:"| ", suffix:" |")
+@n = len(@cols1)
+@sep_cells = repeat("---", count:@n)
+@sep = join(@sep_cells, sep:"|", prefix:"|", suffix:"|")
+@table_head = lines(@header, @sep)
+\`\`\`
+
+Result: @table_head has markdown table header ready for filling
+
+WORKFLOW 4: Fill table row by row in a loop
+Step by step: parse current table, count rows, loop until target reached
+
+\`\`\`pipeline
+@parsed = parse_table(@table_text)
+@rows = row_count(@parsed)
+@need_more = lt(@rows, $config.target_rows)
+loop(while:@need_more, max_iters:$config.max_table_iters) {
+  @chunk = generate(@chat, mode:continue, continue:false, temperature:0.1, max_tokens:1024, stop:"\\n\\n\\n")
+  append_text(@chat, assistant, @chunk.answer)
+  append_text(@table_text, content, @chunk.answer)
+  @parsed = parse_table(@table_text)
+  @rows = row_count(@parsed)
+  @need_more = lt(@rows, $config.target_rows)
+}
+\`\`\`
+
+WORKFLOW 5: Post-process table — filter, extract, export
+Step by step: parse table, get specific column, find accepted/rejected rows
+
+\`\`\`pipeline
+@parsed = parse_table(@table)
+@rows = row_count(@parsed)
+@prompts = get_column(@parsed, "prompt")
+@accepted = accepted_list(@table, checks:@constraints.axioms)
+@rejected = reject_reasons(@table, checks:@constraints.axioms)
+\`\`\`
+
+WORKFLOW 6: Multi-step generation with structured output
+Step by step: generate draft, parse sections, generate per-section, merge
+
+\`\`\`pipeline
+@input = $config.prompt
+@draft = generate(@input, worker:generator, temperature:0.7, max_tokens:4096)
+@sections = parse_sections(@draft, intro:"## Intro", body:"## Body", conclusion:"## Conclusion")
+@refined_intro = generate($config.prompt_refine, input:@sections.intro, worker:generator, temperature:0.3)
+@refined_body = generate($config.prompt_refine, input:@sections.body, worker:generator, temperature:0.3)
+@final = concat(@refined_intro.answer, @refined_body.answer)
+\`\`\`
+
+== COMMON MISTAKES ==
+- @a = @b is INVALID — assignment only works with literals "text" or $config.ref
+- generate() without assignment loses the result — always write @result = generate(...)
+- Do not hardcode long prompt text — use $config.prompt_name instead
+- parse_sections needs colon-terminated headers: sec:"HEADER:" not sec:"HEADER"
+- Do not use editor commands (/save_macro, /export) in runtime pipelines`;
+
+const DEFAULT_DSL_HELP_RICH = `${DEFAULT_DSL_HELP_FULL}
+
+Recipes:
+${DEFAULT_ATOMIC_RECIPES}`;
+
 // Create $config.dsl_help if missing
 (function() {
   if (!globalItems.find(g => g.name === 'dsl_help')) {
-    globalItems.push({type: 'text', name: 'dsl_help', text: DEFAULT_DSL_HELP});
+    globalItems.push({type: 'text', name: 'dsl_help', text: DEFAULT_DSL_HELP_RICH});
     saveGlobalItems();
   }
+  ensureGlobalTextItem('dsl_help_full', DEFAULT_DSL_HELP_FULL);
+  ensureGlobalTextItem('atomic_recipes', DEFAULT_ATOMIC_RECIPES);
+  saveGlobalItems();
 })();
 
 function ensureGlobalTextItem(name, text) {
@@ -10754,214 +11063,29 @@ Rules:
   if (changedMacros) saveMacros();
 })();
 
-const LEGACY_NORMALIZED_DSL_HELP = `You are a pipeline builder. Generate short valid Atomic DSL.
+const LEGACY_NORMALIZED_DSL_HELP = DEFAULT_DSL_HELP_RICH;
 
-Core syntax:
-  @name = "text"
-  @name = """multiline text"""
-  @name = $config.input
-  @out = generate(@input, worker:analyzer, input:@input, think:true)
-  @out = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
-  @out = split(@text)
-  @out = slice(@text, "FROM:", "TO:")
-  set_text(@chat, user, $config.prompt)
-  append_text(@chat, assistant, @draft.answer)
-  tag(@entity, key:"value")
-  untag(@entity, key)
-  on @dep1, @dep2 -> @out = generate(@dep1)
-  loop(while:@need_more, max_iters:4) {
-    @parsed = parse_table(@table)
-    @rows = row_count(@parsed)
-    @need_more = lt(@rows, $config.target_rows)
-  }
-
-Names:
-  @name        local entity
-  $config.name global param
-  @name.field  entity field
-
-Options:
-  worker:generator|analyzer|verifier
-  think:true|false
-  temperature:0.2
-  max_tokens:2048
-  mode:prompt|continue|probe_continue
-  continue:true|false
-  input:@ref
-  grammar:$grammar.name
-  stop:"\\n"
-
-Staged chat pattern:
-  @chat = "session"
-  set_text(@chat, user, $config.prompt)
-  set_text(@chat, assistant, "<think>\\n\\n</think>\\n\\n")
-  @draft = generate(@chat, mode:continue, continue:true)
-  append_text(@chat, assistant, @draft.answer)
-  append_text(@chat, assistant, "\\n\\n| # | col1 | col2 |\\n|---|---|---|\\n| 1 |")
-  @table = generate(@chat, mode:continue, temperature:0.1, stop:"\\n\\n\\n")
-
-Editor commands:
-  /save_macro(name)
-  /run_macro(name)
-  /rename_macro(old, new)
-  /delete_macro(name)
-  /export_macro(name)
-  /import_macro(json)
-  /export_dsl(name)
-  /export_trace(json|md)
-  /diff_trace(json|md)
-  /rename(@old, new)
-  /drop(@entity)
-  /list_macros()
-
-Rules:
-- Output only DSL inside a \\\`\\\`\\\`pipeline code block
-- Prefer $config.* over long inline prompt text
-- Prefer explicit @out = ... assignments
-- Do not write @a = @b. Assignment only supports literals and $config.* sources
-- If you already have an entity, pass it directly to tools like generate(@a) or parse_sections(@a, ...)
-- Preferred pattern:
-  @input = $config.prompt
-  @claims = generate($config.prompt_claims, worker:analyzer, input:@input)
-  generate(@input)
-- Use key:value options, not positional analyzer/no_think syntax
-- Keep the pipeline minimal`;
-
-const NORMALIZED_DSL_HELP = `You are a pipeline builder. Generate short valid Atomic DSL.
-
-Core syntax:
-  @name = "text"
-  @name = """multiline text"""
-  @name = $config.input
-  @out = generate(@input, worker:analyzer, input:@input, think:true)
-  @out = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
-  @out = split(@text)
-  @out = slice(@text, "FROM:", "TO:")
-  @out = concat(@a, @b)
-  @out = flatten(@grid)
-  @out = table_header(@entities, @axioms)
-  @out = prepend(@list, "#")
-  @out = join(@list, sep:" | ", prefix:"| ", suffix:" |")
-  @out = join_list(@list, sep:" | ")
-  @out = len(@list)
-  @out = repeat("---", count:@n)
-  @out = chunk(@list, size:2)
-  @out = take(@list, count:3)
-  @out = slice_list(@list, start:1, end:3)
-  @out = unique(@list)
-  @out = first(@list)
-  @out = last(@list)
-  @out = zip(@list_a, @list_b)
-  @out = map_template(@list, "[$n] {$item}")
-  @out = sort(@list, mode:text)
-  @out = reverse(@list)
-  @out = find_in_table(@table, "prompt", "anime", match:contains)
-  @out = pick_fields(@constraints, entities, axioms)
-  @out = to_kv_table(@picked)
-  @out = reshape_grid(@value, cols:2)
-  @out = lines(@header, @sep)
-  @out = parse_table(@table)
-  @out = row_count(@table)
-  @out = get_column(@table, "prompt")
-  @out = split_rows(@table, "prompt")
-  @out = add(@a, @b)
-  @out = sub(@a, @b)
-  @out = eq(@a, @b)
-  @out = lt(@a, @b)
-  @out = lte(@a, @b)
-  @out = gt(@a, @b)
-  @out = gte(@a, @b)
-  @out = not(@cond)
-  @out = guard(@cond, @value)
-  @out = filter_rows(@table, where:all_yes, checks:@axioms)
-  @out = reject_reasons(@table, checks:@axioms)
-  @out = accepted_list(@table, checks:@axioms)
-  set_text(@chat, user, $config.prompt)
-  append_text(@chat, assistant, @draft.answer)
-  tag(@entity, key:"value")
-  untag(@entity, key)
-  on @dep1, @dep2 -> @out = generate(@dep1)
-
-Names:
-  @name        local entity
-  $config.name global param
-  @name.field  entity field
-
-Options:
-  worker:generator|analyzer|verifier
-  think:true|false
-  temperature:0.2
-  max_tokens:2048
-  mode:prompt|continue|probe_continue
-  continue:true|false
-  input:@ref
-  grammar:$grammar.name
-  stop:"\\n"
-
-Pure transforms:
-  concat/prepend/repeat/chunk work on lists
-  join/lines work on text output
-  len returns a scalar length
-  data areas like @constraints.entities resolve as plain lists
-  markdown tables can be filtered locally
-  add/sub/eq/lt/lte/gt/gte/not are scalar primitives
-  guard emits output only when the condition is truthy
-  loop(...) { ... } repeats body while condition stays truthy
-  parse_table / row_count / get_column / split_rows are lower-level table wrappers
-  table_header / reshape_grid / join_list / filter_rows / reject_reasons / accepted_list are convenience sugar
-  flatten / take / slice_list / unique / first / last / zip / map_template / sort / reverse / find_in_table / pick_fields / to_kv_table are small local data helpers for list-heavy pipelines
-
-Example header build:
-  @cols = concat(@constraints.entities, @constraints.axioms)
-  @cols1 = prepend(@cols, "#")
-  @header = join(@cols1, sep:" | ", prefix:"| ", suffix:" |")
-  @n = len(@cols1)
-  @sep_cells = repeat("---", count:@n)
-  @sep = join(@sep_cells, sep:"|", prefix:"|", suffix:"|")
-  @table_head = lines(@header, @sep)
-
-Editor commands:
-  /save_macro(name)
-  /run_macro(name)
-  /rename_macro(old, new)
-  /delete_macro(name)
-  /export_macro(name)
-  /import_macro(json)
-  /export_dsl(name)
-  /export_trace(json|md)
-  /diff_trace(json|md)
-  /rename(@old, new)
-  /drop(@entity)
-  /list_macros()
-
-Rules:
-- Output only DSL inside a \\\`\\\`\\\`pipeline code block
-- Prefer $config.* over long inline prompt text
-- Prefer explicit @out = ... assignments
-- Do not write @a = @b. Assignment only supports literals and $config.* sources
-- If you already have an entity, pass it directly to tools like generate(@a) or parse_sections(@a, ...)
-- Preferred pattern:
-  @input = $config.prompt
-  @claims = generate($config.prompt_claims, worker:analyzer, input:@input)
-  generate(@input)
-- Use key:value options, not positional analyzer/no_think syntax
-- Keep the pipeline minimal`;
+const NORMALIZED_DSL_HELP = DEFAULT_DSL_HELP_RICH;
 
 (function() {
   const helpItem = globalItems.find(g => g.name === 'dsl_help');
   if (!helpItem) return;
-  if (!helpItem.text || helpItem.text === DEFAULT_DSL_HELP || helpItem.text === LEGACY_NORMALIZED_DSL_HELP) {
+  if (!helpItem.text || helpItem.text === DEFAULT_DSL_HELP || helpItem.text === LEGACY_NORMALIZED_DSL_HELP || helpItem.text === NORMALIZED_DSL_HELP) {
     helpItem.text = NORMALIZED_DSL_HELP;
     saveGlobalItems();
   }
 })();
 
 function buildPipelineChatContext() {
-  // Read prompt from $config.dsl_help (editable by user)
-  const helpItem = globalItems.find(g => g.name === 'dsl_help');
-  const basePrompt = helpItem?.text || NORMALIZED_DSL_HELP;
+  const compactPrompt = globalItems.find(g => g.name === 'dsl_help')?.text || DEFAULT_DSL_HELP_RICH;
+  const fullPrompt = globalItems.find(g => g.name === 'dsl_help_full')?.text || DEFAULT_DSL_HELP_FULL;
+  const recipesPrompt = globalItems.find(g => g.name === 'atomic_recipes')?.text || DEFAULT_ATOMIC_RECIPES;
+  const mode = getAtomicChatContextMode();
+  let basePrompt = compactPrompt;
+  if (mode === 'full') basePrompt = `${fullPrompt}\n\nCompact operational reminder:\n${compactPrompt}`;
+  if (mode === 'full_recipes') basePrompt = `${fullPrompt}\n\nRecipes:\n${recipesPrompt}\n\nCompact operational reminder:\n${compactPrompt}`;
 
-  const configItems = (globalItems || []).filter(g => g.name !== 'dsl_help').map(g => {
+  const configItems = (globalItems || []).filter(g => !['dsl_help', 'dsl_help_full', 'atomic_recipes'].includes(g.name)).map(g => {
     if (g.type === 'text') {
       return `$config.${g.name}:\n"""${g.text}"""`;
     }
@@ -10991,6 +11115,15 @@ ${Object.entries(atomicEntities).map(([name, e]) => {
   });
   return parts.join(' | ');
 }).join('\n') || 'none'}`;
+}
+
+const atomicChatContextModeEl = document.getElementById('atomicChatContextMode');
+if (atomicChatContextModeEl) {
+  atomicChatContextModeEl.value = getAtomicChatContextMode();
+  atomicChatContextModeEl.addEventListener('change', () => {
+    localStorage.setItem('atomic_chat_context_mode', atomicChatContextModeEl.value || 'compact');
+    addAtomicChat('system', `Atomic chat context: ${atomicChatContextModeEl.value}`);
+  });
 }
 
 document.getElementById('btnAtomicChatSend').addEventListener('click', async () => {
