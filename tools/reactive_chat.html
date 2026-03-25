@@ -526,6 +526,7 @@ body {
 .pipeline-step { font-size:10px; color:var(--text-dim); padding:2px 4px; border-radius:3px; cursor:pointer; display:flex; align-items:center; gap:4px; }
 .pipeline-step:hover { background:var(--surface2); }
 .pipeline-step.selected { background:var(--accent3)22; color:var(--accent3); }
+.pipeline-step.active { background:var(--accent)33; border-left:2px solid var(--accent); }
 .pipeline-step input[type=checkbox] { margin:0; cursor:pointer; }
 .pipeline-insert { text-align:center; font-size:9px; color:var(--text-dim); cursor:pointer; height:8px; line-height:8px; opacity:0; transition:opacity .15s; }
 .pipeline-insert:hover { opacity:1; color:var(--accent3); }
@@ -3641,12 +3642,74 @@ function getScope() {
 }
 
 /* --- Rendering --- */
+var _selectedStepIdx = -1;
+
 function renderAtomicFeed() {
   const feed = document.getElementById('atomicFeed');
   feed.innerHTML = '';
-  atomicMessages.forEach(msg => feed.appendChild(renderAtomicMsg(msg)));
+  let stepIdx = 0;
+  atomicMessages.forEach(msg => {
+    const el = renderAtomicMsg(msg);
+    // Map USER messages to pipeline step indices
+    if (msg.role === 'user' && stepIdx < pipelineSteps.length) {
+      const idx = stepIdx++;
+      el.dataset.stepIdx = idx;
+      if (idx === _selectedStepIdx) el.classList.add('msg-selected');
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('[contenteditable]') || e.target.closest('input') || e.target.closest('button')) return;
+        _selectedStepIdx = (_selectedStepIdx === idx) ? -1 : idx;
+        feed.querySelectorAll('.msg-selected').forEach(m => m.classList.remove('msg-selected'));
+        if (_selectedStepIdx >= 0) el.classList.add('msg-selected');
+        renderPipelineSteps();
+      });
+    }
+    feed.appendChild(el);
+  });
   feed.scrollTop = feed.scrollHeight;
 }
+
+// Arrow keys to move selected pipeline step up/down
+document.addEventListener('keydown', (e) => {
+  if (activePage !== 'atomic' || _selectedStepIdx < 0) return;
+  if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+  if (e.key === 'ArrowUp' && _selectedStepIdx > 0) {
+    e.preventDefault();
+    const tmp = pipelineSteps[_selectedStepIdx];
+    pipelineSteps[_selectedStepIdx] = pipelineSteps[_selectedStepIdx - 1];
+    pipelineSteps[_selectedStepIdx - 1] = tmp;
+    _selectedStepIdx--;
+    renderPipelineSteps();
+    // Also swap corresponding messages in feed
+    const msgs = atomicMessages;
+    const userMsgIndices = msgs.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0);
+    const a = userMsgIndices[_selectedStepIdx], b = userMsgIndices[_selectedStepIdx + 1];
+    if (a !== undefined && b !== undefined) {
+      [msgs[a], msgs[b]] = [msgs[b], msgs[a]];
+    }
+    renderAtomicFeed();
+    // Scroll selected into view
+    document.querySelector('.msg-selected')?.scrollIntoView({block: 'nearest'});
+  } else if (e.key === 'ArrowDown' && _selectedStepIdx < pipelineSteps.length - 1) {
+    e.preventDefault();
+    const tmp = pipelineSteps[_selectedStepIdx];
+    pipelineSteps[_selectedStepIdx] = pipelineSteps[_selectedStepIdx + 1];
+    pipelineSteps[_selectedStepIdx + 1] = tmp;
+    _selectedStepIdx++;
+    renderPipelineSteps();
+    const msgs = atomicMessages;
+    const userMsgIndices = msgs.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0);
+    const a = userMsgIndices[_selectedStepIdx - 1], b = userMsgIndices[_selectedStepIdx];
+    if (a !== undefined && b !== undefined) {
+      [msgs[a], msgs[b]] = [msgs[b], msgs[a]];
+    }
+    renderAtomicFeed();
+    document.querySelector('.msg-selected')?.scrollIntoView({block: 'nearest'});
+  } else if (e.key === 'Escape') {
+    _selectedStepIdx = -1;
+    document.querySelectorAll('.msg-selected').forEach(m => m.classList.remove('msg-selected'));
+    renderPipelineSteps();
+  }
+});
 
 function renderAtomicMsg(msg) {
   const el = document.createElement('div');
@@ -3869,7 +3932,8 @@ function renderPipelineSteps() {
     const cls = _selectedPipelineSteps.has(i) ? ' selected' : '';
     const indent = step.parentGroup ? ' style="padding-left:16px;opacity:0.8"' : '';
     const isGroup = step.group ? ` data-group="${esc(step.group)}"` : '';
-    return `<div class="pipeline-step${cls}" data-idx="${i}"${indent}${isGroup}><input type="checkbox"${checked}><span>${esc(step.cmd)}</span></div><div class="pipeline-insert" data-pos="${i + 1}" title="Insert step here">+</div>`;
+    const active = i === _selectedStepIdx ? ' active' : '';
+    return `<div class="pipeline-step${cls}${active}" data-idx="${i}"${indent}${isGroup}><input type="checkbox"${checked}><span>${esc(step.cmd)}</span></div><div class="pipeline-insert" data-pos="${i + 1}" title="Insert step here">+</div>`;
   }).join('');
   el.innerHTML = html;
   el.querySelectorAll('.pipeline-step').forEach(row => {
