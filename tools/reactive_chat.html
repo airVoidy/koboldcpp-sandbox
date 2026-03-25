@@ -465,7 +465,10 @@ body {
 .at-tag .key { color:var(--accent2); }
 /* Text areas */
 .at-text-area { margin:4px 0; }
-.at-text-area-label { font-size:10px; color:var(--text-dim); margin-bottom:2px; }
+.at-text-area-label { font-size:10px; color:var(--text-dim); margin-bottom:2px; cursor:pointer; user-select:none; }
+.at-text-area-label:hover { color:var(--text); }
+.at-text-preview { color:var(--text-dim); font-style:italic; margin-left:4px; }
+.at-text-area.collapsed .at-text-area-content { display:none; }
 .at-text-area-content {
   background:var(--surface); border:1px solid var(--border); border-radius:4px;
   padding:4px 8px; font-size:12px; white-space:pre-wrap; word-break:break-word;
@@ -2489,6 +2492,83 @@ function showInlineEdit(anchorEl, oldValue, onSave) {
   if (pr.right > window.innerWidth) popup.style.left = (window.innerWidth - pr.width - 4) + 'px';
   if (pr.bottom > window.innerHeight) popup.style.top = (rect.top - pr.height - 4) + 'px';
 }
+/* Reusable name input popup — used for "Set as @entity", "Add tag", etc.
+   Shows at anchor position, calls onSubmit(value) on Enter/Save, Escape cancels.
+   options: {defaultValue, placeholder, label, multiline, fields:[{name,placeholder,default}]} */
+function showNamePopup(anchorEl, options, onSubmit) {
+  document.querySelectorAll('.name-popup').forEach(p => p.remove());
+  const rect = anchorEl?.getBoundingClientRect?.() || {left: event.clientX, top: event.clientY, bottom: event.clientY, width: 0};
+  const popup = document.createElement('div');
+  popup.className = 'name-popup';
+  popup.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.bottom+4}px;z-index:1002;background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:240px`;
+  // Label
+  if (options.label) {
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--accent)';
+    lbl.textContent = options.label;
+    popup.appendChild(lbl);
+  }
+  const inputs = [];
+  const fields = options.fields || [{name: '_value', placeholder: options.placeholder || 'name', default: options.defaultValue || ''}];
+  fields.forEach(f => {
+    if (f.label) {
+      const fl = document.createElement('label');
+      fl.style.cssText = 'font-size:10px;color:var(--text-dim);margin-bottom:-4px';
+      fl.textContent = f.label;
+      popup.appendChild(fl);
+    }
+    const inp = document.createElement(f.multiline ? 'textarea' : 'input');
+    inp.value = f.default || '';
+    inp.placeholder = f.placeholder || '';
+    inp.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;padding:5px 8px;font-family:inherit;width:100%;box-sizing:border-box';
+    if (f.multiline) { inp.rows = 3; inp.style.resize = 'vertical'; }
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+      if (e.key === 'Escape') { popup.remove(); }
+    });
+    popup.appendChild(inp);
+    inputs.push({name: f.name, el: inp});
+  });
+  // Buttons row
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:6px;justify-content:flex-end';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'font-size:11px;padding:3px 10px';
+  cancelBtn.onclick = () => popup.remove();
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn primary';
+  saveBtn.textContent = 'OK';
+  saveBtn.style.cssText = 'font-size:11px;padding:3px 10px';
+  const submit = () => {
+    if (fields.length === 1) {
+      const val = inputs[0].el.value.trim();
+      if (val) { onSubmit(val); popup.remove(); }
+    } else {
+      const vals = {};
+      inputs.forEach(i => { vals[i.name] = i.el.value.trim(); });
+      onSubmit(vals);
+      popup.remove();
+    }
+  };
+  saveBtn.onclick = submit;
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  popup.appendChild(btnRow);
+  document.body.appendChild(popup);
+  inputs[0].el.focus();
+  if (inputs[0].el.value) inputs[0].el.select();
+  // Keep in viewport
+  const pr = popup.getBoundingClientRect();
+  if (pr.right > window.innerWidth) popup.style.left = (window.innerWidth - pr.width - 8) + 'px';
+  if (pr.bottom > window.innerHeight) popup.style.top = Math.max(4, rect.top - pr.height - 4) + 'px';
+  // Click outside to close
+  setTimeout(() => {
+    const dismiss = (e) => { if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('mousedown', dismiss); } };
+    document.addEventListener('mousedown', dismiss);
+  }, 0);
+}
 let _adminCtx = null;
 function closeAdminCtx() { if (_adminCtx) { _adminCtx.remove(); _adminCtx = null; } }
 document.addEventListener('click', closeAdminCtx);
@@ -3535,6 +3615,17 @@ function renderAtomicMsg(msg) {
       }
     });
   });
+  // Bind text_area toggle (click label to expand/collapse)
+  el.querySelectorAll('[data-toggle-area]').forEach(lbl => {
+    lbl.addEventListener('click', () => {
+      const eName = lbl.closest('.at-entity').dataset.entity;
+      const aName = lbl.dataset.toggleArea;
+      const entity = atomicEntities[eName];
+      if (!entity) return;
+      const ta = entity.text_areas.find(a => a.name === aName);
+      if (ta) { ta._expanded = !ta._expanded; saveAtomicState(); renderAtomicFeed(); }
+    });
+  });
   // Bind text_area editing
   el.querySelectorAll('.at-text-area-content').forEach(div => {
     div.addEventListener('blur', () => {
@@ -3569,10 +3660,13 @@ function renderEntityCard(entity) {
     });
     h += `</div>`;
   }
-  // Text areas
+  // Text areas (collapsed by default, click label to expand)
   entity.text_areas.forEach(ta => {
-    h += `<div class="at-text-area">`;
-    h += `<div class="at-text-area-label">${esc(ta.name)}</div>`;
+    const collapsed = ta._expanded ? '' : ' collapsed';
+    const arrow = ta._expanded ? '▾' : '▸';
+    const preview = ta.text.length > 60 ? ta.text.slice(0, 60) + '…' : ta.text;
+    h += `<div class="at-text-area${collapsed}">`;
+    h += `<div class="at-text-area-label" data-toggle-area="${esc(ta.name)}">${arrow} ${esc(ta.name)} <span class="at-text-preview">${collapsed ? esc(preview) : ''}</span></div>`;
     h += `<div class="at-text-area-content" contenteditable="true" data-area="${esc(ta.name)}">${esc(ta.text)}</div>`;
     h += `</div>`;
   });
@@ -4518,30 +4612,35 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
     if (msg) {
       const items = [
         {label: 'Set as @entity', action: () => {
-          const name = prompt('Entity name:', 'input');
-          if (!name) return;
-          const entity = createEntity(name);
-          addTextArea(name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
-          msg.entities = msg.entities || [];
-          msg.entities.push(entity.name);
-          saveAtomicState();
-          renderAtomicFeed();
-          updateScopeList();
+          showNamePopup(msgEl, {label: 'Set as @entity', placeholder: 'entity name', defaultValue: 'input'}, (name) => {
+            createEntity(name);
+            addTextArea(name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
+            msg.entities = msg.entities || [];
+            msg.entities.push(name);
+            saveAtomicState();
+            renderAtomicFeed();
+            updateScopeList();
+          });
         }},
         {label: 'Set as @entity + table', action: () => {
-          const name = prompt('Entity name:');
-          if (!name) return;
-          const cols = prompt('Table columns (comma-separated):', 'Col1, Col2');
-          if (!cols) return;
-          const headers = cols.split(',').map(s => s.trim());
-          const entity = createEntity(name);
-          addTextArea(name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
-          addDataArea(name, 'data', headers, [headers.map(() => '')]);
-          msg.entities = msg.entities || [];
-          msg.entities.push(entity.name);
-          saveAtomicState();
-          renderAtomicFeed();
-          updateScopeList();
+          showNamePopup(msgEl, {
+            label: 'Set as @entity + table',
+            fields: [
+              {name: 'name', placeholder: 'entity name', label: 'Entity name'},
+              {name: 'columns', placeholder: 'Col1, Col2, Col3', label: 'Table columns (comma-separated)'}
+            ]
+          }, (vals) => {
+            if (!vals.name) return;
+            const headers = (vals.columns || 'Col1, Col2').split(',').map(s => s.trim());
+            createEntity(vals.name);
+            addTextArea(vals.name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
+            addDataArea(vals.name, 'data', headers, [headers.map(() => '')]);
+            msg.entities = msg.entities || [];
+            msg.entities.push(vals.name);
+            saveAtomicState();
+            renderAtomicFeed();
+            updateScopeList();
+          });
         }},
         {label: 'Delete message', danger: true, action: () => {
           const idx = atomicMessages.indexOf(msg);
@@ -4576,22 +4675,28 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
     if (hasText) {
       toolItems.push(
         {label: '▶ Table-as-query...', action: () => {
-          const cols = prompt('Table columns (comma-separated):');
-          if (!cols) return;
-          applyAtomicTool('table_as_query', [entityName, ...cols.split(',').map(s => s.trim())]);
+          showNamePopup(entityCard, {label: 'Table-as-query', placeholder: 'col1, col2, col3', fields: [
+            {name: 'columns', placeholder: 'Column names (comma-separated)', label: 'Columns'}
+          ]}, (vals) => {
+            if (!vals.columns) return;
+            applyAtomicTool('table_as_query', [entityName, ...vals.columns.split(',').map(s => s.trim())]);
+          });
         }},
         {label: '▶ Probe continue...', action: () => {
-          const inject = prompt('Inject text after think (optional):');
-          applyAtomicTool('probe_continue', inject ? [entityName, inject] : [entityName]);
+          showNamePopup(entityCard, {label: 'Probe continue', fields: [
+            {name: 'inject', placeholder: 'Text to inject after </think> (optional)', label: 'Inject text', multiline: true}
+          ]}, (vals) => {
+            applyAtomicTool('probe_continue', vals.inject ? [entityName, vals.inject] : [entityName]);
+          });
         }},
       );
     }
     if (hasTable && getScope().length > 1) {
       toolItems.push(
         {label: '▶ Verify against...', action: () => {
-          const other = prompt('Compare with entity (@name):', '');
-          if (!other) return;
-          applyAtomicTool('verify', [entityName, other.replace(/^@/, '')]);
+          showNamePopup(entityCard, {label: 'Verify against', placeholder: 'entity name', defaultValue: ''}, (other) => {
+            applyAtomicTool('verify', [entityName, other.replace(/^@/, '')]);
+          });
         }},
       );
     }
@@ -4599,45 +4704,52 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       ...toolItems,
       // Structural operations
       {label: 'Add tag', action: () => {
-        const key = prompt('Tag key:');
-        if (!key) return;
-        const val = prompt('Tag value:');
-        if (val === null) return;
-        addTag(entityName, key, val);
-        renderAtomicFeed();
+        showNamePopup(entityCard, {label: 'Add tag', fields: [
+          {name: 'key', placeholder: 'key', label: 'Tag key'},
+          {name: 'value', placeholder: 'value', label: 'Tag value'}
+        ]}, (vals) => {
+          if (!vals.key) return;
+          addTag(entityName, vals.key, vals.value || '');
+          renderAtomicFeed();
+        });
       }},
       {label: 'Add text area', action: () => {
-        const name = prompt('Text area name:', 'content');
-        if (!name) return;
-        const text = prompt('Text:');
-        if (text === null) return;
-        addTextArea(entityName, name, text);
-        renderAtomicFeed();
+        showNamePopup(entityCard, {label: 'Add text area', fields: [
+          {name: 'name', placeholder: 'area name', default: 'content', label: 'Name'},
+          {name: 'text', placeholder: 'Text content...', label: 'Text', multiline: true}
+        ]}, (vals) => {
+          if (!vals.name) return;
+          addTextArea(entityName, vals.name, vals.text || '');
+          renderAtomicFeed();
+        });
       }},
       {label: 'Add table', action: () => {
-        const name = prompt('Table name:', 'data');
-        if (!name) return;
-        const colsStr = prompt('Columns (comma-separated):', 'Col1, Col2');
-        if (!colsStr) return;
-        const headers = colsStr.split(',').map(s => s.trim());
-        addDataArea(entityName, name, headers, [headers.map(() => '')]);
-        renderAtomicFeed();
+        showNamePopup(entityCard, {label: 'Add table', fields: [
+          {name: 'name', placeholder: 'table name', default: 'data', label: 'Name'},
+          {name: 'columns', placeholder: 'Col1, Col2, Col3', label: 'Columns (comma-separated)'}
+        ]}, (vals) => {
+          if (!vals.name || !vals.columns) return;
+          const headers = vals.columns.split(',').map(s => s.trim());
+          addDataArea(entityName, vals.name, headers, [headers.map(() => '')]);
+          renderAtomicFeed();
+        });
       }},
       {label: 'Rename', action: () => {
-        const newName = prompt('New name:', entityName);
-        if (!newName || newName === entityName) return;
-        const entity = atomicEntities[entityName];
-        if (!entity) return;
-        delete atomicEntities[entityName];
-        entity.name = newName;
-        atomicEntities[newName] = entity;
-        atomicMessages.forEach(m => {
-          const idx = m.entities?.indexOf(entityName);
-          if (idx >= 0) m.entities[idx] = newName;
+        showNamePopup(entityCard, {label: 'Rename entity', placeholder: 'new name', defaultValue: entityName}, (newName) => {
+          if (!newName || newName === entityName) return;
+          const entity = atomicEntities[entityName];
+          if (!entity) return;
+          delete atomicEntities[entityName];
+          entity.name = newName;
+          atomicEntities[newName] = entity;
+          atomicMessages.forEach(m => {
+            const idx = m.entities?.indexOf(entityName);
+            if (idx >= 0) m.entities[idx] = newName;
+          });
+          saveAtomicState();
+          renderAtomicFeed();
+          updateScopeList();
         });
-        saveAtomicState();
-        renderAtomicFeed();
-        updateScopeList();
       }},
       {label: 'Delete', danger: true, action: () => {
         delete atomicEntities[entityName];
