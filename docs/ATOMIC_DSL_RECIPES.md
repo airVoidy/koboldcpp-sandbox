@@ -100,10 +100,94 @@ append_text(@chat, assistant, "\n\nCheck whether all looks are really distinct. 
 )
 ```
 
+## Accepted And Rejected
+
+```pipeline
+@parsed = parse_table(@table)
+@rows = row_count(@parsed)
+@labels = get_column(@parsed, "prompt")
+@row_items = split_rows(@parsed, "prompt")
+
+@accepted = accepted_list(@table, checks:@constraints.axioms)
+@accepted_rows = filter_rows(@table, where:all_yes, checks:@constraints.axioms)
+@rejected = reject_reasons(@table, checks:@constraints.axioms)
+```
+
+## Continue Until Row Target
+
+```pipeline
+@parsed = parse_table(@table)
+@rows = row_count(@parsed)
+@need_more = lt(@rows, $config.target_rows)
+
+loop(while:@need_more, max_iters:4) {
+  append_text(@chat, assistant, @table.answer)
+  @table = generate(
+    @chat,
+    mode:continue,
+    continue:false,
+    temperature:0.1,
+    max_tokens:1024,
+    stop:"\n\n\n"
+  )
+  @parsed = parse_table(@table)
+  @rows = row_count(@parsed)
+  @need_more = lt(@rows, $config.target_rows)
+}
+```
+
+## Parallel Answer + Constraints Verdict
+
+Recommended config seeds:
+- `$config.prompt_answer_table_rows`
+- `$config.prompt_constraints_strict`
+- `$config.target_rows`
+- `$config.max_table_iters`
+- `$config.hypothesis_cols`
+
+Seeded macro:
+
+```text
+/run_macro(parallel_answer_constraints_verdict)
+```
+
+What it does:
+- starts answer generation and analyzer constraints in parallel
+- waits for constraints before building the markdown answer table header
+- continues the answer table until `row_count(@parsed) >= $config.target_rows` or loop limit
+- derives `accepted`, `accepted_rows`, and `rejected`
+
+Main outputs:
+- `@constraints`
+- `@table_text`
+- `@parsed`
+- `@accepted`
+- `@accepted_rows`
+- `@rejected`
+
+## Hypothesis Verdict Table
+
+Seeded macro:
+
+```text
+/run_macro(hypothesis_verdict_table)
+```
+
+What it does:
+- generates strict constraints first
+- builds a separate markdown table from `@constraints.hypotheses`
+- continues until the hypothesis table has 2 rows or loop limit
+
+Main outputs:
+- `@constraints`
+- `@hyp_table_text`
+- `@hyp_parsed`
+- `@hyp_rows`
+
 ## Notes
 
 - `set_text` replaces one message field
 - `append_text` mutates the same message history
 - `mode:continue` is for normal continuation
 - `mode:probe_continue` is for short probes, captures, and gated checks
-- pure transforms let you build headers, separators, and small grids without bespoke tools
+- pure transforms let you build headers, separators, small grids, and accepted/rejected summaries without bespoke tools

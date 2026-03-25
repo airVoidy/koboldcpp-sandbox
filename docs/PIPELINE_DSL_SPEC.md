@@ -53,6 +53,21 @@ on @input -> @answer = generate(@input)
 on @answer -> @sections = parse_sections(@answer, entities:"ENTITIES:", axioms:"AXIOMS:")
 ```
 
+### Loop Block
+```pipeline
+loop(while:@need_more, max_iters:4) {
+  @parsed = parse_table(@table)
+  @rows = row_count(@parsed)
+  @need_more = lt(@rows, $config.target_rows)
+}
+```
+
+Rules:
+- `while:@cond` is required
+- `max_iters` is optional, default `8`
+- loop body runs with normal DSL semantics
+- body steps are not re-recorded as top-level pipeline steps on each iteration
+
 ## Tool Calls
 
 ### `generate`
@@ -109,6 +124,15 @@ These run locally and do not call an LLM:
 @grid = chunk(@items, size:2)
 @grid2 = reshape_grid(@answer, cols:2)
 @body = lines(@header, @sep)
+@parsed = parse_table(@table)
+@rows = row_count(@parsed)
+@labels = get_column(@parsed, "prompt")
+@row_items = split_rows(@parsed, "prompt")
+@need_more = lt(@rows, @target_rows)
+@continue_token = guard(@need_more, "continue")
+@accepted = accepted_list(@table, checks:@axioms)
+@rejected = reject_reasons(@table, checks:@axioms)
+@accepted_rows = filter_rows(@table, where:all_yes, checks:@axioms)
 ```
 
 Supported transforms:
@@ -122,11 +146,30 @@ Supported transforms:
 - `chunk(@list, size:2)`
 - `reshape_grid(@value, cols:2)`
 - `lines(@a, @b, ...)`
+- `parse_table(@entity_or_text)`
+- `row_count(@table)`
+- `get_column(@table, "column")`
+- `split_rows(@table, "label_column")`
+- `add(@a, @b)`
+- `sub(@a, @b)`
+- `eq(@a, @b)`
+- `lt(@a, @b)`
+- `lte(@a, @b)`
+- `gt(@a, @b)`
+- `gte(@a, @b)`
+- `not(@cond)`
+- `guard(@cond, @value)`
+- `filter_rows(@table, where:all_yes, checks:@axioms)`
+- `reject_reasons(@table, checks:@axioms)`
+- `accepted_list(@table, checks:@axioms)`
 
 Rules:
 - flat `data_area`s like `['#', 'Value']` resolve as plain lists
+- markdown tables in text areas are parsed as tables for row filters
 - nested transform results are stored back as grid-like `data_area`s
-- `table_header`, `reshape_grid`, and `join_list` are convenience sugar over the same local transform layer
+- `guard` is the minimal control primitive: it emits nothing when the condition is false
+- `table_header`, `reshape_grid`, `join_list`, `filter_rows`, `reject_reasons`, and `accepted_list` are convenience sugar over the same local transform layer
+- `parse_table`, `row_count`, `get_column`, and `split_rows` are the lower-level table wrappers to compose larger verdict flows
 
 ### Other Output-Producing Tools
 These also support explicit assignment:
@@ -254,5 +297,7 @@ append_text(@chat, assistant, "\n| 1 |")
 - Triple-quoted assignment is supported in pipeline execution
 - Multi-line fenced code blocks using ```pipeline are supported
 - Triggers are exported as declarative `on ... -> ...` statements
+- `loop(...) { ... }` is a client-side DSL wrapper for repeated execution
 - Server scope remains an implementation detail behind `parse_sections`
+- Server-side loop is available as a lower-level runtime primitive via `/api/atomic/loop`
 - See `ATOMIC_DSL_RECIPES.md` for staged continuation and transform patterns

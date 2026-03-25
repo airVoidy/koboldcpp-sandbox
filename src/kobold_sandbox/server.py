@@ -1890,7 +1890,7 @@ def create_app(root: str) -> FastAPI:
         local_vars: dict[str, dict] = {}  # out_name → result dict
         log: list[str] = []
 
-        def _resolve_params(params_raw: dict) -> dict:
+        def _resolve_params(params_raw: dict, scope_vars: dict[str, Any]) -> dict:
             """Resolve $ref and $ref.field in param values."""
             params = dict(params_raw)
             for k, v in params.items():
@@ -1899,8 +1899,8 @@ def create_app(root: str) -> FastAPI:
                     ref_field = None
                     if "." in ref_name:
                         ref_name, ref_field = ref_name.split(".", 1)
-                    if ref_name in local_vars:
-                        ref_data = local_vars[ref_name]
+                    if ref_name in scope_vars:
+                        ref_data = scope_vars[ref_name]
                         if ref_field:
                             params[k] = ref_data.get(ref_field, v)
                         else:
@@ -1909,56 +1909,92 @@ def create_app(root: str) -> FastAPI:
                             params[k] = "\n".join(str(x) for x in params[k])
             return params
 
-        # Execute steps — respect `on` dependencies
-        # Steps without `on` run in order. Steps with `on` are deferred until deps satisfied.
-        pending = list(enumerate(steps))
-        max_iterations = len(steps) * 2 + 10  # safety limit
-        iteration = 0
-        while pending and iteration < max_iterations:
-            iteration += 1
-            progress = False
-            next_pending = []
-            for i, step in pending:
-                deps = step.get("on", [])
-                # Check if all deps are satisfied
-                if deps and not all(d.lstrip("$") in local_vars for d in deps):
-                    next_pending.append((i, step))
-                    continue
-                # Run step
-                tool = step.get("tool", "")
-                params = _resolve_params(step.get("params", {}))
-                role = step.get("role", "generator")
-                out = step.get("out")
-                try:
-                    result = _run_atomic_tool(tool, params, workers, settings, role)
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    if out:
-                        local_vars[out] = result
-                    dep_str = f" (on: {', '.join(deps)})" if deps else ""
-                    log.append(f"[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}" + (f" → ${out}" if out else ""))
-                    progress = True
-                except Exception as e:
-                    log.append(f"[{i+1}] {tool} ERROR: {e}")
-                    return {"status": "error", "error": str(e), "step": i + 1, "log": log}
-            pending = next_pending
-            if not progress and pending:
-                unmet = [(i, s.get("on", [])) for i, s in pending]
-                log.append(f"DEADLOCK: {len(pending)} steps waiting — {unmet}")
-                return {"status": "error", "error": "dependency deadlock", "log": log}
-
-        # Resolve a $ref.field string against local_vars
-        def _resolve_ref(ref_str: str) -> Any:
+        def _resolve_ref(ref_str: str, scope_vars: dict[str, Any]) -> Any:
             if not isinstance(ref_str, str) or not ref_str.startswith("$"):
                 return ref_str
             path = ref_str[1:]
             parts = path.split(".", 1)
-            data = local_vars.get(parts[0])
+            data = scope_vars.get(parts[0])
             if data is None:
                 return ref_str
             if len(parts) > 1:
                 return data.get(parts[1], ref_str) if isinstance(data, dict) else ref_str
             return data
+
+        def _truthy(value: Any) -> bool:
+            if isinstance(value, dict):
+                if "bool" in value:
+                    return _truthy(value.get("bool"))
+                if "result" in value:
+                    return _truthy(value.get("result"))
+                if "content" in value:
+                    return _truthy(value.get("content"))
+                if "items" in value:
+                    return _truthy(value.get("items"))
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return value != 0
+            if isinstance(value, list):
+                return len(value) > 0
+            if value is None:
+                return False
+            text = str(value).strip().lower()
+            if not text:
+                return False
+            if text in {"false", "no", "0", "fail"}:
+                return False
+            if text.startswith("$"):
+                return False
+            return True
+
+        async def _execute_steps(
+            step_list: list[dict],
+            scope_vars: dict[str, Any],
+            step_prefix: str = "",
+        ) -> dict | None:
+            pending = list(enumerate(step_list))
+            max_iterations = len(step_list) * 2 + 10  # safety limit
+            iteration = 0
+            while pending and iteration < max_iterations:
+                iteration += 1
+                progress = False
+                next_pending = []
+                for i, step in pending:
+                    deps = step.get("on", [])
+                    if deps and not all(d.lstrip("$") in scope_vars for d in deps):
+                        next_pending.append((i, step))
+                        continue
+                    tool = step.get("tool", "")
+                    params = _resolve_params(step.get("params", {}), scope_vars)
+                    role = step.get("role", "generator")
+                    out = step.get("out")
+                    try:
+                        result = _run_atomic_tool(tool, params, workers, settings, role)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                        if out:
+                            scope_vars[out] = result
+                        dep_str = f" (on: {', '.join(deps)})" if deps else ""
+                        prefix = f"{step_prefix}" if step_prefix else ""
+                        log.append(
+                            f"{prefix}[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}"
+                            + (f" → ${out}" if out else "")
+                        )
+                        progress = True
+                    except Exception as e:
+                        log.append(f"{step_prefix}[{i+1}] {tool} ERROR: {e}")
+                        return {"status": "error", "error": str(e), "step": i + 1, "log": log}
+                pending = next_pending
+                if not progress and pending:
+                    unmet = [(i, s.get("on", [])) for i, s in pending]
+                    log.append(f"{step_prefix}DEADLOCK: {len(pending)} steps waiting — {unmet}")
+                    return {"status": "error", "error": "dependency deadlock", "log": log}
+            return None
+
+        error = await _execute_steps(steps, local_vars)
+        if error:
+            return error
 
         # Export: list format ["name1"] or dict format {"out": {"field": "$ref.field"}}
         exported = {}
@@ -1972,13 +2008,175 @@ def create_app(root: str) -> FastAPI:
                     # Compose: {"entities": "$ent.items", "axioms": "$ax.items"}
                     composed = {}
                     for field, ref in mapping.items():
-                        composed[field] = _resolve_ref(ref) if isinstance(ref, str) else ref
+                        composed[field] = _resolve_ref(ref, local_vars) if isinstance(ref, str) else ref
                     exported[out_name] = composed
                 elif isinstance(mapping, str):
                     # Simple: {"input_constraints": "$ent"}
-                    exported[out_name] = _resolve_ref(mapping)
+                    exported[out_name] = _resolve_ref(mapping, local_vars)
 
         return {"status": "ok", "exported": exported, "log": log}
+
+    @app.post("/api/atomic/loop")
+    async def atomic_loop(request: Request) -> dict:
+        """Execute setup once, then loop body while a local condition remains truthy.
+
+        Body:
+          setup: [{tool, params, role?, out?, on?}, ...]
+          loop: [{tool, params, role?, out?, on?}, ...]
+          while: "$var" or "$var.field"
+          max_iters: 8
+          export: ["name1"] or {"out": {"field": "$ref.field"}}
+          workers: {role: url}
+          settings: {temperature, max_tokens, ...}
+        """
+        body = await request.json()
+        setup_steps = body.get("setup", [])
+        loop_steps = body.get("loop", [])
+        while_ref = body.get("while")
+        max_iters = int(body.get("max_iters", 8) or 8)
+        export_names = body.get("export", [])
+        workers = body.get("workers", {})
+        settings = body.get("settings", {})
+
+        if not loop_steps:
+            raise HTTPException(400, "loop is required")
+        if not while_ref:
+            raise HTTPException(400, "while is required")
+
+        local_vars: dict[str, dict] = {}
+        log: list[str] = []
+
+        def _resolve_params(params_raw: dict, scope_vars: dict[str, Any]) -> dict:
+            params = dict(params_raw)
+            for k, v in params.items():
+                if isinstance(v, str) and v.startswith("$"):
+                    ref_name = v[1:]
+                    ref_field = None
+                    if "." in ref_name:
+                        ref_name, ref_field = ref_name.split(".", 1)
+                    if ref_name in scope_vars:
+                        ref_data = scope_vars[ref_name]
+                        if ref_field:
+                            params[k] = ref_data.get(ref_field, v)
+                        else:
+                            params[k] = ref_data.get("content") or ref_data.get("items") or ref_data
+                        if isinstance(params[k], list):
+                            params[k] = "\n".join(str(x) for x in params[k])
+            return params
+
+        def _resolve_ref(ref_str: str, scope_vars: dict[str, Any]) -> Any:
+            if not isinstance(ref_str, str) or not ref_str.startswith("$"):
+                return ref_str
+            path = ref_str[1:]
+            parts = path.split(".", 1)
+            data = scope_vars.get(parts[0])
+            if data is None:
+                return ref_str
+            if len(parts) > 1:
+                return data.get(parts[1], ref_str) if isinstance(data, dict) else ref_str
+            return data
+
+        def _truthy(value: Any) -> bool:
+            if isinstance(value, dict):
+                if "bool" in value:
+                    return _truthy(value.get("bool"))
+                if "result" in value:
+                    return _truthy(value.get("result"))
+                if "content" in value:
+                    return _truthy(value.get("content"))
+                if "items" in value:
+                    return _truthy(value.get("items"))
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return value != 0
+            if isinstance(value, list):
+                return len(value) > 0
+            if value is None:
+                return False
+            text = str(value).strip().lower()
+            if not text:
+                return False
+            if text in {"false", "no", "0", "fail"}:
+                return False
+            if text.startswith("$"):
+                return False
+            return True
+
+        async def _execute_steps(
+            step_list: list[dict],
+            scope_vars: dict[str, Any],
+            step_prefix: str = "",
+        ) -> dict | None:
+            pending = list(enumerate(step_list))
+            guard_limit = len(step_list) * 2 + 10
+            passes = 0
+            while pending and passes < guard_limit:
+                passes += 1
+                progress = False
+                next_pending = []
+                for i, step in pending:
+                    deps = step.get("on", [])
+                    if deps and not all(d.lstrip("$") in scope_vars for d in deps):
+                        next_pending.append((i, step))
+                        continue
+                    tool = step.get("tool", "")
+                    params = _resolve_params(step.get("params", {}), scope_vars)
+                    role = step.get("role", "generator")
+                    out = step.get("out")
+                    try:
+                        result = _run_atomic_tool(tool, params, workers, settings, role)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                        if out:
+                            scope_vars[out] = result
+                        dep_str = f" (on: {', '.join(deps)})" if deps else ""
+                        log.append(
+                            f"{step_prefix}[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}"
+                            + (f" → ${out}" if out else "")
+                        )
+                        progress = True
+                    except Exception as e:
+                        log.append(f"{step_prefix}[{i+1}] {tool} ERROR: {e}")
+                        return {"status": "error", "error": str(e), "step": i + 1, "log": log}
+                pending = next_pending
+                if not progress and pending:
+                    unmet = [(i, s.get("on", [])) for i, s in pending]
+                    log.append(f"{step_prefix}DEADLOCK: {len(pending)} steps waiting — {unmet}")
+                    return {"status": "error", "error": "dependency deadlock", "log": log}
+            return None
+
+        if setup_steps:
+            error = await _execute_steps(setup_steps, local_vars, step_prefix="setup ")
+            if error:
+                return error
+
+        iterations = 0
+        while _truthy(_resolve_ref(while_ref, local_vars)):
+            if iterations >= max_iters:
+                log.append(f"LOOP LIMIT: max_iters={max_iters}")
+                return {"status": "error", "error": "loop iteration limit reached", "log": log}
+            error = await _execute_steps(loop_steps, local_vars, step_prefix=f"loop#{iterations + 1} ")
+            if error:
+                return error
+            iterations += 1
+
+        exported = {}
+        if isinstance(export_names, list):
+            for name in export_names:
+                if name in local_vars:
+                    exported[name] = local_vars[name]
+        elif isinstance(export_names, dict):
+            for out_name, mapping in export_names.items():
+                if isinstance(mapping, dict):
+                    composed = {}
+                    for field, ref in mapping.items():
+                        composed[field] = _resolve_ref(ref, local_vars) if isinstance(ref, str) else ref
+                    exported[out_name] = composed
+                elif isinstance(mapping, str):
+                    exported[out_name] = _resolve_ref(mapping, local_vars)
+
+        return {"status": "ok", "iterations": iterations, "exported": exported, "log": log}
 
     def _run_atomic_tool(
         tool: str,
