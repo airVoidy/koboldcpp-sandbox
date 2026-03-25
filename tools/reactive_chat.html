@@ -5713,7 +5713,7 @@ document.getElementById('btnAtomicChatSend').addEventListener('click', async () 
     const {answer} = await fetchLLMWithContinue(url, messages, {temperature: 0.3, max_tokens: 2048, noThink: false, continueOnLength: true});
     addAtomicChat('assistant', answer);
 
-    // Auto-extract pipeline code blocks and offer to run
+    // Auto-extract pipeline code blocks from worker response and offer to add
     const pipelineMatch = answer.match(/```pipeline\n([\s\S]*?)```/);
     if (pipelineMatch) {
       const dsl = pipelineMatch[1].trim();
@@ -5721,12 +5721,13 @@ document.getElementById('btnAtomicChatSend').addEventListener('click', async () 
       const btn = document.createElement('button');
       btn.className = 'btn primary';
       btn.style.cssText = 'font-size:9px;padding:2px 8px;margin:2px 0 8px 0';
-      btn.textContent = '▶ Run this pipeline';
+      btn.textContent = '+ Add to pipeline';
       btn.addEventListener('click', async () => {
         btn.disabled = true;
-        btn.textContent = 'Running...';
+        btn.textContent = 'Adding...';
         await runPipeline(dsl);
-        btn.textContent = '✓ Done';
+        btn.textContent = '+ Add to pipeline';
+        btn.disabled = false;
         renderPipelineSteps();
       });
       chat.appendChild(btn);
