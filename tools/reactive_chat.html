@@ -439,6 +439,13 @@ body {
 .atomic-msg-hdr { display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:11px; color:var(--text-dim); }
 .atomic-msg-hdr .role { font-weight:600; text-transform:uppercase; }
 .atomic-msg-content { white-space:pre-wrap; word-break:break-word; }
+/* Call params & debug */
+.at-call-params { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+.at-param-pill { font-size:10px; background:var(--surface2); border:1px solid var(--border); border-radius:3px; padding:1px 5px; color:var(--text-dim); }
+.at-debug-section { margin-top:2px; }
+.at-debug-toggle { font-size:10px; color:var(--text-dim); cursor:pointer; user-select:none; }
+.at-debug-toggle:hover { color:var(--text); }
+.at-debug-content { font-size:10px; color:var(--text-dim); background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:4px 6px; margin-top:2px; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
 .atomic-ref { color:var(--accent3); cursor:pointer; font-weight:500; }
 .atomic-ref:hover { text-decoration:underline; }
 
@@ -3568,6 +3575,32 @@ function renderAtomicMsg(msg) {
   // Content with @ref highlighting
   const content = msg.content.replace(/@([\w]+(?:\.[\w]+)*)/g, '<span class="atomic-ref">@$1</span>');
   h += `<div class="atomic-msg-content">${content}</div>`;
+  // Call params + debug (collapsed by default)
+  if (msg.meta) {
+    const m = msg.meta;
+    // Summary params pills
+    if (m.params) {
+      h += `<div class="at-call-params">`;
+      Object.entries(m.params).forEach(([k, v]) => {
+        h += `<span class="at-param-pill">${esc(k)}:${esc(String(v))}</span>`;
+      });
+      h += `</div>`;
+    }
+    // Collapsible request body
+    if (m.request) {
+      h += `<div class="at-debug-section">`;
+      h += `<div class="at-debug-toggle" data-debug="request-${msg.id}">▸ Request body</div>`;
+      h += `<pre class="at-debug-content" id="debug-request-${msg.id}" style="display:none">${esc(typeof m.request === 'string' ? m.request : JSON.stringify(m.request, null, 2))}</pre>`;
+      h += `</div>`;
+    }
+    // Collapsible response
+    if (m.response) {
+      h += `<div class="at-debug-section">`;
+      h += `<div class="at-debug-toggle" data-debug="response-${msg.id}">▸ Response</div>`;
+      h += `<pre class="at-debug-content" id="debug-response-${msg.id}" style="display:none">${esc(typeof m.response === 'string' ? m.response : JSON.stringify(m.response, null, 2))}</pre>`;
+      h += `</div>`;
+    }
+  }
   // Render attached entities
   if (msg.entities && msg.entities.length) {
     msg.entities.forEach(eName => {
@@ -3580,9 +3613,19 @@ function renderAtomicMsg(msg) {
   el.querySelectorAll('.atomic-ref').forEach(ref => {
     ref.addEventListener('click', () => {
       const name = ref.textContent.replace(/^@/, '');
-      // Scroll to entity or insert into input
       document.getElementById('atomicInp').value += '@' + name + ' ';
       document.getElementById('atomicInp').focus();
+    });
+  });
+  // Bind debug section toggles
+  el.querySelectorAll('.at-debug-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const targetId = toggle.dataset.debug;
+      const content = document.getElementById('debug-' + targetId);
+      if (!content) return;
+      const visible = content.style.display !== 'none';
+      content.style.display = visible ? 'none' : 'block';
+      toggle.textContent = (visible ? '▸' : '▾') + toggle.textContent.slice(1);
     });
   });
   // Bind table cell editing
@@ -3711,7 +3754,7 @@ function updateScopeList() {
 }
 
 /* --- Message handling --- */
-function addAtomicMsg(role, content, entities) {
+function addAtomicMsg(role, content, entities, meta) {
   const msg = {
     id: atomicGid(),
     role,
@@ -3720,6 +3763,7 @@ function addAtomicMsg(role, content, entities) {
     refs: (content.match(/@([\w]+)/g) || []).map(r => r.slice(1)),
     parentId: null,
     ts: new Date().toISOString(),
+    meta: meta || null, // {params:{}, request:{}, response:{}} for debug
   };
   atomicMessages.push(msg);
   saveAtomicState();
@@ -3865,12 +3909,18 @@ async function toolClaims(args) {
   if (!entities.length && !axioms.length && !hypotheses.length) {
     const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
     if (!worker?.url) { addAtomicMsg('tool', 'No worker available for claims extraction'); return; }
-    addAtomicMsg('tool', `claims(@${ref}) → no local sections, calling LLM...`);
+    const claimsPrompt = renderPrompt('claims', {input: ref});
+    const claimsParams = {worker: worker.role || 'analyzer', temp: 0.1, max_tokens: 2048, no_think: true, continues: 5};
+    const claimsRequest = [{role: 'user', content: claimsPrompt}];
+    addAtomicMsg('tool', `claims(@${ref}) → calling LLM`, [], {params: claimsParams, request: {messages: claimsRequest, temperature: 0.1, max_tokens: 2048}});
     renderAtomicFeed();
-    const {answer} = await fetchLLMWithContinue(worker.url + '/v1/chat/completions',
-      [{role: 'user', content: renderPrompt('claims', {input: ref})}],
+    const {answer, raw} = await fetchLLMWithContinue(worker.url + '/v1/chat/completions',
+      claimsRequest,
       {temperature: 0.1, max_tokens: 2048, noThink: true, maxContinues: 5}
     );
+    // Update last tool message with response
+    const lastToolMsg = [...atomicMessages].reverse().find(m => m.role === 'tool' && m.meta);
+    if (lastToolMsg) lastToolMsg.meta.response = raw || {answer_length: answer?.length};
     entities = parseListFromText(answer, 'ENTITIES', 'worker:analyzer', 'worker');
     axioms = parseListFromText(answer, 'AXIOMS', 'worker:analyzer', 'worker');
     hypotheses = parseListFromText(answer, 'HYPOTHESES', 'worker:analyzer', 'worker');
@@ -4006,7 +4056,13 @@ async function toolGenerate(args) {
     content: m.content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => resolveRefToString(refName))
   }));
 
-  addAtomicMsg('tool', `generate(@${ref}, mode:${mode}) → calling ${workerRole}...`);
+  // Build call params for UI visibility
+  const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink};
+  if (grammar) callParams.grammar = '(set)';
+  if (stop) callParams.stop = stop.join(',');
+  if (captureRegex) callParams.capture = captureRegex;
+
+  addAtomicMsg('tool', `generate(@${ref}) → ${workerRole}`, [], {params: callParams});
   renderAtomicFeed();
 
   if (mode === 'probe_continue' || mode === 'continue') {
@@ -4021,14 +4077,15 @@ async function toolGenerate(args) {
     if (stop) body.stop = stop;
     if (grammar) body.grammar = grammar;
     let result = '';
+    let responseData = null;
     try {
       const res = await fetch(workerUrl, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      result = data.choices?.[0]?.message?.content || '';
+      responseData = await res.json();
+      result = responseData.choices?.[0]?.message?.content || '';
     } catch (e) {
       addAtomicMsg('tool', `Error: ${e.message}`);
       return;
@@ -4046,16 +4103,19 @@ async function toolGenerate(args) {
     addTextArea(resultEntity.name, 'result', String(finalValue));
     if (captureRegex) addTag(resultEntity.name, 'captured', String(finalValue));
     addTag(resultEntity.name, 'mode', mode);
-    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name}: ${String(finalValue).slice(0, 100)}`, [resultEntity.name]);
+    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name}: ${String(finalValue).slice(0, 100)}`, [resultEntity.name],
+      {params: callParams, request: body, response: responseData});
   } else {
     // Standard prompt mode with fetchLLMWithContinue
-    const {answer, think} = await fetchLLMWithContinue(workerUrl, messages,
+    const requestBody = {messages, temperature, max_tokens, noThink, maxContinues: s.max_continue, ...(stop ? {stop} : {})};
+    const {answer, think, raw} = await fetchLLMWithContinue(workerUrl, messages,
       {temperature, max_tokens, noThink, maxContinues: s.max_continue, ...(stop ? {stop} : {})}
     );
     const resultEntity = createEntity(ref + '_answer', {source: {entityId: ref, tool: 'generate'}});
     addTextArea(resultEntity.name, 'answer', answer);
     if (think) addTextArea(resultEntity.name, 'think', think);
-    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name} (${answer.length} chars)`, [resultEntity.name]);
+    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name} (${answer.length} chars)`, [resultEntity.name],
+      {params: callParams, request: requestBody, response: raw || {answer_length: answer.length}});
   }
 }
 
