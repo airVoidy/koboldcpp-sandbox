@@ -4061,14 +4061,15 @@ async function toolClaims(args) {
   const result = await callAtomicServer('claims', {text, prompt_template: promptTemplate}, 'analyzer');
   const sections = result.sections || {};
 
-  // Create entities for each section found
+  // Create entities for each section found, prefixed with source entity name
   const created = [];
   Object.entries(sections).forEach(([name, items]) => {
     if (!items.length) return;
-    const e = createEntity(name, {source: {entityId: ref, tool: 'claims'}});
+    const entityName = ref + '_' + name;
+    const e = createEntity(entityName, {source: {entityId: ref, tool: 'claims'}});
     const colName = name.charAt(0).toUpperCase() + name.slice(1);
     e.data_areas.push({name: 'items', headers: ['#', colName], rows: items.map((it, i) => [String(i+1), it])});
-    created.push(name);
+    created.push(entityName);
   });
 
   addAtomicMsg('tool', `claims(@${ref}) → ${created.length ? created.map(n => '@'+n).join(', ') : 'no sections found'}`, created,
