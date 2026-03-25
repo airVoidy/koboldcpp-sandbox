@@ -5805,32 +5805,54 @@ function addAtomicChat(role, content) {
   atomicChatMessages.push({role, content});
 }
 
-function buildPipelineChatContext() {
-  const configItems = (globalItems || []).map(g => `@config.${g.name}: ${g.type === 'text' ? g.text.slice(0, 100) + '...' : 'table [' + g.headers?.join(', ') + ']'}`).join('\n');
-  const scope = Object.keys(atomicEntities).map(n => '@' + n).join(', ') || 'empty';
-  const steps = pipelineSteps.map(s => s.cmd).join('\n') || 'none';
-
-  return `You are a pipeline builder assistant. You help create Atomic Task pipelines using DSL commands.
+const DEFAULT_DSL_HELP = `You are a pipeline builder assistant. You help create Atomic Task pipelines using DSL commands.
 
 Available commands (one per line):
 - @name = @config.ref — bind entity to Global Params config item
 - @name = "literal text" — create entity with inline text
-- generate(@entity) — LLM generation → creates @entity_answer
+- generate(@entity) — LLM generation, creates @entity_answer
 - generate(@entity, analyzer) — use analyzer worker
 - generate(@entity, analyzer, no_think:false) — with thinking enabled
-- generate(@config.prompt, analyzer, input:@config.input) — slot mapping: @input in template → @config.input value
-- parse_sections(@entity, DELIM1:, DELIM2:, DELIM3:) — extract sections → creates @entity_constraints with data_areas
-- tag(@entity, key, value) — add metadata tag to entity
-- scope_begin() / scope_end(@keep1, @keep2) — local scope, drop intermediates
+- generate(@config.prompt, analyzer, input:@config.input) — slot mapping
+- parse_sections(@entity, DELIM1:, DELIM2:, DELIM3:) — extract sections, creates @entity_constraints
+- tag(@entity, key, value) / remove_tag(@entity, key) — metadata tags
+- scope_begin() / scope_end(@keep1, @keep2) — local scope
 - drop(@entity) — delete entity and its pipeline steps
-- save_macro(name) / run_macro(name) — save/replay command sequences
-- export_dsl(name) — export current pipeline as DSL text
+- save_macro(name) / run_macro(name) — save/replay sequences
+- export_dsl(name) — export pipeline as DSL text
+- add_text(@entity, name, text) / add_table(@entity, name, cols)
+- rename(@entity, new_name)
 
 Key behaviors:
-- generate() auto-creates result entity: @source_answer
-- @config.* refs resolve at call time (multi-pass for nested refs like @config.prompt containing @input)
-- parse_sections uses server-side scope — one call for all sections, delimiter ranges are consecutive
-- Slot mappings: input:@config.input replaces @input in template before resolution
+- generate() auto-creates result: @source_answer
+- @config.* refs resolve at call time (multi-pass for nested refs)
+- parse_sections uses server scope — one call for all sections
+- Slot mappings: input:@config.input replaces @input in template
+
+Rules:
+- Output DSL commands inside a \\\`\\\`\\\`pipeline code block
+- Use @config.* refs, never hardcode long text
+- Be minimal — no prose between commands in the code block
+- Explain briefly before the code block if asked`;
+
+// Create @config.dsl_help if missing
+(function() {
+  if (!globalItems.find(g => g.name === 'dsl_help')) {
+    globalItems.push({type: 'text', name: 'dsl_help', text: DEFAULT_DSL_HELP});
+    saveGlobalItems();
+  }
+})();
+
+function buildPipelineChatContext() {
+  // Read prompt from @config.dsl_help (editable by user)
+  const helpItem = globalItems.find(g => g.name === 'dsl_help');
+  const basePrompt = helpItem?.text || DEFAULT_DSL_HELP;
+
+  const configItems = (globalItems || []).filter(g => g.name !== 'dsl_help').map(g => `@config.${g.name}: ${g.type === 'text' ? g.text.slice(0, 100) + '...' : 'table [' + g.headers?.join(', ') + ']'}`).join('\n');
+  const scope = Object.keys(atomicEntities).map(n => '@' + n).join(', ') || 'empty';
+  const steps = pipelineSteps.map(s => s.cmd).join('\n') || 'none';
+
+  return `${basePrompt}
 
 Current config items:
 ${configItems || 'none'}
@@ -5850,13 +5872,7 @@ ${Object.entries(atomicEntities).map(([name, e]) => {
     parts.push(`${da.name}: table [${da.headers.join(', ')}] ${da.rows.length} rows`);
   });
   return parts.join(' | ');
-}).join('\n') || 'none'}
-
-Rules:
-- Output DSL commands inside a \`\`\`pipeline code block
-- Use @config.* refs, never hardcode long text
-- Be minimal — no prose between commands in the code block
-- Explain briefly before the code block if asked`;
+}).join('\n') || 'none'}`;
 }
 
 document.getElementById('btnAtomicChatSend').addEventListener('click', async () => {
