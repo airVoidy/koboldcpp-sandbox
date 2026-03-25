@@ -1923,11 +1923,36 @@ def create_app(root: str) -> FastAPI:
                 log.append(f"[{i+1}] {tool} ERROR: {e}")
                 return {"status": "error", "error": str(e), "step": i + 1, "log": log}
 
-        # Export only requested variables
+        # Resolve a $ref.field string against local_vars
+        def _resolve_ref(ref_str: str) -> Any:
+            if not isinstance(ref_str, str) or not ref_str.startswith("$"):
+                return ref_str
+            path = ref_str[1:]
+            parts = path.split(".", 1)
+            data = local_vars.get(parts[0])
+            if data is None:
+                return ref_str
+            if len(parts) > 1:
+                return data.get(parts[1], ref_str) if isinstance(data, dict) else ref_str
+            return data
+
+        # Export: list format ["name1"] or dict format {"out": {"field": "$ref.field"}}
         exported = {}
-        for name in export_names:
-            if name in local_vars:
-                exported[name] = local_vars[name]
+        if isinstance(export_names, list):
+            for name in export_names:
+                if name in local_vars:
+                    exported[name] = local_vars[name]
+        elif isinstance(export_names, dict):
+            for out_name, mapping in export_names.items():
+                if isinstance(mapping, dict):
+                    # Compose: {"entities": "$ent.items", "axioms": "$ax.items"}
+                    composed = {}
+                    for field, ref in mapping.items():
+                        composed[field] = _resolve_ref(ref) if isinstance(ref, str) else ref
+                    exported[out_name] = composed
+                elif isinstance(mapping, str):
+                    # Simple: {"input_constraints": "$ent"}
+                    exported[out_name] = _resolve_ref(mapping)
 
         return {"status": "ok", "exported": exported, "log": log}
 
