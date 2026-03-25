@@ -3936,6 +3936,7 @@ async function applyAtomicTool(toolName, args) {
       case 'claims': await toolClaims(args); break;
       case 'numbered': await toolNumbered(args); break;
       case 'slice': await toolSlice(args); break;
+      case 'split': await toolSplit(args); break;
       case 'check_status': case 'check': await toolCheckStatus(args); break;
       case 'table_as_query': case 'table-as-query': await toolTableAsQuery(args); break;
       case 'generate': case 'gen': await toolGenerate(args); break;
@@ -4080,18 +4081,78 @@ function toolNumbered(args) {
 
 function toolSlice(args) {
   const ref = args[0]?.replace(/^@/, '');
-  const from = parseInt(args[1]) || 1;
-  const to = parseInt(args[2]) || undefined;
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   const text = entity.text_areas.map(ta => ta.text).join('\n');
-  const lines = text.split('\n');
-  const sliced = lines.slice(from - 1, to).join('\n');
-  const e = createEntity(ref + '_slice', {source: {entityId: ref, tool: 'slice'}});
+
+  // Check if args are numbers (line slice) or strings (delimiter slice)
+  const isNumeric = args[1] && !isNaN(parseInt(args[1]));
+
+  let sliced, label;
+  if (isNumeric) {
+    // Line-based slice: slice(@ref, fromLine, toLine)
+    const from = parseInt(args[1]) || 1;
+    const to = parseInt(args[2]) || undefined;
+    const lines = text.split('\n');
+    sliced = lines.slice(from - 1, to).join('\n');
+    label = `${from}..${to || 'end'}`;
+  } else {
+    // Delimiter-based slice: slice(@ref, FROM_DELIM, TO_DELIM)
+    const fromDelim = args[1]?.trim();
+    const toDelim = args[2]?.trim();
+    if (!fromDelim) { addAtomicMsg('tool', 'slice: need from delimiter or line number'); return; }
+    const fromIdx = text.indexOf(fromDelim);
+    if (fromIdx < 0) { addAtomicMsg('tool', `slice: delimiter "${fromDelim}" not found in @${ref}`); return; }
+    const contentStart = fromIdx + fromDelim.length;
+    let contentEnd = text.length;
+    if (toDelim) {
+      const toIdx = text.indexOf(toDelim, contentStart);
+      if (toIdx >= 0) contentEnd = toIdx;
+    }
+    sliced = text.slice(contentStart, contentEnd).trim();
+    label = `"${fromDelim}"..${toDelim ? '"' + toDelim + '"' : 'end'}`;
+  }
+
+  // Output name: args[3] if provided (e.g. "→ @name"), else auto
+  let outName = null;
+  const arrowArg = args.find(a => a.startsWith('→') || a.startsWith('->'));
+  if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
+  if (!outName) outName = ref + '_slice';
+
+  const e = createEntity(outName, {source: {entityId: ref, tool: 'slice'}});
   addTextArea(e.name, 'content', sliced);
-  addTag(e.name, 'from', from);
-  addTag(e.name, 'to', to || lines.length);
-  addAtomicMsg('tool', `slice(@${ref}, ${from}, ${to || 'end'}) → @${e.name}`, [e.name]);
+  addAtomicMsg('tool', `slice(@${ref}, ${label}) → @${e.name} (${sliced.length} chars)`, [e.name]);
+}
+
+function toolSplit(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const text = entity.text_areas.map(ta => ta.text).join('\n');
+
+  // Auto-detect format: [a, b, c] or - item\n- item
+  let items = [];
+  const bracketMatch = text.match(/\[([^\]]+)\]/);
+  if (bracketMatch) {
+    items = bracketMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+  } else {
+    // Split by - or • bullets, or newlines
+    items = text.split('\n')
+      .map(l => l.replace(/^[-•*]\s*/, '').trim())
+      .filter(l => l.length > 0);
+  }
+
+  if (!items.length) { addAtomicMsg('tool', `split(@${ref}): no items found`); return; }
+
+  // Output name
+  let outName = null;
+  const arrowArg = args.find(a => a.startsWith('→') || a.startsWith('->'));
+  if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
+  if (!outName) outName = ref + '_list';
+
+  const e = createEntity(outName, {source: {entityId: ref, tool: 'split'}});
+  e.data_areas.push({name: 'items', headers: ['#', 'Item'], rows: items.map((it, i) => [String(i+1), it])});
+  addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items)`, [e.name]);
 }
 
 function toolCheckStatus(args) {
