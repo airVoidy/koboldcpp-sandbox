@@ -5267,11 +5267,12 @@ function toolConcat(args, meta = {}) {
   addAtomicMsg('tool', `concat(...) -> @${resultEntity.name} (${merged.length} items)`, [resultEntity.name]);
 }
 
-function toolTableHeader(args, meta = {}) {
+async function toolTableHeader(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'table_header needs at least 1 list'); return; }
   const columns = [];
   args.forEach(arg => { columns.push(...runtimeValueToList(resolveDslRuntimeValue(arg)).map(item => runtimeValueToText(item))); });
-  const allColumns = ['#', ...columns];
+  const result = await callAtomicServer('table_header', {columns, rows: []});
+  const allColumns = result.headers;
   const header = `| ${allColumns.join(' | ')} |`;
   const sep = '|' + allColumns.map(() => '---').join('|') + '|';
   const resultEntity = createEntity(meta.outName || inferTransformOutName('table_header', args), {source: {tool: 'table_header'}});
@@ -5305,14 +5306,15 @@ function toolPrepend(args, meta = {}) {
   addAtomicMsg('tool', `prepend(...) -> @${resultEntity.name} (${result.length} items)`, [resultEntity.name]);
 }
 
-function toolJoin(args, meta = {}) {
+async function toolJoin(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'join needs a list value'); return; }
   const {options, positional} = parseDslCallOptions(args, 1);
   const sep = resolveDslTextValue(options.sep !== undefined ? options.sep : (positional[0] || ''));
   const prefix = resolveDslTextValue(options.prefix || '""');
   const suffix = resolveDslTextValue(options.suffix || '""');
   const items = runtimeValueToList(resolveDslRuntimeValue(args[0])).map(item => runtimeValueToText(item));
-  const joined = `${prefix}${items.join(sep)}${suffix}`;
+  const result = await callAtomicServer('join', {items, sep});
+  const joined = `${prefix}${result.content}${suffix}`;
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('join', args), joined, {tool: 'join'});
   addAtomicMsg('tool', `join(...) -> @${resultEntity.name}`, [resultEntity.name]);
 }
@@ -5353,7 +5355,7 @@ function toolChunk(args, meta = {}) {
   addAtomicMsg('tool', `chunk(...) -> @${resultEntity.name} (${result.length} rows)`, [resultEntity.name]);
 }
 
-function toolReshapeGrid(args, meta = {}) {
+async function toolReshapeGrid(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'reshape_grid needs a value'); return; }
   const {options, positional} = parseDslCallOptions(args, 1);
   const colsArg = options.cols !== undefined ? options.cols : (options.size !== undefined ? options.size : positional[0]);
@@ -5361,10 +5363,9 @@ function toolReshapeGrid(args, meta = {}) {
   if (!cols) { addAtomicMsg('tool', 'reshape_grid cols must be > 0'); return; }
   const value = resolveDslRuntimeValue(args[0]);
   const items = typeof value === 'string' ? splitTextIntoList(value) : runtimeValueToList(value);
-  const result = [];
-  for (let i = 0; i < items.length; i += cols) result.push(items.slice(i, i + cols));
-  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reshape_grid', args), result, {tool: 'reshape_grid'});
-  addAtomicMsg('tool', `reshape_grid(...) -> @${resultEntity.name} (${result.length} rows)`, [resultEntity.name]);
+  const result = await callAtomicServer('reshape_grid', {items, cols});
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reshape_grid', args), result.grid, {tool: 'reshape_grid'});
+  addAtomicMsg('tool', `reshape_grid(...) -> @${resultEntity.name} (${result.rows} rows)`, [resultEntity.name]);
 }
 
 function toolLines(args, meta = {}) {
@@ -5434,7 +5435,7 @@ function toolDrop(args) {
   addAtomicMsg('system', `drop: ${names.map(n=>'@'+n).join(', ')}`);
 }
 
-function toolTag(args) {
+async function toolTag(args) {
   const ref = args[0]?.replace(/^@/, '');
   let key = args[1]?.trim();
   let value = args.slice(2).join(', ').trim();
@@ -5447,18 +5448,20 @@ function toolTag(args) {
   }
   if (!ref || !key) { addAtomicMsg('tool', 'Usage: tag(@entity, key, value)'); return; }
   if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
-  addTag(ref, key, value);
+  const result = await callAtomicServer('tag', {entity: ref, key, value});
+  addTag(result.entity, result.tag.key, result.tag.value);
   addAtomicMsg('system', `tag(@${ref}, ${key}, ${value})`);
   saveAtomicState();
 }
 
-function toolRemoveTag(args) {
+async function toolRemoveTag(args) {
   const ref = args[0]?.replace(/^@/, '');
   const key = args[1]?.trim();
   if (!ref || !key) { addAtomicMsg('tool', 'Usage: remove_tag(@entity, key)'); return; }
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
-  delete entity.tags[key];
+  const result = await callAtomicServer('remove_tag', {entity: ref, key});
+  delete entity.tags[result.removed_key];
   addAtomicMsg('system', `remove_tag(@${ref}, ${key})`);
   saveAtomicState();
   renderAtomicFeed();
@@ -5475,24 +5478,26 @@ function toolAddText(args) {
   saveAtomicState();
 }
 
-function toolSetText(args) {
+async function toolSetText(args) {
   const ref = args[0]?.replace(/^@/, '');
   const name = args[1]?.trim();
   const text = resolveDslTextValue(args.slice(2).join(', ').trim());
   if (!ref || !name) { addAtomicMsg('tool', 'Usage: set_text(@entity, name, text)'); return; }
   if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
-  setTextArea(ref, name, text);
+  const result = await callAtomicServer('set_text', {entity: ref, area: name, text});
+  setTextArea(result.entity, result.area, result.text);
   addAtomicMsg('system', `set_text(@${ref}, ${name})`);
   saveAtomicState();
 }
 
-function toolAppendText(args) {
+async function toolAppendText(args) {
   const ref = args[0]?.replace(/^@/, '');
   const name = args[1]?.trim();
   const text = resolveDslTextValue(args.slice(2).join(', ').trim());
   if (!ref || !name) { addAtomicMsg('tool', 'Usage: append_text(@entity, name, text)'); return; }
   if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
-  appendTextArea(ref, name, text);
+  const result = await callAtomicServer('append_text', {entity: ref, area: name, text});
+  appendTextArea(result.entity, result.area, result.text);
   addAtomicMsg('system', `append_text(@${ref}, ${name})`);
   saveAtomicState();
 }

@@ -2000,6 +2000,20 @@ def create_app(root: str) -> FastAPI:
             return _atomic_claims(params, workers, settings, role)
         elif tool == "render":
             return _atomic_render(params)
+        elif tool == "tag":
+            return _atomic_tag(params)
+        elif tool in ("remove_tag", "untag"):
+            return _atomic_remove_tag(params)
+        elif tool == "set_text":
+            return _atomic_set_text(params)
+        elif tool == "append_text":
+            return _atomic_append_text(params)
+        elif tool == "table_header":
+            return _atomic_table_header(params)
+        elif tool == "reshape_grid":
+            return _atomic_reshape_grid(params)
+        elif tool in ("join", "join_list"):
+            return _atomic_join(params)
         else:
             raise ValueError(f"Unknown tool: {tool}")
 
@@ -2094,6 +2108,82 @@ def create_app(root: str) -> FastAPI:
             if not changed:
                 break
         return {"content": result, "slots_applied": list(slots.keys())}
+
+    def _atomic_tag(params: dict) -> dict:
+        """Add tag to entity. params: {entity, key, value}"""
+        entity = params.get("entity", "")
+        key = params.get("key", "")
+        value = params.get("value", "")
+        if not entity or not key:
+            raise ValueError("entity and key are required")
+        return {"entity": entity, "tag": {"key": key, "value": value}}
+
+    def _atomic_remove_tag(params: dict) -> dict:
+        """Remove tag from entity. params: {entity, key}"""
+        entity = params.get("entity", "")
+        key = params.get("key", "")
+        if not entity or not key:
+            raise ValueError("entity and key are required")
+        return {"entity": entity, "removed_key": key}
+
+    def _atomic_set_text(params: dict) -> dict:
+        """Set text area content. params: {entity, area, text}"""
+        entity = params.get("entity", "")
+        area = params.get("area", "content")
+        text = params.get("text", "")
+        if not entity:
+            raise ValueError("entity is required")
+        return {"entity": entity, "area": area, "text": text}
+
+    def _atomic_append_text(params: dict) -> dict:
+        """Append to text area. params: {entity, area, text}"""
+        entity = params.get("entity", "")
+        area = params.get("area", "content")
+        text = params.get("text", "")
+        if not entity:
+            raise ValueError("entity is required")
+        return {"entity": entity, "area": area, "text": text, "mode": "append"}
+
+    def _atomic_table_header(params: dict) -> dict:
+        """Build table header from entity lists.
+        params: {columns: [...], rows: [...]}
+        Returns: {headers: [...], template_rows: [...]}
+        """
+        columns = params.get("columns", [])
+        rows = params.get("rows", [])
+        if not columns:
+            raise ValueError("columns list is required")
+        # Build header row + empty template rows
+        template_rows = []
+        for row_label in rows:
+            template_rows.append([row_label] + ["" for _ in columns])
+        return {
+            "headers": [""] + columns,
+            "rows": template_rows,
+            "cols_count": len(columns),
+            "rows_count": len(rows)
+        }
+
+    def _atomic_reshape_grid(params: dict) -> dict:
+        """Reshape flat list into grid. params: {items: [...], cols: N}"""
+        items = params.get("items", [])
+        cols = int(params.get("cols", 2))
+        if cols < 1:
+            cols = 1
+        grid = []
+        for i in range(0, len(items), cols):
+            grid.append(items[i:i + cols])
+        # Pad last row if needed
+        if grid and len(grid[-1]) < cols:
+            grid[-1].extend([""] * (cols - len(grid[-1])))
+        return {"grid": grid, "cols": cols, "rows": len(grid), "total": len(items)}
+
+    def _atomic_join(params: dict) -> dict:
+        """Join list items into string. params: {items: [...], sep: str}"""
+        items = params.get("items", [])
+        sep = params.get("sep", ", ")
+        result = sep.join(str(i) for i in items)
+        return {"content": result, "count": len(items)}
 
     async def _atomic_generate(
         params: dict, workers: dict, settings: dict, role: str
