@@ -1868,13 +1868,15 @@ def create_app(root: str) -> FastAPI:
         Only exported variables survive. One request, no round-trips.
 
         Body:
-          steps: [{tool, params, role?, out?}, ...]  — sequence of tool calls
-          export: ["name1", "name2"]                  — which results to return
+          steps: [{tool, params, role?, out?, on?}, ...]
+          export: ["name1"] or {"out": {"field": "$ref.field"}}
           workers: {role: url}
           settings: {temperature, max_tokens, ...}
 
         Each step's `out` names the result in local scope.
         Steps can reference previous results via $out_name in params.
+        `on` (optional): list of $var names that must exist before step runs.
+        Steps without `on` run in order. Steps with `on` wait for deps.
         """
         body = await request.json()
         steps = body.get("steps", [])
@@ -1888,13 +1890,9 @@ def create_app(root: str) -> FastAPI:
         local_vars: dict[str, dict] = {}  # out_name → result dict
         log: list[str] = []
 
-        for i, step in enumerate(steps):
-            tool = step.get("tool", "")
-            params = dict(step.get("params", {}))
-            role = step.get("role", "generator")
-            out = step.get("out")
-
-            # Resolve $ref in param values — reference previous step outputs
+        def _resolve_params(params_raw: dict) -> dict:
+            """Resolve $ref and $ref.field in param values."""
+            params = dict(params_raw)
             for k, v in params.items():
                 if isinstance(v, str) and v.startswith("$"):
                     ref_name = v[1:]
@@ -1906,22 +1904,48 @@ def create_app(root: str) -> FastAPI:
                         if ref_field:
                             params[k] = ref_data.get(ref_field, v)
                         else:
-                            # Default: use 'content' or 'items' or full result
                             params[k] = ref_data.get("content") or ref_data.get("items") or ref_data
-                        # Convert list to text if needed
                         if isinstance(params[k], list):
                             params[k] = "\n".join(str(x) for x in params[k])
+            return params
 
-            try:
-                result = _run_atomic_tool(tool, params, workers, settings, role)
-                if asyncio.iscoroutine(result):
-                    result = await result
-                if out:
-                    local_vars[out] = result
-                log.append(f"[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')})" + (f" → ${out}" if out else ""))
-            except Exception as e:
-                log.append(f"[{i+1}] {tool} ERROR: {e}")
-                return {"status": "error", "error": str(e), "step": i + 1, "log": log}
+        # Execute steps — respect `on` dependencies
+        # Steps without `on` run in order. Steps with `on` are deferred until deps satisfied.
+        pending = list(enumerate(steps))
+        max_iterations = len(steps) * 2 + 10  # safety limit
+        iteration = 0
+        while pending and iteration < max_iterations:
+            iteration += 1
+            progress = False
+            next_pending = []
+            for i, step in pending:
+                deps = step.get("on", [])
+                # Check if all deps are satisfied
+                if deps and not all(d.lstrip("$") in local_vars for d in deps):
+                    next_pending.append((i, step))
+                    continue
+                # Run step
+                tool = step.get("tool", "")
+                params = _resolve_params(step.get("params", {}))
+                role = step.get("role", "generator")
+                out = step.get("out")
+                try:
+                    result = _run_atomic_tool(tool, params, workers, settings, role)
+                    if asyncio.iscoroutine(result):
+                        result = await result
+                    if out:
+                        local_vars[out] = result
+                    dep_str = f" (on: {', '.join(deps)})" if deps else ""
+                    log.append(f"[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}" + (f" → ${out}" if out else ""))
+                    progress = True
+                except Exception as e:
+                    log.append(f"[{i+1}] {tool} ERROR: {e}")
+                    return {"status": "error", "error": str(e), "step": i + 1, "log": log}
+            pending = next_pending
+            if not progress and pending:
+                unmet = [(i, s.get("on", [])) for i, s in pending]
+                log.append(f"DEADLOCK: {len(pending)} steps waiting — {unmet}")
+                return {"status": "error", "error": "dependency deadlock", "log": log}
 
         # Resolve a $ref.field string against local_vars
         def _resolve_ref(ref_str: str) -> Any:

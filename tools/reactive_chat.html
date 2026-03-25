@@ -3481,6 +3481,38 @@ document.querySelectorAll('.header-tab').forEach(tab => {
 });
 
 /* --- Entity CRUD --- */
+/* Reactive triggers: "on @dep1, @dep2: action" — fires when ALL deps exist.
+   Watchers check after every entity creation. Fire once then remove. */
+var atomicWatchers = []; // [{deps: ['name1','name2'], action: 'tool(args)', fired: false}]
+
+function registerWatcher(deps, action) {
+  atomicWatchers.push({deps, action, fired: false});
+  addAtomicMsg('system', `on ${deps.map(d => '@'+d).join(', ')}: ${action}`);
+  // Check immediately if all deps already exist
+  checkWatchers();
+}
+
+function checkWatchers() {
+  const toFire = [];
+  atomicWatchers.forEach(w => {
+    if (w.fired) return;
+    if (w.deps.every(d => atomicEntities[d])) {
+      w.fired = true;
+      toFire.push(w);
+    }
+  });
+  // Fire async — don't block createEntity
+  toFire.forEach(w => {
+    setTimeout(() => {
+      addAtomicMsg('system', `trigger: ${w.deps.map(d => '@'+d).join(', ')} → ${w.action}`);
+      renderAtomicFeed();
+      handleAtomicInput(w.action);
+    }, 0);
+  });
+  // Cleanup fired watchers
+  atomicWatchers = atomicWatchers.filter(w => !w.fired);
+}
+
 function createEntity(name, opts = {}) {
   if (!name) name = 'entity_' + entityGid();
   // Ensure unique name
@@ -3501,6 +3533,7 @@ function createEntity(name, opts = {}) {
   atomicEntities[name] = entity;
   saveAtomicState();
   updateScopeList();
+  checkWatchers();
   return entity;
 }
 
@@ -3794,8 +3827,17 @@ async function handleAtomicInput(text) {
     await runPipeline(text);
     return;
   }
+  // Check if it's a trigger: "on @dep1, @dep2: action"
+  const triggerMatch = text.match(/^on\s+(@[\w]+(?:\s*,\s*@[\w]+)*)\s*:\s*(.+)$/);
+  if (triggerMatch) {
+    const deps = triggerMatch[1].split(',').map(d => d.trim().replace(/^@/, '')).filter(Boolean);
+    const action = triggerMatch[2].trim();
+    registerWatcher(deps, action);
+    renderAtomicFeed();
+    return;
+  }
   // Check if it's a tool command
-  const toolMatch = text.match(/^(\w+)\((.+)\)$/);
+  const toolMatch = text.match(/^(\w+)\((.*)\)$/);
   if (toolMatch) {
     const [, toolName, argsStr] = toolMatch;
     const args = argsStr.split(',').map(s => s.trim());
