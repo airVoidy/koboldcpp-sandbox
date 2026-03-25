@@ -1072,7 +1072,7 @@ async function fetchLLMWithContinue(url, messages, opts = {}) {
     max_tokens = s.max_tokens,
     noThink = s.no_think,
     maxContinues = s.max_continue,
-    continueOnLength = !!noThink,
+    continueOnLength = opts.continueOnLength !== undefined ? opts.continueOnLength : !!noThink,
   } = opts;
   let result = '';
   const baseMessages = [...messages];
@@ -4148,6 +4148,7 @@ async function toolGenerate(args) {
   // Grammar: resolve $grammar.name presets
   let grammar = opts.grammar || undefined;
   if (grammar && grammar.startsWith('$grammar.')) grammar = atomicGrammars[grammar.slice(9)] || grammar;
+  const continueOnLength = opts.continue !== undefined ? opts.continue !== 'false' : noThink; // explicit continue flag
   const captureRegex = opts.capture || undefined;
   const coerce = opts.coerce || undefined;
 
@@ -4179,7 +4180,7 @@ async function toolGenerate(args) {
   }));
 
   // Build call params for UI visibility
-  const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink};
+  const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink, continue: continueOnLength};
   if (grammar) callParams.grammar = '(set)';
   if (stop) callParams.stop = stop.join(',');
   if (captureRegex) callParams.capture = captureRegex;
@@ -4229,9 +4230,9 @@ async function toolGenerate(args) {
       {params: callParams, request: body, response: responseData});
   } else {
     // Standard prompt mode with fetchLLMWithContinue
-    const requestBody = {messages, temperature, max_tokens, noThink, maxContinues: s.max_continue, ...(stop ? {stop} : {})};
+    const requestBody = {messages, temperature, max_tokens, noThink, continueOnLength, maxContinues: s.max_continue, ...(stop ? {stop} : {})};
     const {answer, think, raw} = await fetchLLMWithContinue(workerUrl, messages,
-      {temperature, max_tokens, noThink, maxContinues: s.max_continue, ...(stop ? {stop} : {})}
+      {temperature, max_tokens, noThink, continueOnLength, maxContinues: s.max_continue, ...(stop ? {stop} : {})}
     );
     const resultEntity = createEntity(ref + '_answer', {source: {entityId: ref, tool: 'generate'}});
     addTextArea(resultEntity.name, 'answer', answer);
