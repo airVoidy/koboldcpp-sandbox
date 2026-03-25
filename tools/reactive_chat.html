@@ -708,6 +708,11 @@ body {
             <span id="builderCanvasTitle" style="font-size:14px;font-weight:600;color:var(--accent3)">No template selected</span>
           </div>
           <div id="builderCanvasSlots" style="min-height:200px"></div>
+          <!-- Live Preview -->
+          <div id="builderPreviewWrap" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:none">
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px;font-weight:600">Live Preview</div>
+            <div id="builderPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;max-width:600px"></div>
+          </div>
         </div>
         <!-- Builder Console -->
         <div style="border-top:1px solid var(--border);max-height:150px;overflow-y:auto;padding:6px 12px;background:var(--bg);flex-shrink:0">
@@ -3941,7 +3946,222 @@ function renderAtomicMsg(msg) {
   return el;
 }
 
+/* ================================================================
+   Slot Component Renderers — Phase 4
+   Each renderSlot*(entity, slot) returns HTML string.
+   Binding: slot.binding → resolve field from entity data.
+   ================================================================ */
+
+function resolveBinding(entity, binding) {
+  // @entity.field or .field → entity[field]
+  if (!binding) return undefined;
+  const path = binding.replace(/^@\w+\./, '').replace(/^\./, '');
+  if (!path) return undefined;
+  return entity[path];
+}
+
+function renderSlotTitle(entity, slot) {
+  const title = slot.binding ? resolveBinding(entity, slot.binding) : entity.name;
+  const status = entity.tags?.status || entity.tags?.reactionStatus || '';
+  const badgeCls = status === 'pass' ? 'ok' : status === 'fail' ? 'err' : 'entity';
+  let h = `<div class="tmpl-title">`;
+  h += `<span class="node-icon ${badgeCls}">#</span>`;
+  h += `<span class="node-title">${esc(String(title || entity.name))}</span>`;
+  if (status) h += `<span class="node-badge ${status}">${esc(status)}</span>`;
+  if (entity.ts) {
+    const t = new Date(entity.ts);
+    h += `<span class="node-time">${t.toLocaleTimeString()}</span>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotTags(entity, slot) {
+  const tags = entity.tags || {};
+  const entries = Object.entries(tags).filter(([k]) => !k.startsWith('_'));
+  if (!entries.length) return '';
+  let h = `<div class="at-tags">`;
+  entries.forEach(([k, v]) => {
+    const display = Array.isArray(v) ? v.join(', ') : String(v);
+    h += `<span class="at-tag" data-key="${esc(k)}"><span class="key">${esc(k)}:</span>${esc(display.length > 30 ? display.slice(0, 30) + '…' : display)}</span>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotTextArea(entity, slot) {
+  const label = slot.label || 'text';
+  const collapsed = slot.options?.collapsed !== false;
+  // Find matching text_area by label or binding
+  const ta = entity.text_areas?.find(a => a.name === label) || entity.text_areas?.[0];
+  // Or use answer field if binding points there
+  let text = '';
+  if (slot.binding) {
+    const val = resolveBinding(entity, slot.binding);
+    if (val !== undefined) text = String(val);
+  }
+  if (!text && ta) text = ta.text || '';
+
+  const isExpanded = ta?._expanded || !collapsed;
+  const arrow = isExpanded ? '▾' : '▸';
+  const preview = text.length > 60 ? text.slice(0, 60) + '…' : text;
+  const collapsedCls = isExpanded ? '' : ' collapsed';
+  const editable = slot.options?.editable !== false;
+
+  let h = `<div class="at-text-area${collapsedCls}" data-slot="${slot.id}">`;
+  h += `<div class="at-text-area-label" data-slot-toggle="${slot.id}">${arrow} ${esc(label)} <span class="at-text-preview">${!isExpanded ? esc(preview) : ''}</span></div>`;
+  h += `<div class="at-text-area-content"${editable ? ' contenteditable="true"' : ''} data-slot-area="${slot.id}">${esc(text)}</div>`;
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotImage(entity, slot) {
+  const url = slot.binding ? resolveBinding(entity, slot.binding) : entity.imageUrl;
+  if (!url) return '';
+  let h = `<div class="node-image"><img src="${esc(url)}" alt="Image" loading="lazy" style="max-width:100%;border-radius:6px"></div>`;
+  return h;
+}
+
+function renderSlotButtons(entity, slot) {
+  const items = slot.options?.items || ['verify', 'check', 'generate'];
+  let h = `<div class="tmpl-buttons" style="display:flex;gap:4px;margin:4px 0">`;
+  items.forEach(btn => {
+    const style = btn === 'generate' ? ' style="color:var(--purple,#b48ead)"' : '';
+    h += `<button class="btn-small" data-tmpl-action="${esc(btn)}" data-entity="${esc(entity.name)}"${style}>${esc(btn)}</button>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotThread(entity, slot) {
+  const mode = slot.options?.mode || 'tree';
+  // Thread data — from entity or parent node
+  const thread = entity._thread || [];
+  const tc = thread.length;
+  let h = `<div class="tmpl-thread" data-slot="${slot.id}">`;
+  h += `<div class="thread-bar" data-tmpl-thread-toggle="${slot.id}"><span class="arrow">▶</span> ${esc(slot.label || 'Thread')} <span class="thread-cnt">${tc}</span></div>`;
+  h += `<div class="thread-wrap" data-tmpl-thread="${slot.id}">`;
+  if (mode === 'flat') {
+    thread.forEach(t => {
+      h += `<div class="tmsg"><span class="tmsg-who">${esc(t.name || t.role || 'user')}</span> ${esc(t.text || t.content || '')}</div>`;
+    });
+  } else {
+    thread.forEach(t => {
+      h += `<div class="tmsg"><span class="tmsg-who">${esc(t.name || t.role || 'user')}</span> ${esc(t.text || t.content || '')}</div>`;
+    });
+  }
+  h += `</div></div>`;
+  return h;
+}
+
+function renderSlotDataTable(entity, slot) {
+  const label = slot.label || 'data';
+  const da = entity.data_areas?.find(a => a.name === label) || entity.data_areas?.[0];
+  if (!da) return '';
+  let h = `<div class="at-data-area" data-area="${esc(da.name)}">`;
+  h += `<div class="at-data-label">${esc(da.name)}</div>`;
+  h += `<table class="at-table"><thead><tr>`;
+  da.headers.forEach(hdr => { h += `<th>${esc(hdr)}</th>`; });
+  h += `</tr></thead><tbody>`;
+  da.rows.forEach((row, ri) => {
+    h += `<tr>`;
+    row.forEach((cell, ci) => { h += `<td>${esc(String(cell))}</td>`; });
+    h += `</tr>`;
+  });
+  h += `</tbody></table></div>`;
+  return h;
+}
+
+function renderSlotReactions(entity, slot) {
+  const reactions = entity.reactions || [];
+  if (!reactions.length) return '';
+  let h = `<div class="at-reactions" style="margin:4px 0">`;
+  reactions.forEach(r => {
+    h += `<span class="at-reaction" title="${esc(r.detail || '')}">${r.emoji}</span>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotList(entity, slot) {
+  const groups = slot.options?.groups || ['entities', 'axioms', 'hypotheses'];
+  let h = '';
+  groups.forEach(gName => {
+    const key = gName + '_list';
+    const items = entity[key] || entity.tags?.[gName];
+    if (!items || !Array.isArray(items) || !items.length) return;
+    h += `<div class="node-list-section">`;
+    h += `<div class="node-list-header"><span class="arrow">▶</span> ${esc(gName.toUpperCase())} <span class="list-count">${items.length}</span></div>`;
+    h += `<div class="node-list-body">`;
+    items.forEach(item => {
+      const txt = typeof item === 'string' ? item : (item.text || String(item));
+      h += `<div class="node-list-item"><span class="li-bullet">•</span>${esc(txt)}</div>`;
+    });
+    h += `</div></div>`;
+  });
+  return h ? `<div class="node-lists">${h}</div>` : '';
+}
+
+function renderSlotForm(entity, slot) {
+  const fields = slot.options?.fields || [{name: 'input', type: 'textarea', label: 'Input'}];
+  let h = `<div class="tmpl-form" data-slot="${slot.id}">`;
+  fields.forEach(f => {
+    h += `<div style="margin-bottom:6px">`;
+    h += `<label style="font-size:10px;color:var(--text-dim)">${esc(f.label || f.name)}</label>`;
+    if (f.type === 'textarea') h += `<textarea style="width:100%;min-height:40px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px" placeholder="${esc(f.placeholder || '')}"></textarea>`;
+    else h += `<input style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px" placeholder="${esc(f.placeholder || '')}">`;
+    h += `</div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotGroup(entity, slot) {
+  const label = slot.label || '';
+  let h = `<div class="tmpl-group" data-slot="${slot.id}" style="border-left:2px solid var(--border);padding-left:8px;margin:4px 0">`;
+  if (label) h += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">${esc(label)}</div>`;
+  if (slot.children?.length) {
+    slot.children.forEach(child => {
+      h += renderSlotComponent(entity, child);
+    });
+  }
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotComponent(entity, slot) {
+  switch (slot.type) {
+    case 'title': return renderSlotTitle(entity, slot);
+    case 'tags': return renderSlotTags(entity, slot);
+    case 'text_area': return renderSlotTextArea(entity, slot);
+    case 'image': return renderSlotImage(entity, slot);
+    case 'buttons': return renderSlotButtons(entity, slot);
+    case 'thread': return renderSlotThread(entity, slot);
+    case 'data_table': return renderSlotDataTable(entity, slot);
+    case 'reactions': return renderSlotReactions(entity, slot);
+    case 'list': return renderSlotList(entity, slot);
+    case 'form': return renderSlotForm(entity, slot);
+    case 'group': return renderSlotGroup(entity, slot);
+    default: return `<div style="color:var(--text-dim);font-size:10px">Unknown slot: ${esc(slot.type)}</div>`;
+  }
+}
+
+function renderTemplatedCard(entity, template) {
+  let h = `<div class="at-entity tmpl-card" data-entity="${esc(entity.name)}" data-template="${esc(template.name)}">`;
+  template.slots.forEach(slot => {
+    h += renderSlotComponent(entity, slot);
+  });
+  h += `</div>`;
+  return h;
+}
+
 function renderEntityCard(entity) {
+  // If entity has a card_template tag → use template rendering
+  const tmplName = entity.tags?.card_template;
+  if (tmplName && cardTemplates[tmplName]) {
+    return renderTemplatedCard(entity, cardTemplates[tmplName]);
+  }
+
   let h = `<div class="at-entity" data-entity="${esc(entity.name)}">`;
   // Header
   h += `<div class="at-entity-hdr">`;
@@ -7254,6 +7474,33 @@ function renderBuilderPage() {
 
   // Properties panel
   renderBuilderProps();
+
+  // Live Preview
+  renderBuilderPreview();
+}
+
+function renderBuilderPreview() {
+  const wrap = document.getElementById('builderPreviewWrap');
+  const el = document.getElementById('builderPreview');
+  if (!wrap || !el) return;
+  const tmpl = _activeCardTemplate ? cardTemplates[_activeCardTemplate] : null;
+  if (!tmpl || !tmpl.slots.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  // Sample entity: first from atomicEntities, or hardcoded default
+  const entityNames = Object.keys(atomicEntities);
+  const sample = entityNames.length ? atomicEntities[entityNames[0]] : {
+    name: 'sample_entity',
+    tags: {status: 'done', style: 'anime', card_template: _activeCardTemplate},
+    text_areas: [{name: 'RESULT', text: 'Sample result text goes here...', _expanded: true}],
+    data_areas: [],
+    reactions: [{emoji: '✅', detail: 'pass'}],
+    imageUrl: null,
+    ts: new Date().toISOString(),
+  };
+  el.innerHTML = renderTemplatedCard(sample, tmpl);
 }
 
 function renderSlotTree(slots, depth) {
