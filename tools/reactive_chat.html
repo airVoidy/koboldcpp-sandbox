@@ -747,25 +747,29 @@ body {
           </div>
         </div>
       </div>
-      <!-- Atomic Pipeline Chat -->
-      <div style="flex:0 0 auto;display:flex;flex-direction:column;border-top:1px solid var(--border);min-height:120px;max-height:40%">
-        <div style="display:flex;gap:4px;padding:4px 8px;align-items:center;flex-shrink:0">
-          <span style="font-size:10px;color:var(--accent3);font-weight:600">Pipeline Chat</span>
-          <select id="atomicChatRole" style="font-size:9px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;margin-left:auto">
-            <option value="analyzer">analyzer</option>
-            <option value="generator">generator</option>
-          </select>
-        </div>
-        <div id="atomicChat" style="flex:1;overflow-y:auto;padding:4px 8px;font-size:10px;min-height:60px"></div>
-        <div style="display:flex;gap:4px;padding:4px 8px;align-items:flex-end;flex-shrink:0">
-          <textarea id="atomicChatInput" placeholder="Describe pipeline to build..." rows="2" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:10px;font-family:inherit;resize:vertical"></textarea>
-          <button class="btn primary" id="btnAtomicChatSend" style="font-size:10px;padding:2px 8px">Ask</button>
-        </div>
-      </div>
     </div>
   </div>
   <!-- Right sidebar collapse button -->
   <button class="sidebar-toggle right" id="btnToggleRight" title="Toggle YAML">&#9654;</button>
+</div>
+<!-- Atomic Pipeline Chat — fixed bottom-right, resizable top edge -->
+<div id="atomicChatPanel" style="position:fixed;bottom:0;right:0;background:var(--surface);border-top:2px solid var(--accent3);display:flex;flex-direction:column;z-index:100;box-shadow:-4px -4px 16px rgba(0,0,0,.3)">
+  <div id="atomicChatResize" style="height:4px;cursor:ns-resize;background:var(--border);flex-shrink:0" title="Drag to resize"></div>
+  <div style="display:flex;gap:4px;padding:4px 8px;align-items:center;flex-shrink:0;cursor:pointer" id="atomicChatHeader">
+    <span id="atomicChatToggle" style="font-size:9px;color:var(--text-dim)">▾</span>
+    <span style="font-size:10px;color:var(--accent3);font-weight:600">Pipeline Chat</span>
+    <select id="atomicChatRole" style="font-size:9px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;margin-left:auto" onclick="event.stopPropagation()">
+      <option value="analyzer">analyzer</option>
+      <option value="generator">generator</option>
+    </select>
+  </div>
+  <div id="atomicChatBody" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+    <div id="atomicChat" style="flex:1;overflow-y:auto;padding:4px 8px;font-size:10px"></div>
+    <div style="display:flex;gap:4px;padding:4px 8px;align-items:flex-end;flex-shrink:0">
+      <textarea id="atomicChatInput" placeholder="Describe pipeline to build..." rows="2" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:10px;font-family:inherit;resize:vertical"></textarea>
+      <button class="btn primary" id="btnAtomicChatSend" style="font-size:10px;padding:2px 8px">Ask</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -3494,6 +3498,7 @@ function switchPage(page) {
     renderAtomicFeed();
     updateScopeList();
   }
+  if (typeof updateChatPanelVisibility === 'function') updateChatPanelVisibility();
   if (page === 'params') {
     // Collapse right sidebar on params page — content is full-width
     const rs = document.getElementById('rightSidebar');
@@ -5566,6 +5571,57 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
 });
 
 /* --- Atomic Pipeline Chat --- */
+// Chat panel: toggle collapse
+document.getElementById('atomicChatHeader').addEventListener('click', () => {
+  const panel = document.getElementById('atomicChatPanel');
+  const body = document.getElementById('atomicChatBody');
+  const toggle = document.getElementById('atomicChatToggle');
+  if (body.style.display === 'none') {
+    body.style.display = 'flex';
+    panel.style.height = panel._savedHeight || '280px';
+    toggle.textContent = '▾';
+  } else {
+    panel._savedHeight = panel.style.height;
+    body.style.display = 'none';
+    panel.style.height = 'auto';
+    toggle.textContent = '▸';
+  }
+});
+// Chat panel: drag top edge to resize
+(function() {
+  const panel = document.getElementById('atomicChatPanel');
+  const handle = document.getElementById('atomicChatResize');
+  panel.style.height = '280px';
+  let startY, startH;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = panel.offsetHeight;
+    const onMove = (e) => {
+      const h = Math.max(80, Math.min(window.innerHeight - 40, startH - (e.clientY - startY)));
+      panel.style.height = h + 'px';
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+})();
+// Sync chat panel with right sidebar position/width, show only on atomic page
+function updateChatPanelVisibility() {
+  const panel = document.getElementById('atomicChatPanel');
+  const sidebar = document.getElementById('rightSidebar');
+  if (!panel || !sidebar) return;
+  if (activePage !== 'atomic' || sidebar.classList.contains('collapsed')) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'flex';
+  panel.style.width = sidebar.offsetWidth + 'px';
+}
+updateChatPanelVisibility();
+// Re-sync on sidebar resize
+new ResizeObserver(() => updateChatPanelVisibility()).observe(document.getElementById('rightSidebar'));
+
 let atomicChatMessages = [];
 
 function addAtomicChat(role, content) {
@@ -5611,6 +5667,19 @@ ${configItems || 'none'}
 Current scope: ${scope}
 Current pipeline steps:
 ${steps}
+
+Entities (JSON summary):
+${Object.entries(atomicEntities).map(([name, e]) => {
+  const parts = [`@${name}`];
+  if (Object.keys(e.tags || {}).length) parts.push(`tags: ${JSON.stringify(e.tags)}`);
+  e.text_areas.filter(ta => ta.name !== 'resolved').forEach(ta => {
+    parts.push(`${ta.name}: ${ta.text.length > 120 ? ta.text.slice(0, 120) + '...' : ta.text}`);
+  });
+  e.data_areas.forEach(da => {
+    parts.push(`${da.name}: table [${da.headers.join(', ')}] ${da.rows.length} rows`);
+  });
+  return parts.join(' | ');
+}).join('\n') || 'none'}
 
 Rules:
 - Output DSL commands inside a \`\`\`pipeline code block
