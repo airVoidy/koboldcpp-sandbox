@@ -523,6 +523,11 @@ body {
   border-radius:3px;
 }
 .tp-scope-item:hover { background:var(--surface2); }
+.pipeline-step { font-size:10px; color:var(--text-dim); padding:2px 4px; border-radius:3px; cursor:pointer; display:flex; align-items:center; gap:4px; }
+.pipeline-step:hover { background:var(--surface2); }
+.pipeline-step.selected { background:var(--accent3)22; color:var(--accent3); }
+.pipeline-step input[type=checkbox] { margin:0; cursor:pointer; }
+.atomic-msg.msg-selected { outline:2px solid var(--accent3); outline-offset:-2px; }
 
 .thread-input {
   display:flex; gap:4px; padding:4px 12px 6px 28px; border-top:1px solid var(--border);
@@ -733,6 +738,13 @@ body {
         <div class="tp-scope" id="atomicScopeList">
           <div class="tp-scope-title">Scope (@names)</div>
           <div id="atomicScopeItems" style="font-size:11px;color:var(--text-dim)">No entities yet</div>
+        </div>
+        <div class="tp-section" id="atomicPipelineSection" style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px">
+          <div class="tp-section-title">Pipeline Steps <span style="font-size:9px;color:var(--text-dim);text-transform:none" id="pipelineStepCount"></span></div>
+          <div id="pipelineStepsList" style="font-size:10px;max-height:200px;overflow-y:auto"></div>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <button class="tp-btn" id="btnSaveMacroFromSteps" style="font-size:9px;flex:1" disabled>Save selected as macro</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3427,6 +3439,7 @@ var macroRecording = false;
 var macroSteps = [];
 var atomicMacros = {};
 var pipelineSteps = []; // always-on recording of executed commands for DSL export
+var _currentMacroGroup = null; // set during macro replay to tag inner steps
 try { const sc = JSON.parse(localStorage.getItem('atomic_config') || '{}'); if (sc.params) atomicParams = sc.params; if (sc.grammars) atomicGrammars = sc.grammars; } catch(_) {}
 try { const si = JSON.parse(localStorage.getItem('global_items') || '[]'); if (Array.isArray(si)) globalItems = si; } catch(_) {}
 try { atomicMacros = JSON.parse(localStorage.getItem('atomic_macros') || '{}'); } catch(_) {}
@@ -3608,7 +3621,6 @@ function renderAtomicFeed() {
   const feed = document.getElementById('atomicFeed');
   feed.innerHTML = '';
   atomicMessages.forEach(msg => feed.appendChild(renderAtomicMsg(msg)));
-  // Scroll to bottom
   feed.scrollTop = feed.scrollHeight;
 }
 
@@ -3814,6 +3826,76 @@ function updateScopeList() {
   }
 }
 
+var _selectedPipelineSteps = new Set(); // indices of selected steps
+
+function renderPipelineSteps() {
+  const el = document.getElementById('pipelineStepsList');
+  const countEl = document.getElementById('pipelineStepCount');
+  const saveBtn = document.getElementById('btnSaveMacroFromSteps');
+  if (!el) return;
+  countEl.textContent = pipelineSteps.length ? `(${pipelineSteps.length})` : '';
+  if (!pipelineSteps.length) {
+    el.innerHTML = '<span style="color:var(--text-dim)">No steps yet</span>';
+    saveBtn.disabled = true;
+    return;
+  }
+  el.innerHTML = pipelineSteps.map((step, i) => {
+    const checked = _selectedPipelineSteps.has(i) ? ' checked' : '';
+    const cls = _selectedPipelineSteps.has(i) ? ' selected' : '';
+    const indent = step.parentGroup ? ' style="padding-left:16px;opacity:0.8"' : '';
+    const isGroup = step.group ? ` data-group="${esc(step.group)}"` : '';
+    return `<div class="pipeline-step${cls}" data-idx="${i}"${indent}${isGroup}><input type="checkbox"${checked}><span>${esc(step.cmd)}</span></div>`;
+  }).join('');
+  el.querySelectorAll('.pipeline-step').forEach(row => {
+    const idx = parseInt(row.dataset.idx);
+    const step = pipelineSteps[idx];
+    row.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      const cb = row.querySelector('input');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    });
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        _selectedPipelineSteps.add(idx);
+        // Group header: also select all children
+        if (step.group) {
+          pipelineSteps.forEach((s, j) => { if (s.parentGroup === step.group) _selectedPipelineSteps.add(j); });
+        }
+      } else {
+        _selectedPipelineSteps.delete(idx);
+        // Group header: also deselect all children
+        if (step.group) {
+          pipelineSteps.forEach((s, j) => { if (s.parentGroup === step.group) _selectedPipelineSteps.delete(j); });
+        }
+      }
+      renderPipelineSteps();
+    });
+  });
+  saveBtn.disabled = _selectedPipelineSteps.size === 0;
+}
+
+
+document.getElementById('btnSaveMacroFromSteps').addEventListener('click', () => {
+  if (!_selectedPipelineSteps.size) return;
+  const indices = [..._selectedPipelineSteps].sort((a, b) => a - b);
+  const cmds = indices.map(i => pipelineSteps[i].cmd);
+  showNamePopup(document.getElementById('btnSaveMacroFromSteps'), {
+    label: `Save ${cmds.length} steps as macro`,
+    placeholder: 'macro name'
+  }, name => {
+    if (!name) return;
+    atomicMacros[name] = cmds.join('\n');
+    saveMacros();
+    _selectedPipelineSteps.clear();
+    renderPipelineSteps();
+    syncFeedSelection();
+    addAtomicMsg('tool', `Macro "${name}" saved (${cmds.length} steps):\n\`\`\`\n${cmds.join('\\n')}\n\`\`\``);
+    renderAtomicFeed();
+  });
+});
+
+
 /* --- Message handling --- */
 function addAtomicMsg(role, content, entities, meta) {
   const msg = {
@@ -3875,10 +3957,11 @@ async function handleAtomicInput(text) {
       const cleanVal = value.replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
       addTextArea(name, 'content', cleanVal);
     }
-    pipelineSteps.push({cmd: `@${name} = ${value}`});
+    pipelineSteps.push({cmd: `@${name} = ${value}`, ...(_currentMacroGroup ? {parentGroup: _currentMacroGroup} : {})});
     addAtomicMsg('user', value, [name]);
     renderAtomicFeed();
     updateScopeList();
+    renderPipelineSteps();
     return;
   }
   // @config.name — shorthand: create entity named after config item
@@ -3892,10 +3975,11 @@ async function handleAtomicInput(text) {
     if (resolved && resolved !== rawRef) {
       addTextArea(configName, 'resolved', resolved);
     }
-    pipelineSteps.push({cmd: `@${configName} = ${rawRef}`});
+    pipelineSteps.push({cmd: `@${configName} = ${rawRef}`, ...(_currentMacroGroup ? {parentGroup: _currentMacroGroup} : {})});
     addAtomicMsg('user', rawRef, [configName]);
     renderAtomicFeed();
     updateScopeList();
+    renderPipelineSteps();
     return;
   }
   // Regular message — create as user message, check for entity creation syntax
@@ -4041,7 +4125,9 @@ async function applyAtomicTool(toolName, args) {
   }
   // Always record for pipeline DSL export
   const argsStr = args.map(a => String(a).startsWith('@') ? a : (a.includes(',') || a.includes(' ') ? a : a)).join(', ');
-  pipelineSteps.push({cmd: `${toolName}(${argsStr})`});
+  const stepEntry = {cmd: `${toolName}(${argsStr})`};
+  if (_currentMacroGroup) stepEntry.parentGroup = _currentMacroGroup;
+  pipelineSteps.push(stepEntry);
   setS('busy', 'Running ' + toolName + '...');
   try {
     switch (toolName) {
@@ -4080,6 +4166,7 @@ async function applyAtomicTool(toolName, args) {
   }
   renderAtomicFeed();
   updateScopeList();
+  renderPipelineSteps();
   setS('ok', 'Ready');
 }
 
@@ -4395,10 +4482,20 @@ function toolDrop(args) {
     atomicMessages.forEach(m => {
       if (m.entities) m.entities = m.entities.filter(e => e !== k);
     });
+    // Remove pipeline steps that reference this entity
+    pipelineSteps = pipelineSteps.filter(s => {
+      // Remove creation step: @name = ...
+      if (s.cmd.startsWith(`@${k} =`) || s.cmd.startsWith(`@${k}=`)) return false;
+      // Remove tool steps targeting this entity: tool(@name, ...)
+      if (s.cmd.match(new RegExp(`\\(@${k}\\b`))) return false;
+      return true;
+    });
   });
+  _selectedPipelineSteps.clear();
   saveAtomicState();
   renderAtomicFeed();
   updateScopeList();
+  renderPipelineSteps();
   addAtomicMsg('system', `drop: ${names.map(n=>'@'+n).join(', ')}`);
 }
 
@@ -4483,19 +4580,23 @@ async function toolRunMacro(args) {
     atomicMacros[name] = dsl;
     saveMacros();
   }
-  // Remove run_macro itself from pipeline steps
-  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('run_macro')) {
-    pipelineSteps.pop();
+  // Mark run_macro step as group header
+  const groupIdx = pipelineSteps.length - 1;
+  if (groupIdx >= 0 && pipelineSteps[groupIdx].cmd.startsWith('run_macro')) {
+    pipelineSteps[groupIdx].group = name;
   }
   addAtomicMsg('system', `▶ Macro: ${name}`);
   renderAtomicFeed();
   const lines = dsl.split('\n').filter(l => l.trim());
+  const _prevMacroCtx = _currentMacroGroup;
+  _currentMacroGroup = name;
   for (const line of lines) {
     try { await handleAtomicInput(line); } catch (e) {
       addAtomicMsg('system', `✗ Macro error: ${e.message}`);
       break;
     }
   }
+  _currentMacroGroup = _prevMacroCtx;
   addAtomicMsg('system', `✓ Macro "${name}" complete.`);
 }
 
@@ -4922,9 +5023,11 @@ document.getElementById('btnAtomicClear').addEventListener('click', () => {
   atomicEntities = {};
   atomicIdN = 0;
   pipelineSteps = [];
+  _selectedPipelineSteps.clear();
   saveAtomicState();
   renderAtomicFeed();
   updateScopeList();
+  renderPipelineSteps();
 });
 
 /* --- Global Params & Grammar Presets (state initialized at top of Atomic section) --- */
