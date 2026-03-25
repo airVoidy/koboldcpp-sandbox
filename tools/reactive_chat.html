@@ -9337,22 +9337,22 @@ async function _applyBuilderMsg(idx) {
   if (!m) return;
   let text = m.content.trim();
   if (text.startsWith('```')) text = text.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
-  // DSL — replay directly
-  if (text.includes('card_template(')) {
+  // DSL patch — add slots to existing template (don't clear)
+  if (text.includes('add_slot(') || text.includes('remove_slot(') || text.includes('card_template(')) {
     const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
-    const tmplMatch = lines[0].match(/card_template\((\w+)\)/);
+    // Skip card_template() line if template already exists (patch mode)
+    const tmplMatch = lines[0]?.match(/card_template\((\w+)\)/);
     const tmplName = tmplMatch ? tmplMatch[1] : _activeCardTemplate;
-    if (tmplName && cardTemplates[tmplName]) {
-      cardTemplates[tmplName].slots = [];
-      _cardSlotIdN = 0;
-      saveCardTemplates();
+    let patchLines = lines;
+    if (tmplMatch && cardTemplates[tmplName]) {
+      // Patch mode: template exists, skip card_template() line, just run add/remove
+      patchLines = lines.filter(l => !l.startsWith('card_template('));
     }
-    for (const line of lines) {
+    for (const line of patchLines) {
       await handleAtomicInput('/' + line);
     }
-    document.getElementById('builderDSLEditor').value = text;
     renderBuilderPage();
-    addBuilderAskMsg('system', 'DSL applied');
+    addBuilderAskMsg('system', `Patched: ${patchLines.length} command(s)`);
     return;
   }
   // JSON patches
