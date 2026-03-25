@@ -6574,8 +6574,9 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
         showNamePopup(null, {label: 'Import Pipeline DSL', fields: [
           {name: 'dsl', placeholder: '@input = $config.input\ngenerate(@input)\ntag(@input, type, task)', label: 'Paste DSL here', multiline: true}
         ]}, async (vals) => {
-          if (!vals.dsl) return;
-          await runPipeline(vals.dsl);
+          const dsl = typeof vals === 'string' ? vals : vals.dsl;
+          if (!dsl) return;
+          await runPipeline(dsl);
         });
       }},
       // Macros
