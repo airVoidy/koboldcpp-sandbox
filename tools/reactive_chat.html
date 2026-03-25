@@ -640,12 +640,13 @@ body {
   </div>
   <!-- Atomic Tasks feed area (hidden by default) -->
   <div class="atomic-feed-area" id="atomicFeedArea">
-    <div class="atomic-feed" id="atomicFeed"></div>
+    <div class="atomic-feed" id="atomicFeed" style="padding-bottom:8px"></div>
     <div class="main-input">
       <textarea id="atomicInp" placeholder="Type message, @entity reference, or tool command..." rows="2"></textarea>
       <button class="btn primary" id="btnAtomicSend">Send</button>
     </div>
-    <div id="atomicConsoleInline" style="border-top:1px solid var(--border);flex-shrink:0;max-height:120px;display:flex;flex-direction:column;overflow:hidden"></div>
+    <!-- Console inline below input -->
+    <div id="atomicConsoleInline2" style="border-top:1px solid var(--border);flex-shrink:0;max-height:120px;height:60px;display:flex;flex-direction:column;overflow:hidden"></div>
   </div>
   <!-- Global Params page (hidden by default) -->
   <div class="atomic-feed-area" id="paramsFeedArea">
@@ -3802,20 +3803,21 @@ function renderAtomicMsg(msg) {
       saveAtomicState();
     });
   });
-  // Bind tag editing
+  // Bind tag context menu (right-click for edit/delete)
   el.querySelectorAll('.at-tag').forEach(tagEl => {
-    tagEl.addEventListener('dblclick', () => {
+    tagEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const eName = tagEl.closest('.at-entity').dataset.entity;
       const key = tagEl.dataset.key;
-      const entity = atomicEntities[eName];
-      if (!entity) return;
-      showNamePopup(tagEl, {label: `Edit tag "${key}"`, placeholder: 'value', defaultValue: entity.tags[key]}, newVal => {
-        if (newVal !== null) {
-          entity.tags[key] = newVal;
-          saveAtomicState();
-          renderAtomicFeed();
-        }
-      });
+      showAtomicCtx(e.clientX, e.clientY, [
+        {label: 'Edit tag', action: () => {
+          showNamePopup(tagEl, {label: `Edit tag "${key}"`, placeholder: 'value', defaultValue: atomicEntities[eName]?.tags[key]}, newVal => {
+            if (newVal !== null) handleAtomicInput(`tag(@${eName}, ${key}, ${newVal})`);
+          });
+        }},
+        {label: 'Delete tag', danger: true, action: () => handleAtomicInput(`remove_tag(@${eName}, ${key})`)},
+      ]);
     });
   });
   // Bind text_area toggle (click label to expand/collapse)
@@ -4012,7 +4014,7 @@ var atomicConsoleMsgs = [];
 
 // Build console panel DOM into inline container
 (function() {
-  const container = document.getElementById('atomicConsoleInline');
+  const container = document.getElementById('atomicConsoleInline2');
   if (!container) return;
   container.innerHTML = `
     <div id="atomicConsoleResize" style="height:3px;cursor:ns-resize;background:var(--border);flex-shrink:0" title="Drag to resize"></div>
@@ -4328,6 +4330,7 @@ async function applyAtomicTool(toolName, args) {
       case 'scope_end': toolScopeEnd(args); break;
       case 'drop': toolDrop(args); break;
       case 'tag': toolTag(args); break;
+      case 'remove_tag': toolRemoveTag(args); break;
       case 'add_text': toolAddText(args); break;
       case 'rename': toolRename(args); break;
       case 'export_dsl': toolExportDSL(args); break;
@@ -4687,6 +4690,18 @@ function toolTag(args) {
   addTag(ref, key, value);
   addAtomicMsg('system', `tag(@${ref}, ${key}, ${value})`);
   saveAtomicState();
+}
+
+function toolRemoveTag(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const key = args[1]?.trim();
+  if (!ref || !key) { addAtomicMsg('tool', 'Usage: remove_tag(@entity, key)'); return; }
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  delete entity.tags[key];
+  addAtomicMsg('system', `remove_tag(@${ref}, ${key})`);
+  saveAtomicState();
+  renderAtomicFeed();
 }
 
 function toolAddText(args) {
