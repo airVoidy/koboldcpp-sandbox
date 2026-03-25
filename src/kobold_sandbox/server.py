@@ -1998,6 +1998,8 @@ def create_app(root: str) -> FastAPI:
             return _atomic_generate(params, workers, settings, role)
         elif tool == "claims":
             return _atomic_claims(params, workers, settings, role)
+        elif tool == "render":
+            return _atomic_render(params)
         else:
             raise ValueError(f"Unknown tool: {tool}")
 
@@ -2069,6 +2071,29 @@ def create_app(root: str) -> FastAPI:
             "from_delim": params.get("from_delim"),
             "to_delim": params.get("to_delim"),
         }
+
+    def _atomic_render(params: dict) -> dict:
+        """Pure text template rendering with slot substitution.
+        params: {template, slots: {key: value, ...}}
+        Replaces @key in template with corresponding value.
+        """
+        template = params.get("template", "")
+        slots = params.get("slots", {})
+        if not template:
+            raise ValueError("template is required")
+        import re
+        result = template
+        for _pass in range(3):  # multi-pass for nested refs
+            changed = False
+            for key, val in slots.items():
+                pattern = re.compile(r"@" + re.escape(key) + r"\b")
+                new_result = pattern.sub(str(val), result)
+                if new_result != result:
+                    result = new_result
+                    changed = True
+            if not changed:
+                break
+        return {"content": result, "slots_applied": list(slots.keys())}
 
     async def _atomic_generate(
         params: dict, workers: dict, settings: dict, role: str

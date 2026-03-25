@@ -4359,6 +4359,7 @@ async function applyAtomicTool(toolName, args) {
       case 'add_table': toolAddTable(args); break;
       case 'merge': toolMerge(args); break;
       case 'parse_sections': await toolParseSections(args); break;
+      case 'render': toolRender(args); break;
       case 'scope_begin': toolScopeBegin(); break;
       case 'scope_end': toolScopeEnd(args); break;
       case 'drop': toolDrop(args); break;
@@ -4851,6 +4852,53 @@ function toolDeleteMacro(args) {
   delete atomicMacros[name];
   saveMacros();
   addAtomicMsg('system', `Macro "${name}" deleted`);
+}
+
+/* render(@template, slot1:@ref1, slot2:@ref2) → @template_rendered
+   Pure text substitution: replaces @slot1, @slot2 in template with resolved values.
+   No LLM call. */
+function toolRender(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  if (!ref) { addAtomicMsg('tool', 'Usage: render(@template, key:@value, ...)'); return; }
+
+  // Get template text (entity or @config.*)
+  let template = resolveRefToString(ref);
+  if (!template || template === '@' + ref) { addAtomicMsg('tool', `@${ref} not found or empty`); return; }
+
+  // Parse slot mappings from remaining args
+  const slots = {};
+  for (let i = 1; i < args.length; i++) {
+    const kv = args[i].trim().match(/^(\w+):(.+)$/);
+    if (kv) {
+      const [, key, valRef] = kv;
+      // Multi-pass resolve for nested refs (@input → @config.input → actual text)
+      let resolved = resolveRefToString(valRef.trim().replace(/^@/, ''));
+      for (let p = 0; p < 5; p++) {
+        const next = resolved.replace(/@([\w]+(?:\.[\w]+)*)/g, (m, r) => resolveRefToString(r));
+        if (next === resolved) break;
+        resolved = next;
+      }
+      slots[key] = resolved;
+    }
+  }
+
+  // Substitute slots, then resolve any remaining @refs
+  Object.entries(slots).forEach(([key, val]) => {
+    template = template.replace(new RegExp('@' + key + '\\b', 'g'), val);
+  });
+  // Final multi-pass to catch remaining @refs
+  for (let pass = 0; pass < 5; pass++) {
+    const next = template.replace(/@([\w]+(?:\.[\w]+)*)/g, (m, r) => resolveRefToString(r));
+    if (next === template) break;
+    template = next;
+  }
+
+  // Create result entity
+  const outName = ref.replace(/^config\./, '') + '_rendered';
+  createEntity(outName);
+  addTextArea(outName, 'content', template);
+  addAtomicMsg('tool', `render(@${ref}) → @${outName} (${template.length} chars, ${Object.keys(slots).length} slots)`, [outName]);
+  saveAtomicState();
 }
 
 function toolCheckStatus(args) {
