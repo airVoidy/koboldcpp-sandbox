@@ -7085,6 +7085,29 @@ function renderBuilderPage() {
         handleAtomicInput(`/remove_slot(@${_activeCardTemplate}, ${el.dataset.slotId})`);
       });
     }
+    // Drag reorder
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', el.dataset.slotId);
+      el.style.opacity = '0.4';
+    });
+    el.addEventListener('dragend', () => { el.style.opacity = '1'; });
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.style.borderTop = '2px solid var(--accent)';
+    });
+    el.addEventListener('dragleave', () => {
+      el.style.borderTop = '';
+    });
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.style.borderTop = '';
+      const draggedId = e.dataTransfer.getData('text/plain');
+      const targetIdx = parseInt(el.dataset.slotIdx);
+      if (draggedId && draggedId !== el.dataset.slotId && !isNaN(targetIdx)) {
+        handleAtomicInput(`/move_slot(@${_activeCardTemplate}, ${draggedId}, ${targetIdx})`);
+      }
+    });
   });
 
   // Properties panel
@@ -7686,6 +7709,67 @@ loop(while:@need_more, max_iters:$config.max_table_iters) {
 @accepted = accepted_list(@table_text, checks:@constraints.axioms)
 @accepted_rows = filter_rows(@table_text, where:all_yes, checks:@constraints.axioms)
 @rejected = reject_reasons(@table_text, checks:@constraints.axioms)`) || changedMacros;
+
+  changedMacros = ensureAtomicMacro('hypothesis_verdict_table', `@input = $config.prompt
+@constraints_raw = generate(
+  $config.prompt_constraints_strict,
+  worker:analyzer,
+  input:@input,
+  think:false,
+  continue:true,
+  temperature:0.2,
+  max_tokens:1024
+)
+
+@constraints = parse_sections(
+  @constraints_raw,
+  entities:"ENTITIES:",
+  axioms:"AXIOMS:",
+  hypotheses:"HYPOTHESES:"
+)
+
+@hyp_header = table_header(@constraints.hypotheses)
+@hyp_table_text = ""
+
+append_text(@hyp_table_text, content, @hyp_header.content)
+append_text(@hyp_table_text, content, "\\n| 1 |")
+
+@hyp_chat = "session"
+set_text(@hyp_chat, user, @input)
+set_text(@hyp_chat, assistant, @hyp_header.content)
+append_text(@hyp_chat, assistant, "\\n| 1 |")
+
+@hyp_chunk = generate(
+  @hyp_chat,
+  mode:continue,
+  continue:false,
+  temperature:0.1,
+  max_tokens:768,
+  stop:"\\n\\n\\n"
+)
+
+append_text(@hyp_chat, assistant, @hyp_chunk.answer)
+append_text(@hyp_table_text, content, @hyp_chunk.answer)
+
+@hyp_parsed = parse_table(@hyp_table_text)
+@hyp_rows = row_count(@hyp_parsed)
+@hyp_need_more = lt(@hyp_rows, 2)
+
+loop(while:@hyp_need_more, max_iters:$config.max_table_iters) {
+  @hyp_chunk = generate(
+    @hyp_chat,
+    mode:continue,
+    continue:false,
+    temperature:0.1,
+    max_tokens:768,
+    stop:"\\n\\n\\n"
+  )
+  append_text(@hyp_chat, assistant, @hyp_chunk.answer)
+  append_text(@hyp_table_text, content, @hyp_chunk.answer)
+  @hyp_parsed = parse_table(@hyp_table_text)
+  @hyp_rows = row_count(@hyp_parsed)
+  @hyp_need_more = lt(@hyp_rows, 2)
+}`) || changedMacros;
 
   if (changedItems) saveGlobalItems();
   if (changedMacros) saveMacros();
