@@ -747,6 +747,21 @@ body {
           </div>
         </div>
       </div>
+      <!-- Atomic Pipeline Chat -->
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;border-top:1px solid var(--border);min-height:120px;max-height:40%">
+        <div style="display:flex;gap:4px;padding:4px 8px;align-items:center;flex-shrink:0">
+          <span style="font-size:10px;color:var(--accent3);font-weight:600">Pipeline Chat</span>
+          <select id="atomicChatRole" style="font-size:9px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;margin-left:auto">
+            <option value="analyzer">analyzer</option>
+            <option value="generator">generator</option>
+          </select>
+        </div>
+        <div id="atomicChat" style="flex:1;overflow-y:auto;padding:4px 8px;font-size:10px;min-height:60px"></div>
+        <div style="display:flex;gap:4px;padding:4px 8px;align-items:flex-end;flex-shrink:0">
+          <textarea id="atomicChatInput" placeholder="Describe pipeline to build..." rows="2" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:10px;font-family:inherit;resize:vertical"></textarea>
+          <button class="btn primary" id="btnAtomicChatSend" style="font-size:10px;padding:2px 8px">Ask</button>
+        </div>
+      </div>
     </div>
   </div>
   <!-- Right sidebar collapse button -->
@@ -5548,6 +5563,117 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       })),
     ]);
   }
+});
+
+/* --- Atomic Pipeline Chat --- */
+let atomicChatMessages = [];
+
+function addAtomicChat(role, content) {
+  const chat = document.getElementById('atomicChat');
+  if (!chat) return;
+  const cls = role === 'user' ? 'color:var(--accent)' : 'color:var(--accent3)';
+  const label = role === 'user' ? 'You' : 'Worker';
+  chat.insertAdjacentHTML('beforeend', `<div style="margin-bottom:6px"><span style="font-weight:600;font-size:10px;${cls}">${esc(label)}</span><div style="white-space:pre-wrap;margin-top:1px;font-size:10px">${esc(content)}</div></div>`);
+  chat.scrollTop = chat.scrollHeight;
+  atomicChatMessages.push({role, content});
+}
+
+function buildPipelineChatContext() {
+  const configItems = (globalItems || []).map(g => `@config.${g.name}: ${g.type === 'text' ? g.text.slice(0, 100) + '...' : 'table [' + g.headers?.join(', ') + ']'}`).join('\n');
+  const scope = Object.keys(atomicEntities).map(n => '@' + n).join(', ') || 'empty';
+  const steps = pipelineSteps.map(s => s.cmd).join('\n') || 'none';
+
+  return `You are a pipeline builder assistant. You help create Atomic Task pipelines using DSL commands.
+
+Available commands (one per line):
+- @name = @config.ref — bind entity to Global Params config item
+- @name = "literal text" — create entity with inline text
+- generate(@entity) — LLM generation → creates @entity_answer
+- generate(@entity, analyzer) — use analyzer worker
+- generate(@entity, analyzer, no_think:false) — with thinking enabled
+- generate(@config.prompt, analyzer, input:@config.input) — slot mapping: @input in template → @config.input value
+- parse_sections(@entity, DELIM1:, DELIM2:, DELIM3:) — extract sections → creates @entity_constraints with data_areas
+- tag(@entity, key, value) — add metadata tag to entity
+- scope_begin() / scope_end(@keep1, @keep2) — local scope, drop intermediates
+- drop(@entity) — delete entity and its pipeline steps
+- save_macro(name) / run_macro(name) — save/replay command sequences
+- export_dsl(name) — export current pipeline as DSL text
+
+Key behaviors:
+- generate() auto-creates result entity: @source_answer
+- @config.* refs resolve at call time (multi-pass for nested refs like @config.prompt containing @input)
+- parse_sections uses server-side scope — one call for all sections, delimiter ranges are consecutive
+- Slot mappings: input:@config.input replaces @input in template before resolution
+
+Current config items:
+${configItems || 'none'}
+
+Current scope: ${scope}
+Current pipeline steps:
+${steps}
+
+Rules:
+- Output DSL commands inside a \`\`\`pipeline code block
+- Use @config.* refs, never hardcode long text
+- Be minimal — no prose between commands in the code block
+- Explain briefly before the code block if asked`;
+}
+
+document.getElementById('btnAtomicChatSend').addEventListener('click', async () => {
+  const inp = document.getElementById('atomicChatInput');
+  const question = inp.value.trim();
+  if (!question) return;
+
+  const role = document.getElementById('atomicChatRole').value;
+  const worker = getWorkerByRole(role);
+  if (!worker?.url) { addAtomicChat('assistant', `No ${role} worker available`); return; }
+
+  addAtomicChat('user', question);
+  inp.value = '';
+  inp.disabled = true;
+  document.getElementById('btnAtomicChatSend').disabled = true;
+
+  const url = worker.url.replace(/\/+$/,'') + '/v1/chat/completions';
+  const messages = [
+    {role: 'user', content: buildPipelineChatContext()},
+    {role: 'assistant', content: 'Ready. Describe the pipeline you need and I\'ll generate DSL commands.'},
+    ...atomicChatMessages.map(m => ({role: m.role === 'user' ? 'user' : 'assistant', content: m.content}))
+  ];
+
+  try {
+    const {answer} = await fetchLLMWithContinue(url, messages, {temperature: 0.3, max_tokens: 2048, noThink: false, continueOnLength: true});
+    addAtomicChat('assistant', answer);
+
+    // Auto-extract pipeline code blocks and offer to run
+    const pipelineMatch = answer.match(/```pipeline\n([\s\S]*?)```/);
+    if (pipelineMatch) {
+      const dsl = pipelineMatch[1].trim();
+      const chat = document.getElementById('atomicChat');
+      const btn = document.createElement('button');
+      btn.className = 'btn primary';
+      btn.style.cssText = 'font-size:9px;padding:2px 8px;margin:2px 0 8px 0';
+      btn.textContent = '▶ Run this pipeline';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        await runPipeline(dsl);
+        btn.textContent = '✓ Done';
+        renderPipelineSteps();
+      });
+      chat.appendChild(btn);
+      chat.scrollTop = chat.scrollHeight;
+    }
+  } catch(e) {
+    addAtomicChat('assistant', 'Error: ' + e.message);
+  } finally {
+    inp.disabled = false;
+    document.getElementById('btnAtomicChatSend').disabled = false;
+    inp.focus();
+  }
+});
+
+document.getElementById('atomicChatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnAtomicChatSend').click(); }
 });
 
 setS('ok','Ready');
