@@ -665,6 +665,7 @@ body {
         <button class="btn" id="btnParamsAddText">+ Text Area</button>
         <button class="btn" id="btnParamsAddParam">+ Key:Value Param</button>
         <button class="btn" id="btnParamsAddAlias">+ Alias</button>
+        <button class="btn" id="btnParamsAddGroup">+ Group</button>
       </div>
     </div>
   </div>
@@ -700,12 +701,23 @@ body {
           <button class="btn" id="btnBuilderNewTemplate" style="font-size:10px;margin-top:6px;width:100%">+ New Template</button>
         </div>
       </div>
-      <!-- Canvas -->
-      <div id="builderCanvas" style="flex:1;padding:16px;overflow-y:auto">
-        <div id="builderCanvasToolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <span id="builderCanvasTitle" style="font-size:14px;font-weight:600;color:var(--accent3)">No template selected</span>
+      <!-- Canvas + Console -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div id="builderCanvas" style="flex:1;padding:16px;overflow-y:auto">
+          <div id="builderCanvasToolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span id="builderCanvasTitle" style="font-size:14px;font-weight:600;color:var(--accent3)">No template selected</span>
+          </div>
+          <div id="builderCanvasSlots" style="min-height:200px"></div>
         </div>
-        <div id="builderCanvasSlots" style="min-height:200px"></div>
+        <!-- Builder Console -->
+        <div style="border-top:1px solid var(--border);max-height:150px;overflow-y:auto;padding:6px 12px;background:var(--bg);flex-shrink:0">
+          <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;display:flex;align-items:center;gap:6px">
+            <span>Console</span>
+            <button id="builderUndoBtn" style="font-size:9px;color:var(--accent);background:none;border:1px solid var(--border);border-radius:3px;cursor:pointer;padding:0 4px">↩ Undo</button>
+            <button id="builderConsoleClear" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;margin-left:auto;padding:0">clear</button>
+          </div>
+          <div id="builderConsole"></div>
+        </div>
       </div>
       <!-- Properties -->
       <div id="builderProps" style="width:240px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;flex-shrink:0">
@@ -3510,6 +3522,13 @@ var atomicGrammars = {
   pass_fail: 'root ::= word term\nword ::= "PASS" | "FAIL"\nterm ::= " " | "\\n"',
 };
 var globalItems = [];
+/* Groups: views on globalItems. Each group is a named collection of refs to existing items.
+   {name: 'tables', display: 'table', refs: ['target_rows', 'max_table_iters']}
+   display: 'table' (key:value table) | 'list' (bullet list) | 'cards' (individual cards)
+   Editing a grouped item edits the source. Multiple groups can ref the same item. */
+var globalGroups = [];
+function saveGlobalGroups() { try { localStorage.setItem('global_groups', JSON.stringify(globalGroups)); } catch(_) {} }
+try { globalGroups = JSON.parse(localStorage.getItem('global_groups') || '[]'); } catch(_) {}
 var macroRecording = false;
 var macroSteps = [];
 var atomicMacros = {};
@@ -6059,6 +6078,36 @@ function toolDeleteMacro(args) {
 
 /* === Card Builder DSL Tools === */
 
+var _builderUndoStack = []; // snapshots of cardTemplates JSON for undo
+var _builderMaxUndo = 50;
+var _builderLog = []; // DSL command log [{cmd, ts}]
+
+function builderPushUndo(cmd) {
+  _builderUndoStack.push(JSON.stringify(cardTemplates));
+  if (_builderUndoStack.length > _builderMaxUndo) _builderUndoStack.shift();
+  _builderLog.push({cmd, ts: new Date().toLocaleTimeString()});
+  renderBuilderConsole();
+}
+
+function builderUndo() {
+  if (!_builderUndoStack.length) return;
+  const snapshot = _builderUndoStack.pop();
+  cardTemplates = JSON.parse(snapshot);
+  saveCardTemplates();
+  _builderLog.push({cmd: '↩ undo', ts: new Date().toLocaleTimeString()});
+  renderBuilderConsole();
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function renderBuilderConsole() {
+  const el = document.getElementById('builderConsole');
+  if (!el) return;
+  el.innerHTML = _builderLog.slice(-30).map(e =>
+    `<div style="font-size:10px;color:${e.cmd.startsWith('↩') ? 'var(--orange)' : 'var(--text-dim)'};padding:1px 0;font-family:monospace">${esc(e.ts)} ${esc(e.cmd)}</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
 function saveCardTemplates() { try { localStorage.setItem('card_templates', JSON.stringify(cardTemplates)); } catch(_) {} }
 function nextSlotId() { return 's_' + (++_cardSlotIdN); }
 
@@ -6092,6 +6141,7 @@ function findSlotList(slots, parentId) {
 function toolCardTemplate(args) {
   const name = args[0]?.trim();
   if (!name) { addAtomicMsg('tool', 'Usage: card_template(name)'); return; }
+  builderPushUndo(`card_template(${name})`);
   if (!cardTemplates[name]) {
     cardTemplates[name] = {name, slots: []};
   }
@@ -6110,6 +6160,7 @@ function toolAddSlot(args) {
   if (!tmpl) { addAtomicMsg('tool', `Template "${tmplName}" not found`); return; }
   const VALID_TYPES = new Set(['title','tags','text_area','image','buttons','thread','data_table','reactions','list','form','group']);
   if (!VALID_TYPES.has(type)) { addAtomicMsg('tool', `Unknown slot type: ${type}. Valid: ${[...VALID_TYPES].join(', ')}`); return; }
+  builderPushUndo(`add_slot(@${tmplName}, ${type})`);
   const slot = {
     id: nextSlotId(),
     type,
@@ -6137,6 +6188,7 @@ function toolRemoveSlot(args) {
   if (!tmplName || !slotId) { addAtomicMsg('tool', 'Usage: remove_slot(@tmpl, slot_id)'); return; }
   const tmpl = cardTemplates[tmplName];
   if (!tmpl) { addAtomicMsg('tool', `Template "${tmplName}" not found`); return; }
+  builderPushUndo(`remove_slot(@${tmplName}, ${slotId})`);
   if (!removeSlotById(tmpl.slots, slotId)) { addAtomicMsg('tool', `Slot "${slotId}" not found`); return; }
   saveCardTemplates();
   addAtomicMsg('system', `remove_slot(@${tmplName}, ${slotId})`);
@@ -6151,6 +6203,7 @@ function toolMoveSlot(args) {
   if (!tmplName || !slotId || isNaN(newIdx)) { addAtomicMsg('tool', 'Usage: move_slot(@tmpl, slot_id, new_index)'); return; }
   const tmpl = cardTemplates[tmplName];
   if (!tmpl) return;
+  builderPushUndo(`move_slot(@${tmplName}, ${slotId}, ${newIdx})`);
   // Find and remove slot from its current list
   let slot = null;
   const removeFrom = (list) => {
@@ -6177,6 +6230,7 @@ function toolBindSlot(args) {
   if (!tmpl) return;
   const slot = findSlotById(tmpl.slots, slotId);
   if (!slot) { addAtomicMsg('tool', `Slot "${slotId}" not found`); return; }
+  builderPushUndo(`bind_slot(@${tmplName}, ${slotId}, ${binding})`);
   slot.binding = binding || null;
   saveCardTemplates();
   addAtomicMsg('system', `bind_slot(@${tmplName}, ${slotId}, ${binding})`);
@@ -6193,6 +6247,7 @@ function toolSlotOption(args) {
   if (!tmpl) return;
   const slot = findSlotById(tmpl.slots, slotId);
   if (!slot) return;
+  builderPushUndo(`slot_option(@${tmplName}, ${slotId}, ${key})`);
   // Parse value: JSON, bool, or string
   let parsed = value;
   try { parsed = JSON.parse(value); } catch(_) {
@@ -6221,6 +6276,7 @@ function toolDeleteTemplate(args) {
   const name = args[0]?.trim();
   if (!name) { addAtomicMsg('tool', 'Usage: delete_template(name)'); return; }
   if (!cardTemplates[name]) { addAtomicMsg('tool', `Template "${name}" not found`); return; }
+  builderPushUndo(`delete_template(${name})`);
   delete cardTemplates[name];
   if (_activeCardTemplate === name) _activeCardTemplate = null;
   saveCardTemplates();
@@ -6233,6 +6289,7 @@ function toolCloneTemplate(args) {
   const newName = args[1]?.trim();
   if (!src || !newName) { addAtomicMsg('tool', 'Usage: clone_template(source, new_name)'); return; }
   if (!cardTemplates[src]) { addAtomicMsg('tool', `Template "${src}" not found`); return; }
+  builderPushUndo(`clone_template(${src}, ${newName})`);
   cardTemplates[newName] = JSON.parse(JSON.stringify(cardTemplates[src]));
   cardTemplates[newName].name = newName;
   saveCardTemplates();
@@ -6890,8 +6947,79 @@ function renderParamsPage() {
     gramCard.appendChild(item);
   });
   el.appendChild(gramCard);
-  // Custom global items (user-created tables and text areas)
+  // Groups — views on items (rendered as grouped tables/cards)
+  const groupedRefs = new Set(); // track which items are in groups
+  globalGroups.forEach((group, gi) => {
+    group.refs.forEach(r => groupedRefs.add(r));
+    const card = document.createElement('div');
+    card.className = 'at-entity';
+    card.style.marginTop = '12px';
+    let h = `<div class="at-entity-hdr"><span class="at-entity-name" style="color:var(--accent2)">$config.${esc(group.name)}</span>
+      <span style="font-size:9px;color:var(--text-dim);margin-left:4px">${group.display || 'table'} view</span></div>`;
+    if (group.display === 'table' || !group.display) {
+      h += `<table class="at-table" style="width:100%"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>`;
+      group.refs.forEach(ref => {
+        // Find source: atomicParams or globalItems
+        let val = '';
+        if (ref in atomicParams) { val = atomicParams[ref]; }
+        else { const gi2 = globalItems.find(g => g.name === ref); val = gi2?.text || gi2?.rows?.[0]?.[0] || ''; }
+        h += `<tr><td style="color:var(--accent2)">${esc(ref)}</td><td contenteditable="true" data-group-ref="${esc(ref)}">${esc(String(val))}</td></tr>`;
+      });
+      h += `</tbody></table>`;
+    } else {
+      group.refs.forEach(ref => {
+        let val = '';
+        if (ref in atomicParams) { val = atomicParams[ref]; }
+        else { const gi2 = globalItems.find(g => g.name === ref); val = gi2?.text || ''; }
+        h += `<div class="at-text-area"><div class="at-text-area-label">${esc(ref)}</div>
+          <div class="at-text-area-content" contenteditable="true" data-group-ref="${esc(ref)}">${esc(String(val))}</div></div>`;
+      });
+    }
+    card.innerHTML = h;
+    // Bind editing — writes back to source
+    card.querySelectorAll('[data-group-ref]').forEach(el2 => {
+      el2.addEventListener('blur', () => {
+        const ref = el2.dataset.groupRef;
+        const newVal = el2.textContent.trim();
+        if (ref in atomicParams) { atomicParams[ref] = newVal; saveAtomicConfig(); }
+        else { const gi2 = globalItems.find(g => g.name === ref); if (gi2) { gi2.text = newVal; saveGlobalItems(); } }
+      });
+    });
+    // Context menu for group
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showAtomicCtx(e.clientX, e.clientY, [
+        {label: 'Add item to group', action: () => {
+          const allKeys = [...Object.keys(atomicParams), ...globalItems.map(g => g.name)].filter(k => !group.refs.includes(k));
+          showNamePopup(null, {label: `Add to ${group.name}`, fields: [{name: 'ref', placeholder: 'item name or new key'}]}, vals => {
+            if (!vals.ref) return;
+            // Create in atomicParams if doesn't exist
+            if (!(vals.ref in atomicParams) && !globalItems.find(g => g.name === vals.ref)) {
+              atomicParams[vals.ref] = ''; saveAtomicConfig();
+            }
+            group.refs.push(vals.ref); saveGlobalGroups(); renderParamsPage();
+          });
+        }},
+        {label: 'Remove item from group', action: () => {
+          showNamePopup(null, {label: 'Remove from group', fields: [{name: 'ref', placeholder: 'item name'}]}, vals => {
+            group.refs = group.refs.filter(r => r !== vals.ref); saveGlobalGroups(); renderParamsPage();
+          });
+        }},
+        {label: `Toggle view (${group.display || 'table'})`, action: () => {
+          group.display = group.display === 'cards' ? 'table' : 'cards';
+          saveGlobalGroups(); renderParamsPage();
+        }},
+        {label: 'Delete group', danger: true, action: () => {
+          globalGroups.splice(gi, 1); saveGlobalGroups(); renderParamsPage();
+        }},
+      ]);
+    });
+    el.appendChild(card);
+  });
+
+  // Custom global items (user-created tables and text areas) — skip grouped ones
   globalItems.forEach((item, idx) => {
+    if (groupedRefs.has(item.name)) return; // already shown in a group
     const card = document.createElement('div');
     card.className = 'at-entity';
     card.style.marginTop = '12px';
@@ -6996,6 +7124,20 @@ document.getElementById('btnParamsAddParam').addEventListener('click', (e) => {
   }, vals => {
     const key = vals.key?.trim(); if (!key) return;
     atomicParams[key] = vals.value || ''; saveAtomicConfig(); renderParamsPage(); renderParamsTable();
+  });
+});
+document.getElementById('btnParamsAddGroup').addEventListener('click', (e) => {
+  showNamePopup(e.target, {
+    label: 'Add Group',
+    fields: [
+      {name: 'name', placeholder: 'group name (e.g. tables)'},
+      {name: 'refs', placeholder: 'item names, comma-separated', label: 'Items to include'}
+    ]
+  }, vals => {
+    const name = vals.name?.trim(); if (!name) return;
+    const refs = (vals.refs || '').split(',').map(s => s.trim()).filter(Boolean);
+    globalGroups.push({name, display: 'table', refs});
+    saveGlobalGroups(); renderParamsPage();
   });
 });
 document.getElementById('btnParamsAddAlias').addEventListener('click', (e) => {
@@ -7232,6 +7374,21 @@ document.getElementById('btnBuilderNewTemplate').addEventListener('click', (e) =
     if (!name) return;
     handleAtomicInput(`/card_template(${name})`);
   });
+});
+
+// Builder console buttons
+document.getElementById('builderUndoBtn').addEventListener('click', () => builderUndo());
+document.getElementById('builderConsoleClear').addEventListener('click', () => {
+  _builderLog.length = 0;
+  renderBuilderConsole();
+});
+
+// Ctrl+Z for builder undo (only when on builder tab)
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && activePage === 'builder') {
+    e.preventDefault();
+    builderUndo();
+  }
 });
 
 /* --- Atomic context menu (right-click) --- */
