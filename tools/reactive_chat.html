@@ -4122,7 +4122,8 @@ function addAtomicMsg(role, content, entities, meta) {
 
 /* --- Atomic input handler --- */
 // Editor commands (: prefix) — go to console, not pipeline
-const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','export_dsl','rename','drop']);
+const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','export_dsl','rename','drop',
+  'card_template','add_slot','remove_slot','move_slot','bind_slot','slot_option','delete_template','clone_template']);
 
 function recordPipelineStep(cmd, enabled = true) {
   if (!enabled || !cmd) return;
@@ -5062,6 +5063,16 @@ async function applyAtomicTool(toolName, args, meta = {}) {
       case 'run_macro': await toolRunMacro(args); break;
       case 'list_macros': toolListMacros(); break;
       case 'delete_macro': toolDeleteMacro(args); break;
+      // Card Builder
+      case 'card_template': toolCardTemplate(args); break;
+      case 'add_slot': toolAddSlot(args); break;
+      case 'remove_slot': toolRemoveSlot(args); break;
+      case 'move_slot': toolMoveSlot(args); break;
+      case 'bind_slot': toolBindSlot(args); break;
+      case 'slot_option': toolSlotOption(args); break;
+      case 'apply_template': toolApplyTemplate(args); break;
+      case 'delete_template': toolDeleteTemplate(args); break;
+      case 'clone_template': toolCloneTemplate(args); break;
       default:
         // Check if it's a macro name
         if (atomicMacros[toolName]) { await toolRunMacro([toolName, ...args]); break; }
@@ -5995,6 +6006,189 @@ function toolDeleteMacro(args) {
   delete atomicMacros[name];
   saveMacros();
   addAtomicMsg('system', `Macro "${name}" deleted`);
+}
+
+/* === Card Builder DSL Tools === */
+
+function saveCardTemplates() { try { localStorage.setItem('card_templates', JSON.stringify(cardTemplates)); } catch(_) {} }
+function nextSlotId() { return 's_' + (++_cardSlotIdN); }
+
+function findSlotById(slots, id) {
+  for (const s of slots) {
+    if (s.id === id) return s;
+    if (s.children) { const found = findSlotById(s.children, id); if (found) return found; }
+  }
+  return null;
+}
+
+function removeSlotById(slots, id) {
+  const idx = slots.findIndex(s => s.id === id);
+  if (idx >= 0) { slots.splice(idx, 1); return true; }
+  for (const s of slots) {
+    if (s.children && removeSlotById(s.children, id)) return true;
+  }
+  return false;
+}
+
+function findSlotList(slots, parentId) {
+  if (!parentId) return slots;
+  const parent = findSlotById(slots, parentId);
+  if (parent?.type === 'group') {
+    if (!parent.children) parent.children = [];
+    return parent.children;
+  }
+  return null;
+}
+
+function toolCardTemplate(args) {
+  const name = args[0]?.trim();
+  if (!name) { addAtomicMsg('tool', 'Usage: card_template(name)'); return; }
+  if (!cardTemplates[name]) {
+    cardTemplates[name] = {name, slots: []};
+  }
+  _activeCardTemplate = name;
+  saveCardTemplates();
+  addAtomicMsg('system', `card_template("${name}") created/selected`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolAddSlot(args) {
+  const {options, positional} = parseDslCallOptions(args, 0);
+  const tmplName = (positional[0] || _activeCardTemplate || '').replace(/^@/, '');
+  const type = positional[1] || options.type;
+  if (!tmplName || !type) { addAtomicMsg('tool', 'Usage: add_slot(@tmpl, type, label:"x")'); return; }
+  const tmpl = cardTemplates[tmplName];
+  if (!tmpl) { addAtomicMsg('tool', `Template "${tmplName}" not found`); return; }
+  const VALID_TYPES = new Set(['title','tags','text_area','image','buttons','thread','data_table','reactions','list','form','group']);
+  if (!VALID_TYPES.has(type)) { addAtomicMsg('tool', `Unknown slot type: ${type}. Valid: ${[...VALID_TYPES].join(', ')}`); return; }
+  const slot = {
+    id: nextSlotId(),
+    type,
+    label: stripDslQuotes(options.label || type),
+    binding: options.bind || options.binding || null,
+    options: {},
+    children: type === 'group' ? [] : null
+  };
+  // Type-specific defaults
+  if (type === 'buttons') slot.options.items = options.items ? JSON.parse(options.items) : ['verify','check','generate'];
+  if (type === 'thread') slot.options.mode = options.mode || 'tree';
+  if (type === 'text_area') { slot.options.collapsed = options.collapsed === 'true'; slot.options.editable = options.editable !== 'false'; }
+  const parentId = options.parent || null;
+  const targetList = findSlotList(tmpl.slots, parentId);
+  if (!targetList) { addAtomicMsg('tool', `Parent "${parentId}" not found or not a group`); return; }
+  targetList.push(slot);
+  saveCardTemplates();
+  addAtomicMsg('system', `add_slot(@${tmplName}, ${type}) → ${slot.id}${parentId ? ' in ' + parentId : ''}`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolRemoveSlot(args) {
+  const tmplName = (args[0] || '').replace(/^@/, '') || _activeCardTemplate;
+  const slotId = args[1]?.trim();
+  if (!tmplName || !slotId) { addAtomicMsg('tool', 'Usage: remove_slot(@tmpl, slot_id)'); return; }
+  const tmpl = cardTemplates[tmplName];
+  if (!tmpl) { addAtomicMsg('tool', `Template "${tmplName}" not found`); return; }
+  if (!removeSlotById(tmpl.slots, slotId)) { addAtomicMsg('tool', `Slot "${slotId}" not found`); return; }
+  saveCardTemplates();
+  addAtomicMsg('system', `remove_slot(@${tmplName}, ${slotId})`);
+  if (_selectedSlotId === slotId) _selectedSlotId = null;
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolMoveSlot(args) {
+  const tmplName = (args[0] || '').replace(/^@/, '') || _activeCardTemplate;
+  const slotId = args[1]?.trim();
+  const newIdx = parseInt(args[2]);
+  if (!tmplName || !slotId || isNaN(newIdx)) { addAtomicMsg('tool', 'Usage: move_slot(@tmpl, slot_id, new_index)'); return; }
+  const tmpl = cardTemplates[tmplName];
+  if (!tmpl) return;
+  // Find and remove slot from its current list
+  let slot = null;
+  const removeFrom = (list) => {
+    const idx = list.findIndex(s => s.id === slotId);
+    if (idx >= 0) { slot = list.splice(idx, 1)[0]; return true; }
+    for (const s of list) { if (s.children && removeFrom(s.children)) return true; }
+    return false;
+  };
+  removeFrom(tmpl.slots);
+  if (!slot) return;
+  // Insert at new index in top-level (for now)
+  tmpl.slots.splice(Math.max(0, Math.min(newIdx, tmpl.slots.length)), 0, slot);
+  saveCardTemplates();
+  addAtomicMsg('system', `move_slot(@${tmplName}, ${slotId}, ${newIdx})`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolBindSlot(args) {
+  const tmplName = (args[0] || '').replace(/^@/, '') || _activeCardTemplate;
+  const slotId = args[1]?.trim();
+  const binding = args[2]?.trim();
+  if (!tmplName || !slotId) { addAtomicMsg('tool', 'Usage: bind_slot(@tmpl, slot_id, @entity.field)'); return; }
+  const tmpl = cardTemplates[tmplName];
+  if (!tmpl) return;
+  const slot = findSlotById(tmpl.slots, slotId);
+  if (!slot) { addAtomicMsg('tool', `Slot "${slotId}" not found`); return; }
+  slot.binding = binding || null;
+  saveCardTemplates();
+  addAtomicMsg('system', `bind_slot(@${tmplName}, ${slotId}, ${binding})`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolSlotOption(args) {
+  const tmplName = (args[0] || '').replace(/^@/, '') || _activeCardTemplate;
+  const slotId = args[1]?.trim();
+  const key = args[2]?.trim();
+  const value = args.slice(3).join(',').trim();
+  if (!tmplName || !slotId || !key) { addAtomicMsg('tool', 'Usage: slot_option(@tmpl, slot_id, key, value)'); return; }
+  const tmpl = cardTemplates[tmplName];
+  if (!tmpl) return;
+  const slot = findSlotById(tmpl.slots, slotId);
+  if (!slot) return;
+  // Parse value: JSON, bool, or string
+  let parsed = value;
+  try { parsed = JSON.parse(value); } catch(_) {
+    if (value === 'true') parsed = true;
+    else if (value === 'false') parsed = false;
+  }
+  slot.options[key] = parsed;
+  saveCardTemplates();
+  addAtomicMsg('system', `slot_option(@${tmplName}, ${slotId}, ${key}: ${JSON.stringify(parsed)})`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolApplyTemplate(args) {
+  const tmplName = args[0]?.trim();
+  const entityRef = args[1]?.replace(/^@/, '')?.trim();
+  if (!tmplName || !entityRef) { addAtomicMsg('tool', 'Usage: apply_template(name, @entity)'); return; }
+  if (!cardTemplates[tmplName]) { addAtomicMsg('tool', `Template "${tmplName}" not found`); return; }
+  if (!atomicEntities[entityRef]) { addAtomicMsg('tool', `Entity @${entityRef} not found`); return; }
+  addTag(entityRef, 'card_template', tmplName);
+  saveAtomicState();
+  renderAtomicFeed();
+  addAtomicMsg('tool', `apply_template(${tmplName}, @${entityRef}) → entity tagged`);
+}
+
+function toolDeleteTemplate(args) {
+  const name = args[0]?.trim();
+  if (!name) { addAtomicMsg('tool', 'Usage: delete_template(name)'); return; }
+  if (!cardTemplates[name]) { addAtomicMsg('tool', `Template "${name}" not found`); return; }
+  delete cardTemplates[name];
+  if (_activeCardTemplate === name) _activeCardTemplate = null;
+  saveCardTemplates();
+  addAtomicMsg('system', `delete_template("${name}")`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
+}
+
+function toolCloneTemplate(args) {
+  const src = args[0]?.trim();
+  const newName = args[1]?.trim();
+  if (!src || !newName) { addAtomicMsg('tool', 'Usage: clone_template(source, new_name)'); return; }
+  if (!cardTemplates[src]) { addAtomicMsg('tool', `Template "${src}" not found`); return; }
+  cardTemplates[newName] = JSON.parse(JSON.stringify(cardTemplates[src]));
+  cardTemplates[newName].name = newName;
+  saveCardTemplates();
+  addAtomicMsg('system', `clone_template("${src}" → "${newName}")`);
+  if (typeof renderBuilderPage === 'function') renderBuilderPage();
 }
 
 /* render(@template, slot1:@ref1, slot2:@ref2) → @template_rendered
@@ -7154,6 +7348,11 @@ Core syntax:
   tag(@entity, key:"value")
   untag(@entity, key)
   on @dep1, @dep2 -> @out = generate(@dep1)
+  loop(while:@need_more, max_iters:4) {
+    @parsed = parse_table(@table)
+    @rows = row_count(@parsed)
+    @need_more = lt(@rows, $config.target_rows)
+  }
 
 Names:
   @name        local entity
@@ -7261,6 +7460,7 @@ Pure transforms:
   markdown tables can be filtered locally
   add/sub/eq/lt/lte/gt/gte/not are scalar primitives
   guard emits output only when the condition is truthy
+  loop(...) { ... } repeats body while condition stays truthy
   parse_table / row_count / get_column / split_rows are lower-level table wrappers
   table_header / reshape_grid / join_list / filter_rows / reject_reasons / accepted_list are convenience sugar
 
