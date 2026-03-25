@@ -527,6 +527,10 @@ body {
 .pipeline-step:hover { background:var(--surface2); }
 .pipeline-step.selected { background:var(--accent3)22; color:var(--accent3); }
 .pipeline-step input[type=checkbox] { margin:0; cursor:pointer; }
+.pipeline-insert { text-align:center; font-size:9px; color:var(--text-dim); cursor:pointer; height:8px; line-height:8px; opacity:0; transition:opacity .15s; }
+.pipeline-insert:hover { opacity:1; color:var(--accent3); }
+#pipelineStepsList:hover .pipeline-insert { opacity:0.3; }
+#pipelineStepsList .pipeline-insert:hover { opacity:1; }
 .atomic-msg.msg-selected { outline:2px solid var(--accent3); outline-offset:-2px; }
 
 .thread-input {
@@ -3859,13 +3863,15 @@ function renderPipelineSteps() {
     saveBtn.disabled = true;
     return;
   }
-  el.innerHTML = pipelineSteps.map((step, i) => {
+  let html = `<div class="pipeline-insert" data-pos="0" title="Insert step here">+</div>`;
+  html += pipelineSteps.map((step, i) => {
     const checked = _selectedPipelineSteps.has(i) ? ' checked' : '';
     const cls = _selectedPipelineSteps.has(i) ? ' selected' : '';
     const indent = step.parentGroup ? ' style="padding-left:16px;opacity:0.8"' : '';
     const isGroup = step.group ? ` data-group="${esc(step.group)}"` : '';
-    return `<div class="pipeline-step${cls}" data-idx="${i}"${indent}${isGroup}><input type="checkbox"${checked}><span>${esc(step.cmd)}</span></div>`;
+    return `<div class="pipeline-step${cls}" data-idx="${i}"${indent}${isGroup}><input type="checkbox"${checked}><span>${esc(step.cmd)}</span></div><div class="pipeline-insert" data-pos="${i + 1}" title="Insert step here">+</div>`;
   }).join('');
+  el.innerHTML = html;
   el.querySelectorAll('.pipeline-step').forEach(row => {
     const idx = parseInt(row.dataset.idx);
     const step = pipelineSteps[idx];
@@ -3890,6 +3896,25 @@ function renderPipelineSteps() {
         }
       }
       renderPipelineSteps();
+    });
+  });
+  // Insert step markers
+  el.querySelectorAll('.pipeline-insert').forEach(ins => {
+    ins.addEventListener('click', () => {
+      const pos = parseInt(ins.dataset.pos);
+      showNamePopup(ins, {label: `Insert step at position ${pos}`, placeholder: 'generate(@input)', fields: [
+        {name: 'cmd', placeholder: 'command, e.g. generate(@input)', label: 'Command'}
+      ]}, async (vals) => {
+        const cmd = vals.cmd?.trim();
+        if (!cmd) return;
+        // Execute, then move the pushed step(s) to insert position
+        const lenBefore = pipelineSteps.length;
+        await handleAtomicInput(cmd);
+        const added = pipelineSteps.splice(lenBefore);
+        added.forEach((s, j) => pipelineSteps.splice(pos + j, 0, s));
+        _selectedPipelineSteps.clear();
+        renderPipelineSteps();
+      });
     });
   });
   saveBtn.disabled = _selectedPipelineSteps.size === 0;
@@ -4011,9 +4036,11 @@ async function handleAtomicInput(text) {
     addTextArea(name, 'content', content.trim());
     const ta2 = atomicEntities[name]?.text_areas?.find(t => t.name === 'content');
     if (ta2) ta2._expanded = true;
+    pipelineSteps.push({cmd: `@${name}: ${content.trim().length > 40 ? content.trim().slice(0, 40) + '...' : content.trim()}`, ...(_currentMacroGroup ? {parentGroup: _currentMacroGroup} : {})});
     addAtomicMsg('user', content.trim(), [name]);
     renderAtomicFeed();
     updateScopeList();
+    renderPipelineSteps();
     return;
   }
   // Plain message
@@ -5526,10 +5553,7 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           {name: 'text', placeholder: 'Content (optional)', label: 'Content', multiline: true}
         ]}, (vals) => {
           if (!vals.name) return;
-          const entity = createEntity(vals.name);
-          if (vals.text) addTextArea(vals.name, 'content', vals.text);
-          addAtomicMsg('user', `@${entity.name}: ${vals.text || '(empty)'}`, [entity.name]);
-          renderAtomicFeed(); updateScopeList();
+          handleAtomicInput(vals.text ? `@${vals.name}: ${vals.text}` : `add_entity(@${vals.name})`);
         });
       }},
       {label: 'Create Entity + Table', action: () => {
@@ -5538,11 +5562,8 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           {name: 'columns', placeholder: 'Col1, Col2, Col3', label: 'Columns (comma-separated)'}
         ]}, (vals) => {
           if (!vals.name || !vals.columns) return;
-          const headers = vals.columns.split(',').map(s => s.trim());
-          const entity = createEntity(vals.name);
-          addDataArea(vals.name, 'data', headers, [headers.map(() => '')]);
-          addAtomicMsg('user', `@${entity.name} with table [${headers.join(', ')}]`, [entity.name]);
-          renderAtomicFeed(); updateScopeList();
+          handleAtomicInput(`add_entity(@${vals.name})`);
+          handleAtomicInput(`add_table(@${vals.name}, data, ${vals.columns})`);
         });
       }},
       // Pipeline DSL
