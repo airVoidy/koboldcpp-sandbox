@@ -4099,13 +4099,13 @@ const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_
 async function handleAtomicInput(text) {
   if (!text.trim()) return;
   // Editor command: :command(args) — route to console, don't record in pipeline
-  if (text.trim().startsWith(':')) {
+  if (text.trim().startsWith('/')) {
     const editorText = text.trim().slice(1);
     const toolMatch = editorText.match(/^([\w_-]+)\(([^)]*)\)$/);
     if (toolMatch) {
       const [, toolName, argsStr] = toolMatch;
       const args = argsStr ? argsStr.split(',').map(s => s.trim()) : [];
-      addConsoleMsg(`> :${editorText}`);
+      addConsoleMsg(`> /${editorText}`);
       // Run without pipeline recording
       const savedSteps = [...pipelineSteps];
       await applyAtomicTool(toolName, args);
@@ -5876,9 +5876,9 @@ Reactivity:
   on @input -> @draft = generate(@input)
   on @draft -> @claims = parse_sections(@draft, e:"E:", a:"A:", h:"H:")
 
-Editor commands (not part of pipeline, prefixed with :):
-  :save_macro(name)  :run_macro(name)  :export_dsl(name)
-  :rename(@old, new)  :drop(@entity)  :list_macros()
+Editor commands (not part of pipeline, prefixed with /):
+  /save_macro(name)  /run_macro(name)  /export_dsl(name)
+  /rename(@old, new)  /drop(@entity)  /list_macros()
 
 Rules:
 - Output DSL inside \\\`\\\`\\\`pipeline code block
