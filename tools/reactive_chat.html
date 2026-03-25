@@ -696,6 +696,7 @@ body {
             <button class="tp-btn" data-tool="slice">slice</button>
             <button class="tp-btn" data-tool="check_status">check</button>
             <button class="tp-btn" data-tool="parse_logic">parse</button>
+            <button class="tp-btn" data-tool="parse_sections">sections</button>
           </div>
         </div>
         <div class="tp-section">
@@ -3762,12 +3763,14 @@ function renderEntityCard(entity) {
   }
   // Text areas (collapsed by default, click label to expand)
   entity.text_areas.forEach(ta => {
+    const isResolved = ta.name === 'resolved';
     const collapsed = ta._expanded ? '' : ' collapsed';
     const arrow = ta._expanded ? '▾' : '▸';
     const preview = ta.text.length > 60 ? ta.text.slice(0, 60) + '…' : ta.text;
-    h += `<div class="at-text-area${collapsed}">`;
+    const dimStyle = isResolved ? ' style="opacity:0.5"' : '';
+    h += `<div class="at-text-area${collapsed}"${dimStyle}>`;
     h += `<div class="at-text-area-label" data-toggle-area="${esc(ta.name)}">${arrow} ${esc(ta.name)} <span class="at-text-preview">${collapsed ? esc(preview) : ''}</span></div>`;
-    h += `<div class="at-text-area-content" contenteditable="true" data-area="${esc(ta.name)}">${esc(ta.text)}</div>`;
+    h += `<div class="at-text-area-content"${isResolved ? '' : ' contenteditable="true"'} data-area="${esc(ta.name)}">${esc(ta.text)}</div>`;
     h += `</div>`;
   });
   // Data areas (tables)
@@ -3856,8 +3859,24 @@ async function handleAtomicInput(text) {
     await applyAtomicTool(toolName, args);
     return;
   }
+  // @config.name — create entity with raw ref as content, resolved as preview
+  const configMatch = text.match(/^@config\.(\w+)$/);
+  if (configMatch) {
+    const configName = configMatch[1];
+    const rawRef = '@config.' + configName;
+    const resolved = resolveRefToString('config.' + configName);
+    const entity = createEntity(configName);
+    addTextArea(configName, 'content', rawRef);
+    if (resolved && resolved !== rawRef) {
+      addTextArea(configName, 'resolved', resolved);
+    }
+    addAtomicMsg('user', rawRef, [configName]);
+    renderAtomicFeed();
+    updateScopeList();
+    return;
+  }
   // Regular message — create as user message, check for entity creation syntax
-  // "entity_name: content" creates entity with text_area
+  // "@entity_name: content" creates entity with text_area
   const entityMatch = text.match(/^@(\w+)\s*:\s*([\s\S]+)/);
   if (entityMatch) {
     const [, name, content] = entityMatch;
@@ -3865,8 +3884,9 @@ async function handleAtomicInput(text) {
     addTextArea(name, 'content', content.trim());
     const ta2 = atomicEntities[name]?.text_areas?.find(t => t.name === 'content');
     if (ta2) ta2._expanded = true;
-    addAtomicMsg('user', text, [name]);
+    addAtomicMsg('user', content.trim(), [name]);
     renderAtomicFeed();
+    updateScopeList();
     return;
   }
   // Plain message
@@ -4027,6 +4047,7 @@ async function applyAtomicTool(toolName, args) {
       case 'add_entity': toolAddEntity(args); break;
       case 'add_table': toolAddTable(args); break;
       case 'merge': toolMerge(args); break;
+      case 'parse_sections': await toolParseSections(args); break;
       case 'scope_begin': toolScopeBegin(); break;
       case 'scope_end': toolScopeEnd(args); break;
       case 'drop': toolDrop(args); break;
@@ -4080,8 +4101,8 @@ function resolveRefToString(refName) {
     resolved.rows.forEach(r => { t += '| ' + r.join(' | ') + ' |\n'; });
     return t;
   }
-  // Full entity → concat all text_areas
-  if (resolved?.text_areas) return resolved.text_areas.map(ta => ta.text).join('\n');
+  // Full entity → concat all text_areas (skip resolved preview)
+  if (resolved?.text_areas) return resolved.text_areas.filter(ta => ta.name !== 'resolved').map(ta => ta.text).join('\n');
   return JSON.stringify(resolved);
 }
 /* Two-pass render:
@@ -4129,6 +4150,97 @@ async function callAtomicServer(tool, params, role, settingsOverride) {
     throw new Error(err.detail || resp.statusText);
   }
   return resp.json();
+}
+
+async function callAtomicScope(steps, exportSpec) {
+  const workerMap = {};
+  workers.forEach(w => { if (w.role && w.url) workerMap[w.role] = w.url; });
+  const s = getSettings();
+  const settings = {
+    temperature: parseFloat(atomicParams.temperature || s.temperature),
+    max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
+    max_continue: parseInt(atomicParams.max_continue || s.max_continue),
+    no_think: document.getElementById('settingNoThink')?.checked ?? true,
+  };
+  const resp = await fetch(SB() + '/api/atomic/scope', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({steps, export: exportSpec, workers: workerMap, settings}),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({detail: resp.statusText}));
+    throw new Error(err.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
+/* parse_sections(@entity, DELIM1:, DELIM2:, DELIM3:) → @entity_constraints
+   Sends scope request: parse between consecutive delimiters, compose into one entity.
+   Result entity has data_areas for each section (items) and tags. */
+async function toolParseSections(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  const delimiters = args.slice(1).map(a => a.trim()).filter(Boolean);
+  if (delimiters.length < 2) { addAtomicMsg('tool', 'Need at least 2 section delimiters'); return; }
+
+  // Get source text
+  const text = entity.text_areas.filter(ta => ta.name !== 'resolved').map(ta => ta.text).join('\n');
+  if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
+
+  // Build scope steps: parse between consecutive delimiters
+  const steps = [];
+  const sectionNames = [];
+  for (let i = 0; i < delimiters.length; i++) {
+    const name = delimiters[i].replace(/[:\s]+$/, '').toLowerCase();
+    sectionNames.push(name);
+    steps.push({
+      tool: 'parse',
+      params: {
+        text: text,
+        from_delim: delimiters[i],
+        ...(i < delimiters.length - 1 ? {to_delim: delimiters[i + 1]} : {})
+      },
+      out: name
+    });
+  }
+
+  // Export: compose into single dict
+  const exportMapping = {};
+  sectionNames.forEach(name => { exportMapping[name] = '$' + name + '.items'; });
+  const exportSpec = {[ref + '_constraints']: exportMapping};
+
+  addAtomicMsg('system', `parse_sections(@${ref}, ${delimiters.join(', ')}) → scope(${steps.length} steps)`);
+  renderAtomicFeed();
+
+  const result = await callAtomicScope(steps, exportSpec);
+  if (result.status !== 'ok') {
+    addAtomicMsg('tool', `scope error: ${result.error}\n${(result.log || []).join('\n')}`);
+    return;
+  }
+
+  // Create composed entity
+  const outName = ref + '_constraints';
+  const exported = result.exported[outName];
+  if (!exported) {
+    addAtomicMsg('tool', `scope returned no export for ${outName}`);
+    return;
+  }
+  createEntity(outName);
+  sectionNames.forEach(name => {
+    const items = exported[name];
+    if (Array.isArray(items)) {
+      addDataArea(outName, name, ['#', name.charAt(0).toUpperCase() + name.slice(1)],
+        items.map((item, i) => [String(i + 1), String(item)]));
+    } else if (typeof items === 'string') {
+      addTextArea(outName, name, items);
+    }
+  });
+  addAtomicMsg('tool', `parse_sections → @${outName} (${sectionNames.join(', ')})`, [outName],
+    {params: {delimiters, sections: sectionNames}, response: {log: result.log}});
+  saveAtomicState();
+  renderAtomicFeed();
+  updateScopeList();
 }
 
 async function toolClaims(args) {
@@ -4296,7 +4408,20 @@ function toolCheckStatus(args) {
    Supports messages entity: if @entity has text_areas named "user"/"assistant"/"system"
    they become the message list (for continue/probe_continue modes). */
 async function toolGenerate(args) {
-  const ref = args[0]?.replace(/^@/, '');
+  let ref = args[0]?.replace(/^@/, '');
+  // @config.name → auto-create entity from Global Params
+  if (!atomicEntities[ref] && ref.startsWith('config.')) {
+    const configName = ref.slice('config.'.length);
+    const rawRef = '@' + ref;
+    const resolved = resolveRefToString(ref);
+    if (resolved && resolved !== rawRef) {
+      createEntity(configName);
+      addTextArea(configName, 'content', rawRef);
+      addTextArea(configName, 'resolved', resolved);
+      updateScopeList();
+      ref = configName;
+    }
+  }
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
 
@@ -4337,16 +4462,33 @@ async function toolGenerate(args) {
     if (userArea) messages.push({role: 'user', content: userArea.text});
     if (assistantArea) messages.push({role: 'assistant', content: assistantArea.text});
   } else {
-    const text = entity.text_areas.map(ta => ta.text).join('\n');
+    const text = entity.text_areas.filter(ta => ta.name !== 'resolved').map(ta => ta.text).join('\n');
     if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
     messages.push({role: 'user', content: text});
   }
 
-  // Resolve @refs in message content
-  messages = messages.map(m => ({
-    ...m,
-    content: m.content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => resolveRefToString(refName))
-  }));
+  // Slot mappings: unknown opts keys become @key → resolved value replacements
+  const knownOpts = new Set(['mode','no_think','temperature','max_tokens','stop','grammar','continue','capture','coerce']);
+  const slotMap = {};
+  Object.entries(opts).forEach(([k, v]) => {
+    if (!knownOpts.has(k)) slotMap[k] = v;
+  });
+
+  // Resolve @refs in message content (slot mappings first, then multi-pass for nested refs)
+  messages = messages.map(m => {
+    let content = m.content;
+    // Apply slot mappings: @input → @config.input (or whatever the mapping says)
+    Object.entries(slotMap).forEach(([slot, mapped]) => {
+      content = content.replace(new RegExp('@' + slot + '\\b', 'g'), mapped.startsWith('@') ? mapped : '@' + mapped);
+    });
+    // Multi-pass resolve all @refs
+    for (let pass = 0; pass < 5; pass++) {
+      const next = content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => resolveRefToString(refName));
+      if (next === content) break;
+      content = next;
+    }
+    return {...m, content};
+  });
 
   const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink, continue: continueOn};
   if (grammar) callParams.grammar = '(set)';
