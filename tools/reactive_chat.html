@@ -3549,7 +3549,7 @@ function checkWatchers() {
     setTimeout(() => {
       addAtomicMsg('system', `trigger: ${w.deps.map(d => '@'+d).join(', ')} → ${w.action}`);
       renderAtomicFeed();
-      handleAtomicInput(w.action, {recordPipeline: false, showUser: false});
+      handleAtomicInput(w.action, {recordPipeline: false, showUser: false, fromPipeline: true});
     }, 0);
   });
   // Cleanup fired watchers
@@ -4388,7 +4388,7 @@ function parseAtomicLine(text) {
     }
   }
 
-  const triggerMatch = raw.match(/^on\s+(@[\w]+(?:\s*,\s*@[\w]+)*)\s*(?:->|:)\s*(.+)$/i);
+  const triggerMatch = raw.match(/^on\s+(@[\w]+(?:\s*,\s*@[\w]+)*)\s*(?:->|:)\s*([\s\S]+)$/i);
   if (triggerMatch) {
     const deps = triggerMatch[1].split(',').map(d => d.trim().replace(/^@/, '')).filter(Boolean);
     const action = parseAtomicLine(triggerMatch[2].trim());
@@ -4657,7 +4657,7 @@ async function legacyHandleAtomicInput(text) {
     return;
   }
   // Check if it's a trigger: "on @dep1, @dep2: action"
-  const triggerMatch = text.match(/^on\s+(@[\w]+(?:\s*,\s*@[\w]+)*)\s*:\s*(.+)$/);
+  const triggerMatch = text.match(/^on\s+(@[\w]+(?:\s*,\s*@[\w]+)*)\s*(?:->|:)\s*([\s\S]+)$/);
   if (triggerMatch) {
     const deps = triggerMatch[1].split(',').map(d => d.trim().replace(/^@/, '')).filter(Boolean);
     const action = triggerMatch[2].trim();
@@ -4737,11 +4737,11 @@ async function legacyHandleAtomicInput(text) {
 }
 
 async function handleAtomicInput(text, options = {}) {
-  const opts = {recordPipeline: true, showUser: true, ...options};
+  const opts = {recordPipeline: true, showUser: true, fromPipeline: false, ...options};
   const raw = (text || '').trim();
   if (!raw) return;
 
-  if (looksLikePipelineText(raw)) {
+  if (!opts.fromPipeline && looksLikePipelineText(raw)) {
     if (opts.showUser) addAtomicMsg('user', '```pipeline\n' + stripPipelineCodeFence(raw).trim() + '\n```');
     renderAtomicFeed();
     await runPipeline(raw);
@@ -4900,7 +4900,7 @@ async function runPipeline(dslText) {
     addAtomicMsg('system', `[${i + 1}/${lines.length}] ${line}`);
     renderAtomicFeed();
     try {
-      await handleAtomicInput(line);
+      await handleAtomicInput(line, {fromPipeline: true});
     } catch (e) {
       addAtomicMsg('system', `✗ Pipeline error at line ${i + 1}: ${e.message}`);
       break;
