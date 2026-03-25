@@ -41,6 +41,7 @@ from .logic_manifest import (
 from .reactive import AtomRuntime, ReactiveAtom, evaluate_atom
 from .orchestrator import export_graph, run_task
 from .kobold_client import KoboldClient, KoboldGenerationConfig
+from .macro_registry import MacroRecord, get_macro, load_macro_registry, save_macro_registry
 from .storage import Sandbox
 from .core import build_schema_backends_from_linear, linear_schema_to_puzzle_schema
 from .data_store.api import create_datastore_router
@@ -1715,6 +1716,47 @@ def create_app(root: str) -> FastAPI:
             spec_text = spec_path.read_text(encoding="utf-8")
             return {"spec": spec_text, "encoding": _encoding_report(spec_text)}
         return {"spec": "", "encoding": _encoding_report("")}
+
+    @app.get("/api/macro-registry")
+    def get_macro_registry_endpoint() -> dict:
+        macros = load_macro_registry()
+        return {
+            "status": "ok",
+            "macros": {name: macro.to_payload() for name, macro in macros.items()},
+        }
+
+    @app.post("/api/macro-registry/upsert")
+    async def upsert_macro_registry_endpoint(request: Request) -> dict:
+        body = await request.json()
+        name = str(body.get("name", "") or "").strip()
+        if not name:
+            raise HTTPException(400, "name is required")
+        macros = load_macro_registry()
+        prior = macros.get(name)
+        payload = {
+            "name": name,
+            "layer": str(body.get("layer") or (prior.layer if prior else "atomic")),
+            "inputs": body.get("inputs") or (prior.inputs if prior else []),
+            "outputs": body.get("outputs") or (prior.outputs if prior else []),
+            "dsl": str(body.get("dsl") or (prior.dsl if prior else "")),
+            "workflow_alias": body.get("workflow_alias") or (prior.workflow_alias if prior else []),
+            "tags": body.get("tags") or (prior.tags if prior else []),
+            "description": str(body.get("description") or (prior.description if prior else "")),
+        }
+        macros[name] = MacroRecord.from_payload(name, payload)
+        path = save_macro_registry(macros)
+        return {"status": "ok", "path": str(path), "macro": macros[name].to_payload()}
+
+    @app.post("/api/macro-registry/delete")
+    async def delete_macro_registry_endpoint(request: Request) -> dict:
+        body = await request.json()
+        name = str(body.get("name", "") or "").strip()
+        if not name:
+            raise HTTPException(400, "name is required")
+        macros = load_macro_registry()
+        removed = macros.pop(name, None)
+        save_macro_registry(macros)
+        return {"status": "ok", "deleted": bool(removed), "name": name}
 
     @app.get("/api/comfyui/view")
     async def comfyui_proxy_view(

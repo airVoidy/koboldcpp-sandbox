@@ -310,6 +310,13 @@ body {
 .tmsg-image img { max-width:100%; max-height:400px; border-radius:6px; border:1px solid var(--border); }
 
 /* Reactions bar - Slack-like emoji votes from workers */
+/* Element Selector highlights */
+.slot-highlight { outline:2px solid var(--accent) !important; outline-offset:1px; }
+.html-highlight { background:rgba(122,162,247,.15); border-radius:2px; }
+[data-slot-idx] { transition:outline .1s; }
+#builderHTMLViewer [data-html-idx] { display:block; padding:1px 0; cursor:pointer; transition:background .1s; }
+#builderHTMLViewer [data-html-idx]:hover { background:rgba(122,162,247,.1); }
+
 .reactions-bar {
   display:flex; flex-wrap:wrap; gap:4px; padding:6px 12px;
   border-bottom:1px solid var(--border);
@@ -523,6 +530,46 @@ body {
   border-radius:3px;
 }
 .tp-scope-item:hover { background:var(--surface2); }
+
+/* Metadata panel */
+.meta-panel { font-size:11px; }
+.meta-panel .meta-selector { margin-bottom:10px; }
+.meta-panel .meta-selector select,
+.meta-panel .meta-field select,
+.meta-panel .meta-field input,
+.meta-panel .meta-field textarea {
+  width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+  border-radius:4px; padding:5px 8px; font-size:11px; font-family:inherit;
+}
+.meta-panel .meta-selector select:focus,
+.meta-panel .meta-field select:focus,
+.meta-panel .meta-field input:focus,
+.meta-panel .meta-field textarea:focus { border-color:var(--accent); }
+.meta-panel .meta-field textarea { resize:vertical; }
+.meta-panel .meta-label {
+  font-size:9px; font-weight:600; color:var(--text-dim); text-transform:uppercase;
+  letter-spacing:.5px; margin-bottom:3px;
+}
+.meta-panel .meta-field { margin-bottom:8px; }
+.meta-panel .meta-header {
+  display:flex; align-items:center; gap:6px; margin-bottom:10px;
+  padding-bottom:8px; border-bottom:1px solid var(--border);
+}
+.meta-panel .meta-header .meta-name {
+  font-size:13px; color:var(--accent3); font-weight:600; flex:1;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.meta-panel .meta-actions {
+  display:flex; gap:4px; margin-top:4px; padding-top:8px; border-top:1px solid var(--border);
+}
+.meta-panel .meta-actions .btn { flex:1; font-size:10px; padding:4px 8px; }
+.meta-panel .meta-empty {
+  color:var(--text-dim); font-size:11px; text-align:center; padding:20px 10px;
+}
+.meta-panel .meta-tag {
+  display:inline-block; padding:1px 6px; border-radius:3px; font-size:9px;
+  background:var(--surface2); color:var(--accent2); margin-right:4px; margin-bottom:2px;
+}
 .pipeline-step { font-size:10px; color:var(--text-dim); padding:2px 4px; border-radius:3px; cursor:pointer; display:flex; align-items:center; gap:4px; }
 .pipeline-step:hover { background:var(--surface2); }
 .pipeline-step.selected { background:var(--accent3)22; color:var(--accent3); }
@@ -694,6 +741,7 @@ body {
           <button class="btn builder-add-slot" data-slot-type="thread" style="font-size:10px;padding:2px 8px">Thread</button>
           <button class="btn builder-add-slot" data-slot-type="reactions" style="font-size:10px;padding:2px 8px">Reactions</button>
           <button class="btn builder-add-slot" data-slot-type="form" style="font-size:10px;padding:2px 8px">Form</button>
+          <button class="btn builder-add-slot" data-slot-type="children" style="font-size:10px;padding:2px 8px">Children</button>
         </div>
         <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
           <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Templates</div>
@@ -714,6 +762,14 @@ body {
             <div id="builderPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;max-width:600px"></div>
           </div>
         </div>
+        <!-- Builder Chat -->
+        <div style="border-top:1px solid var(--border);max-height:120px;display:flex;flex-direction:column;flex-shrink:0">
+          <div id="builderChatFeed" style="flex:1;overflow-y:auto;padding:4px 12px;min-height:0"></div>
+          <div style="display:flex;gap:4px;padding:4px 12px;align-items:flex-end">
+            <textarea id="builderChatInp" placeholder="Select element or type..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:10px;font-family:monospace;resize:none"></textarea>
+            <button class="btn" id="btnBuilderChatSend" style="font-size:10px;padding:2px 8px">Send</button>
+          </div>
+        </div>
         <!-- Builder Console -->
         <div style="border-top:1px solid var(--border);max-height:150px;overflow-y:auto;padding:6px 12px;background:var(--bg);flex-shrink:0">
           <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;display:flex;align-items:center;gap:6px">
@@ -724,9 +780,12 @@ body {
           <div id="builderConsole"></div>
         </div>
       </div>
-      <!-- Properties -->
-      <div id="builderProps" style="width:240px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;flex-shrink:0">
-        <div style="font-size:12px;font-weight:600;color:var(--accent3);margin-bottom:8px">Properties</div>
+      <!-- Properties (collapsible) -->
+      <div id="builderProps" style="width:240px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;flex-shrink:0;transition:width .2s,padding .2s,opacity .2s">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:600;color:var(--accent3);flex:1">Properties</span>
+          <button id="btnPropsToggle" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:0" title="Hide properties">▶</button>
+        </div>
         <div id="builderPropsContent" style="font-size:11px;color:var(--text-dim)">Select a slot on the canvas</div>
       </div>
     </div>
@@ -758,13 +817,32 @@ body {
         <div id="workflowChat" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px"></div>
       </div>
     </div>
+    <!-- === Card Builder sidebar === -->
+    <div id="builderSidebarContent" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="right-sidebar-hdr">
+        <span style="color:var(--accent3)">Template DSL</span>
+        <div style="display:flex;gap:4px;margin-left:auto">
+          <button class="btn" id="btnBuilderDSLCopy" style="font-size:10px;padding:1px 6px">Copy</button>
+          <button class="btn primary" id="btnBuilderDSLApply" style="font-size:10px;padding:1px 6px">Apply</button>
+        </div>
+      </div>
+      <textarea id="builderDSLEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2" placeholder="card_template(name)&#10;  add_slot(@name, title)&#10;  add_slot(@name, tags)&#10;  ..."></textarea>
+      <div style="border-top:1px solid var(--border);flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+        <div style="font-size:10px;color:var(--text-dim);padding:4px 8px;font-weight:600;flex-shrink:0">HTML Structure</div>
+        <pre id="builderHTMLViewer" style="flex:1;margin:0;padding:6px 8px;font-size:10px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.6;color:var(--text);background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>
     <!-- === Atomic Tasks tool palette === -->
     <div class="tool-palette" id="atomicToolPalette">
       <div class="right-sidebar-hdr">
-        <span style="color:var(--accent3)">Tools</span>
+        <span style="color:var(--accent3)">Atomic</span>
         <button class="btn" id="btnAtomicClear" style="font-size:10px;padding:1px 6px;margin-left:auto">Clear</button>
       </div>
-      <div style="padding:8px;overflow-y:auto;flex:1">
+      <div style="display:flex;gap:4px;padding:8px 8px 0 8px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <button class="btn atomic-sidebar-tab active" id="btnAtomicTabTools" data-tab="tools" style="font-size:10px;padding:2px 8px">Tools</button>
+        <button class="btn atomic-sidebar-tab" id="btnAtomicTabMetadata" data-tab="metadata" style="font-size:10px;padding:2px 8px">Metadata</button>
+      </div>
+      <div id="atomicSidebarTools" style="padding:8px;overflow-y:auto;flex:1">
         <div class="tp-section">
           <div class="tp-section-title">Data Tools</div>
           <div class="tp-grid">
@@ -818,6 +896,9 @@ body {
             <button class="tp-btn" id="btnSaveMacroFromSteps" style="font-size:9px;flex:1" disabled>Save selected as macro</button>
           </div>
         </div>
+      </div>
+      <div id="atomicSidebarMetadata" style="display:none;padding:10px;overflow-y:auto;flex:1">
+        <div id="atomicMetadataPanel" class="meta-panel"></div>
       </div>
     </div>
   </div>
@@ -898,6 +979,237 @@ async function post(p,b) {
   return r.json();
 }
 async function get(p) { const r=await fetch(SB()+p); if(!r.ok) throw new Error(''+r.status); return r.json(); }
+
+let _macroRegistrySyncStarted = false;
+let _macroRegistryPersistTimer = null;
+
+function normalizeMacroPayload(name, value) {
+  if (typeof value === 'string') {
+    return {name, layer: 'atomic', dsl: value, inputs: [], outputs: [], workflow_alias: [], tags: [], description: ''};
+  }
+  if (value && typeof value === 'object') {
+    return {
+      name: value.name || name,
+      layer: value.layer || 'atomic',
+      dsl: value.dsl || '',
+      inputs: Array.isArray(value.inputs) ? value.inputs : [],
+      outputs: Array.isArray(value.outputs) ? value.outputs : [],
+      workflow_alias: Array.isArray(value.workflow_alias) ? value.workflow_alias : [],
+      tags: Array.isArray(value.tags) ? value.tags : [],
+      description: value.description || '',
+    };
+  }
+  return {name, layer: 'atomic', dsl: '', inputs: [], outputs: [], workflow_alias: [], tags: [], description: ''};
+}
+
+function getMacroRecord(name) {
+  if (!atomicMacros[name]) return null;
+  return normalizeMacroPayload(name, atomicMacros[name]);
+}
+
+function getMacroDsl(name) {
+  const rec = getMacroRecord(name);
+  return rec?.dsl || '';
+}
+
+function upsertMacroRecord(name, value) {
+  atomicMacros[name] = normalizeMacroPayload(name, value);
+}
+
+function renameAtomicMacroRecord(oldName, newName) {
+  const prev = getMacroRecord(oldName);
+  if (!prev) throw new Error(`Macro "${oldName}" not found`);
+  const clean = String(newName || '').trim();
+  if (!clean) throw new Error('new name is required');
+  if (oldName === clean) return clean;
+  if (atomicMacros[clean]) throw new Error(`Macro "${clean}" already exists`);
+  delete atomicMacros[oldName];
+  upsertMacroRecord(clean, {...prev, name: clean});
+  if (_selectedMacroName === oldName) _selectedMacroName = clean;
+  deleteAtomicMacroFromServer(oldName);
+  return clean;
+}
+
+function parseMetaCsv(value) {
+  return String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function setAtomicSidebarTab(tab) {
+  _activeAtomicSidebarTab = tab === 'metadata' ? 'metadata' : 'tools';
+  document.querySelectorAll('.atomic-sidebar-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === _activeAtomicSidebarTab);
+  });
+  const toolsEl = document.getElementById('atomicSidebarTools');
+  const metaEl = document.getElementById('atomicSidebarMetadata');
+  if (toolsEl) toolsEl.style.display = _activeAtomicSidebarTab === 'tools' ? 'block' : 'none';
+  if (metaEl) metaEl.style.display = _activeAtomicSidebarTab === 'metadata' ? 'block' : 'none';
+  if (_activeAtomicSidebarTab === 'metadata') renderAtomicMetadataPanel();
+}
+
+function openMacroMetadata(name) {
+  if (!name || !atomicMacros[name]) return;
+  _selectedMacroName = name;
+  setAtomicSidebarTab('metadata');
+}
+
+function renderAtomicMetadataPanel() {
+  const panel = document.getElementById('atomicMetadataPanel');
+  if (!panel) return;
+  const names = Object.keys(atomicMacros).sort();
+  const selector = `
+    <div class="meta-selector">
+      <div class="meta-label">Macro</div>
+      <select id="atomicMetaMacroSelect">
+        <option value="">Select macro...</option>
+        ${names.map(name => `<option value="${esc(name).replace(/"/g, '&quot;')}"${name === _selectedMacroName ? ' selected' : ''}>${esc(name)}</option>`).join('')}
+      </select>
+    </div>
+  `;
+  if (!_selectedMacroName || !atomicMacros[_selectedMacroName]) {
+    panel.innerHTML = selector + `<div class="meta-empty">${names.length ? 'Select a macro from the list.' : 'Save or import a macro first.'}</div>`;
+    document.getElementById('atomicMetaMacroSelect')?.addEventListener('change', (e) => {
+      _selectedMacroName = e.target.value || null;
+      renderAtomicMetadataPanel();
+    });
+    return;
+  }
+  const macro = getMacroRecord(_selectedMacroName);
+  const escAttr = (s) => esc(String(s || '')).replace(/"/g, '&quot;');
+  const layerColors = {atomic: 'var(--accent)', workflow: 'var(--accent2)', bridge: 'var(--orange)'};
+  const layerColor = layerColors[macro.layer] || 'var(--text-dim)';
+  panel.innerHTML = selector + `
+    <div class="meta-header">
+      <div class="meta-name">${esc(macro.name)}</div>
+      <span class="meta-tag" style="background:color-mix(in srgb, ${layerColor} 20%, transparent);color:${layerColor}">${esc(macro.layer || 'atomic')}</span>
+      <button class="btn" id="btnAtomicMetaRename" style="font-size:9px;padding:1px 6px">Rename</button>
+      <button class="btn" id="btnAtomicMetaExport" style="font-size:9px;padding:1px 6px">Export</button>
+      <button class="btn" id="btnAtomicMetaDelete" style="font-size:9px;padding:1px 6px">Delete</button>
+    </div>
+    <div class="meta-field">
+      <div class="meta-label">Layer</div>
+      <select id="atomicMetaLayer">
+        <option value="atomic"${macro.layer === 'atomic' ? ' selected' : ''}>atomic</option>
+        <option value="workflow"${macro.layer === 'workflow' ? ' selected' : ''}>workflow</option>
+        <option value="bridge"${macro.layer === 'bridge' ? ' selected' : ''}>bridge</option>
+      </select>
+    </div>
+    <div class="meta-field">
+      <div class="meta-label">Inputs</div>
+      <input id="atomicMetaInputs" value="${escAttr(macro.inputs.join(', '))}" placeholder="input, prompt_constraints">
+    </div>
+    <div class="meta-field">
+      <div class="meta-label">Outputs</div>
+      <input id="atomicMetaOutputs" value="${escAttr(macro.outputs.join(', '))}" placeholder="accepted, rejected">
+    </div>
+    <div class="meta-field">
+      <div class="meta-label">Tags</div>
+      <input id="atomicMetaTags" value="${escAttr(macro.tags.join(', '))}" placeholder="verdict, table, demo">
+    </div>
+    <div class="meta-field">
+      <div class="meta-label">Description</div>
+      <textarea id="atomicMetaDescription" rows="2" placeholder="Short note about this macro">${esc(macro.description || '')}</textarea>
+    </div>
+    <div class="meta-field">
+      <div class="meta-label">Workflow Alias</div>
+      <textarea id="atomicMetaWorkflowAlias" rows="4" placeholder="- set:&#10;    $claims: value">${esc((macro.workflow_alias || []).join('\n'))}</textarea>
+    </div>
+    <div class="meta-actions">
+      <button class="btn primary" id="btnAtomicMetaSave">Save</button>
+      <button class="btn" id="btnAtomicMetaTools">Tools</button>
+    </div>
+  `;
+  document.getElementById('atomicMetaMacroSelect')?.addEventListener('change', (e) => {
+    _selectedMacroName = e.target.value || null;
+    renderAtomicMetadataPanel();
+  });
+  document.getElementById('btnAtomicMetaRename')?.addEventListener('click', () => {
+    showNamePopup(document.getElementById('btnAtomicMetaRename'), {
+      label: 'Rename Macro',
+      placeholder: 'new macro name',
+      defaultValue: macro.name
+    }, (value) => {
+      const nextName = String(value || '').trim();
+      if (!nextName || nextName === macro.name) return;
+      try {
+        renameAtomicMacroRecord(macro.name, nextName);
+        saveMacros();
+        addAtomicMsg('tool', `Macro renamed: "${macro.name}" → "${nextName}"`);
+        renderAtomicMetadataPanel();
+        renderAtomicFeed();
+      } catch (e) {
+        addAtomicMsg('tool', `rename_macro error: ${e.message}`);
+        renderAtomicFeed();
+      }
+    });
+  });
+  document.getElementById('btnAtomicMetaExport')?.addEventListener('click', () => handleAtomicInput(`export_macro(${macro.name})`));
+  document.getElementById('btnAtomicMetaDelete')?.addEventListener('click', () => {
+    if (!confirm(`Delete macro "${macro.name}"?`)) return;
+    handleAtomicInput(`delete_macro(${macro.name})`);
+  });
+  document.getElementById('btnAtomicMetaTools')?.addEventListener('click', () => setAtomicSidebarTab('tools'));
+  document.getElementById('btnAtomicMetaSave')?.addEventListener('click', () => {
+    const next = {
+      ...macro,
+      layer: document.getElementById('atomicMetaLayer')?.value || 'atomic',
+      inputs: parseMetaCsv(document.getElementById('atomicMetaInputs')?.value),
+      outputs: parseMetaCsv(document.getElementById('atomicMetaOutputs')?.value),
+      tags: parseMetaCsv(document.getElementById('atomicMetaTags')?.value),
+      description: document.getElementById('atomicMetaDescription')?.value || '',
+      workflow_alias: String(document.getElementById('atomicMetaWorkflowAlias')?.value || '').split('\n').map(s => s.trimEnd()).filter(Boolean),
+    };
+    upsertMacroRecord(macro.name, next);
+    saveMacros();
+    renderAtomicMetadataPanel();
+    addAtomicMsg('tool', `Metadata saved for macro "${macro.name}"`);
+    renderAtomicFeed();
+  });
+}
+
+async function syncAtomicMacrosFromServer() {
+  if (_macroRegistrySyncStarted) return;
+  _macroRegistrySyncStarted = true;
+  try {
+    const res = await get('/api/macro-registry');
+    const serverMacros = res.macros || {};
+    let changed = false;
+    Object.entries(serverMacros).forEach(([name, payload]) => {
+      const normalized = normalizeMacroPayload(name, payload);
+      if (!atomicMacros[name] && normalized.layer === 'atomic' && normalized.dsl) {
+        atomicMacros[name] = normalized;
+        changed = true;
+      }
+    });
+    for (const [name, dsl] of Object.entries(atomicMacros)) {
+      const normalized = normalizeMacroPayload(name, dsl);
+      if (!serverMacros[name] && normalized.layer === 'atomic' && normalized.dsl) {
+        post('/api/macro-registry/upsert', normalized).catch(() => {});
+      }
+    }
+    if (changed) {
+      try { localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros)); } catch(_) {}
+    }
+  } catch (_) {}
+}
+
+function persistAtomicMacroToServer(name) {
+  const macro = getMacroRecord(name);
+  if (!name || !macro?.dsl?.trim()) return;
+  post('/api/macro-registry/upsert', macro).catch(() => {});
+}
+
+function deleteAtomicMacroFromServer(name) {
+  if (!name) return;
+  post('/api/macro-registry/delete', {name}).catch(() => {});
+}
+
+function queueAtomicMacroRegistrySync() {
+  if (_macroRegistryPersistTimer) clearTimeout(_macroRegistryPersistTimer);
+  _macroRegistryPersistTimer = setTimeout(() => {
+    _macroRegistryPersistTimer = null;
+    Object.keys(atomicMacros).forEach(name => persistAtomicMacroToServer(name));
+  }, 250);
+}
 
 /* ================================================================
    Node CRUD
@@ -3537,6 +3849,8 @@ try { globalGroups = JSON.parse(localStorage.getItem('global_groups') || '[]'); 
 var macroRecording = false;
 var macroSteps = [];
 var atomicMacros = {};
+var _selectedMacroName = null;
+var _activeAtomicSidebarTab = 'tools';
 var pipelineSteps = []; // always-on recording of executed commands for DSL export
 var _currentMacroGroup = null; // set during macro replay to tag inner steps
 var cardTemplates = {}; // Card Builder: {name: {name, slots: [{id,type,label,binding,options,children}]}}
@@ -3547,6 +3861,21 @@ try { const sc = JSON.parse(localStorage.getItem('atomic_config') || '{}'); if (
 try { const si = JSON.parse(localStorage.getItem('global_items') || '[]'); if (Array.isArray(si)) globalItems = si; } catch(_) {}
 try { atomicMacros = JSON.parse(localStorage.getItem('atomic_macros') || '{}'); } catch(_) {}
 try { cardTemplates = JSON.parse(localStorage.getItem('card_templates') || '{}'); } catch(_) {}
+try {
+  let macroChanged = false;
+  Object.keys(atomicMacros).forEach(name => {
+    const normalized = normalizeMacroPayload(name, atomicMacros[name]);
+    if (JSON.stringify(normalized) !== JSON.stringify(atomicMacros[name])) {
+      atomicMacros[name] = normalized;
+      macroChanged = true;
+    }
+  });
+  if (macroChanged) localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros));
+} catch(_) {}
+syncAtomicMacrosFromServer();
+document.getElementById('btnAtomicTabTools')?.addEventListener('click', () => setAtomicSidebarTab('tools'));
+document.getElementById('btnAtomicTabMetadata')?.addEventListener('click', () => setAtomicSidebarTab('metadata'));
+setAtomicSidebarTab('tools');
 
 // Restore atomic state
 try {
@@ -3574,8 +3903,17 @@ function switchPage(page) {
   if (page === 'builder') renderBuilderPage();
   // Right sidebar content
   document.getElementById('workflowSidebarContent').style.display = page === 'workflow' ? 'flex' : 'none';
+  document.getElementById('builderSidebarContent').style.display = page === 'builder' ? 'flex' : 'none';
   const tp = document.getElementById('atomicToolPalette');
   tp.classList.toggle('active', page === 'atomic');
+  if (page === 'builder') {
+    const rs = document.getElementById('rightSidebar');
+    if (rs.classList.contains('collapsed')) {
+      rs.classList.remove('collapsed');
+      if (savedRightWidth) rs.style.width = savedRightWidth + 'px';
+    }
+    renderBuilderDSL();
+  }
   if (page === 'atomic') {
     const rs = document.getElementById('rightSidebar');
     if (rs.classList.contains('collapsed')) {
@@ -3643,14 +3981,40 @@ function createEntity(name, opts = {}) {
   while (atomicEntities[name]) { name = baseName + '_' + (i++); }
   const entity = {
     name,
+    title: opts.title || name,
+    type: opts.type || 'entity',       // root | entity | sub
+    status: opts.status || 'pending',  // pending | active | done | fail
     tags: opts.tags || {},
+    // Content
+    question: opts.question || '',
+    answer: opts.answer || '',
+    answerThink: opts.answerThink || '',
+    answerStatus: opts.answerStatus || null,  // pass | fail | null
+    showAnswer: opts.showAnswer !== false,
+    // Structured lists
+    entities_list: opts.entities_list || [],
+    axioms_list: opts.axioms_list || [],
+    hypotheses_list: opts.hypotheses_list || [],
+    extracted_properties: opts.extracted_properties || {},
+    // Reactions & thread
+    reactions: opts.reactions || [],    // [{worker, emoji, status, detail}]
+    thread: opts.thread || [],         // [{role, name, content, time, status}]
+    discussion: opts.discussion || [], // discussion thread for parent nodes
+    children: opts.children || [],     // child entity names
+    // Media
+    imageUrl: opts.imageUrl || null,
+    // Legacy (still used by atomic feed)
     text_areas: opts.text_areas || [],
     data_areas: opts.data_areas || [],
-    reactions: opts.reactions || [],
+    // Meta
     parentId: opts.parentId || null,
     source: opts.source || null,
-    imageUrl: opts.imageUrl || null,
+    time: ts(),
     ts: new Date().toISOString(),
+    collapsed: false,
+    threadOpen: true,
+    tagsCollapsed: false,
+    answerOpen: opts.answerOpen !== undefined ? opts.answerOpen : false,
   };
   atomicEntities[name] = entity;
   saveAtomicState();
@@ -3948,210 +4312,279 @@ function renderAtomicMsg(msg) {
 
 /* ================================================================
    Slot Component Renderers — Phase 4
-   Each renderSlot*(entity, slot) returns HTML string.
-   Binding: slot.binding → resolve field from entity data.
+   Pure GUI: DOM structure 1:1 with renderNode() etalon.
+   Data layer binds later via data-slot-* attributes.
+   Each renderSlot*(data, slot) returns HTML string.
    ================================================================ */
 
-function resolveBinding(entity, binding) {
-  // @entity.field or .field → entity[field]
-  if (!binding) return undefined;
-  const path = binding.replace(/^@\w+\./, '').replace(/^\./, '');
-  if (!path) return undefined;
-  return entity[path];
-}
-
-function renderSlotTitle(entity, slot) {
-  const title = slot.binding ? resolveBinding(entity, slot.binding) : entity.name;
-  const status = entity.tags?.status || entity.tags?.reactionStatus || '';
-  const badgeCls = status === 'pass' ? 'ok' : status === 'fail' ? 'err' : 'entity';
-  let h = `<div class="tmpl-title">`;
-  h += `<span class="node-icon ${badgeCls}">#</span>`;
-  h += `<span class="node-title">${esc(String(title || entity.name))}</span>`;
-  if (status) h += `<span class="node-badge ${status}">${esc(status)}</span>`;
-  if (entity.ts) {
-    const t = new Date(entity.ts);
-    h += `<span class="node-time">${t.toLocaleTimeString()}</span>`;
-  }
+function renderSlotTitle(data, slot) {
+  const title = data.title || data.name || '';
+  const status = data.status || 'pending';
+  const type = data.type || 'entity';
+  const iconCls = type === 'root' ? 'root' : status === 'done' ? 'ok' : status === 'fail' ? 'err' : 'entity';
+  const iconCh = type === 'root' ? 'T' : '#';
+  const childCount = data.children?.length || 0;
+  let h = `<div class="node-hdr" data-slot="${slot.id}">`;
+  h += `<span class="node-arrow open">▶</span>`;
+  h += `<span class="node-icon ${iconCls}">${iconCh}</span>`;
+  h += `<span class="node-title" data-slot-field="title">${esc(title)}</span>`;
+  if (childCount) h += `<span class="node-collapse-hint">${childCount} sub</span>`;
+  h += `<span class="node-badge ${status}" data-slot-field="status">${esc(status.toUpperCase())}</span>`;
+  h += `<span class="node-time" data-slot-field="time">${esc(data.time || '')}</span>`;
+  if (Object.keys(data.tags || {}).length) h += `<button class="tags-toggle-btn" data-slot-tags-toggle="${slot.id}">▲</button>`;
   h += `</div>`;
   return h;
 }
 
-function renderSlotTags(entity, slot) {
-  const tags = entity.tags || {};
+function renderSlotTags(data, slot) {
+  const tags = data.tags || {};
   const entries = Object.entries(tags).filter(([k]) => !k.startsWith('_'));
-  if (!entries.length) return '';
-  let h = `<div class="at-tags">`;
+  if (!entries.length) return `<div class="node-tags-wrap" data-slot="${slot.id}"></div>`;
+  let h = `<div class="node-tags-wrap" data-slot="${slot.id}">`;
+  h += `<div class="node-tags">`;
   entries.forEach(([k, v]) => {
     const display = Array.isArray(v) ? v.join(', ') : String(v);
-    h += `<span class="at-tag" data-key="${esc(k)}"><span class="key">${esc(k)}:</span>${esc(display.length > 30 ? display.slice(0, 30) + '…' : display)}</span>`;
+    const cls = k.startsWith('used_') ? 'green' : 'accent';
+    h += `<span class="tag ${cls}" title="${esc(k)}: ${esc(display)}">${esc(k)}: ${esc(display.length > 30 ? display.slice(0, 30) + '…' : display)}</span>`;
   });
-  h += `</div>`;
+  h += `</div></div>`;
   return h;
 }
 
-function renderSlotTextArea(entity, slot) {
-  const label = slot.label || 'text';
-  const collapsed = slot.options?.collapsed !== false;
-  // Find matching text_area by label or binding
-  const ta = entity.text_areas?.find(a => a.name === label) || entity.text_areas?.[0];
-  // Or use answer field if binding points there
-  let text = '';
-  if (slot.binding) {
-    const val = resolveBinding(entity, slot.binding);
-    if (val !== undefined) text = String(val);
+function renderSlotList(data, slot) {
+  const groups = slot.options?.groups || ['entities', 'axioms', 'hypotheses'];
+  let h = '';
+  groups.forEach(gName => {
+    const items = data[gName + '_list'] || [];
+    if (!items.length) return;
+    const listName = gName.toUpperCase();
+    const cls = gName === 'entities' ? 'entity' : gName === 'axioms' ? 'axiom' : 'hypothesis';
+    h += `<div class="node-list-section">`;
+    h += `<div class="node-list-header" data-slot-list-toggle="${slot.id}:${listName}"><span class="arrow">▶</span> ${listName} <span class="list-count">${items.length}</span></div>`;
+    h += `<div class="node-list-body">`;
+    items.forEach(item => {
+      const txt = typeof item === 'string' ? item : (item.text || String(item));
+      const author = typeof item === 'object' && item.author ? ` <span class="item-author">${esc(item.author)}</span>` : '';
+      h += `<div class="node-list-item ${cls}"><span class="li-bullet">•</span>${esc(txt)}${author}</div>`;
+    });
+    h += `</div></div>`;
+  });
+  // Extracted properties
+  if (data.extracted_properties && Object.keys(data.extracted_properties).length) {
+    const epItems = Object.entries(data.extracted_properties).map(([k, v]) => `${k}: ${v}`);
+    h += `<div class="node-list-section">`;
+    h += `<div class="node-list-header"><span class="arrow">▶</span> EXTRACTED <span class="list-count">${epItems.length}</span></div>`;
+    h += `<div class="node-list-body">`;
+    epItems.forEach(item => { h += `<div class="node-list-item extracted"><span class="li-bullet">•</span>${esc(item)}</div>`; });
+    h += `</div></div>`;
   }
-  if (!text && ta) text = ta.text || '';
+  return h ? `<div class="node-lists" data-slot="${slot.id}">${h}</div>` : `<div class="node-lists" data-slot="${slot.id}"></div>`;
+}
 
-  const isExpanded = ta?._expanded || !collapsed;
-  const arrow = isExpanded ? '▾' : '▸';
-  const preview = text.length > 60 ? text.slice(0, 60) + '…' : text;
-  const collapsedCls = isExpanded ? '' : ' collapsed';
-  const editable = slot.options?.editable !== false;
+function renderSlotTextArea(data, slot) {
+  const label = slot.label || 'RESULT';
+  const text = data.answer || data.question || '';
+  const acls = data.answerStatus === 'pass' ? ' pass' : data.answerStatus === 'fail' ? ' fail' : '';
+  const emptyCls = text ? '' : ' empty';
+  const ansOpen = data.answerOpen !== false;
 
-  let h = `<div class="at-text-area${collapsedCls}" data-slot="${slot.id}">`;
-  h += `<div class="at-text-area-label" data-slot-toggle="${slot.id}">${arrow} ${esc(label)} <span class="at-text-preview">${!isExpanded ? esc(preview) : ''}</span></div>`;
-  h += `<div class="at-text-area-content"${editable ? ' contenteditable="true"' : ''} data-slot-area="${slot.id}">${esc(text)}</div>`;
+  let h = '';
+  // Think block (collapsed, above answer — same as etalon)
+  if (data.answerThink) {
+    h += `<div class="think-block" data-slot-think="${slot.id}">`;
+    h += `<div class="think-toggle" data-slot-think-toggle="${slot.id}"><span class="arrow">▶</span> think (${data.answerThink.length} chars)</div>`;
+    h += `<div class="think-body" data-slot-think-body="${slot.id}">${esc(data.answerThink)}</div>`;
+    h += `</div>`;
+  }
+
+  // Answer block — etalon structure from renderNode
+  h += `<div class="node-answer" data-slot="${slot.id}"><div class="answer-block${acls}">`;
+  h += `<div class="answer-lang">`;
+  h += `<span>${esc(label.toLowerCase())}</span>`;
+  h += `<span style="flex:1"></span>`;
+  h += `<button class="tags-toggle-btn" data-slot-answer-toggle="${slot.id}">${ansOpen ? '▲' : '▼'}</button>`;
   h += `</div>`;
-  return h;
-}
-
-function renderSlotImage(entity, slot) {
-  const url = slot.binding ? resolveBinding(entity, slot.binding) : entity.imageUrl;
-  if (!url) return '';
-  let h = `<div class="node-image"><img src="${esc(url)}" alt="Image" loading="lazy" style="max-width:100%;border-radius:6px"></div>`;
-  return h;
-}
-
-function renderSlotButtons(entity, slot) {
-  const items = slot.options?.items || ['verify', 'check', 'generate'];
-  let h = `<div class="tmpl-buttons" style="display:flex;gap:4px;margin:4px 0">`;
-  items.forEach(btn => {
-    const style = btn === 'generate' ? ' style="color:var(--purple,#b48ead)"' : '';
-    h += `<button class="btn-small" data-tmpl-action="${esc(btn)}" data-entity="${esc(entity.name)}"${style}>${esc(btn)}</button>`;
-  });
-  h += `</div>`;
-  return h;
-}
-
-function renderSlotThread(entity, slot) {
-  const mode = slot.options?.mode || 'tree';
-  // Thread data — from entity or parent node
-  const thread = entity._thread || [];
-  const tc = thread.length;
-  let h = `<div class="tmpl-thread" data-slot="${slot.id}">`;
-  h += `<div class="thread-bar" data-tmpl-thread-toggle="${slot.id}"><span class="arrow">▶</span> ${esc(slot.label || 'Thread')} <span class="thread-cnt">${tc}</span></div>`;
-  h += `<div class="thread-wrap" data-tmpl-thread="${slot.id}">`;
-  if (mode === 'flat') {
-    thread.forEach(t => {
-      h += `<div class="tmsg"><span class="tmsg-who">${esc(t.name || t.role || 'user')}</span> ${esc(t.text || t.content || '')}</div>`;
-    });
-  } else {
-    thread.forEach(t => {
-      h += `<div class="tmsg"><span class="tmsg-who">${esc(t.name || t.role || 'user')}</span> ${esc(t.text || t.content || '')}</div>`;
-    });
+  if (ansOpen) {
+    h += `<div style="position:relative">`;
+    h += `<textarea class="answer-ta${emptyCls}" data-slot-field="answer" placeholder="(pending...)">${esc(text)}</textarea>`;
+    h += `<button class="btn-apply-answer" data-slot-apply="${slot.id}" style="display:none">Apply changes</button>`;
+    h += `</div>`;
   }
   h += `</div></div>`;
   return h;
 }
 
-function renderSlotDataTable(entity, slot) {
+function renderSlotImage(data, slot) {
+  const url = data.imageUrl || '';
+  return `<div class="node-image" data-slot="${slot.id}"${url ? '' : ' style="display:none"'}>${url ? `<img src="${esc(url)}" alt="Generated image" loading="lazy">` : ''}</div>`;
+}
+
+function renderSlotButtons(data, slot) {
+  const items = slot.options?.items || ['verify', 'check', 'generate'];
+  // Inline in answer-lang bar, same as etalon
+  let h = `<div class="answer-lang" data-slot="${slot.id}">`;
+  h += `<span style="flex:1"></span>`;
+  items.forEach(btn => {
+    const style = btn === 'generate' ? ' style="color:var(--purple,#b48ead)"' : '';
+    h += `<button class="btn-small" data-slot-action="${esc(btn)}"${style}>${esc(btn)}</button>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotThread(data, slot) {
+  const mode = slot.options?.mode || 'tree';
+  const thread = data.thread || [];
+  const tc = thread.length;
+  const tOpen = data.threadOpen || false;
+
+  let h = `<div class="thread-bar" data-slot-thread-toggle="${slot.id}"><span class="arrow${tOpen ? ' open' : ''}">▶</span> ${esc(slot.label || 'Thread')} <span class="thread-cnt">${tc}</span></div>`;
+  h += `<div class="thread-wrap${tOpen ? ' open' : ''}" data-slot="${slot.id}" data-slot-mode="${mode}">`;
+  h += `<div class="thread-msgs">`;
+  thread.forEach((t, i) => {
+    const r = t.role || 'system';
+    const ini = (t.name || r)[0].toUpperCase();
+    h += `<div class="tmsg ${r}"><span class="tmsg-avatar">${ini}</span><span class="tmsg-who">${esc(t.name || r)}</span><span class="tmsg-text">${esc(t.content || '')}</span></div>`;
+  });
+  h += `</div>`;
+  h += `<div class="thread-input"><textarea placeholder="Reply..." data-slot-tinp="${slot.id}" rows="1"></textarea><button class="btn" data-slot-tsend="${slot.id}">Send</button></div>`;
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotDataTable(data, slot) {
   const label = slot.label || 'data';
-  const da = entity.data_areas?.find(a => a.name === label) || entity.data_areas?.[0];
-  if (!da) return '';
-  let h = `<div class="at-data-area" data-area="${esc(da.name)}">`;
+  const da = data.data_areas?.find(a => a.name === label) || data.data_areas?.[0];
+  if (!da) return `<div class="at-data-area" data-slot="${slot.id}" style="display:none"></div>`;
+  let h = `<div class="at-data-area" data-slot="${slot.id}" data-area="${esc(da.name)}">`;
   h += `<div class="at-data-label">${esc(da.name)}</div>`;
   h += `<table class="at-table"><thead><tr>`;
   da.headers.forEach(hdr => { h += `<th>${esc(hdr)}</th>`; });
   h += `</tr></thead><tbody>`;
   da.rows.forEach((row, ri) => {
     h += `<tr>`;
-    row.forEach((cell, ci) => { h += `<td>${esc(String(cell))}</td>`; });
+    row.forEach((cell, ci) => { h += `<td contenteditable="true" data-row="${ri}" data-col="${ci}">${esc(String(cell))}</td>`; });
     h += `</tr>`;
   });
   h += `</tbody></table></div>`;
   return h;
 }
 
-function renderSlotReactions(entity, slot) {
-  const reactions = entity.reactions || [];
-  if (!reactions.length) return '';
-  let h = `<div class="at-reactions" style="margin:4px 0">`;
+function renderSlotReactions(data, slot) {
+  const reactions = data.reactions || [];
+  if (!reactions.length) return `<div class="reactions-bar" data-slot="${slot.id}"></div>`;
+  const passed = reactions.filter(r => r.status === 'pass').length;
+  const total = reactions.length;
+  let h = `<div class="reactions-bar" data-slot="${slot.id}">`;
   reactions.forEach(r => {
-    h += `<span class="at-reaction" title="${esc(r.detail || '')}">${r.emoji}</span>`;
+    const wcls = r.status || 'pending';
+    h += `<span class="reaction ${wcls}" title="${esc(r.detail || '')}">`;
+    h += `<span class="reaction-emoji">${r.emoji || '❓'}</span>`;
+    h += `<span class="reaction-who ${wcls}">${esc(r.worker || '')}</span>`;
+    h += `</span>`;
   });
+  h += `<span class="reactions-summary"><span class="count ${passed === total ? 'ok' : 'bad'}">${passed}/${total}</span></span>`;
   h += `</div>`;
   return h;
 }
 
-function renderSlotList(entity, slot) {
-  const groups = slot.options?.groups || ['entities', 'axioms', 'hypotheses'];
-  let h = '';
-  groups.forEach(gName => {
-    const key = gName + '_list';
-    const items = entity[key] || entity.tags?.[gName];
-    if (!items || !Array.isArray(items) || !items.length) return;
-    h += `<div class="node-list-section">`;
-    h += `<div class="node-list-header"><span class="arrow">▶</span> ${esc(gName.toUpperCase())} <span class="list-count">${items.length}</span></div>`;
-    h += `<div class="node-list-body">`;
-    items.forEach(item => {
-      const txt = typeof item === 'string' ? item : (item.text || String(item));
-      h += `<div class="node-list-item"><span class="li-bullet">•</span>${esc(txt)}</div>`;
-    });
-    h += `</div></div>`;
+function renderSlotForm(data, slot) {
+  const qf = data.questionForm || slot.options?.fields || [];
+  if (!qf.length) return `<div class="node-form" data-slot="${slot.id}"></div>`;
+  let h = `<div class="node-form" data-slot="${slot.id}">`;
+  qf.forEach((q, i) => {
+    h += `<div class="qf-item">`;
+    h += `<label>${esc(q.question || q.label || '')}</label>`;
+    if (q.hint) h += `<div class="qf-hint">${esc(q.hint)}</div>`;
+    if (q.type === 'textarea') h += `<textarea data-field="${esc(q.field || q.name || '')}" placeholder="${esc(q.placeholder || '')}"></textarea>`;
+    else h += `<input data-field="${esc(q.field || q.name || '')}" type="text" placeholder="${esc(q.placeholder || '')}">`;
+    h += `</div>`;
   });
-  return h ? `<div class="node-lists">${h}</div>` : '';
+  h += `<button class="btn primary" style="margin-top:4px" data-slot-submit="${slot.id}">Submit</button>`;
+  h += `</div>`;
+  return h;
 }
 
-function renderSlotForm(entity, slot) {
-  const fields = slot.options?.fields || [{name: 'input', type: 'textarea', label: 'Input'}];
-  let h = `<div class="tmpl-form" data-slot="${slot.id}">`;
-  fields.forEach(f => {
-    h += `<div style="margin-bottom:6px">`;
-    h += `<label style="font-size:10px;color:var(--text-dim)">${esc(f.label || f.name)}</label>`;
-    if (f.type === 'textarea') h += `<textarea style="width:100%;min-height:40px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px" placeholder="${esc(f.placeholder || '')}"></textarea>`;
-    else h += `<input style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px" placeholder="${esc(f.placeholder || '')}">`;
+function renderSlotGroup(data, slot) {
+  const label = slot.label || '';
+  let h = `<div class="node-body open" data-slot="${slot.id}" style="border-left:2px solid var(--border);padding-left:8px;margin:4px 0">`;
+  if (label) h += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">${esc(label)}</div>`;
+  if (slot.children?.length) {
+    slot.children.forEach(child => { h += renderSlotComponent(data, child); });
+  }
+  h += `</div>`;
+  return h;
+}
+
+function renderSlotChildren(data, slot) {
+  const children = data.children || [];
+  const childTemplate = slot.options?.template; // optional: render children with specific template
+  let h = `<div class="node-children" data-slot="${slot.id}">`;
+  children.forEach(child => {
+    const childData = typeof child === 'string' ? {name: child, title: child, status: 'pending', tags: {}, children: [], thread: [], reactions: [], time: ''} : child;
+    const status = childData.status || 'pending';
+    const collapsed = childData.collapsed !== false; // children collapsed by default
+    // If a specific template requested and exists → use it
+    const tmplName = childTemplate || childData.card_template;
+    const tmpl = tmplName && cardTemplates[tmplName] ? cardTemplates[tmplName] : null;
+
+    h += `<div class="node${status === 'done' ? ' done' : ''}${status === 'fail' ? ' fail' : ''}${status === 'active' ? ' active' : ''}" data-child="${esc(childData.name || '')}" data-slot-child="${slot.id}">`;
+    if (collapsed || !tmpl) {
+      // Collapsed view — title header only (same as etalon collapsed nodes)
+      const iconCls = status === 'done' ? 'ok' : status === 'fail' ? 'err' : 'entity';
+      h += `<div class="node-hdr" data-slot-child-hdr="${esc(childData.name || '')}">`;
+      h += `<span class="node-arrow">▶</span>`;
+      h += `<span class="node-icon ${iconCls}">#</span>`;
+      h += `<span class="node-title">${esc(childData.title || childData.name || '')}</span>`;
+      if (childData.children?.length) h += `<span class="node-collapse-hint">${childData.children.length} sub</span>`;
+      h += `<span class="node-badge ${status}">${esc(status.toUpperCase())}</span>`;
+      h += `<span class="node-time">${esc(childData.time || '')}</span>`;
+      if (Object.keys(childData.tags || {}).length) h += `<button class="tags-toggle-btn">▲</button>`;
+      h += `</div>`;
+    } else {
+      // Expanded view — full template render
+      h += `<div class="node-body open">`;
+      tmpl.slots.forEach(s => { h += renderSlotComponent(childData, s); });
+      h += `</div>`;
+    }
     h += `</div>`;
   });
   h += `</div>`;
   return h;
 }
 
-function renderSlotGroup(entity, slot) {
-  const label = slot.label || '';
-  let h = `<div class="tmpl-group" data-slot="${slot.id}" style="border-left:2px solid var(--border);padding-left:8px;margin:4px 0">`;
-  if (label) h += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">${esc(label)}</div>`;
-  if (slot.children?.length) {
-    slot.children.forEach(child => {
-      h += renderSlotComponent(entity, child);
-    });
-  }
-  h += `</div>`;
-  return h;
-}
-
-function renderSlotComponent(entity, slot) {
+function _renderSlotInner(data, slot) {
   switch (slot.type) {
-    case 'title': return renderSlotTitle(entity, slot);
-    case 'tags': return renderSlotTags(entity, slot);
-    case 'text_area': return renderSlotTextArea(entity, slot);
-    case 'image': return renderSlotImage(entity, slot);
-    case 'buttons': return renderSlotButtons(entity, slot);
-    case 'thread': return renderSlotThread(entity, slot);
-    case 'data_table': return renderSlotDataTable(entity, slot);
-    case 'reactions': return renderSlotReactions(entity, slot);
-    case 'list': return renderSlotList(entity, slot);
-    case 'form': return renderSlotForm(entity, slot);
-    case 'group': return renderSlotGroup(entity, slot);
-    default: return `<div style="color:var(--text-dim);font-size:10px">Unknown slot: ${esc(slot.type)}</div>`;
+    case 'title': return renderSlotTitle(data, slot);
+    case 'tags': return renderSlotTags(data, slot);
+    case 'text_area': return renderSlotTextArea(data, slot);
+    case 'image': return renderSlotImage(data, slot);
+    case 'buttons': return renderSlotButtons(data, slot);
+    case 'thread': return renderSlotThread(data, slot);
+    case 'data_table': return renderSlotDataTable(data, slot);
+    case 'reactions': return renderSlotReactions(data, slot);
+    case 'list': return renderSlotList(data, slot);
+    case 'form': return renderSlotForm(data, slot);
+    case 'group': return renderSlotGroup(data, slot);
+    case 'children': return renderSlotChildren(data, slot);
+    default: return `<div data-slot="${slot.id}" style="color:var(--text-dim);font-size:10px">Unknown: ${esc(slot.type)}</div>`;
   }
 }
 
-function renderTemplatedCard(entity, template) {
-  let h = `<div class="at-entity tmpl-card" data-entity="${esc(entity.name)}" data-template="${esc(template.name)}">`;
-  template.slots.forEach(slot => {
-    h += renderSlotComponent(entity, slot);
-  });
-  h += `</div>`;
+function renderSlotComponent(data, slot) {
+  const idx = _slotIdxCounter++;
+  return `<div data-slot-idx="${idx}" data-slot-type="${slot.type}" data-slot-ref="${slot.id}">${_renderSlotInner(data, slot)}</div>`;
+}
+
+var _slotIdxCounter = 0; // global counter for slot indexing during render
+
+function renderTemplatedCard(data, template) {
+  _slotIdxCounter = 0; // reset per card
+  const status = data.status || 'pending';
+  let h = `<div class="node${status === 'done' ? ' done' : ''}${status === 'fail' ? ' fail' : ''}${status === 'active' ? ' active' : ''}" data-entity="${esc(data.name || '')}" data-template="${esc(template.name)}">`;
+  h += `<div class="node-body open">`;
+  template.slots.forEach(slot => { h += renderSlotComponent(data, slot); });
+  h += `</div></div>`;
   return h;
 }
 
@@ -4314,7 +4747,8 @@ document.getElementById('btnSaveMacroFromSteps').addEventListener('click', () =>
     placeholder: 'macro name'
   }, name => {
     if (!name) return;
-    atomicMacros[name] = cmds.join('\n');
+    upsertMacroRecord(name, {dsl: cmds.join('\n'), layer: 'atomic'});
+    _selectedMacroName = name;
     saveMacros();
     _selectedPipelineSteps.clear();
     renderPipelineSteps();
@@ -4410,7 +4844,7 @@ function addAtomicMsg(role, content, entities, meta) {
 
 /* --- Atomic input handler --- */
 // Editor commands (: prefix) — go to console, not pipeline
-const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','export_dsl','rename','drop',
+const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','rename_macro','export_macro','import_macro','export_dsl','rename','drop',
   'card_template','add_slot','remove_slot','move_slot','bind_slot','slot_option','delete_template','clone_template']);
 
 function recordPipelineStep(cmd, enabled = true) {
@@ -5173,7 +5607,11 @@ async function handleAtomicInput(text, options = {}) {
 
 /* --- Tool execution --- */
 // --- Macro recording (state initialized at top of Atomic section) ---
-function saveMacros() { try { localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros)); } catch(_) {} }
+function saveMacros() {
+  try { localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros)); } catch(_) {}
+  if (_activeAtomicSidebarTab === 'metadata') renderAtomicMetadataPanel();
+  queueAtomicMacroRegistrySync();
+}
 
 /* Pipeline DSL — serialize macro steps to text and back.
    Format:
@@ -5351,6 +5789,9 @@ async function applyAtomicTool(toolName, args, meta = {}) {
       case 'run_macro': await toolRunMacro(args); break;
       case 'list_macros': toolListMacros(); break;
       case 'delete_macro': toolDeleteMacro(args); break;
+      case 'rename_macro': toolRenameMacro(args); break;
+      case 'export_macro': toolExportMacro(args); break;
+      case 'import_macro': toolImportMacro(args); break;
       // Card Builder
       case 'card_template': toolCardTemplate(args); break;
       case 'add_slot': toolAddSlot(args); break;
@@ -6234,7 +6675,9 @@ function toolSaveMacro(args) {
   }
   if (!pipelineSteps.length) { addAtomicMsg('tool', 'No pipeline steps to save'); return; }
   const dsl = pipelineSteps.map(s => s.cmd).join('\n');
-  atomicMacros[name] = dsl;
+  const prev = getMacroRecord(name);
+  upsertMacroRecord(name, {...prev, name, layer: prev?.layer || 'atomic', dsl});
+  _selectedMacroName = name;
   saveMacros();
   addAtomicMsg('tool', `Macro "${name}" saved (${pipelineSteps.length} steps):\n\`\`\`\n${dsl}\n\`\`\``);
 }
@@ -6242,12 +6685,13 @@ function toolSaveMacro(args) {
 async function toolRunMacro(args) {
   const name = args[0]?.trim();
   if (!name) { addAtomicMsg('tool', 'Usage: run_macro(name)'); return; }
-  let dsl = atomicMacros[name];
+  const macro = getMacroRecord(name);
+  let dsl = macro?.dsl;
   if (!dsl) { addAtomicMsg('tool', `Macro "${name}" not found`); return; }
   // Migrate old format: [{tool, args}, ...] → DSL string
   if (Array.isArray(dsl)) {
     dsl = dsl.map(s => `${s.tool}(${s.args.join(', ')})`).join('\n');
-    atomicMacros[name] = dsl;
+    upsertMacroRecord(name, {...macro, name, dsl});
     saveMacros();
   }
   // Mark run_macro step as group header
@@ -6277,11 +6721,60 @@ function toolListMacros() {
   const names = Object.keys(atomicMacros);
   if (!names.length) { addAtomicMsg('tool', 'No saved macros'); return; }
   const list = names.map(n => {
-    const m = atomicMacros[n];
-    const lines = typeof m === 'string' ? m.split('\n').filter(l => l.trim()).length : (Array.isArray(m) ? m.length : 0);
-    return `  ${n} (${lines} steps)`;
+    const m = getMacroRecord(n);
+    const lines = (m?.dsl || '').split('\n').filter(l => l.trim()).length;
+    const meta = m?.layer && m.layer !== 'atomic' ? `, ${m.layer}` : '';
+    return `  ${n} (${lines} steps${meta})`;
   }).join('\n');
   addAtomicMsg('tool', `Saved macros:\n${list}`);
+}
+
+function toolExportMacro(args) {
+  const name = args[0]?.trim();
+  if (!name) { addAtomicMsg('tool', 'Usage: export_macro(name)'); return; }
+  const macro = getMacroRecord(name);
+  if (!macro) { addAtomicMsg('tool', `Macro "${name}" not found`); return; }
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('export_macro')) {
+    pipelineSteps.pop();
+  }
+  const text = JSON.stringify(macro, null, 2);
+  addAtomicMsg('tool', `Macro JSON:\n\`\`\`json\n${text}\n\`\`\``);
+  navigator.clipboard.writeText(text).catch(() => {});
+}
+
+function toolImportMacro(args) {
+  const raw = args.join(', ').trim();
+  if (!raw) { addAtomicMsg('tool', 'Usage: import_macro({...json...})'); return; }
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('import_macro')) {
+    pipelineSteps.pop();
+  }
+  try {
+    const macro = JSON.parse(resolveDslTextValue(raw));
+    const name = String(macro?.name || '').trim();
+    if (!name) throw new Error('name is required');
+    upsertMacroRecord(name, macro);
+    _selectedMacroName = name;
+    saveMacros();
+    addAtomicMsg('tool', `Macro "${name}" imported`);
+  } catch (e) {
+    addAtomicMsg('tool', `import_macro error: ${e.message}`);
+  }
+}
+
+function toolRenameMacro(args) {
+  const oldName = args[0]?.trim();
+  const newName = args[1]?.trim();
+  if (!oldName || !newName) { addAtomicMsg('tool', 'Usage: rename_macro(old_name, new_name)'); return; }
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('rename_macro')) {
+    pipelineSteps.pop();
+  }
+  try {
+    const clean = renameAtomicMacroRecord(oldName, newName);
+    saveMacros();
+    addAtomicMsg('tool', `Macro renamed: "${oldName}" → "${clean}"`);
+  } catch (e) {
+    addAtomicMsg('tool', `rename_macro error: ${e.message}`);
+  }
 }
 
 function toolDeleteMacro(args) {
@@ -6292,7 +6785,9 @@ function toolDeleteMacro(args) {
     pipelineSteps.pop();
   }
   delete atomicMacros[name];
+  if (_selectedMacroName === name) _selectedMacroName = null;
   saveMacros();
+  deleteAtomicMacroFromServer(name);
   addAtomicMsg('system', `Macro "${name}" deleted`);
 }
 
@@ -7400,7 +7895,7 @@ document.getElementById('paramsFileInput').addEventListener('change', async (e) 
 
 /* === Card Builder UI === */
 
-const SLOT_ICONS = {title:'#', tags:'●', text_area:'T', image:'🖼', buttons:'▶', thread:'💬', data_table:'⊞', reactions:'😀', list:'≡', form:'☐', group:'📁'};
+const SLOT_ICONS = {title:'#', tags:'●', text_area:'T', image:'🖼', buttons:'▶', thread:'💬', data_table:'⊞', reactions:'😀', list:'≡', form:'☐', group:'📁', children:'⊟'};
 
 function renderBuilderPage() {
   // Template list
@@ -7475,8 +7970,11 @@ function renderBuilderPage() {
   // Properties panel
   renderBuilderProps();
 
-  // Live Preview
+  // Live Preview (canvas)
   renderBuilderPreview();
+
+  // Right sidebar DSL + preview
+  renderBuilderDSL();
 }
 
 function renderBuilderPreview() {
@@ -7489,18 +7987,292 @@ function renderBuilderPreview() {
     return;
   }
   wrap.style.display = 'block';
-  // Sample entity: first from atomicEntities, or hardcoded default
   const entityNames = Object.keys(atomicEntities);
-  const sample = entityNames.length ? atomicEntities[entityNames[0]] : {
-    name: 'sample_entity',
-    tags: {status: 'done', style: 'anime', card_template: _activeCardTemplate},
-    text_areas: [{name: 'RESULT', text: 'Sample result text goes here...', _expanded: true}],
-    data_areas: [],
-    reactions: [{emoji: '✅', detail: 'pass'}],
-    imageUrl: null,
-    ts: new Date().toISOString(),
-  };
+  const sample = entityNames.length ? atomicEntities[entityNames[0]] : _builderSampleData();
   el.innerHTML = renderTemplatedCard(sample, tmpl);
+}
+
+function formatHTMLTree(html, indent) {
+  // Pretty-print HTML with syntax highlighting
+  indent = indent || 0;
+  const pad = '  '.repeat(indent);
+  // Tokenize: split on < and >
+  let result = '';
+  const selfClosing = /^(img|br|hr|input)$/i;
+  // Simple regex-based formatter
+  const lines = [];
+  let depth = 0;
+  // Split by tags
+  const tokens = html.replace(/></g, '>\n<').split('\n');
+  tokens.forEach(token => {
+    token = token.trim();
+    if (!token) return;
+    if (token.startsWith('</')) {
+      depth = Math.max(0, depth - 1);
+      lines.push('  '.repeat(depth) + token);
+    } else if (token.startsWith('<') && !token.endsWith('/>') && !selfClosing.test((token.match(/^<(\w+)/) || [])[1])) {
+      lines.push('  '.repeat(depth) + token);
+      if (!token.includes('</')) depth++;
+    } else {
+      lines.push('  '.repeat(depth) + token);
+    }
+  });
+  return lines.join('\n');
+}
+
+function highlightHTML(text) {
+  return esc(text)
+    .replace(/&lt;(\/?)([\w-]+)/g, '&lt;$1<span style="color:var(--accent3)">$2</span>')
+    .replace(/(class|data-[\w-]+|style|id|placeholder|contenteditable|title|src|alt|loading|rows|type|value)=/g, '<span style="color:var(--orange,#d08770)">$1</span>=')
+    .replace(/&quot;([^&]*)&quot;/g, '<span style="color:var(--green,#a3be8c)">"$1"</span>');
+}
+
+function formatHTMLWithSlotIdx(html) {
+  const formatted = formatHTMLTree(html);
+  const lines = formatted.split('\n');
+  let result = '';
+  let currentIdx = null;
+  let blockLines = [];
+  function flushBlock() {
+    if (!blockLines.length) return;
+    const highlighted = highlightHTML(blockLines.join('\n'));
+    if (currentIdx !== null) {
+      result += `<span data-html-idx="${currentIdx}">${highlighted}\n</span>`;
+    } else {
+      result += highlighted + '\n';
+    }
+    blockLines = [];
+  }
+  lines.forEach(line => {
+    const idxMatch = line.match(/data-slot-idx="(\d+)"/);
+    if (idxMatch) {
+      flushBlock();
+      currentIdx = idxMatch[1];
+      blockLines.push(line);
+    } else if (currentIdx !== null) {
+      blockLines.push(line);
+      const opens = blockLines.filter(l => /<(?!\/)[a-z]/i.test(l) && !/<(img|br|hr|input)/i.test(l)).length;
+      const closes = blockLines.filter(l => /<\//.test(l)).length;
+      if (closes >= opens) { flushBlock(); currentIdx = null; }
+    } else {
+      blockLines.push(line);
+    }
+  });
+  flushBlock();
+  return result;
+}
+
+function renderBuilderDSL() {
+  const editor = document.getElementById('builderDSLEditor');
+  const viewer = document.getElementById('builderHTMLViewer');
+  if (!editor) return;
+  if (!_activeCardTemplate) {
+    editor.value = '# No template selected\n# Select or create a template in Card Builder';
+    if (viewer) viewer.innerHTML = '<span style="color:var(--text-dim)">Select a template</span>';
+    return;
+  }
+  editor.value = templateToDSL(_activeCardTemplate);
+  if (viewer) {
+    const previewEl = document.getElementById('builderPreview');
+    const rawHTML = previewEl ? previewEl.innerHTML : '';
+    if (rawHTML) {
+      viewer.innerHTML = formatHTMLWithSlotIdx(rawHTML);
+    } else {
+      viewer.innerHTML = '<span style="color:var(--text-dim)">Add slots to see HTML</span>';
+    }
+    bindElementSelector();
+  }
+}
+
+/* ================================================================
+   Element Selector — sync hover + click between Preview ↔ HTML viewer
+   ================================================================ */
+// Meaningful CSS classes for element selection (skip layout-only wrappers)
+const _selectableClasses = new Set([
+  'node-hdr','node-title','node-icon','node-badge','node-time','node-arrow','node-collapse-hint',
+  'tag','node-tags','node-tags-wrap',
+  'answer-block','answer-lang','answer-ta','btn-apply-answer',
+  'btn-small','btn',
+  'node-image',
+  'reaction','reaction-emoji','reaction-who','reactions-bar','reactions-summary',
+  'thread-bar','thread-cnt','thread-msgs','thread-input','thread-wrap',
+  'tmsg','tmsg-avatar','tmsg-who','tmsg-text',
+  'node-list-section','node-list-header','node-list-item','node-list-body','node-lists',
+  'node-form','qf-item',
+  'node-children','node-answer',
+  'think-block','think-toggle','think-body',
+  'tags-toggle-btn',
+]);
+
+function buildSelector(el, root) {
+  // Build a CSS selector path from element to root
+  const parts = [];
+  let cur = el;
+  while (cur && cur !== root && cur !== document.body) {
+    let sel = cur.tagName.toLowerCase();
+    // Prefer data-slot-idx
+    if (cur.dataset.slotIdx !== undefined) {
+      sel = `[data-slot-idx="${cur.dataset.slotIdx}"]`;
+      parts.unshift(sel);
+      break;
+    }
+    // Prefer meaningful class
+    const cls = [...cur.classList].find(c => _selectableClasses.has(c));
+    if (cls) {
+      sel = '.' + cls;
+      // Add nth-child if multiple siblings with same class
+      const siblings = cur.parentElement ? [...cur.parentElement.children].filter(s => s.classList.contains(cls)) : [];
+      if (siblings.length > 1) {
+        const idx = siblings.indexOf(cur);
+        sel += `:nth-child(${[...cur.parentElement.children].indexOf(cur) + 1})`;
+      }
+    } else if (cur.dataset.slot) {
+      sel = `[data-slot="${cur.dataset.slot}"]`;
+    }
+    parts.unshift(sel);
+    cur = cur.parentElement;
+  }
+  return parts.join(' > ');
+}
+
+function findSelectableEl(target) {
+  // Find the most specific selectable element (innermost with a meaningful class or data attr)
+  let el = target;
+  while (el) {
+    if (el.dataset?.slotIdx !== undefined) return el;
+    const cls = [...(el.classList || [])].find(c => _selectableClasses.has(c));
+    if (cls) return el;
+    if (el.dataset?.slot) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function findHTMLLine(viewer, el, preview) {
+  // Find corresponding text in HTML viewer by searching for element's unique attributes
+  const slotIdx = el.closest('[data-slot-idx]');
+  if (slotIdx) {
+    return viewer.querySelector(`[data-html-idx="${slotIdx.dataset.slotIdx}"]`);
+  }
+  return null;
+}
+
+function bindElementSelector() {
+  const preview = document.getElementById('builderPreview');
+  const viewer = document.getElementById('builderHTMLViewer');
+  if (!preview || !viewer) return;
+
+  let _lastHighlighted = null;
+
+  function clearHighlights() {
+    if (_lastHighlighted) { _lastHighlighted.classList.remove('slot-highlight'); _lastHighlighted = null; }
+    viewer.querySelectorAll('.html-highlight').forEach(el => el.classList.remove('html-highlight'));
+  }
+
+  // Preview hover — highlight any meaningful element
+  preview.onmouseover = (e) => {
+    const el = findSelectableEl(e.target);
+    if (!el || el === _lastHighlighted) return;
+    clearHighlights();
+    el.classList.add('slot-highlight');
+    _lastHighlighted = el;
+    // Sync to HTML viewer — find parent slot block
+    const htmlBlock = findHTMLLine(viewer, el, preview);
+    if (htmlBlock) { htmlBlock.classList.add('html-highlight'); htmlBlock.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+  };
+  preview.onmouseout = (e) => {
+    if (!preview.contains(e.relatedTarget)) clearHighlights();
+  };
+
+  // HTML viewer hover → Preview highlight (slot-level)
+  viewer.onmouseover = (e) => {
+    const htmlBlock = e.target.closest('[data-html-idx]');
+    if (!htmlBlock) return;
+    clearHighlights();
+    htmlBlock.classList.add('html-highlight');
+    const slotEl = preview.querySelector(`[data-slot-idx="${htmlBlock.dataset.htmlIdx}"]`);
+    if (slotEl) { slotEl.classList.add('slot-highlight'); _lastHighlighted = slotEl; slotEl.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+  };
+  viewer.onmouseout = (e) => {
+    if (!viewer.contains(e.relatedTarget)) clearHighlights();
+  };
+
+  // Click → build selector, copy, paste in chat
+  preview.onclick = (e) => {
+    const el = findSelectableEl(e.target);
+    if (!el) return;
+    const selector = buildSelector(el, preview);
+    const label = el.className ? '.' + ([...el.classList].find(c => _selectableClasses.has(c)) || el.classList[0]) : el.tagName.toLowerCase();
+    navigator.clipboard.writeText(selector).catch(() => {});
+    const chatInp = document.getElementById('builderChatInp');
+    if (chatInp) { chatInp.value += (chatInp.value ? ' ' : '') + selector; chatInp.focus(); }
+    addBuilderChatMsg('system', `${label} → ${selector}`);
+    e.stopPropagation();
+  };
+  viewer.onclick = (e) => {
+    const htmlBlock = e.target.closest('[data-html-idx]');
+    if (!htmlBlock) return;
+    const idx = htmlBlock.dataset.htmlIdx;
+    const slotEl = preview.querySelector(`[data-slot-idx="${idx}"]`);
+    if (!slotEl) return;
+    const selector = `[data-slot-idx="${idx}"]`;
+    navigator.clipboard.writeText(selector).catch(() => {});
+    const chatInp = document.getElementById('builderChatInp');
+    if (chatInp) { chatInp.value += (chatInp.value ? ' ' : '') + selector; chatInp.focus(); }
+    addBuilderChatMsg('system', `slot[${idx}]:${slotEl.dataset.slotType} → ${selector}`);
+  };
+}
+
+/* Builder Chat */
+var _builderChatMsgs = [];
+function addBuilderChatMsg(role, text) {
+  _builderChatMsgs.push({role, text, ts: new Date().toLocaleTimeString()});
+  renderBuilderChat();
+}
+function renderBuilderChat() {
+  const feed = document.getElementById('builderChatFeed');
+  if (!feed) return;
+  feed.innerHTML = _builderChatMsgs.slice(-50).map(m => {
+    const cls = m.role === 'system' ? 'color:var(--text-dim)' : m.role === 'user' ? 'color:var(--accent)' : 'color:var(--green)';
+    return `<div style="font-size:10px;padding:2px 0;font-family:monospace;${cls}"><span style="opacity:.5">${esc(m.ts)}</span> ${esc(m.text)}</div>`;
+  }).join('');
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function _builderSampleData() {
+  return {
+    name: 'Элегантная Королева Тьмы',
+    title: 'Элегантная Королева Тьмы',
+    type: 'entity',
+    status: 'done',
+    tags: {'Образ': '1', 'Название': 'Элегантная Королева Тьмы', 'Поза': 'Сидит на высоком облачном кресле', 'Стиль': 'Аниме'},
+    question: '',
+    answer: '## Образ 1: «Элегантная Королева Тьмы»\n\nДемоница сидит на высоком облачном кресле...',
+    answerThink: '',
+    answerStatus: 'pass',
+    showAnswer: true,
+    answerOpen: true,
+    entities_list: ['демоница', 'облачное кресло', 'рога'],
+    axioms_list: ['разный цвет глаз', 'разный цвет волос'],
+    hypotheses_list: ['стиль аниме узнаваем'],
+    extracted_properties: {},
+    reactions: [{worker: 'local:5001', emoji: '✅', status: 'pass', detail: 'style_check'}],
+    thread: [{role: 'assistant', name: 'analyzer', content: 'Проверка пройдена: все критерии соблюдены'}],
+    discussion: [],
+    children: [
+      {name: 'queen', title: 'Элегантная Королева Тьмы', status: 'done', tags: {'Образ': '1'}, children: [], thread: [], reactions: [{worker:'local:5001', emoji:'✅', status:'pass', detail:'ok'}], time: '10:26:13'},
+      {name: 'guard', title: 'Бесстрашная Стражница Ада', status: 'done', tags: {'Образ': '2'}, children: [], thread: [], reactions: [{worker:'local:5001', emoji:'✅', status:'pass', detail:'ok'}], time: '10:26:13'},
+      {name: 'student', title: 'Игривая Ученица', status: 'done', tags: {'Образ': '3'}, children: [], thread: [], reactions: [], time: '10:26:13'},
+      {name: 'shadow', title: 'Теневой Шепот', status: 'done', tags: {'Образ': '4'}, children: [], thread: [], reactions: [], time: '10:26:13'},
+    ],
+    imageUrl: null,
+    data_areas: [],
+    text_areas: [],
+    questionForm: null,
+    time: typeof ts === 'function' ? ts() : '',
+    threadOpen: false,
+    tagsCollapsed: false,
+  };
 }
 
 function renderSlotTree(slots, depth) {
@@ -7522,9 +8294,43 @@ function renderSlotTree(slots, depth) {
   }).join('');
 }
 
+function slotToDSL(tmplName, slot, indent) {
+  indent = indent || '';
+  let opts = '';
+  if (slot.label && slot.label !== slot.type) opts += `, label:"${slot.label}"`;
+  if (slot.binding) opts += `, bind:${slot.binding}`;
+  if (slot.type === 'thread' && slot.options?.mode) opts += `, mode:${slot.options.mode}`;
+  if (slot.type === 'buttons' && slot.options?.items?.length) opts += `, items:[${slot.options.items.join(',')}]`;
+  if (slot.type === 'list' && slot.options?.groups?.length) opts += `, groups:[${slot.options.groups.join(',')}]`;
+  if (slot.type === 'text_area' && slot.options?.collapsed) opts += `, collapsed`;
+  if (slot.type === 'children' && slot.options?.template) opts += `, template:${slot.options.template}`;
+  const parentArg = slot._parentId ? `, parent:"${slot._parentId}"` : '';
+  let line = `${indent}add_slot(@${tmplName}, ${slot.type}${opts}${parentArg})`;
+  let lines = [line];
+  if (slot.children?.length) {
+    slot.children.forEach(child => {
+      child._parentId = slot.id;
+      lines = lines.concat(slotToDSL(tmplName, child, indent + '  '));
+      delete child._parentId;
+    });
+  }
+  return lines;
+}
+
+function templateToDSL(tmplName) {
+  const tmpl = cardTemplates[tmplName];
+  if (!tmpl) return '';
+  let lines = [`card_template(${tmplName})`];
+  tmpl.slots.forEach(slot => {
+    lines = lines.concat(slotToDSL(tmplName, slot, '  '));
+  });
+  return lines.join('\n');
+}
+
 function renderBuilderProps() {
   const el = document.getElementById('builderPropsContent');
   if (!el) return;
+
   if (!_activeCardTemplate || !_selectedSlotId) {
     el.innerHTML = '<div style="color:var(--text-dim)">Select a slot on the canvas</div>';
     return;
@@ -7559,6 +8365,10 @@ function renderBuilderProps() {
     h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Groups (comma-sep)</label>`;
     h += `<input class="builder-prop" data-prop="list_groups" value="${esc((slot.options?.groups || []).join(', '))}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
   }
+  if (slot.type === 'children') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Child template</label>`;
+    h += `<input class="builder-prop" data-prop="children_template" value="${esc(slot.options?.template || '')}" placeholder="template name" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
+  }
 
   el.innerHTML = h;
 
@@ -7581,6 +8391,9 @@ function renderBuilderProps() {
         saveCardTemplates();
       } else if (prop === 'list_groups') {
         slot.options.groups = val.split(',').map(s => s.trim()).filter(Boolean);
+        saveCardTemplates();
+      } else if (prop === 'children_template') {
+        slot.options.template = val || undefined;
         saveCardTemplates();
       }
     });
@@ -7628,6 +8441,51 @@ document.getElementById('builderUndoBtn').addEventListener('click', () => builde
 document.getElementById('builderConsoleClear').addEventListener('click', () => {
   _builderLog.length = 0;
   renderBuilderConsole();
+});
+
+// Builder sidebar: Copy DSL
+document.getElementById('btnBuilderDSLCopy').addEventListener('click', () => {
+  const editor = document.getElementById('builderDSLEditor');
+  if (editor) { navigator.clipboard.writeText(editor.value).catch(() => {}); }
+});
+// Builder sidebar: Apply DSL (replay commands)
+document.getElementById('btnBuilderDSLApply').addEventListener('click', async () => {
+  const editor = document.getElementById('builderDSLEditor');
+  if (!editor) return;
+  const lines = editor.value.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  for (const line of lines) {
+    await handleAtomicInput('/' + line);
+  }
+  renderBuilderPage();
+});
+
+// Properties toggle
+document.getElementById('btnPropsToggle').addEventListener('click', () => {
+  const props = document.getElementById('builderProps');
+  const btn = document.getElementById('btnPropsToggle');
+  const hidden = props.style.width === '0px';
+  if (hidden) {
+    props.style.width = '240px'; props.style.padding = '12px'; props.style.opacity = '1'; props.style.overflow = '';
+    btn.textContent = '▶'; btn.title = 'Hide properties';
+  } else {
+    props.style.width = '0px'; props.style.padding = '0'; props.style.opacity = '0'; props.style.overflow = 'hidden';
+    btn.textContent = '◀'; btn.title = 'Show properties';
+  }
+});
+
+// Builder chat Send
+document.getElementById('btnBuilderChatSend').addEventListener('click', () => {
+  const inp = document.getElementById('builderChatInp');
+  const text = inp.value.trim();
+  if (!text) return;
+  addBuilderChatMsg('user', text);
+  inp.value = '';
+});
+document.getElementById('builderChatInp').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('btnBuilderChatSend').click();
+  }
 });
 
 // Ctrl+Z for builder undo (only when on builder tab)
@@ -7857,8 +8715,54 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
         });
       }},
       {label: '📋 List Macros', action: () => handleAtomicInput('list_macros()')},
+      {label: '📤 Export Macro...', action: () => {
+        showNamePopup(null, {label: 'Export Macro', placeholder: 'macro name'}, (name) => {
+          if (!name) return;
+          handleAtomicInput(`export_macro(${name})`);
+        });
+      }},
+      {label: '✏️ Rename Macro...', action: () => {
+        showNamePopup(null, {label: 'Rename Macro', fields: [
+          {name: 'old_name', placeholder: 'existing macro name', label: 'Current name'},
+          {name: 'new_name', placeholder: 'new macro name', label: 'New name'}
+        ]}, (vals) => {
+          if (!vals.old_name || !vals.new_name) return;
+          handleAtomicInput(`rename_macro(${vals.old_name}, ${vals.new_name})`);
+        });
+      }},
+      {label: '🗑 Delete Macro...', action: () => {
+        showNamePopup(null, {label: 'Delete Macro', placeholder: 'macro name'}, (name) => {
+          if (!name) return;
+          handleAtomicInput(`delete_macro(${name})`);
+        });
+      }},
+      {label: '📝 Edit Macro Metadata...', action: () => {
+        showNamePopup(null, {label: 'Edit Macro Metadata', placeholder: 'macro name'}, (name) => {
+          const macroName = String(name || '').trim();
+          if (!macroName || !atomicMacros[macroName]) return;
+          openMacroMetadata(macroName);
+        });
+      }},
+      {label: '📥 Import Macro JSON...', action: () => {
+        showNamePopup(null, {label: 'Import Macro JSON', fields: [
+          {name: 'json', placeholder: '{"name":"macro","dsl":"..."}', label: 'Macro JSON', multiline: true}
+        ]}, (vals) => {
+          if (!vals.json) return;
+          handleAtomicInput(`import_macro(${JSON.stringify(vals.json)})`);
+        });
+      }},
       ...Object.keys(atomicMacros).map(name => ({
-        label: '⏵ ' + name, action: () => handleAtomicInput(`run_macro(${name})`)
+        label: (() => {
+          const m = getMacroRecord(name);
+          const badges = [];
+          if (m?.layer && m.layer !== 'atomic') badges.push(m.layer);
+          if (m?.workflow_alias?.length) badges.push('bridge');
+          return `⏵ ${name}${badges.length ? ' [' + badges.join(', ') + ']' : ''}`;
+        })(),
+        action: () => {
+          _selectedMacroName = name;
+          handleAtomicInput(`run_macro(${name})`);
+        }
       })),
     ]);
   }
@@ -7967,7 +8871,8 @@ Reactivity:
   on @draft -> @claims = parse_sections(@draft, e:"E:", a:"A:", h:"H:")
 
 Editor commands (not part of pipeline, prefixed with /):
-  /save_macro(name)  /run_macro(name)  /export_dsl(name)
+  /save_macro(name)  /run_macro(name)  /rename_macro(old, new)
+  /delete_macro(name)  /export_macro(name)  /import_macro(json)  /export_dsl(name)
   /rename(@old, new)  /drop(@entity)  /list_macros()
 
 Rules:
@@ -7990,9 +8895,44 @@ function ensureGlobalTextItem(name, text) {
   return true;
 }
 
-function ensureAtomicMacro(name, dsl) {
-  if (atomicMacros[name]) return false;
-  atomicMacros[name] = dsl;
+function ensureAtomicMacro(recordOrName, dsl) {
+  const record = typeof recordOrName === 'string'
+    ? {name: recordOrName, dsl, layer: 'atomic'}
+    : recordOrName;
+  const name = record?.name;
+  if (!name) return false;
+  if (atomicMacros[name]) {
+    const current = getMacroRecord(name);
+    const merged = {
+      ...current,
+      ...record,
+      name,
+      dsl: current?.dsl || record.dsl || '',
+      layer: current?.layer || record.layer || 'atomic',
+      inputs: current?.inputs?.length ? current.inputs : (record.inputs || []),
+      outputs: current?.outputs?.length ? current.outputs : (record.outputs || []),
+      tags: current?.tags?.length ? current.tags : (record.tags || []),
+      description: current?.description || record.description || '',
+      workflow_alias: current?.workflow_alias?.length ? current.workflow_alias : (record.workflow_alias || []),
+    };
+    if (JSON.stringify(current) !== JSON.stringify(normalizeMacroPayload(name, merged))) {
+      upsertMacroRecord(name, merged);
+      return true;
+    }
+    return false;
+  }
+  upsertMacroRecord(name, record);
+  return true;
+}
+
+function dropLegacyBuiltinMacro(oldName, replacementName, expectedDsl) {
+  const current = getMacroRecord(oldName);
+  if (!current) return false;
+  if ((current.dsl || '').trim() !== String(expectedDsl || '').trim()) return false;
+  if (replacementName && !atomicMacros[replacementName]) return false;
+  delete atomicMacros[oldName];
+  if (_selectedMacroName === oldName) _selectedMacroName = replacementName || null;
+  deleteAtomicMacroFromServer(oldName);
   return true;
 }
 
@@ -8228,6 +9168,10 @@ Staged chat pattern:
 Editor commands:
   /save_macro(name)
   /run_macro(name)
+  /rename_macro(old, new)
+  /delete_macro(name)
+  /export_macro(name)
+  /import_macro(json)
   /export_dsl(name)
   /rename(@old, new)
   /drop(@entity)
@@ -8322,6 +9266,10 @@ Example header build:
 Editor commands:
   /save_macro(name)
   /run_macro(name)
+  /rename_macro(old, new)
+  /delete_macro(name)
+  /export_macro(name)
+  /import_macro(json)
   /export_dsl(name)
   /rename(@old, new)
   /drop(@entity)

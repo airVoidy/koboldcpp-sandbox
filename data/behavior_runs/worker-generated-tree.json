@@ -1,0 +1,278 @@
+{
+  "format_version": "behavior-tree/v1",
+  "tree_id": "char-desc-gen-001",
+  "root_node_id": "root",
+  "global_meta": {
+    "language": "ru",
+    "sentence_range": [
+      5,
+      8
+    ],
+    "temperature": 0.7,
+    "creative_agent": "@@creative_agent",
+    "profiles": {
+      "gothic": {
+        "prompt": "Стиль готика",
+        "key_detail": "мрачная атмосфера, темные тона, готические элементы (арки, кресты, барокко)",
+        "hair_color": "черный, темно-серый, пепельный",
+        "eye_color": "красный, фиолетовый, янтарный, темно-зеленый"
+      },
+      "cyberpunk": {
+        "prompt": "Стиль киберпанк",
+        "key_detail": "неоновые акценты, механические детали, футуристичные материалы, городская среда",
+        "hair_color": "неоновый синий, розовый, серебристый, белый",
+        "eye_color": "циановый, золотой, красный, зеленый"
+      },
+      "fantasy": {
+        "prompt": "Стиль фэнтези",
+        "key_detail": "магические элементы, природные мотивы, исторические костюмы, мифологические существа",
+        "hair_color": "золотой, рыжий, каштановый, платиновый",
+        "eye_color": "изумрудный, сапфировый, янтарный, медный"
+      }
+    },
+    "rules": [
+      {
+        "id": "unique-descs",
+        "dsl": {
+          "test": {
+            "all": [
+              {
+                "not_empty": {
+                  "coalesce": [
+                    "@gothic_text",
+                    "@cyberpunk_text",
+                    "@fantasy_text"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "global_claims": [
+    {
+      "claim_id": "global-sentence-range",
+      "owner_node_id": "root",
+      "scope": "tree",
+      "evaluator": "__dsl__",
+      "meta": {
+        "dsl": {
+          "pending_if": {
+            "empty": {
+              "coalesce": [
+                "@gothic_text",
+                "@cyberpunk_text",
+                "@fantasy_text"
+              ]
+            }
+          },
+          "test": {
+            "in_range": [
+              {
+                "call": "len",
+                "of": {
+                  "call": "split_sentences",
+                  "of": {
+                    "coalesce": [
+                      "@gothic_text",
+                      "@cyberpunk_text",
+                      "@fantasy_text"
+                    ]
+                  }
+                }
+              },
+              "@sentence_range"
+            ]
+          },
+          "pass": "sentence count in range",
+          "fail": "sentence count out of range"
+        }
+      }
+    },
+    {
+      "claim_id": "global-hair-color",
+      "owner_node_id": "root",
+      "scope": "tree",
+      "evaluator": "__dsl__",
+      "meta": {
+        "dsl": {
+          "pending_if": {
+            "empty": {
+              "coalesce": [
+                "@gothic_text",
+                "@cyberpunk_text",
+                "@fantasy_text"
+              ]
+            }
+          },
+          "test": {
+            "contains": [
+              {
+                "coalesce": [
+                  "@gothic_text",
+                  "@cyberpunk_text",
+                  "@fantasy_text"
+                ]
+              },
+              {
+                "coalesce": [
+                  "@gothic_hair_color",
+                  "@cyberpunk_hair_color",
+                  "@fantasy_hair_color"
+                ]
+              }
+            ]
+          },
+          "pass": "hair color present",
+          "fail": "hair color missing"
+        }
+      }
+    },
+    {
+      "claim_id": "global-eye-color",
+      "owner_node_id": "root",
+      "scope": "tree",
+      "evaluator": "__dsl__",
+      "meta": {
+        "dsl": {
+          "pending_if": {
+            "empty": {
+              "coalesce": [
+                "@gothic_text",
+                "@cyberpunk_text",
+                "@fantasy_text"
+              ]
+            }
+          },
+          "test": {
+            "contains": [
+              {
+                "coalesce": [
+                  "@gothic_text",
+                  "@cyberpunk_text",
+                  "@fantasy_text"
+                ]
+              },
+              {
+                "coalesce": [
+                  "@gothic_eye_color",
+                  "@cyberpunk_eye_color",
+                  "@fantasy_eye_color"
+                ]
+              }
+            ]
+          },
+          "pass": "eye color present",
+          "fail": "eye color missing"
+        }
+      }
+    }
+  ],
+  "nodes": {
+    "root": {
+      "node_id": "root",
+      "kind": "auto_root",
+      "entry_element": "run_children",
+      "elements": [
+        {
+          "element_id": "run_children",
+          "handler": "__dsl__",
+          "meta": {
+            "do": [
+              {
+                "for_each": {
+                  "in": "@child_ids",
+                  "as": "$child_id",
+                  "do": [
+                    {
+                      "run_node": {
+                        "node_id": "$child_id",
+                        "to": "$record"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "outcome": "pass"
+              }
+            ]
+          }
+        },
+        {
+          "element_id": "global_check",
+          "handler": "__dsl__",
+          "transitions": {
+            "fail": "repair_global",
+            "pass": "done"
+          },
+          "meta": {
+            "do": [
+              {
+                "claims": {
+                  "scope": "tree",
+                  "to": "$global_failures"
+                }
+              },
+              {
+                "save": {
+                  "@global_failures": "$global_failures"
+                }
+              },
+              {
+                "if": {
+                  "test": {
+                    "empty": "$global_failures"
+                  },
+                  "then": [
+                    {
+                      "outcome": "pass"
+                    }
+                  ],
+                  "else": [
+                    {
+                      "outcome": "fail"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "data": {
+        "child_ids": [
+          "gothic",
+          "cyberpunk",
+          "fantasy"
+        ]
+      },
+      "return_key": "final_output"
+    }
+  },
+  "bindings": {
+    "profiles": {
+      "gothic": {
+        "prompt": "Стиль готика",
+        "key_detail": "мрачная атмосфера, темные тона, готические элементы (арки, кресты, барокко)",
+        "hair_color": "черный, темно-серый, пепельный",
+        "eye_color": "красный, фиолетовый, янтарный, темно-зеленый"
+      },
+      "cyberpunk": {
+        "prompt": "Стиль киберпанк",
+        "key_detail": "неоновые акценты, механические детали, футуристичные материалы, городская среда",
+        "hair_color": "неоновый синий, розовый, серебристый, белый",
+        "eye_color": "циановый, золотой, красный, зеленый"
+      },
+      "fantasy": {
+        "prompt": "Стиль фэнтези",
+        "key_detail": "магические элементы, природные мотивы, исторические костюмы, мифологические существа",
+        "hair_color": "золотой, рыжий, каштановый, платиновый",
+        "eye_color": "изумрудный, сапфировый, янтарный, медный"
+      }
+    },
+    "rules": []
+  }
+}

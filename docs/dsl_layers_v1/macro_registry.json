@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "macros": {
+    "claims_bootstrap": {
+      "name": "claims_bootstrap",
+      "layer": "atomic",
+      "inputs": [
+        "input"
+      ],
+      "outputs": [
+        "claims",
+        "entities",
+        "axioms",
+        "hypotheses"
+      ],
+      "description": "Example shared macro with a workflow-callable alias.",
+      "tags": [
+        "bridge",
+        "example"
+      ],
+      "dsl": "@claims = generate($config.prompt_constraints_strict, worker:analyzer, input:@input)\n@parts = parse_sections(@claims, entities:\"ENTITIES:\", axioms:\"AXIOMS:\", hypotheses:\"HYPOTHESES:\")",
+      "workflow_alias": [
+        {
+          "analyzer -> $claims": {
+            "prompt": "claims($input)",
+            "temperature": 0.1,
+            "max_tokens": 2048,
+            "tag": "claims"
+          }
+        },
+        {
+          "parse_claims": {
+            "from": "$claims",
+            "export": [
+              "$entities",
+              "$axioms",
+              "$hypotheses"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

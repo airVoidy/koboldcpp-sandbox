@@ -1,0 +1,1782 @@
+{
+  "format_version": "behavior-tree/v1",
+  "tree_id": "appearance-v2",
+  "root_node_id": "root",
+  "nodes": {
+    "item-01": {
+      "format_version": "behavior-node/v1",
+      "node_id": "item-01",
+      "kind": "generated_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "generate_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "local_check",
+          "handler": "local_check",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "repair",
+          "handler": "repair_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "compress",
+          "handler": "compress_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "audit",
+          "handler": "audit_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        }
+      ],
+      "data": {
+        "index": 0,
+        "prompt": "Напиши полное описание внешности персонажа в стиле «Тёмный фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+        "style": "dark_fantasy",
+        "key_detail": "чёрные волосы",
+        "sentence_range": [
+          5,
+          8
+        ],
+        "draft_text": "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий.",
+        "final_text": "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий.",
+        "repair_count": 0,
+        "audit_status": "pass",
+        "llm_generated": true,
+        "local_failures": []
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "item-01-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Напиши текст по заданию. Только содержание, без комментариев."
+              },
+              {
+                "kind": "context",
+                "content": "Напиши полное описание внешности персонажа в стиле «Тёмный фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+              }
+            ]
+          }
+        ],
+        "last_executed_elements": [
+          "draft",
+          "local_check",
+          "compress",
+          "audit"
+        ],
+        "last_updated_paths": [
+          "audit_status"
+        ],
+        "last_transition": {
+          "from": "audit",
+          "outcome": "done"
+        },
+        "serialized_node": {
+          "format_version": "behavior-node/v1",
+          "node_id": "item-01",
+          "kind": "generated_item",
+          "entry_element": "draft",
+          "elements": [
+            {
+              "element_id": "draft",
+              "handler": "generate_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "local_check",
+              "handler": "local_check",
+              "transitions": {
+                "fail": "repair",
+                "pass": "compress"
+              },
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "repair",
+              "handler": "repair_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "compress",
+              "handler": "compress_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "audit",
+              "handler": "audit_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            }
+          ],
+          "data": {
+            "index": 0,
+            "prompt": "Напиши полное описание внешности персонажа в стиле «Тёмный фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+            "style": "dark_fantasy",
+            "key_detail": "чёрные волосы",
+            "sentence_range": [
+              5,
+              8
+            ],
+            "draft_text": "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий.",
+            "final_text": "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий.",
+            "repair_count": 0,
+            "audit_status": "pass",
+            "llm_generated": true,
+            "local_failures": []
+          },
+          "meta": {
+            "instruction_bundles": [
+              {
+                "bundle_id": "item-01-generate",
+                "author_agent": "qwen_27b_planner",
+                "target_agent": "small_context_worker",
+                "strictness": "strict",
+                "blocks": [
+                  {
+                    "kind": "system",
+                    "content": "Напиши текст по заданию. Только содержание, без комментариев."
+                  },
+                  {
+                    "kind": "context",
+                    "content": "Напиши полное описание внешности персонажа в стиле «Тёмный фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+                  }
+                ]
+              }
+            ],
+            "last_executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "last_updated_paths": [
+              "audit_status"
+            ],
+            "last_transition": {
+              "from": "audit",
+              "outcome": "done"
+            }
+          },
+          "return_key": "final_text",
+          "claims": [
+            {
+              "claim_id": "item-01-sentence-range",
+              "owner_node_id": "item-01",
+              "scope": "node",
+              "evaluator": "sentence_range",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "7 sentences",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {}
+            },
+            {
+              "claim_id": "item-01-key-detail",
+              "owner_node_id": "item-01",
+              "scope": "node",
+              "evaluator": "key_detail_present",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "key detail 'чёрные волосы' present",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {
+                "key_detail": "чёрные волосы"
+              }
+            }
+          ],
+          "current_element_id": "audit",
+          "execution_lock": true,
+          "python_refs": {}
+        }
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "item-01-sentence-range",
+          "owner_node_id": "item-01",
+          "scope": "node",
+          "evaluator": "sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "7 sentences",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {}
+        },
+        {
+          "claim_id": "item-01-key-detail",
+          "owner_node_id": "item-01",
+          "scope": "node",
+          "evaluator": "key_detail_present",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "key detail 'чёрные волосы' present",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {
+            "key_detail": "чёрные волосы"
+          }
+        }
+      ],
+      "current_element_id": "audit",
+      "execution_lock": true,
+      "python_refs": {}
+    },
+    "item-02": {
+      "format_version": "behavior-node/v1",
+      "node_id": "item-02",
+      "kind": "generated_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "generate_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "local_check",
+          "handler": "local_check",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "repair",
+          "handler": "repair_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "compress",
+          "handler": "compress_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "audit",
+          "handler": "audit_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        }
+      ],
+      "data": {
+        "index": 1,
+        "prompt": "Напиши полное описание внешности персонажа в стиле «Киберпанк». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+        "style": "cyberpunk",
+        "key_detail": "неоновые волосы",
+        "sentence_range": [
+          5,
+          8
+        ],
+        "draft_text": "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города.",
+        "final_text": "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города.",
+        "repair_count": 1,
+        "audit_status": "pass",
+        "llm_error": "peer closed connection without sending complete message body (received 5932 bytes, expected 7273)",
+        "local_failures": [
+          "item-02-sentence-range",
+          "item-02-key-detail"
+        ]
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "item-02-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Напиши текст по заданию. Только содержание, без комментариев."
+              },
+              {
+                "kind": "context",
+                "content": "Напиши полное описание внешности персонажа в стиле «Киберпанк». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+              }
+            ]
+          }
+        ],
+        "last_executed_elements": [
+          "draft",
+          "local_check",
+          "repair",
+          "compress",
+          "audit"
+        ],
+        "last_updated_paths": [
+          "audit_status"
+        ],
+        "last_transition": {
+          "from": "audit",
+          "outcome": "done"
+        },
+        "serialized_node": {
+          "format_version": "behavior-node/v1",
+          "node_id": "item-02",
+          "kind": "generated_item",
+          "entry_element": "draft",
+          "elements": [
+            {
+              "element_id": "draft",
+              "handler": "generate_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "local_check",
+              "handler": "local_check",
+              "transitions": {
+                "fail": "repair",
+                "pass": "compress"
+              },
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "repair",
+              "handler": "repair_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "compress",
+              "handler": "compress_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "audit",
+              "handler": "audit_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            }
+          ],
+          "data": {
+            "index": 1,
+            "prompt": "Напиши полное описание внешности персонажа в стиле «Киберпанк». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+            "style": "cyberpunk",
+            "key_detail": "неоновые волосы",
+            "sentence_range": [
+              5,
+              8
+            ],
+            "draft_text": "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города.",
+            "final_text": "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города.",
+            "repair_count": 1,
+            "audit_status": "pass",
+            "llm_error": "peer closed connection without sending complete message body (received 5932 bytes, expected 7273)",
+            "local_failures": [
+              "item-02-sentence-range",
+              "item-02-key-detail"
+            ]
+          },
+          "meta": {
+            "instruction_bundles": [
+              {
+                "bundle_id": "item-02-generate",
+                "author_agent": "qwen_27b_planner",
+                "target_agent": "small_context_worker",
+                "strictness": "strict",
+                "blocks": [
+                  {
+                    "kind": "system",
+                    "content": "Напиши текст по заданию. Только содержание, без комментариев."
+                  },
+                  {
+                    "kind": "context",
+                    "content": "Напиши полное описание внешности персонажа в стиле «Киберпанк». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+                  }
+                ]
+              }
+            ],
+            "last_executed_elements": [
+              "draft",
+              "local_check",
+              "repair",
+              "compress",
+              "audit"
+            ],
+            "last_updated_paths": [
+              "audit_status"
+            ],
+            "last_transition": {
+              "from": "audit",
+              "outcome": "done"
+            }
+          },
+          "return_key": "final_text",
+          "claims": [
+            {
+              "claim_id": "item-02-sentence-range",
+              "owner_node_id": "item-02",
+              "scope": "node",
+              "evaluator": "sentence_range",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "7 sentences",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {}
+            },
+            {
+              "claim_id": "item-02-key-detail",
+              "owner_node_id": "item-02",
+              "scope": "node",
+              "evaluator": "key_detail_present",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "key detail 'неоновые волосы' present",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {
+                "key_detail": "неоновые волосы"
+              }
+            }
+          ],
+          "current_element_id": "audit",
+          "execution_lock": true,
+          "python_refs": {}
+        }
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "item-02-sentence-range",
+          "owner_node_id": "item-02",
+          "scope": "node",
+          "evaluator": "sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "7 sentences",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {}
+        },
+        {
+          "claim_id": "item-02-key-detail",
+          "owner_node_id": "item-02",
+          "scope": "node",
+          "evaluator": "key_detail_present",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "key detail 'неоновые волосы' present",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {
+            "key_detail": "неоновые волосы"
+          }
+        }
+      ],
+      "current_element_id": "audit",
+      "execution_lock": true,
+      "python_refs": {}
+    },
+    "item-03": {
+      "format_version": "behavior-node/v1",
+      "node_id": "item-03",
+      "kind": "generated_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "generate_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "local_check",
+          "handler": "local_check",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "repair",
+          "handler": "repair_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "compress",
+          "handler": "compress_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "audit",
+          "handler": "audit_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        }
+      ],
+      "data": {
+        "index": 2,
+        "prompt": "Напиши полное описание внешности персонажа в стиле «Высокое фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+        "style": "high_fantasy",
+        "key_detail": "золотые волосы",
+        "sentence_range": [
+          5,
+          8
+        ],
+        "draft_text": "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира.",
+        "final_text": "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира.",
+        "repair_count": 0,
+        "audit_status": "pass",
+        "llm_generated": true,
+        "local_failures": []
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "item-03-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Напиши текст по заданию. Только содержание, без комментариев."
+              },
+              {
+                "kind": "context",
+                "content": "Напиши полное описание внешности персонажа в стиле «Высокое фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+              }
+            ]
+          }
+        ],
+        "last_executed_elements": [
+          "draft",
+          "local_check",
+          "compress",
+          "audit"
+        ],
+        "last_updated_paths": [
+          "audit_status"
+        ],
+        "last_transition": {
+          "from": "audit",
+          "outcome": "done"
+        },
+        "serialized_node": {
+          "format_version": "behavior-node/v1",
+          "node_id": "item-03",
+          "kind": "generated_item",
+          "entry_element": "draft",
+          "elements": [
+            {
+              "element_id": "draft",
+              "handler": "generate_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "local_check",
+              "handler": "local_check",
+              "transitions": {
+                "fail": "repair",
+                "pass": "compress"
+              },
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "repair",
+              "handler": "repair_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "compress",
+              "handler": "compress_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "audit",
+              "handler": "audit_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            }
+          ],
+          "data": {
+            "index": 2,
+            "prompt": "Напиши полное описание внешности персонажа в стиле «Высокое фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+            "style": "high_fantasy",
+            "key_detail": "золотые волосы",
+            "sentence_range": [
+              5,
+              8
+            ],
+            "draft_text": "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира.",
+            "final_text": "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира.",
+            "repair_count": 0,
+            "audit_status": "pass",
+            "llm_generated": true,
+            "local_failures": []
+          },
+          "meta": {
+            "instruction_bundles": [
+              {
+                "bundle_id": "item-03-generate",
+                "author_agent": "qwen_27b_planner",
+                "target_agent": "small_context_worker",
+                "strictness": "strict",
+                "blocks": [
+                  {
+                    "kind": "system",
+                    "content": "Напиши текст по заданию. Только содержание, без комментариев."
+                  },
+                  {
+                    "kind": "context",
+                    "content": "Напиши полное описание внешности персонажа в стиле «Высокое фэнтези». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+                  }
+                ]
+              }
+            ],
+            "last_executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "last_updated_paths": [
+              "audit_status"
+            ],
+            "last_transition": {
+              "from": "audit",
+              "outcome": "done"
+            }
+          },
+          "return_key": "final_text",
+          "claims": [
+            {
+              "claim_id": "item-03-sentence-range",
+              "owner_node_id": "item-03",
+              "scope": "node",
+              "evaluator": "sentence_range",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "7 sentences",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {}
+            },
+            {
+              "claim_id": "item-03-key-detail",
+              "owner_node_id": "item-03",
+              "scope": "node",
+              "evaluator": "key_detail_present",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "key detail 'золотые волосы' present",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {
+                "key_detail": "золотые волосы"
+              }
+            }
+          ],
+          "current_element_id": "audit",
+          "execution_lock": true,
+          "python_refs": {}
+        }
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "item-03-sentence-range",
+          "owner_node_id": "item-03",
+          "scope": "node",
+          "evaluator": "sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "7 sentences",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {}
+        },
+        {
+          "claim_id": "item-03-key-detail",
+          "owner_node_id": "item-03",
+          "scope": "node",
+          "evaluator": "key_detail_present",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "key detail 'золотые волосы' present",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {
+            "key_detail": "золотые волосы"
+          }
+        }
+      ],
+      "current_element_id": "audit",
+      "execution_lock": true,
+      "python_refs": {}
+    },
+    "item-04": {
+      "format_version": "behavior-node/v1",
+      "node_id": "item-04",
+      "kind": "generated_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "generate_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "local_check",
+          "handler": "local_check",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "repair",
+          "handler": "repair_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "compress",
+          "handler": "compress_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "audit",
+          "handler": "audit_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        }
+      ],
+      "data": {
+        "index": 3,
+        "prompt": "Напиши полное описание внешности персонажа в стиле «Современный реализм». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+        "style": "modern_realism",
+        "key_detail": "каштановые волосы",
+        "sentence_range": [
+          5,
+          8
+        ],
+        "draft_text": "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир.",
+        "final_text": "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир.",
+        "repair_count": 0,
+        "audit_status": "pass",
+        "llm_generated": true,
+        "local_failures": []
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "item-04-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Напиши текст по заданию. Только содержание, без комментариев."
+              },
+              {
+                "kind": "context",
+                "content": "Напиши полное описание внешности персонажа в стиле «Современный реализм». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+              }
+            ]
+          }
+        ],
+        "last_executed_elements": [
+          "draft",
+          "local_check",
+          "compress",
+          "audit"
+        ],
+        "last_updated_paths": [
+          "audit_status"
+        ],
+        "last_transition": {
+          "from": "audit",
+          "outcome": "done"
+        },
+        "serialized_node": {
+          "format_version": "behavior-node/v1",
+          "node_id": "item-04",
+          "kind": "generated_item",
+          "entry_element": "draft",
+          "elements": [
+            {
+              "element_id": "draft",
+              "handler": "generate_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "local_check",
+              "handler": "local_check",
+              "transitions": {
+                "fail": "repair",
+                "pass": "compress"
+              },
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "repair",
+              "handler": "repair_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "compress",
+              "handler": "compress_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "audit",
+              "handler": "audit_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            }
+          ],
+          "data": {
+            "index": 3,
+            "prompt": "Напиши полное описание внешности персонажа в стиле «Современный реализм». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+            "style": "modern_realism",
+            "key_detail": "каштановые волосы",
+            "sentence_range": [
+              5,
+              8
+            ],
+            "draft_text": "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир.",
+            "final_text": "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир.",
+            "repair_count": 0,
+            "audit_status": "pass",
+            "llm_generated": true,
+            "local_failures": []
+          },
+          "meta": {
+            "instruction_bundles": [
+              {
+                "bundle_id": "item-04-generate",
+                "author_agent": "qwen_27b_planner",
+                "target_agent": "small_context_worker",
+                "strictness": "strict",
+                "blocks": [
+                  {
+                    "kind": "system",
+                    "content": "Напиши текст по заданию. Только содержание, без комментариев."
+                  },
+                  {
+                    "kind": "context",
+                    "content": "Напиши полное описание внешности персонажа в стиле «Современный реализм». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+                  }
+                ]
+              }
+            ],
+            "last_executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "last_updated_paths": [
+              "audit_status"
+            ],
+            "last_transition": {
+              "from": "audit",
+              "outcome": "done"
+            }
+          },
+          "return_key": "final_text",
+          "claims": [
+            {
+              "claim_id": "item-04-sentence-range",
+              "owner_node_id": "item-04",
+              "scope": "node",
+              "evaluator": "sentence_range",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "7 sentences",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {}
+            },
+            {
+              "claim_id": "item-04-key-detail",
+              "owner_node_id": "item-04",
+              "scope": "node",
+              "evaluator": "key_detail_present",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "partial match (1/2 words)",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {
+                "key_detail": "каштановые волосы"
+              }
+            }
+          ],
+          "current_element_id": "audit",
+          "execution_lock": true,
+          "python_refs": {}
+        }
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "item-04-sentence-range",
+          "owner_node_id": "item-04",
+          "scope": "node",
+          "evaluator": "sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "7 sentences",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {}
+        },
+        {
+          "claim_id": "item-04-key-detail",
+          "owner_node_id": "item-04",
+          "scope": "node",
+          "evaluator": "key_detail_present",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "partial match (1/2 words)",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {
+            "key_detail": "каштановые волосы"
+          }
+        }
+      ],
+      "current_element_id": "audit",
+      "execution_lock": true,
+      "python_refs": {}
+    },
+    "item-05": {
+      "format_version": "behavior-node/v1",
+      "node_id": "item-05",
+      "kind": "generated_item",
+      "entry_element": "draft",
+      "elements": [
+        {
+          "element_id": "draft",
+          "handler": "generate_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "local_check",
+          "handler": "local_check",
+          "transitions": {
+            "fail": "repair",
+            "pass": "compress"
+          },
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "repair",
+          "handler": "repair_from_prompt",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "compress",
+          "handler": "compress_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "audit",
+          "handler": "audit_description",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        }
+      ],
+      "data": {
+        "index": 4,
+        "prompt": "Напиши полное описание внешности персонажа в стиле «Постапокалипсис». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+        "style": "post_apocalyptic",
+        "key_detail": "седые волосы",
+        "sentence_range": [
+          5,
+          8
+        ],
+        "draft_text": "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации.",
+        "final_text": "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации.",
+        "repair_count": 0,
+        "audit_status": "pass",
+        "llm_generated": true,
+        "local_failures": []
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "item-05-generate",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Напиши текст по заданию. Только содержание, без комментариев."
+              },
+              {
+                "kind": "context",
+                "content": "Напиши полное описание внешности персонажа в стиле «Постапокалипсис». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+              }
+            ]
+          }
+        ],
+        "last_executed_elements": [
+          "draft",
+          "local_check",
+          "compress",
+          "audit"
+        ],
+        "last_updated_paths": [
+          "audit_status"
+        ],
+        "last_transition": {
+          "from": "audit",
+          "outcome": "done"
+        },
+        "serialized_node": {
+          "format_version": "behavior-node/v1",
+          "node_id": "item-05",
+          "kind": "generated_item",
+          "entry_element": "draft",
+          "elements": [
+            {
+              "element_id": "draft",
+              "handler": "generate_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "local_check",
+              "handler": "local_check",
+              "transitions": {
+                "fail": "repair",
+                "pass": "compress"
+              },
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "repair",
+              "handler": "repair_from_prompt",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "compress",
+              "handler": "compress_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "audit",
+              "handler": "audit_description",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            }
+          ],
+          "data": {
+            "index": 4,
+            "prompt": "Напиши полное описание внешности персонажа в стиле «Постапокалипсис». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра.",
+            "style": "post_apocalyptic",
+            "key_detail": "седые волосы",
+            "sentence_range": [
+              5,
+              8
+            ],
+            "draft_text": "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации.",
+            "final_text": "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации.",
+            "repair_count": 0,
+            "audit_status": "pass",
+            "llm_generated": true,
+            "local_failures": []
+          },
+          "meta": {
+            "instruction_bundles": [
+              {
+                "bundle_id": "item-05-generate",
+                "author_agent": "qwen_27b_planner",
+                "target_agent": "small_context_worker",
+                "strictness": "strict",
+                "blocks": [
+                  {
+                    "kind": "system",
+                    "content": "Напиши текст по заданию. Только содержание, без комментариев."
+                  },
+                  {
+                    "kind": "context",
+                    "content": "Напиши полное описание внешности персонажа в стиле «Постапокалипсис». Опиши цвет волос, цвет глаз, особенности фигуры и типичной одежды для этого жанра."
+                  }
+                ]
+              }
+            ],
+            "last_executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "last_updated_paths": [
+              "audit_status"
+            ],
+            "last_transition": {
+              "from": "audit",
+              "outcome": "done"
+            }
+          },
+          "return_key": "final_text",
+          "claims": [
+            {
+              "claim_id": "item-05-sentence-range",
+              "owner_node_id": "item-05",
+              "scope": "node",
+              "evaluator": "sentence_range",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "7 sentences",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {}
+            },
+            {
+              "claim_id": "item-05-key-detail",
+              "owner_node_id": "item-05",
+              "scope": "node",
+              "evaluator": "key_detail_present",
+              "watched_paths": [
+                "draft_text",
+                "final_text"
+              ],
+              "status": "pass",
+              "details": "key detail 'седые волосы' present",
+              "producer_agents": [
+                "small_context_worker"
+              ],
+              "pass_agents": [
+                "small_context_worker",
+                "qwen_27b_planner"
+              ],
+              "fail_agents": [],
+              "meta": {
+                "key_detail": "седые волосы"
+              }
+            }
+          ],
+          "current_element_id": "audit",
+          "execution_lock": true,
+          "python_refs": {}
+        }
+      },
+      "return_key": "final_text",
+      "claims": [
+        {
+          "claim_id": "item-05-sentence-range",
+          "owner_node_id": "item-05",
+          "scope": "node",
+          "evaluator": "sentence_range",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "7 sentences",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {}
+        },
+        {
+          "claim_id": "item-05-key-detail",
+          "owner_node_id": "item-05",
+          "scope": "node",
+          "evaluator": "key_detail_present",
+          "watched_paths": [
+            "draft_text",
+            "final_text"
+          ],
+          "status": "pass",
+          "details": "key detail 'седые волосы' present",
+          "producer_agents": [
+            "small_context_worker"
+          ],
+          "pass_agents": [
+            "small_context_worker",
+            "qwen_27b_planner"
+          ],
+          "fail_agents": [],
+          "meta": {
+            "key_detail": "седые волосы"
+          }
+        }
+      ],
+      "current_element_id": "audit",
+      "execution_lock": true,
+      "python_refs": {}
+    },
+    "root": {
+      "format_version": "behavior-node/v1",
+      "node_id": "root",
+      "kind": "auto_root",
+      "entry_element": "plan",
+      "elements": [
+        {
+          "element_id": "plan",
+          "handler": "root_plan",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "run_children",
+          "handler": "run_children",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        },
+        {
+          "element_id": "collect",
+          "handler": "collect_outputs",
+          "transitions": {},
+          "description": "",
+          "meta": {}
+        }
+      ],
+      "data": {
+        "child_ids": [
+          "item-01",
+          "item-02",
+          "item-03",
+          "item-04",
+          "item-05"
+        ],
+        "outputs": [
+          "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий.",
+          "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города.",
+          "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира.",
+          "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир.",
+          "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации."
+        ],
+        "task_prompt": "Создать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз.",
+        "planned": true,
+        "child_runs": {
+          "item-01": {
+            "node_id": "item-01",
+            "executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "outcome": "done",
+            "return_value": "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий."
+          },
+          "item-02": {
+            "node_id": "item-02",
+            "executed_elements": [
+              "draft",
+              "local_check",
+              "repair",
+              "compress",
+              "audit"
+            ],
+            "outcome": "done",
+            "return_value": "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города."
+          },
+          "item-03": {
+            "node_id": "item-03",
+            "executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "outcome": "done",
+            "return_value": "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира."
+          },
+          "item-04": {
+            "node_id": "item-04",
+            "executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "outcome": "done",
+            "return_value": "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир."
+          },
+          "item-05": {
+            "node_id": "item-05",
+            "executed_elements": [
+              "draft",
+              "local_check",
+              "compress",
+              "audit"
+            ],
+            "outcome": "done",
+            "return_value": "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации."
+          }
+        }
+      },
+      "meta": {
+        "instruction_bundles": [
+          {
+            "bundle_id": "root-plan",
+            "author_agent": "qwen_27b_planner",
+            "target_agent": "small_context_worker",
+            "strictness": "strict",
+            "blocks": [
+              {
+                "kind": "system",
+                "content": "Планирование задачи."
+              },
+              {
+                "kind": "context",
+                "content": "Создать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз."
+              }
+            ]
+          }
+        ],
+        "last_executed_elements": [
+          "plan",
+          "run_children",
+          "collect"
+        ],
+        "assembled_instruction": "[system]\nПланирование задачи.\n[context]\nСоздать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз.",
+        "last_updated_paths": [
+          "outputs"
+        ],
+        "last_transition": {
+          "from": "collect",
+          "outcome": "done"
+        },
+        "serialized_node": {
+          "format_version": "behavior-node/v1",
+          "node_id": "root",
+          "kind": "auto_root",
+          "entry_element": "plan",
+          "elements": [
+            {
+              "element_id": "plan",
+              "handler": "root_plan",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "run_children",
+              "handler": "run_children",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            },
+            {
+              "element_id": "collect",
+              "handler": "collect_outputs",
+              "transitions": {},
+              "description": "",
+              "meta": {}
+            }
+          ],
+          "data": {
+            "child_ids": [
+              "item-01",
+              "item-02",
+              "item-03",
+              "item-04",
+              "item-05"
+            ],
+            "outputs": [
+              "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий.",
+              "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города.",
+              "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира.",
+              "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир.",
+              "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации."
+            ],
+            "task_prompt": "Создать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз.",
+            "planned": true,
+            "child_runs": {
+              "item-01": {
+                "node_id": "item-01",
+                "executed_elements": [
+                  "draft",
+                  "local_check",
+                  "compress",
+                  "audit"
+                ],
+                "outcome": "done",
+                "return_value": "Его чёрные волосы, словно пропитанные смолой, спадают тяжёлыми прядями, скрывая бледное и исхудавшее лицо, которое говорит о долгих ночах в тени. Глаза, отблеск которых мерцает в полумраке, подобно угасающим уголькам, betraying холодный и безжалостный ум, привыкший видеть лишь тёмные стороны реальности. Тонкое и жилистое телосложение, скрытое под рваной, выцветшей до серого кожей, напоминает о вынужденном голоде и постоянном контакте с вечно влажной и гнилой землей. На теле видны шрамы, будто нарочито нарисованные кинжалами, и синяки, которые никогда не исчезают, превращая его в живое напоминание о жестоких битвах в руинах забытых крепостей. Одежда состоит из грубых, дырявых кожаных плащей и полосатых перчаток, через которые просвечивает ржавый металл, а на поясе висят окровавленные мачете и ножи, готовые к новому убийству. Вокруг фигуры вьются клубы серого дыма и тени, которые кажутся частью его самого, создавая атмосферу безысходности и мрачной красоты. Этот образ воплощает собой саму суть тёмного фэнтези: хрупкость перед лицом вечного зла и непреклонную готовность ценой собственной жизни сражаться в неоновом тумане подземелий."
+              },
+              "item-02": {
+                "node_id": "item-02",
+                "executed_elements": [
+                  "draft",
+                  "local_check",
+                  "repair",
+                  "compress",
+                  "audit"
+                ],
+                "outcome": "done",
+                "return_value": "Вот исправленное и дополненное описание внешности персонажа в стиле киберпанк, учитывающее все требования задания и устраняющее проблемы с детализацией и диапазоном предложений:\n\n**Описание внешности:**\n\nЕго лицо обрамляют неоновые волосы, которые светятся мягким фиолетовым светом, создавая контраст с бледной кожей. Глаза ярко-голубые, почти прозрачные, что придает взгляду холодное, машинальное выражение. Фигура стройная, но подтянутая, с четко очерченными мышцами, скрытыми за облегающим костюмом. На теле заметны тонкие следы киберимплантов — светящиеся линии вдоль шеи и запястья, где кожа заменена на синтетические материалы. Одежда типична для жанра: это кожаная куртка с множеством карманов, надетая поверх сетчатой майки, и обтягивающие штаны из прочного нейлона. На ногах высокие ботинки с тактическими ремнями, а на шее болтается массивный планшетный компьютер, пульсирующий в такт ритму сердца. Общий образ дополнен темными очками с зеркальными линзами, которые отражают неоновые вывески ночного города."
+              },
+              "item-03": {
+                "node_id": "item-03",
+                "executed_elements": [
+                  "draft",
+                  "local_check",
+                  "compress",
+                  "audit"
+                ],
+                "outcome": "done",
+                "return_value": "Золотые волосы этого персонажа, словно сотканные из самого солнечного света, спадают тяжелыми волнами, переливаясь всеми оттенками янтаря и меди при каждом движении. Его глаза, глубокие и загадочные, подобны темному алмазу, в котором отражаются древние тайны и бездна космоса, притягивая взгляды всех окружающих. Фигура его стройна и грациозна, с изящными линиями, которые подчеркивают естественную аристократическую осанку, типичную для героев высоких фэнтезийных саг. На плечах покоится накидка из бархата темно-фиолетового оттенка, украшенная вышивкой из чистого золота, переплетающейся с тонкими цепями из серебра и обсидиана. На поясе висит меч с рукоятью, инкрустированной сапфирами, а на груди гордо сияет медальон, защищающий от древних проклятий. Одежда дополнена кожаными перчатками с вставками из черного жемчуга и ботинками, покрытыми рунами, которые светятся слабым голубым светом в темноте. Каждый элемент его образа дышит магией и величием, создавая образ героя, способного противостоять самым страшным чудовищам мира."
+              },
+              "item-04": {
+                "node_id": "item-04",
+                "executed_elements": [
+                  "draft",
+                  "local_check",
+                  "compress",
+                  "audit"
+                ],
+                "outcome": "done",
+                "return_value": "В стиле современного реализма внешность персонажа с каштановыми волосами часто изображается с акцентом на естественную текстуру и реалистичное освещение, подчеркивающее глубину цвета от темно-коричневого до медного оттенка. Глаза, как правило, имеют выразительный, живой взгляд с детально прорисованными зрачками и бликами, передающими эмоции и атмосферу сцены. Фигура персонажа обычно показана с анатомически правильными пропорциями, включая заметные мускулатуру или характерные линии тела, которые свидетельствуют о его образе жизни или профессии. Одежда в этом жанре отличается высокой детализацией ткани, швов и складок, а также реалистичными цветами и фактурами, соответствующими современному урбанистическому или пригородному окружению. Волосы часто имеют естественную небрежность, отражающую динамику движения или повседневный характер, а не идеальную укладку. Кожа персонажа прорисована с учетом мелких деталей, таких как поры, легкие морщины или следы окружающей среды, что усиливает эффект присутствия. В целом, образ создается через гармоничное сочетание этих элементов, чтобы подчеркнуть индивидуальность и погруженность в реалистичный мир."
+              },
+              "item-05": {
+                "node_id": "item-05",
+                "executed_elements": [
+                  "draft",
+                  "local_check",
+                  "compress",
+                  "audit"
+                ],
+                "outcome": "done",
+                "return_value": "Его седые волосы, словно выцветшая ткань под ярким солнцем пустошей, висят тяжелыми прядями, скрывая часть лица и придавая портрету оттенок древней усталости. Глаза, цвета мутного олова, смотрят с холодным расчетом, отражая многолетнее наблюдение за выжившими в ледяных ветрах и пепельном небе. Тело покрыто шрамами от осколков и ожогами, а мускулистая фигура, хотя и истощенная голодом, сохраняет грубую силу, необходимую для борьбы с дикими зверями и рухнувшими механизмами. Одежда представляет собой лоскутное одеяло из обрывков старых шин, ржавых ремней и узловатых веревок, которые плотно обтягивают плечи и бедра, защищая от колючек и влаги. На руках надеты массивные перчатки из увядшей кожи и металлической сетки, а на поясе висит заточенный кусок арматуры, служивший и оружием, и инструментом для сбора металлолома. Лицо высечено морщинами и загаром, напоминающим поверхность выжженной земли, где каждый шрам — это история пережитой битвы или голодовки. В целом, образ сочетает в себе хрупкость старого человека и звериную жесткость, типичную для тех, кто остался в мире после краха цивилизации."
+              }
+            }
+          },
+          "meta": {
+            "instruction_bundles": [
+              {
+                "bundle_id": "root-plan",
+                "author_agent": "qwen_27b_planner",
+                "target_agent": "small_context_worker",
+                "strictness": "strict",
+                "blocks": [
+                  {
+                    "kind": "system",
+                    "content": "Планирование задачи."
+                  },
+                  {
+                    "kind": "context",
+                    "content": "Создать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз."
+                  }
+                ]
+              }
+            ],
+            "last_executed_elements": [
+              "plan",
+              "run_children",
+              "collect"
+            ],
+            "assembled_instruction": "[system]\nПланирование задачи.\n[context]\nСоздать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз.",
+            "last_updated_paths": [
+              "outputs"
+            ],
+            "last_transition": {
+              "from": "collect",
+              "outcome": "done"
+            }
+          },
+          "return_key": "outputs",
+          "claims": [],
+          "current_element_id": "collect",
+          "execution_lock": true,
+          "python_refs": {}
+        }
+      },
+      "return_key": "outputs",
+      "claims": [],
+      "current_element_id": "collect",
+      "execution_lock": true,
+      "python_refs": {}
+    }
+  },
+  "global_meta": {
+    "task": "Создать 5 описаний внешности персонажа в разных стилях. Каждое описание 5-8 предложений. Обязательно указать цвет волос и глаз.",
+    "planned_by": "qwen_27b_planner",
+    "item_count": 5
+  },
+  "global_claims": [],
+  "bindings": {
+    "profiles": {
+      "qwen_27b_planner": {
+        "agent_name": "qwen_27b_planner",
+        "model_class": "qwen-27b",
+        "scopes": [
+          "plan",
+          "audit"
+        ],
+        "description": "Planner and auditor"
+      },
+      "small_context_worker": {
+        "agent_name": "small_context_worker",
+        "model_class": "qwen-9b",
+        "scopes": [
+          "generate",
+          "check",
+          "compress"
+        ],
+        "description": "Worker for generation"
+      }
+    },
+    "rules": []
+  },
+  "python_refs": {}
+}
