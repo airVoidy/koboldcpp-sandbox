@@ -3468,9 +3468,14 @@ var macroSteps = [];
 var atomicMacros = {};
 var pipelineSteps = []; // always-on recording of executed commands for DSL export
 var _currentMacroGroup = null; // set during macro replay to tag inner steps
+var cardTemplates = {}; // Card Builder: {name: {name, slots: [{id,type,label,binding,options,children}]}}
+var _activeCardTemplate = null; // currently editing template in builder
+var _selectedSlotId = null; // selected slot in builder canvas
+var _cardSlotIdN = 0;
 try { const sc = JSON.parse(localStorage.getItem('atomic_config') || '{}'); if (sc.params) atomicParams = sc.params; if (sc.grammars) atomicGrammars = sc.grammars; } catch(_) {}
 try { const si = JSON.parse(localStorage.getItem('global_items') || '[]'); if (Array.isArray(si)) globalItems = si; } catch(_) {}
 try { atomicMacros = JSON.parse(localStorage.getItem('atomic_macros') || '{}'); } catch(_) {}
+try { cardTemplates = JSON.parse(localStorage.getItem('card_templates') || '{}'); } catch(_) {}
 
 // Restore atomic state
 try {
@@ -4377,9 +4382,30 @@ function buildCanonicalToolCommand(tool, args, outName) {
   return outName ? `@${outName} = ${call}` : call;
 }
 
+function buildCanonicalLoopCommand(args, body, outName) {
+  const canonArgs = args.map(formatDslToken);
+  const prefix = outName ? `@${outName} = ` : '';
+  const inner = splitPipelineStatements(body || '').map(line => '  ' + line).join('\n');
+  return `${prefix}loop(${canonArgs.join(', ')}) {\n${inner}\n}`;
+}
+
 function parseAtomicLine(text) {
   const raw = (text || '').trim();
   if (!raw) return {kind: 'empty'};
+
+  const loopMatch = raw.match(/^(?:@(\w+)\s*=\s*)?loop\(([\s\S]*?)\)\s*\{([\s\S]*)\}$/);
+  if (loopMatch) {
+    const [, name, argsRaw, bodyRaw] = loopMatch;
+    const args = splitAtomicArgs(argsRaw).map(normalizeDslToken);
+    const body = String(bodyRaw || '').trim().replace(/^\n+|\n+$/g, '');
+    return {
+      kind: 'loop',
+      name: name || null,
+      args,
+      body,
+      canonical: buildCanonicalLoopCommand(args, body, name || null),
+    };
+  }
 
   if (raw.startsWith('/')) {
     const editorCall = parseAtomicCall(raw.slice(1));
@@ -4490,6 +4516,41 @@ function resolveDslTextValue(value) {
   return stripDslQuotes(normalizedValue);
 }
 
+async function runAtomicLoopBlock(parsed, options = {}) {
+  const opts = {recordPipeline: true, ...options};
+  const {options: loopOpts, positional} = parseDslCallOptions(parsed.args || [], 0);
+  const whileRef = loopOpts.while || positional[0];
+  const maxIters = Math.max(1, Math.floor(resolveDslNumericValue(loopOpts.max_iters || positional[1], 8)));
+  if (!whileRef) {
+    addAtomicMsg('tool', 'loop requires while:@condition');
+    return;
+  }
+  const bodyStatements = splitPipelineStatements(parsed.body || '');
+  if (!bodyStatements.length) {
+    addAtomicMsg('tool', 'loop body is empty');
+    return;
+  }
+
+  let iterations = 0;
+  while (runtimeValueToBool(resolveDslRuntimeValue(whileRef))) {
+    if (iterations >= maxIters) {
+      addAtomicMsg('tool', `loop limit reached (${maxIters})`);
+      break;
+    }
+    iterations += 1;
+    addAtomicMsg('system', `loop#${iterations} while ${formatDslToken(whileRef)}`);
+    renderAtomicFeed();
+    for (const stmt of bodyStatements) {
+      await handleAtomicInput(stmt, {recordPipeline: false, showUser: false, fromPipeline: true});
+    }
+  }
+
+  if (parsed.name) {
+    const summary = createRuntimeValueEntity(parsed.name, String(iterations), {tool: 'loop'});
+    addTextArea(summary.name, 'status', iterations >= maxIters && runtimeValueToBool(resolveDslRuntimeValue(whileRef)) ? 'limit' : 'done');
+  }
+}
+
 function parseDslCallOptions(args, startIndex = 1) {
   const options = {};
   const positional = [];
@@ -4587,6 +4648,17 @@ function resolveDslNumericValue(value, fallback = 0) {
   if (typeof resolved === 'number' && Number.isFinite(resolved)) return resolved;
   const parsed = Number(runtimeValueToText(resolved).trim());
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function runtimeValueToBool(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (Array.isArray(value)) return value.length > 0;
+  const normalized = String(runtimeValueToText(value)).trim().toLowerCase();
+  if (!normalized) return false;
+  if (['true', 'yes', 'y', '1', 'ok', 'pass'].includes(normalized)) return true;
+  if (['false', 'no', 'n', '0', 'fail'].includes(normalized)) return false;
+  return true;
 }
 
 function inferTransformOutName(toolName, args) {
@@ -4764,6 +4836,15 @@ async function handleAtomicInput(text, options = {}) {
     return;
   }
 
+  if (parsed.kind === 'loop') {
+    if (opts.showUser) addAtomicMsg('user', parsed.canonical);
+    recordPipelineStep(parsed.canonical, opts.recordPipeline);
+    renderAtomicFeed();
+    await runAtomicLoopBlock(parsed, opts);
+    renderPipelineSteps();
+    return;
+  }
+
   if (parsed.kind === 'trigger') {
     if (opts.showUser) addAtomicMsg('user', parsed.canonical);
     recordPipelineStep(parsed.canonical, opts.recordPipeline);
@@ -4932,14 +5013,27 @@ async function applyAtomicTool(toolName, args, meta = {}) {
       case 'slice': await toolSlice(args, meta); break;
       case 'split': await toolSplit(args, meta); break;
       case 'concat': toolConcat(args, meta); break;
-      case 'table_header': await toolTableHeader(args, meta); break;
+      case 'table_header': toolTableHeader(args, meta); break;
       case 'prepend': toolPrepend(args, meta); break;
-      case 'join': case 'join_list': await toolJoin(args, meta); break;
+      case 'join': case 'join_list': toolJoin(args, meta); break;
       case 'len': case 'length': toolLen(args, meta); break;
       case 'repeat': toolRepeat(args, meta); break;
       case 'chunk': toolChunk(args, meta); break;
-      case 'reshape_grid': await toolReshapeGrid(args, meta); break;
+      case 'reshape_grid': toolReshapeGrid(args, meta); break;
       case 'lines': toolLines(args, meta); break;
+      case 'add': toolAdd(args, meta); break;
+      case 'sub': toolSub(args, meta); break;
+      case 'eq': toolEq(args, meta); break;
+      case 'lt': toolLt(args, meta); break;
+      case 'lte': toolLte(args, meta); break;
+      case 'gt': toolGt(args, meta); break;
+      case 'gte': toolGte(args, meta); break;
+      case 'not': toolNot(args, meta); break;
+      case 'guard': toolGuard(args, meta); break;
+      case 'parse_table': toolParseTable(args, meta); break;
+      case 'row_count': toolRowCount(args, meta); break;
+      case 'get_column': toolGetColumn(args, meta); break;
+      case 'split_rows': toolSplitRows(args, meta); break;
       case 'filter_rows': toolFilterRows(args, meta); break;
       case 'reject_reasons': toolRejectReasons(args, meta); break;
       case 'accepted_list': toolAcceptedList(args, meta); break;
@@ -5086,6 +5180,36 @@ async function callAtomicScope(steps, exportSpec) {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({steps, export: exportSpec, workers: workerMap, settings}),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({detail: resp.statusText}));
+    throw new Error(err.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
+async function callAtomicLoop(setupSteps, loopSteps, whileRef, exportSpec, maxIters) {
+  const workerMap = {};
+  workers.forEach(w => { if (w.role && w.url) workerMap[w.role] = w.url; });
+  const s = getSettings();
+  const settings = {
+    temperature: parseFloat(atomicParams.temperature || s.temperature),
+    max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
+    max_continue: parseInt(atomicParams.max_continue || s.max_continue),
+    no_think: document.getElementById('settingNoThink')?.checked ?? true,
+  };
+  const resp = await fetch(SB() + '/api/atomic/loop', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      setup: setupSteps || [],
+      loop: loopSteps || [],
+      while: whileRef,
+      max_iters: maxIters || 8,
+      export: exportSpec,
+      workers: workerMap,
+      settings,
+    }),
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({detail: resp.statusText}));
@@ -5275,12 +5399,11 @@ function toolConcat(args, meta = {}) {
   addAtomicMsg('tool', `concat(...) -> @${resultEntity.name} (${merged.length} items)`, [resultEntity.name]);
 }
 
-async function toolTableHeader(args, meta = {}) {
+function toolTableHeader(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'table_header needs at least 1 list'); return; }
   const columns = [];
   args.forEach(arg => { columns.push(...runtimeValueToList(resolveDslRuntimeValue(arg)).map(item => runtimeValueToText(item))); });
-  const result = await callAtomicServer('table_header', {columns, rows: []});
-  const allColumns = result.headers;
+  const allColumns = ['#', ...columns];
   const header = `| ${allColumns.join(' | ')} |`;
   const sep = '|' + allColumns.map(() => '---').join('|') + '|';
   const resultEntity = createEntity(meta.outName || inferTransformOutName('table_header', args), {source: {tool: 'table_header'}});
@@ -5377,6 +5500,20 @@ function createTableEntity(name, table, source) {
   return entity;
 }
 
+function resolveTableColumnIndex(table, columnRef, fallback = -1) {
+  if (!table?.headers?.length) return fallback;
+  if (columnRef === undefined || columnRef === null || columnRef === '') return fallback;
+  const resolved = resolveDslRuntimeValue(columnRef);
+  if (typeof resolved === 'number' && Number.isFinite(resolved)) {
+    const idx = Math.max(0, Math.floor(resolved));
+    return idx < table.headers.length ? idx : fallback;
+  }
+  const normalized = String(Array.isArray(resolved) ? resolved[0] : resolved).trim().toLowerCase();
+  if (!normalized) return fallback;
+  const idx = table.headers.findIndex(header => String(header).trim().toLowerCase() === normalized);
+  return idx >= 0 ? idx : fallback;
+}
+
 function toolPrepend(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'prepend needs a list and at least 1 value'); return; }
   const base = runtimeValueToList(resolveDslRuntimeValue(args[0]));
@@ -5387,15 +5524,14 @@ function toolPrepend(args, meta = {}) {
   addAtomicMsg('tool', `prepend(...) -> @${resultEntity.name} (${result.length} items)`, [resultEntity.name]);
 }
 
-async function toolJoin(args, meta = {}) {
+function toolJoin(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'join needs a list value'); return; }
   const {options, positional} = parseDslCallOptions(args, 1);
   const sep = resolveDslTextValue(options.sep !== undefined ? options.sep : (positional[0] || ''));
   const prefix = resolveDslTextValue(options.prefix || '""');
   const suffix = resolveDslTextValue(options.suffix || '""');
   const items = runtimeValueToList(resolveDslRuntimeValue(args[0])).map(item => runtimeValueToText(item));
-  const result = await callAtomicServer('join', {items, sep});
-  const joined = `${prefix}${result.content}${suffix}`;
+  const joined = `${prefix}${items.join(sep)}${suffix}`;
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('join', args), joined, {tool: 'join'});
   addAtomicMsg('tool', `join(...) -> @${resultEntity.name}`, [resultEntity.name]);
 }
@@ -5436,7 +5572,7 @@ function toolChunk(args, meta = {}) {
   addAtomicMsg('tool', `chunk(...) -> @${resultEntity.name} (${result.length} rows)`, [resultEntity.name]);
 }
 
-async function toolReshapeGrid(args, meta = {}) {
+function toolReshapeGrid(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'reshape_grid needs a value'); return; }
   const {options, positional} = parseDslCallOptions(args, 1);
   const colsArg = options.cols !== undefined ? options.cols : (options.size !== undefined ? options.size : positional[0]);
@@ -5444,9 +5580,10 @@ async function toolReshapeGrid(args, meta = {}) {
   if (!cols) { addAtomicMsg('tool', 'reshape_grid cols must be > 0'); return; }
   const value = resolveDslRuntimeValue(args[0]);
   const items = typeof value === 'string' ? splitTextIntoList(value) : runtimeValueToList(value);
-  const result = await callAtomicServer('reshape_grid', {items, cols});
-  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reshape_grid', args), result.grid, {tool: 'reshape_grid'});
-  addAtomicMsg('tool', `reshape_grid(...) -> @${resultEntity.name} (${result.rows} rows)`, [resultEntity.name]);
+  const grid = [];
+  for (let i = 0; i < items.length; i += cols) grid.push(items.slice(i, i + cols));
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reshape_grid', args), grid, {tool: 'reshape_grid'});
+  addAtomicMsg('tool', `reshape_grid(...) -> @${resultEntity.name} (${grid.length} rows)`, [resultEntity.name]);
 }
 
 function toolLines(args, meta = {}) {
@@ -5456,6 +5593,121 @@ function toolLines(args, meta = {}) {
     .join('\n');
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('lines', args), joined, {tool: 'lines'});
   addAtomicMsg('tool', `lines(...) -> @${resultEntity.name}`, [resultEntity.name]);
+}
+
+function toolAdd(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'add needs 2 values'); return; }
+  const result = resolveDslNumericValue(args[0], 0) + resolveDslNumericValue(args[1], 0);
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('add', args), String(result), {tool: 'add'});
+  addAtomicMsg('tool', `add(...) -> @${resultEntity.name}: ${result}`, [resultEntity.name]);
+}
+
+function toolSub(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'sub needs 2 values'); return; }
+  const result = resolveDslNumericValue(args[0], 0) - resolveDslNumericValue(args[1], 0);
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('sub', args), String(result), {tool: 'sub'});
+  addAtomicMsg('tool', `sub(...) -> @${resultEntity.name}: ${result}`, [resultEntity.name]);
+}
+
+function createBooleanResultEntity(toolName, args, result, meta = {}) {
+  const entity = createRuntimeValueEntity(meta.outName || inferTransformOutName(toolName, args), result ? 'true' : 'false', {tool: toolName});
+  addTag(entity.name, 'bool', result ? 'true' : 'false');
+  return entity;
+}
+
+function toolEq(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'eq needs 2 values'); return; }
+  const left = resolveDslRuntimeValue(args[0]);
+  const right = resolveDslRuntimeValue(args[1]);
+  const result = runtimeValueToText(left) === runtimeValueToText(right);
+  const entity = createBooleanResultEntity('eq', args, result, meta);
+  addAtomicMsg('tool', `eq(...) -> @${entity.name}: ${result}`, [entity.name]);
+}
+
+function toolLt(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'lt needs 2 values'); return; }
+  const result = resolveDslNumericValue(args[0], 0) < resolveDslNumericValue(args[1], 0);
+  const entity = createBooleanResultEntity('lt', args, result, meta);
+  addAtomicMsg('tool', `lt(...) -> @${entity.name}: ${result}`, [entity.name]);
+}
+
+function toolLte(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'lte needs 2 values'); return; }
+  const result = resolveDslNumericValue(args[0], 0) <= resolveDslNumericValue(args[1], 0);
+  const entity = createBooleanResultEntity('lte', args, result, meta);
+  addAtomicMsg('tool', `lte(...) -> @${entity.name}: ${result}`, [entity.name]);
+}
+
+function toolGt(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'gt needs 2 values'); return; }
+  const result = resolveDslNumericValue(args[0], 0) > resolveDslNumericValue(args[1], 0);
+  const entity = createBooleanResultEntity('gt', args, result, meta);
+  addAtomicMsg('tool', `gt(...) -> @${entity.name}: ${result}`, [entity.name]);
+}
+
+function toolGte(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'gte needs 2 values'); return; }
+  const result = resolveDslNumericValue(args[0], 0) >= resolveDslNumericValue(args[1], 0);
+  const entity = createBooleanResultEntity('gte', args, result, meta);
+  addAtomicMsg('tool', `gte(...) -> @${entity.name}: ${result}`, [entity.name]);
+}
+
+function toolNot(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'not needs 1 value'); return; }
+  const result = !runtimeValueToBool(resolveDslRuntimeValue(args[0]));
+  const entity = createBooleanResultEntity('not', args, result, meta);
+  addAtomicMsg('tool', `not(...) -> @${entity.name}: ${result}`, [entity.name]);
+}
+
+function toolGuard(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'guard needs a condition and value'); return; }
+  const pass = runtimeValueToBool(resolveDslRuntimeValue(args[0]));
+  if (!pass) {
+    addAtomicMsg('tool', `guard(...) skipped`, []);
+    return;
+  }
+  const value = resolveDslRuntimeValue(args[1]);
+  const entity = createRuntimeValueEntity(meta.outName || inferTransformOutName('guard', args), value, {tool: 'guard'});
+  addAtomicMsg('tool', `guard(...) -> @${entity.name}`, [entity.name]);
+}
+
+function toolParseTable(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'parse_table needs a value'); return; }
+  const value = resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]);
+  const table = getRuntimeTableValue(value);
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'parse_table could not resolve a markdown table'); return; }
+  const resultEntity = createTableEntity(meta.outName || inferTransformOutName('parse_table', args), table, {tool: 'parse_table'});
+  addAtomicMsg('tool', `parse_table(...) -> @${resultEntity.name} (${table.rows.length} rows)`, [resultEntity.name]);
+}
+
+function toolRowCount(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'row_count needs a table'); return; }
+  const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'row_count could not resolve a table'); return; }
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('row_count', args), String(table.rows.length), {tool: 'row_count'});
+  addAtomicMsg('tool', `row_count(...) -> @${resultEntity.name}: ${table.rows.length}`, [resultEntity.name]);
+}
+
+function toolGetColumn(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'get_column needs a table and column'); return; }
+  const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'get_column could not resolve a table'); return; }
+  const index = resolveTableColumnIndex(table, args[1], -1);
+  if (index < 0) { addAtomicMsg('tool', `get_column could not resolve column ${args[1]}`); return; }
+  const values = table.rows.map(row => row[index] ?? '');
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('get_column', args), values, {tool: 'get_column'});
+  addAtomicMsg('tool', `get_column(...) -> @${resultEntity.name} (${values.length} items)`, [resultEntity.name]);
+}
+
+function toolSplitRows(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'split_rows needs a table'); return; }
+  const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'split_rows could not resolve a table'); return; }
+  const labelIndex = resolveTableColumnIndex(table, args[1], 1);
+  const rows = table.rows.map((row, rowIndex) => [String(rowIndex + 1), String(row[labelIndex] ?? row[0] ?? ''), row.map((cell, idx) => `${table.headers[idx]}: ${cell}`).join('\n')]);
+  const resultEntity = createEntity(meta.outName || inferTransformOutName('split_rows', args), {source: {tool: 'split_rows'}});
+  addDataArea(resultEntity.name, 'items', ['#', 'Label', 'Row'], rows);
+  addAtomicMsg('tool', `split_rows(...) -> @${resultEntity.name} (${rows.length} rows)`, [resultEntity.name]);
 }
 
 function toolFilterRows(args, meta = {}) {
@@ -6963,6 +7215,19 @@ Core syntax:
   @out = chunk(@list, size:2)
   @out = reshape_grid(@value, cols:2)
   @out = lines(@header, @sep)
+  @out = parse_table(@table)
+  @out = row_count(@table)
+  @out = get_column(@table, "prompt")
+  @out = split_rows(@table, "prompt")
+  @out = add(@a, @b)
+  @out = sub(@a, @b)
+  @out = eq(@a, @b)
+  @out = lt(@a, @b)
+  @out = lte(@a, @b)
+  @out = gt(@a, @b)
+  @out = gte(@a, @b)
+  @out = not(@cond)
+  @out = guard(@cond, @value)
   @out = filter_rows(@table, where:all_yes, checks:@axioms)
   @out = reject_reasons(@table, checks:@axioms)
   @out = accepted_list(@table, checks:@axioms)
@@ -6994,6 +7259,9 @@ Pure transforms:
   len returns a scalar length
   data areas like @constraints.entities resolve as plain lists
   markdown tables can be filtered locally
+  add/sub/eq/lt/lte/gt/gte/not are scalar primitives
+  guard emits output only when the condition is truthy
+  parse_table / row_count / get_column / split_rows are lower-level table wrappers
   table_header / reshape_grid / join_list / filter_rows / reject_reasons / accepted_list are convenience sugar
 
 Example header build:
