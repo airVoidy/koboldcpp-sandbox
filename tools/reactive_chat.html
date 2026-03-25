@@ -311,11 +311,23 @@ body {
 
 /* Reactions bar - Slack-like emoji votes from workers */
 /* Element Selector highlights */
-.slot-highlight { outline:2px solid var(--accent) !important; outline-offset:1px; }
+.slot-highlight { box-shadow:inset 0 0 0 2px var(--accent) !important; position:relative; z-index:10; background:rgba(122,162,247,.1) !important; border-radius:3px; }
 .html-highlight { background:rgba(122,162,247,.15); border-radius:2px; }
 [data-slot-idx] { transition:outline .1s; }
 #builderHTMLViewer [data-html-idx] { display:block; padding:1px 0; cursor:pointer; transition:background .1s; }
 #builderHTMLViewer [data-html-idx]:hover { background:rgba(122,162,247,.1); }
+
+/* Components tab */
+.comp-item { display:flex;align-items:center;gap:6px;padding:3px 6px;margin-bottom:2px;border-left:2px solid var(--yellow);border-radius:0 4px 4px 0;font-size:10px;font-family:monospace; }
+.comp-item:hover { background:var(--surface2); }
+.comp-item.disabled { opacity:0.3; border-left-color:var(--border); }
+.comp-item input[type=checkbox] { margin:0;flex-shrink:0; }
+.comp-name { color:var(--yellow);font-weight:600;cursor:pointer;white-space:nowrap; }
+.comp-name:hover { text-decoration:underline; }
+.comp-count { color:var(--text-dim);font-size:9px;min-width:16px;text-align:right; }
+.comp-note { flex:1;background:none;border:none;border-bottom:1px solid transparent;color:var(--text-dim);font-size:9px;font-style:italic;font-family:inherit;padding:1px 4px;min-width:0; }
+.comp-note:focus { border-bottom-color:var(--yellow);color:var(--yellow);outline:none; }
+.builder-sidebar-tab.active { background:var(--accent);color:#fff; }
 
 .reactions-bar {
   display:flex; flex-wrap:wrap; gap:4px; padding:6px 12px;
@@ -449,6 +461,21 @@ body {
 .atomic-msg-hdr { display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:11px; color:var(--text-dim); }
 .atomic-msg-hdr .role { font-weight:600; text-transform:uppercase; }
 .atomic-msg-content { white-space:pre-wrap; word-break:break-word; }
+.atomic-tool-batch { border-left:3px solid var(--accent2); }
+.atomic-tool-batch .atomic-msg-hdr { margin-bottom:8px; }
+.atomic-tool-grid { display:grid; gap:8px; }
+.atomic-tool-card {
+  background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px;
+}
+.atomic-tool-card-title {
+  display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:11px; font-weight:600; color:var(--accent2);
+}
+.atomic-tool-card-body { font-size:12px; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+.atomic-tool-refs { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.atomic-tool-ref {
+  font-size:10px; padding:1px 6px; border-radius:999px; border:1px solid var(--border);
+  background:var(--surface2); color:var(--accent3); cursor:pointer;
+}
 /* Call params & debug */
 .at-call-params { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
 .at-param-pill { font-size:10px; background:var(--surface2); border:1px solid var(--border); border-radius:3px; padding:1px 5px; color:var(--text-dim); }
@@ -458,12 +485,30 @@ body {
 .at-debug-content { font-size:10px; color:var(--text-dim); background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:4px 6px; margin-top:2px; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
 .atomic-ref { color:var(--accent3); cursor:pointer; font-weight:500; }
 .atomic-ref:hover { text-decoration:underline; }
+.atomic-console-entry { padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.atomic-console-line { display:flex; gap:6px; align-items:flex-start; }
+.atomic-console-body { flex:1; min-width:0; }
+.atomic-console-meta { margin-top:3px; display:flex; flex-wrap:wrap; gap:4px; }
+.atomic-console-toggle { font-size:9px; color:var(--text-dim); cursor:pointer; user-select:none; margin-top:2px; }
+.atomic-console-debug { display:none; margin-top:3px; }
 
 /* Entity card */
 .at-entity {
   margin:6px 0; padding:8px; border:1px solid var(--border); border-radius:6px;
   background:var(--bg);
 }
+.at-entity-summary { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0 8px; font-size:10px; }
+.at-entity-summary-pill { padding:1px 6px; border-radius:999px; background:var(--surface2); border:1px solid var(--border); color:var(--text-dim); }
+.at-entity-section { margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); }
+.at-entity-section-title { font-size:10px; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
+.at-entity-meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:6px; margin-top:4px; }
+.at-entity-meta-item { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:6px; }
+.at-entity-meta-label { font-size:9px; text-transform:uppercase; letter-spacing:.35px; color:var(--text-dim); margin-bottom:3px; }
+.at-entity-meta-value { font-size:11px; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+.at-entity-debug-toggle { margin-top:8px; font-size:10px; color:var(--text-dim); cursor:pointer; user-select:none; }
+.at-entity-debug-toggle:hover { color:var(--text); }
+.at-entity-debug { display:none; margin-top:6px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px; }
+.at-entity-debug pre { margin:0; font-size:10px; color:var(--text-dim); white-space:pre-wrap; word-break:break-word; }
 .at-entity-hdr {
   display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:12px; font-weight:600;
 }
@@ -819,17 +864,41 @@ body {
     </div>
     <!-- === Card Builder sidebar === -->
     <div id="builderSidebarContent" style="display:none;flex-direction:column;flex:1;overflow:hidden">
-      <div class="right-sidebar-hdr">
-        <span style="color:var(--accent3)">Template DSL</span>
-        <div style="display:flex;gap:4px;margin-left:auto">
-          <button class="btn" id="btnBuilderDSLCopy" style="font-size:10px;padding:1px 6px">Copy</button>
-          <button class="btn primary" id="btnBuilderDSLApply" style="font-size:10px;padding:1px 6px">Apply</button>
+      <div class="right-sidebar-hdr" style="flex-wrap:wrap;gap:4px">
+        <div style="display:flex;gap:4px;width:100%;margin-bottom:4px">
+          <button class="btn builder-sidebar-tab active" data-btab="dsl" style="font-size:10px;padding:2px 8px">DSL</button>
+          <button class="btn builder-sidebar-tab" data-btab="html" style="font-size:10px;padding:2px 8px">HTML</button>
+          <button class="btn builder-sidebar-tab" data-btab="components" style="font-size:10px;padding:2px 8px;color:var(--yellow)">Components</button>
+          <div style="display:flex;gap:4px;margin-left:auto">
+            <button class="btn" id="btnBuilderDSLCopy" style="font-size:10px;padding:1px 6px">Copy</button>
+            <button class="btn primary" id="btnBuilderDSLApply" style="font-size:10px;padding:1px 6px">Apply</button>
+          </div>
         </div>
       </div>
-      <textarea id="builderDSLEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2" placeholder="card_template(name)&#10;  add_slot(@name, title)&#10;  add_slot(@name, tags)&#10;  ..."></textarea>
-      <div style="border-top:1px solid var(--border);flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
-        <div style="font-size:10px;color:var(--text-dim);padding:4px 8px;font-weight:600;flex-shrink:0">HTML Structure</div>
+      <!-- DSL tab -->
+      <div id="builderTabDSL" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <textarea id="builderDSLEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2" placeholder="card_template(name)&#10;  add_slot(@name, title)&#10;  add_slot(@name, tags)&#10;  ..."></textarea>
+      </div>
+      <!-- HTML tab -->
+      <div id="builderTabHTML" style="display:none;flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
         <pre id="builderHTMLViewer" style="flex:1;margin:0;padding:6px 8px;font-size:10px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.6;color:var(--text);background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+      <!-- Components tab -->
+      <div id="builderTabComponents" style="display:none;flex:1;overflow-y:auto;padding:8px">
+        <div id="builderComponentsList"></div>
+      </div>
+      <!-- NL Apply + Chat (shared across tabs, like Workflow) -->
+      <div style="display:flex;gap:4px;padding:4px 8px;border-top:1px solid var(--border);align-items:flex-end;flex-shrink:0">
+        <textarea id="builderNLInput" placeholder="Describe template change..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+        <button class="btn primary" id="btnBuilderNLApply" style="font-size:10px;padding:2px 8px">Apply</button>
+      </div>
+      <div style="flex:0 0 35%;min-height:80px;display:flex;flex-direction:column">
+        <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
+          <textarea id="builderAskInput" placeholder="Ask about this template..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+          <button class="btn" id="btnBuilderScreenshot" title="Screenshot Live Preview" style="font-size:12px;padding:2px 6px">📷</button>
+          <button class="btn" id="btnBuilderAskSend" style="font-size:10px;padding:2px 8px">Ask</button>
+        </div>
+        <div id="builderAskChat" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px"></div>
       </div>
     </div>
     <!-- === Atomic Tasks tool palette === -->
@@ -4116,9 +4185,15 @@ function renderAtomicFeed() {
   const feed = document.getElementById('atomicFeed');
   feed.innerHTML = '';
   let stepIdx = 0;
-  atomicMessages.forEach(msg => {
+  for (let i = 0; i < atomicMessages.length; i++) {
+    const msg = atomicMessages[i];
+    if (msg.role === 'tool') {
+      const batch = [msg];
+      while (i + 1 < atomicMessages.length && atomicMessages[i + 1]?.role === 'tool') batch.push(atomicMessages[++i]);
+      feed.appendChild(batch.length > 1 ? renderAtomicToolBatch(batch) : renderAtomicMsg(msg));
+      continue;
+    }
     const el = renderAtomicMsg(msg);
-    // Map USER messages to pipeline step indices
     if (msg.role === 'user' && stepIdx < pipelineSteps.length) {
       const idx = stepIdx++;
       el.dataset.stepIdx = idx;
@@ -4132,7 +4207,7 @@ function renderAtomicFeed() {
       });
     }
     feed.appendChild(el);
-  });
+  }
   feed.scrollTop = feed.scrollHeight;
 }
 
@@ -4222,7 +4297,7 @@ function renderAtomicMsg(msg) {
   if (msg.entities && msg.entities.length) {
     msg.entities.forEach(eName => {
       const entity = atomicEntities[eName];
-      if (entity) h += renderEntityCard(entity);
+      if (entity) h += renderEntityCardV2(entity);
     });
   }
   el.innerHTML = h;
@@ -4296,6 +4371,16 @@ function renderAtomicMsg(msg) {
       if (ta) { ta._expanded = !ta._expanded; saveAtomicState(); renderAtomicFeed(); }
     });
   });
+  el.querySelectorAll('[data-entity-debug]').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const name = toggle.dataset.entityDebug;
+      const box = document.getElementById('entity-debug-' + name);
+      if (!box) return;
+      const open = box.style.display !== 'none';
+      box.style.display = open ? 'none' : 'block';
+      toggle.textContent = (open ? '▸' : '▾') + ' Debug';
+    });
+  });
   // Bind text_area editing
   el.querySelectorAll('.at-text-area-content').forEach(div => {
     div.addEventListener('blur', () => {
@@ -4305,6 +4390,53 @@ function renderAtomicMsg(msg) {
       if (!entity) return;
       const ta = entity.text_areas.find(a => a.name === aName);
       if (ta) { ta.text = div.textContent; saveAtomicState(); }
+    });
+  });
+  return el;
+}
+
+function renderAtomicToolBatch(batch) {
+  const el = document.createElement('div');
+  el.className = 'atomic-msg role-tool atomic-tool-batch';
+  el.dataset.id = batch[0].id;
+  const refs = [...new Set(batch.flatMap(msg => msg.entities || []))];
+  const headerRefs = refs.length
+    ? `<div class="atomic-tool-refs">${refs.map(name => `<span class="atomic-tool-ref atomic-ref">@${esc(name)}</span>`).join('')}</div>`
+    : '';
+  const cards = batch.map(msg => {
+    const title = msg.meta?.params?.tool || String(msg.content || '').split('(')[0] || 'tool';
+    let body = `<div class="atomic-msg-content">${String(msg.content || '').replace(/@([\w]+(?:\.[\w]+)*)/g, '<span class="atomic-ref">@$1</span>')}</div>`;
+    if (msg.meta?.params) {
+      body += `<div class="at-call-params">`;
+      Object.entries(msg.meta.params).forEach(([k, v]) => {
+        body += `<span class="at-param-pill">${esc(k)}:${esc(String(v))}</span>`;
+      });
+      body += `</div>`;
+    }
+    if (msg.meta?.response) {
+      body += `<div class="at-debug-section"><div class="at-debug-toggle" data-debug="response-${msg.id}">▸ Response</div><pre class="at-debug-content" id="debug-response-${msg.id}" style="display:none">${esc(typeof msg.meta.response === 'string' ? msg.meta.response : JSON.stringify(msg.meta.response, null, 2))}</pre></div>`;
+    }
+    const cardRefs = (msg.entities || []).length
+      ? `<div class="atomic-tool-refs">${msg.entities.map(name => `<span class="atomic-tool-ref atomic-ref">@${esc(name)}</span>`).join('')}</div>`
+      : '';
+    return `<div class="atomic-tool-card"><div class="atomic-tool-card-title"><span>${esc(title)}</span><span style="font-size:10px;color:var(--text-dim);font-weight:400">${new Date(msg.ts).toLocaleTimeString()}</span></div><div class="atomic-tool-card-body">${body}</div>${cardRefs}</div>`;
+  }).join('');
+  el.innerHTML = `<div class="atomic-msg-hdr"><span class="role">tool results</span><span>${batch.length} items</span></div>${headerRefs}<div class="atomic-tool-grid">${cards}</div>`;
+  el.querySelectorAll('.atomic-ref').forEach(ref => {
+    ref.addEventListener('click', () => {
+      const name = ref.textContent.replace(/^@/, '');
+      document.getElementById('atomicInp').value += '@' + name + ' ';
+      document.getElementById('atomicInp').focus();
+    });
+  });
+  el.querySelectorAll('.at-debug-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const targetId = toggle.dataset.debug;
+      const content = document.getElementById('debug-' + targetId);
+      if (!content) return;
+      const visible = content.style.display !== 'none';
+      content.style.display = visible ? 'none' : 'block';
+      toggle.textContent = (visible ? '▸' : '▾') + toggle.textContent.slice(1);
     });
   });
   return el;
@@ -4400,7 +4532,7 @@ function renderSlotTextArea(data, slot) {
   // Answer block — etalon structure from renderNode
   h += `<div class="node-answer" data-slot="${slot.id}"><div class="answer-block${acls}">`;
   h += `<div class="answer-lang">`;
-  h += `<span>${esc(label.toLowerCase())}</span>`;
+  h += `<span class="slot-label">${esc(label.toLowerCase())}</span>`;
   h += `<span style="flex:1"></span>`;
   h += `<button class="tags-toggle-btn" data-slot-answer-toggle="${slot.id}">${ansOpen ? '▲' : '▼'}</button>`;
   h += `</div>`;
@@ -4438,7 +4570,7 @@ function renderSlotThread(data, slot) {
   const tc = thread.length;
   const tOpen = data.threadOpen || false;
 
-  let h = `<div class="thread-bar" data-slot-thread-toggle="${slot.id}"><span class="arrow${tOpen ? ' open' : ''}">▶</span> ${esc(slot.label || 'Thread')} <span class="thread-cnt">${tc}</span></div>`;
+  let h = `<div class="thread-bar" data-slot-thread-toggle="${slot.id}"><span class="arrow${tOpen ? ' open' : ''}">▶</span> <span class="slot-label">${esc(slot.label || 'Thread')}</span> <span class="thread-cnt">${tc}</span></div>`;
   h += `<div class="thread-wrap${tOpen ? ' open' : ''}" data-slot="${slot.id}" data-slot-mode="${mode}">`;
   h += `<div class="thread-msgs">`;
   thread.forEach((t, i) => {
@@ -4508,7 +4640,7 @@ function renderSlotForm(data, slot) {
 function renderSlotGroup(data, slot) {
   const label = slot.label || '';
   let h = `<div class="node-body open" data-slot="${slot.id}" style="border-left:2px solid var(--border);padding-left:8px;margin:4px 0">`;
-  if (label) h += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">${esc(label)}</div>`;
+  if (label) h += `<div class="slot-label" style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">${esc(label)}</div>`;
   if (slot.children?.length) {
     slot.children.forEach(child => { h += renderSlotComponent(data, child); });
   }
@@ -4642,6 +4774,131 @@ function renderEntityCard(entity) {
     });
     h += `</tbody></table></div>`;
   });
+  h += `</div>`;
+  return h;
+}
+
+function renderEntityCardV2(entity) {
+  const tmplName = entity.tags?.card_template;
+  if (tmplName && cardTemplates[tmplName]) {
+    return renderTemplatedCard(entity, cardTemplates[tmplName]);
+  }
+  const runtimeTextNames = new Set(['resolved', 'think', 'system']);
+  const runtimeDataNames = new Set(['columns', 'fields']);
+  const outputDataNames = new Set(['items', 'table', 'data', 'accepted_rows', 'result']);
+  const metaPairs = [
+    ['status', entity.status || 'pending'],
+    ['type', entity.type || 'entity'],
+    ['source tool', entity.source?.tool || 'manual'],
+    ['source entity', entity.source?.entityId ? '@' + entity.source.entityId : ''],
+    ['parent', entity.parentId || ''],
+    ['thread', entity.thread?.length ? `${entity.thread.length} msgs` : ''],
+    ['children', entity.children?.length ? `${entity.children.length}` : ''],
+    ['image', entity.imageUrl || ''],
+  ].filter(([, value]) => String(value || '').trim());
+  const reactionRows = (entity.reactions || []).map((r, idx) => [
+    String(idx + 1),
+    String(r.worker || ''),
+    String(r.status || ''),
+    String(r.detail || ''),
+  ]);
+  const renderTextAreaBlock = (ta) => {
+    const isResolved = ta.name === 'resolved';
+    const collapsed = ta._expanded ? '' : ' collapsed';
+    const arrow = ta._expanded ? '▾' : '▸';
+    const preview = ta.text.length > 60 ? ta.text.slice(0, 60) + '…' : ta.text;
+    const dimStyle = isResolved ? ' style="opacity:0.5"' : '';
+    return `<div class="at-text-area${collapsed}"${dimStyle}><div class="at-text-area-label" data-toggle-area="${esc(ta.name)}">${arrow} ${esc(ta.name)} <span class="at-text-preview">${collapsed ? esc(preview) : ''}</span></div><div class="at-text-area-content"${isResolved ? '' : ' contenteditable="true"'} data-area="${esc(ta.name)}">${esc(ta.text)}</div></div>`;
+  };
+  const renderDataAreaBlock = (da) => {
+    let out = `<div class="at-data-area" data-area="${esc(da.name)}">`;
+    out += `<div class="at-data-label">${esc(da.name)}</div>`;
+    out += `<table class="at-table"><thead><tr>`;
+    da.headers.forEach(hdr => { out += `<th>${esc(hdr)}</th>`; });
+    out += `</tr></thead><tbody>`;
+    da.rows.forEach((row, ri) => {
+      out += `<tr>`;
+      row.forEach((cell, ci) => {
+        out += `<td contenteditable="true" data-row="${ri}" data-col="${ci}">${esc(String(cell))}</td>`;
+      });
+      out += `</tr>`;
+    });
+    out += `</tbody></table></div>`;
+    return out;
+  };
+  const inputNames = new Set(['content', 'user', 'input', 'question', 'prompt']);
+  const resultNames = new Set(['answer', 'result', 'assistant', 'output']);
+  const inputTextAreas = [], runtimeTextAreas = [], derivedTextAreas = [], resultTextAreas = [];
+  (entity.text_areas || []).forEach(ta => {
+    const n = String(ta.name || '').toLowerCase();
+    if (inputNames.has(n)) inputTextAreas.push(ta);
+    else if (runtimeTextNames.has(n)) runtimeTextAreas.push(ta);
+    else if (resultNames.has(n)) resultTextAreas.push(ta);
+    else derivedTextAreas.push(ta);
+  });
+  const inputDataAreas = [], runtimeDataAreas = [], derivedDataAreas = [], resultDataAreas = [];
+  (entity.data_areas || []).forEach(da => {
+    const n = String(da.name || '').toLowerCase();
+    if (inputNames.has(n)) inputDataAreas.push(da);
+    else if (runtimeDataNames.has(n)) runtimeDataAreas.push(da);
+    else if (resultNames.has(n) || outputDataNames.has(n)) resultDataAreas.push(da);
+    else derivedDataAreas.push(da);
+  });
+  const renderEntitySection = (title, textAreas, dataAreas) => {
+    if (!textAreas.length && !dataAreas.length) return '';
+    return `<div class="at-entity-section"><div class="at-entity-section-title">${esc(title)}</div>${textAreas.map(renderTextAreaBlock).join('')}${dataAreas.map(renderDataAreaBlock).join('')}</div>`;
+  };
+  const debugPayload = {
+    name: entity.name,
+    source: entity.source || null,
+    tags: entity.tags || {},
+    status: entity.status,
+    type: entity.type,
+    parentId: entity.parentId || null,
+    ts: entity.ts || null,
+    time: entity.time || null,
+    thread_count: entity.thread?.length || 0,
+    children: entity.children || [],
+    reactions: entity.reactions || [],
+    imageUrl: entity.imageUrl || null,
+  };
+
+  let h = `<div class="at-entity" data-entity="${esc(entity.name)}">`;
+  h += `<div class="at-entity-hdr">`;
+  h += `<span class="at-entity-name">@${esc(entity.name)}</span>`;
+  if (entity.reactions?.length) {
+    h += `<div class="at-reactions">`;
+    entity.reactions.forEach(r => { h += `<span class="at-reaction" title="${esc(r.detail || '')}">${r.emoji}</span>`; });
+    h += `</div>`;
+  }
+  h += `</div>`;
+  const tagKeys = Object.keys(entity.tags || {});
+  if (tagKeys.length) {
+    h += `<div class="at-tags">`;
+    tagKeys.forEach(k => {
+      h += `<span class="at-tag" data-key="${esc(k)}"><span class="key">${esc(k)}:</span>${esc(String(entity.tags[k]))}</span>`;
+    });
+    h += `</div>`;
+  }
+  h += `<div class="at-entity-summary"><span class="at-entity-summary-pill">${(entity.text_areas || []).length} text</span><span class="at-entity-summary-pill">${(entity.data_areas || []).length} tables</span>${entity.source?.tool ? `<span class="at-entity-summary-pill">tool:${esc(entity.source.tool)}</span>` : ''}${entity.source?.entityId ? `<span class="at-entity-summary-pill">from:@${esc(entity.source.entityId)}</span>` : ''}${entity.reactions?.length ? `<span class="at-entity-summary-pill">${entity.reactions.length} reactions</span>` : ''}${entity.status ? `<span class="at-entity-summary-pill">status:${esc(entity.status)}</span>` : ''}</div>`;
+  if (metaPairs.length) {
+    h += `<div class="at-entity-section"><div class="at-entity-section-title">Runtime</div><div class="at-entity-meta-grid">`;
+    metaPairs.forEach(([label, value]) => {
+      h += `<div class="at-entity-meta-item"><div class="at-entity-meta-label">${esc(label)}</div><div class="at-entity-meta-value">${esc(String(value))}</div></div>`;
+    });
+    h += `</div></div>`;
+  }
+  h += renderEntitySection('Inputs', inputTextAreas, inputDataAreas);
+  h += renderEntitySection('Runtime Data', runtimeTextAreas, runtimeDataAreas);
+  h += renderEntitySection('Derived', derivedTextAreas, derivedDataAreas);
+  h += renderEntitySection('Results', resultTextAreas, resultDataAreas);
+  if (reactionRows.length) {
+    h += `<div class="at-entity-section"><div class="at-entity-section-title">Worker Reactions</div>`;
+    h += renderDataAreaBlock({name: 'reactions', headers: ['#', 'Worker', 'Status', 'Detail'], rows: reactionRows});
+    h += `</div>`;
+  }
+  h += `<div class="at-entity-debug-toggle" data-entity-debug="${esc(entity.name)}">▸ Debug</div>`;
+  h += `<div class="at-entity-debug" id="entity-debug-${esc(entity.name)}"><pre>${esc(JSON.stringify(debugPayload, null, 2))}</pre></div>`;
   h += `</div>`;
   return h;
 }
@@ -4806,9 +5063,9 @@ var atomicConsoleMsgs = [];
   });
 })();
 
-function addConsoleMsg(content) {
+function addConsoleMsg(content, meta = null) {
   const ts = new Date().toLocaleTimeString();
-  atomicConsoleMsgs.push({ts, content});
+  atomicConsoleMsgs.push({ts, content, meta});
   renderAtomicConsole();
 }
 
@@ -4817,14 +5074,36 @@ function renderAtomicConsole() {
   const countEl = document.getElementById('atomicConsoleCount');
   if (!el) return;
   countEl.textContent = atomicConsoleMsgs.length ? `(${atomicConsoleMsgs.length})` : '';
-  el.innerHTML = atomicConsoleMsgs.map(m => `<div><span style="opacity:0.5">${m.ts}</span> ${esc(m.content)}</div>`).join('');
+  el.innerHTML = atomicConsoleMsgs.map((m, i) => {
+    const params = m.meta?.params || null;
+    const request = m.meta?.request || null;
+    const response = m.meta?.response || null;
+    const refs = m.meta?.entities?.length ? `<div class="atomic-console-meta">${m.meta.entities.map(name => `<span class="at-param-pill">@${esc(name)}</span>`).join('')}</div>` : '';
+    const paramPills = params ? `<div class="atomic-console-meta">${Object.entries(params).map(([k, v]) => `<span class="at-param-pill">${esc(k)}:${esc(String(v))}</span>`).join('')}</div>` : '';
+    const debugBlocks = [
+      request ? `<div><div class="atomic-console-toggle" data-console-debug="req-${i}">▸ request</div><pre id="console-debug-req-${i}" class="at-debug-content atomic-console-debug">${esc(typeof request === 'string' ? request : JSON.stringify(request, null, 2))}</pre></div>` : '',
+      response ? `<div><div class="atomic-console-toggle" data-console-debug="res-${i}">▸ response</div><pre id="console-debug-res-${i}" class="at-debug-content atomic-console-debug">${esc(typeof response === 'string' ? response : JSON.stringify(response, null, 2))}</pre></div>` : '',
+    ].join('');
+    return `<div class="atomic-console-entry"><div class="atomic-console-line"><span style="opacity:0.5">${m.ts}</span><div class="atomic-console-body">${esc(m.content)}${refs}${paramPills}${debugBlocks}</div></div></div>`;
+  }).join('');
+  el.querySelectorAll('[data-console-debug]').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const suffix = toggle.dataset.consoleDebug;
+      const box = document.getElementById('console-debug-' + suffix);
+      if (!box) return;
+      const open = box.style.display !== 'none';
+      box.style.display = open ? 'none' : 'block';
+      toggle.textContent = (open ? '▸' : '▾') + toggle.textContent.slice(1);
+    });
+  });
   el.scrollTop = el.scrollHeight;
 }
 
 function addAtomicMsg(role, content, entities, meta) {
-  // System messages go to console log, not main feed
-  if (role === 'system') {
-    addConsoleMsg(content);
+  // System/tool messages go to console log, not main feed
+  if (role === 'system' || role === 'tool') {
+    const refs = (entities || []).length ? ` [${entities.map(e => '@' + e).join(', ')}]` : '';
+    addConsoleMsg(`${content}${refs}`, {...(meta || {}), entities: entities || []});
     return;
   }
   const msg = {
@@ -5740,12 +6019,25 @@ async function applyAtomicTool(toolName, args, meta = {}) {
       case 'slice': await toolSlice(args, meta); break;
       case 'split': await toolSplit(args, meta); break;
       case 'concat': toolConcat(args, meta); break;
+      case 'flatten': toolFlatten(args, meta); break;
       case 'table_header': toolTableHeader(args, meta); break;
       case 'prepend': toolPrepend(args, meta); break;
       case 'join': case 'join_list': toolJoin(args, meta); break;
       case 'len': case 'length': toolLen(args, meta); break;
       case 'repeat': toolRepeat(args, meta); break;
       case 'chunk': toolChunk(args, meta); break;
+      case 'take': toolTake(args, meta); break;
+      case 'slice_list': toolSliceList(args, meta); break;
+      case 'unique': toolUnique(args, meta); break;
+      case 'first': toolFirst(args, meta); break;
+      case 'last': toolLast(args, meta); break;
+      case 'zip': toolZip(args, meta); break;
+      case 'map_template': toolMapTemplate(args, meta); break;
+      case 'sort': toolSort(args, meta); break;
+      case 'reverse': toolReverse(args, meta); break;
+      case 'find_in_table': toolFindInTable(args, meta); break;
+      case 'pick_fields': toolPickFields(args, meta); break;
+      case 'to_kv_table': toolToKvTable(args, meta); break;
       case 'reshape_grid': toolReshapeGrid(args, meta); break;
       case 'lines': toolLines(args, meta); break;
       case 'add': toolAdd(args, meta); break;
@@ -6004,7 +6296,10 @@ async function toolParseSections(args, meta = {}) {
   const outName = meta.outName || (ref + '_constraints');
   const exportSpec = {[outName]: exportMapping};
 
-  addAtomicMsg('system', `parse_sections(@${ref}, ${sectionSpecs.map(s => s.delim).join(', ')}) → scope(${steps.length} steps)`);
+  addAtomicMsg('system', `parse_sections(@${ref}, ${sectionSpecs.map(s => s.delim).join(', ')}) → scope(${steps.length} steps)`, [], {
+    params: {tool: 'parse_sections', sections: sectionNames.length},
+    request: {steps, export: exportSpec}
+  });
   renderAtomicFeed();
 
   const result = await callAtomicScope(steps, exportSpec);
@@ -6030,7 +6325,11 @@ async function toolParseSections(args, meta = {}) {
     }
   });
   addAtomicMsg('tool', `parse_sections → @${outName} (${sectionNames.join(', ')})`, [outName],
-    {params: {delimiters: sectionSpecs.map(s => s.delim), sections: sectionNames}, response: {log: result.log}});
+    {
+      params: {delimiters: sectionSpecs.map(s => s.delim), sections: sectionNames},
+      request: {steps, export: exportSpec},
+      response: {log: result.log, exported}
+    });
   saveAtomicState();
   renderAtomicFeed();
   updateScopeList();
@@ -6044,7 +6343,10 @@ async function toolClaims(args) {
   if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
 
   const promptTemplate = getPromptTemplate('claims');
-  addAtomicMsg('system', `claims(@${ref}) → server (analyzer)`);
+  addAtomicMsg('system', `claims(@${ref}) → server (analyzer)`, [], {
+    params: {tool: 'claims', role: 'analyzer'},
+    request: {text, prompt_template: promptTemplate}
+  });
   renderAtomicFeed();
 
   const result = await callAtomicServer('claims', {text, prompt_template: promptTemplate}, 'analyzer');
@@ -6062,7 +6364,11 @@ async function toolClaims(args) {
   });
 
   addAtomicMsg('tool', `claims(@${ref}) → ${created.length ? created.map(n => '@'+n).join(', ') : 'no sections found'}`, created,
-    {params: {tool:'claims', role:'analyzer'}, response: {sections: Object.keys(sections), latency_ms: result.latency_ms}});
+    {
+      params: {tool:'claims', role:'analyzer'},
+      request: {text, prompt_template: promptTemplate},
+      response: {sections, latency_ms: result.latency_ms}
+    });
 }
 
 function toolNumbered(args, meta = {}) {
@@ -6092,14 +6398,21 @@ async function toolSlice(args, meta = {}) {
   if (!outName) outName = meta.outName || (ref + '_slice');
 
   const label = fromDelim ? `"${fromDelim}"..${toDelim ? '"'+toDelim+'"' : 'end'}` : 'lines';
-  addAtomicMsg('system', `slice(@${ref}, ${label}) → server`);
+  addAtomicMsg('system', `slice(@${ref}, ${label}) → server`, [], {
+    params: {tool: 'slice', from: fromDelim, to: toDelim || 'end'},
+    request: {text, from_delim: fromDelim, to_delim: toDelim || null}
+  });
   renderAtomicFeed();
 
   const result = await callAtomicServer('slice', {text, from_delim: fromDelim, to_delim: toDelim || null});
   const e = createEntity(outName, {source: {entityId: ref, tool: 'slice'}});
   addTextArea(e.name, 'content', result.content);
   addAtomicMsg('tool', `slice(@${ref}) → @${e.name} (${result.content.length} chars)`, [e.name],
-    {params: {tool: 'slice', from: fromDelim, to: toDelim || 'end'}});
+    {
+      params: {tool: 'slice', from: fromDelim, to: toDelim || 'end'},
+      request: {text, from_delim: fromDelim, to_delim: toDelim || null},
+      response: result
+    });
 }
 
 async function toolSplit(args, meta = {}) {
@@ -6113,7 +6426,10 @@ async function toolSplit(args, meta = {}) {
   if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
   if (!outName) outName = meta.outName || (ref + '_list');
 
-  addAtomicMsg('system', `split(@${ref}) → server`);
+  addAtomicMsg('system', `split(@${ref}) → server`, [], {
+    params: {tool: 'split'},
+    request: {text}
+  });
   renderAtomicFeed();
 
   const result = await callAtomicServer('split', {text});
@@ -6123,7 +6439,11 @@ async function toolSplit(args, meta = {}) {
   const e = createEntity(outName, {source: {entityId: ref, tool: 'split'}});
   e.data_areas.push({name: 'items', headers: ['#', 'Item'], rows: items.map((it, i) => [String(i+1), it])});
   addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items)`, [e.name],
-    {params: {tool: 'split', format: result.format, items: items.length}});
+    {
+      params: {tool: 'split', format: result.format, items: items.length},
+      request: {text},
+      response: result
+    });
 }
 
 /* Scope — local variable container. One at a time.
@@ -6136,7 +6456,15 @@ function toolConcat(args, meta = {}) {
   const merged = [];
   args.forEach(arg => { merged.push(...runtimeValueToList(resolveDslRuntimeValue(arg))); });
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('concat', args), merged, {tool: 'concat'});
-  addAtomicMsg('tool', `concat(...) -> @${resultEntity.name} (${merged.length} items)`, [resultEntity.name]);
+  logLocalToolResult('concat', args, resultEntity, `concat(...) -> @${resultEntity.name} (${merged.length} items)`, merged, {params: {items: merged.length}});
+}
+
+function toolFlatten(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'flatten needs a list value'); return; }
+  const source = resolveDslRuntimeValue(args[0]);
+  const items = runtimeValueToList(source).flatMap(item => runtimeValueToList(item));
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('flatten', args), items, {tool: 'flatten'});
+  logLocalToolResult('flatten', args, resultEntity, `flatten(...) -> @${resultEntity.name} (${items.length} items)`, items, {params: {items: items.length}});
 }
 
 function toolTableHeader(args, meta = {}) {
@@ -6149,7 +6477,7 @@ function toolTableHeader(args, meta = {}) {
   const resultEntity = createEntity(meta.outName || inferTransformOutName('table_header', args), {source: {tool: 'table_header'}});
   addTextArea(resultEntity.name, 'content', `${header}\n${sep}`);
   addDataArea(resultEntity.name, 'columns', ['#', 'Value'], allColumns.map((item, i) => [String(i + 1), item]));
-  addAtomicMsg('tool', `table_header(...) -> @${resultEntity.name}`, [resultEntity.name]);
+  logLocalToolResult('table_header', args, resultEntity, `table_header(...) -> @${resultEntity.name}`, {header, separator: sep, columns: allColumns}, {params: {columns: allColumns.length}});
 }
 
 function splitTextIntoList(text) {
@@ -6240,6 +6568,35 @@ function createTableEntity(name, table, source) {
   return entity;
 }
 
+function summarizeRuntimeValueForDebug(value) {
+  if (value?.headers && value?.rows) {
+    return {kind: 'table', headers: value.headers, rows: value.rows};
+  }
+  if (Array.isArray(value)) {
+    return {kind: 'list', length: value.length, items: value};
+  }
+  if (value && typeof value === 'object') {
+    if (value.text_areas || value.data_areas) {
+      return {
+        kind: 'entity',
+        name: value.name,
+        text_areas: (value.text_areas || []).map(ta => ({name: ta.name, text: ta.text})),
+        data_areas: (value.data_areas || []).map(da => ({name: da.name, headers: da.headers, rows: da.rows}))
+      };
+    }
+    return value;
+  }
+  return value;
+}
+
+function logLocalToolResult(toolName, args, resultEntity, summary, responseValue, extra = {}) {
+  addAtomicMsg('tool', summary, [resultEntity.name], {
+    params: {tool: toolName, ...(extra.params || {})},
+    request: {args},
+    response: extra.response !== undefined ? extra.response : summarizeRuntimeValueForDebug(responseValue)
+  });
+}
+
 function resolveTableColumnIndex(table, columnRef, fallback = -1) {
   if (!table?.headers?.length) return fallback;
   if (columnRef === undefined || columnRef === null || columnRef === '') return fallback;
@@ -6261,7 +6618,7 @@ function toolPrepend(args, meta = {}) {
   args.slice(1).forEach(arg => { prefix.push(...runtimeValueToList(resolveDslRuntimeValue(arg))); });
   const result = [...prefix, ...base];
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('prepend', args), result, {tool: 'prepend'});
-  addAtomicMsg('tool', `prepend(...) -> @${resultEntity.name} (${result.length} items)`, [resultEntity.name]);
+  logLocalToolResult('prepend', args, resultEntity, `prepend(...) -> @${resultEntity.name} (${result.length} items)`, result, {params: {items: result.length}});
 }
 
 function toolJoin(args, meta = {}) {
@@ -6273,7 +6630,7 @@ function toolJoin(args, meta = {}) {
   const items = runtimeValueToList(resolveDslRuntimeValue(args[0])).map(item => runtimeValueToText(item));
   const joined = `${prefix}${items.join(sep)}${suffix}`;
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('join', args), joined, {tool: 'join'});
-  addAtomicMsg('tool', `join(...) -> @${resultEntity.name}`, [resultEntity.name]);
+  logLocalToolResult('join', args, resultEntity, `join(...) -> @${resultEntity.name}`, joined, {params: {items: items.length, sep}});
 }
 
 function toolLen(args, meta = {}) {
@@ -6284,7 +6641,7 @@ function toolLen(args, meta = {}) {
   else if (typeof value === 'string') result = value.length;
   else if (value && typeof value === 'object') result = Object.keys(value).length;
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('len', args), String(result), {tool: 'len'});
-  addAtomicMsg('tool', `len(...) -> @${resultEntity.name}: ${result}`, [resultEntity.name]);
+  logLocalToolResult('len', args, resultEntity, `len(...) -> @${resultEntity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolRepeat(args, meta = {}) {
@@ -6296,7 +6653,7 @@ function toolRepeat(args, meta = {}) {
   const result = [];
   for (let i = 0; i < count; i++) result.push(...sourceItems);
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('repeat', args), result, {tool: 'repeat'});
-  addAtomicMsg('tool', `repeat(...) -> @${resultEntity.name} (${result.length} items)`, [resultEntity.name]);
+  logLocalToolResult('repeat', args, resultEntity, `repeat(...) -> @${resultEntity.name} (${result.length} items)`, result, {params: {count, items: result.length}});
 }
 
 function toolChunk(args, meta = {}) {
@@ -6309,7 +6666,210 @@ function toolChunk(args, meta = {}) {
   const result = [];
   for (let i = 0; i < items.length; i += size) result.push(items.slice(i, i + size));
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('chunk', args), result, {tool: 'chunk'});
-  addAtomicMsg('tool', `chunk(...) -> @${resultEntity.name} (${result.length} rows)`, [resultEntity.name]);
+  logLocalToolResult('chunk', args, resultEntity, `chunk(...) -> @${resultEntity.name} (${result.length} rows)`, result, {params: {size, rows: result.length}});
+}
+
+function toolTake(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'take needs a value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const countArg = options.count !== undefined ? options.count : positional[0];
+  const count = Math.max(0, Math.floor(resolveDslNumericValue(countArg, 0)));
+  const value = resolveDslRuntimeValue(args[0]);
+  let result;
+  if (typeof value === 'string') result = value.slice(0, count);
+  else result = runtimeValueToList(value).slice(0, count);
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('take', args), result, {tool: 'take'});
+  logLocalToolResult('take', args, resultEntity, `take(...) -> @${resultEntity.name}`, result, {params: {count}});
+}
+
+function toolSliceList(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'slice_list needs a value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const startArg = options.start !== undefined ? options.start : positional[0];
+  const endArg = options.end !== undefined ? options.end : positional[1];
+  const start = Math.max(0, Math.floor(resolveDslNumericValue(startArg, 0)));
+  const rawEnd = endArg !== undefined ? Math.floor(resolveDslNumericValue(endArg, start)) : undefined;
+  const value = resolveDslRuntimeValue(args[0]);
+  let result;
+  if (typeof value === 'string') result = value.slice(start, rawEnd);
+  else result = runtimeValueToList(value).slice(start, rawEnd);
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('slice_list', args), result, {tool: 'slice_list'});
+  logLocalToolResult('slice_list', args, resultEntity, `slice_list(...) -> @${resultEntity.name}`, result, {params: {start, end: rawEnd}});
+}
+
+function toolUnique(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'unique needs a list value'); return; }
+  const items = runtimeValueToList(resolveDslRuntimeValue(args[0]));
+  const seen = new Set();
+  const result = [];
+  items.forEach(item => {
+    const key = typeof item === 'object' ? JSON.stringify(item) : String(item);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(item);
+  });
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('unique', args), result, {tool: 'unique'});
+  logLocalToolResult('unique', args, resultEntity, `unique(...) -> @${resultEntity.name} (${result.length} items)`, result, {params: {items: result.length}});
+}
+
+function toolFirst(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'first needs a value'); return; }
+  const value = resolveDslRuntimeValue(args[0]);
+  let result = '';
+  if (typeof value === 'string') result = value.charAt(0);
+  else result = runtimeValueToList(value)[0] ?? '';
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('first', args), result, {tool: 'first'});
+  logLocalToolResult('first', args, resultEntity, `first(...) -> @${resultEntity.name}`, result);
+}
+
+function toolLast(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'last needs a value'); return; }
+  const value = resolveDslRuntimeValue(args[0]);
+  let result = '';
+  if (typeof value === 'string') result = value.slice(-1);
+  else {
+    const items = runtimeValueToList(value);
+    result = items.length ? items[items.length - 1] : '';
+  }
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('last', args), result, {tool: 'last'});
+  logLocalToolResult('last', args, resultEntity, `last(...) -> @${resultEntity.name}`, result);
+}
+
+function toolZip(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'zip needs at least 2 lists'); return; }
+  const lists = args.map(arg => runtimeValueToList(resolveDslRuntimeValue(arg)));
+  const width = lists.length;
+  const size = Math.min(...lists.map(list => list.length));
+  const rows = [];
+  for (let i = 0; i < size; i++) {
+    rows.push(Array.from({length: width}, (_, idx) => lists[idx][i]));
+  }
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('zip', args), rows, {tool: 'zip'});
+  logLocalToolResult('zip', args, resultEntity, `zip(...) -> @${resultEntity.name} (${rows.length} rows)`, rows, {params: {rows: rows.length, width}});
+}
+
+function toolMapTemplate(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'map_template needs a list and a template'); return; }
+  const items = runtimeValueToList(resolveDslRuntimeValue(args[0]));
+  const template = resolveDslTextValue(args[1]);
+  const rendered = items.map((item, idx) => {
+    const value = runtimeValueToText(item);
+    return template
+      .replace(/\{\$item\}/g, value)
+      .replace(/\{\$index\}/g, String(idx))
+      .replace(/\{\$n\}/g, String(idx + 1));
+  });
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('map_template', args), rendered, {tool: 'map_template'});
+  logLocalToolResult('map_template', args, resultEntity, `map_template(...) -> @${resultEntity.name} (${rendered.length} items)`, rendered, {params: {items: rendered.length}});
+}
+
+function toolSort(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'sort needs a list value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const mode = String(resolveDslRuntimeValue(options.mode !== undefined ? options.mode : (positional[0] || 'text')) || 'text').toLowerCase();
+  const desc = normalizeBoolish(resolveDslRuntimeValue(options.desc !== undefined ? options.desc : 'false')) === true;
+  const items = runtimeValueToList(resolveDslRuntimeValue(args[0])).slice();
+  items.sort((a, b) => {
+    if (mode === 'numeric' || mode === 'number') {
+      return resolveDslNumericValue(a, 0) - resolveDslNumericValue(b, 0);
+    }
+    return runtimeValueToText(a).localeCompare(runtimeValueToText(b), 'ru');
+  });
+  if (desc) items.reverse();
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('sort', args), items, {tool: 'sort'});
+  logLocalToolResult('sort', args, resultEntity, `sort(...) -> @${resultEntity.name} (${items.length} items)`, items, {params: {mode, desc, items: items.length}});
+}
+
+function toolReverse(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'reverse needs a value'); return; }
+  const value = resolveDslRuntimeValue(args[0]);
+  const result = typeof value === 'string'
+    ? Array.from(value).reverse().join('')
+    : runtimeValueToList(value).slice().reverse();
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reverse', args), result, {tool: 'reverse'});
+  logLocalToolResult('reverse', args, resultEntity, `reverse(...) -> @${resultEntity.name}`, result);
+}
+
+function toolFindInTable(args, meta = {}) {
+  if (args.length < 3) { addAtomicMsg('tool', 'find_in_table needs a table, column, and value'); return; }
+  const {options} = parseDslCallOptions(args, 3);
+  const table = getRuntimeTableValue(resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'find_in_table could not resolve a table'); return; }
+  const columnIndex = resolveTableColumnIndex(table, args[1], -1);
+  if (columnIndex < 0) { addAtomicMsg('tool', `find_in_table could not resolve column ${args[1]}`); return; }
+  const needle = runtimeValueToText(resolveDslRuntimeValue(args[2])).trim().toLowerCase();
+  const matchMode = String(resolveDslRuntimeValue(options.match !== undefined ? options.match : 'exact') || 'exact').toLowerCase();
+  const rows = table.rows.filter(row => {
+    const cell = String(row?.[columnIndex] ?? '').trim().toLowerCase();
+    return matchMode === 'contains' ? cell.includes(needle) : cell === needle;
+  });
+  const resultEntity = createTableEntity(meta.outName || inferTransformOutName('find_in_table', args), {headers: table.headers, rows}, {tool: 'find_in_table'});
+  logLocalToolResult('find_in_table', args, resultEntity, `find_in_table(...) -> @${resultEntity.name} (${rows.length} rows)`, {headers: table.headers, rows}, {
+    params: {column: table.headers[columnIndex], match: matchMode, rows: rows.length}
+  });
+}
+
+function toolPickFields(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'pick_fields needs a source and at least 1 field'); return; }
+  const sourceArg = normalizeDslToken(args[0]);
+  const sourceValue = resolveDslRuntimeValue(sourceArg);
+  const fieldNames = args.slice(1).map(arg => resolveDslTextValue(arg)).filter(Boolean);
+  if (!fieldNames.length) { addAtomicMsg('tool', 'pick_fields needs at least 1 field'); return; }
+  const resultName = meta.outName || inferTransformOutName('pick_fields', args);
+  const resultEntity = createEntity(resultName, {source: {tool: 'pick_fields'}});
+  const summaryRows = [];
+  fieldNames.forEach(field => {
+    let value = null;
+    if (sourceArg.startsWith('@')) value = resolveRef(`${sourceArg.replace(/^@/, '')}.${field}`);
+    else if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) value = sourceValue[field];
+    if (value === undefined || value === null) return;
+    if (value?.headers && value?.rows) {
+      addDataArea(resultEntity.name, field, value.headers, value.rows);
+      summaryRows.push([field, 'table', `${value.rows.length} rows`]);
+      return;
+    }
+    if (Array.isArray(value)) {
+      if (value.some(item => Array.isArray(item))) {
+        const width = value.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 1), 0) || 1;
+        const headers = Array.from({length: width}, (_, i) => String(i + 1));
+        const rows = value.map(row => {
+          const cells = Array.isArray(row) ? row : [row];
+          return Array.from({length: width}, (_, i) => runtimeValueToText(cells[i] ?? ''));
+        });
+        addDataArea(resultEntity.name, field, headers, rows);
+        summaryRows.push([field, 'grid', `${rows.length} rows`]);
+      } else {
+        const rows = value.map((item, i) => [String(i + 1), runtimeValueToText(item)]);
+        addDataArea(resultEntity.name, field, ['#', 'Value'], rows);
+        summaryRows.push([field, 'list', `${rows.length} items`]);
+      }
+      return;
+    }
+    addTextArea(resultEntity.name, field, runtimeValueToText(value));
+    summaryRows.push([field, 'text', runtimeValueToText(value).slice(0, 80)]);
+  });
+  if (!summaryRows.length) {
+    delete atomicEntities[resultEntity.name];
+    addAtomicMsg('tool', 'pick_fields found no matching fields');
+    return;
+  }
+  addDataArea(resultEntity.name, 'fields', ['Field', 'Kind', 'Preview'], summaryRows);
+  logLocalToolResult('pick_fields', args, resultEntity, `pick_fields(...) -> @${resultEntity.name} (${summaryRows.length} fields)`, summaryRows, {params: {fields: summaryRows.length}});
+}
+
+function toolToKvTable(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'to_kv_table needs a value'); return; }
+  const value = resolveDslRuntimeValue(args[0]);
+  let rows = [];
+  if (Array.isArray(value)) {
+    rows = value.map((item, i) => [String(i + 1), runtimeValueToText(item)]);
+  } else if (value && typeof value === 'object') {
+    rows = Object.entries(value).map(([key, val]) => [key, runtimeValueToText(val)]);
+  } else {
+    rows = [['value', runtimeValueToText(value)]];
+  }
+  const resultEntity = createTableEntity(meta.outName || inferTransformOutName('to_kv_table', args), {headers: ['Key', 'Value'], rows}, {tool: 'to_kv_table'});
+  logLocalToolResult('to_kv_table', args, resultEntity, `to_kv_table(...) -> @${resultEntity.name} (${rows.length} rows)`, {headers: ['Key', 'Value'], rows}, {params: {rows: rows.length}});
 }
 
 function toolReshapeGrid(args, meta = {}) {
@@ -6323,7 +6883,7 @@ function toolReshapeGrid(args, meta = {}) {
   const grid = [];
   for (let i = 0; i < items.length; i += cols) grid.push(items.slice(i, i + cols));
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reshape_grid', args), grid, {tool: 'reshape_grid'});
-  addAtomicMsg('tool', `reshape_grid(...) -> @${resultEntity.name} (${grid.length} rows)`, [resultEntity.name]);
+  logLocalToolResult('reshape_grid', args, resultEntity, `reshape_grid(...) -> @${resultEntity.name} (${grid.length} rows)`, grid, {params: {cols, rows: grid.length}});
 }
 
 function toolLines(args, meta = {}) {
@@ -6332,21 +6892,21 @@ function toolLines(args, meta = {}) {
     .flatMap(arg => runtimeValueToLines(resolveDslRuntimeValue(arg)))
     .join('\n');
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('lines', args), joined, {tool: 'lines'});
-  addAtomicMsg('tool', `lines(...) -> @${resultEntity.name}`, [resultEntity.name]);
+  logLocalToolResult('lines', args, resultEntity, `lines(...) -> @${resultEntity.name}`, joined);
 }
 
 function toolAdd(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'add needs 2 values'); return; }
   const result = resolveDslNumericValue(args[0], 0) + resolveDslNumericValue(args[1], 0);
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('add', args), String(result), {tool: 'add'});
-  addAtomicMsg('tool', `add(...) -> @${resultEntity.name}: ${result}`, [resultEntity.name]);
+  logLocalToolResult('add', args, resultEntity, `add(...) -> @${resultEntity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolSub(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'sub needs 2 values'); return; }
   const result = resolveDslNumericValue(args[0], 0) - resolveDslNumericValue(args[1], 0);
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('sub', args), String(result), {tool: 'sub'});
-  addAtomicMsg('tool', `sub(...) -> @${resultEntity.name}: ${result}`, [resultEntity.name]);
+  logLocalToolResult('sub', args, resultEntity, `sub(...) -> @${resultEntity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function createBooleanResultEntity(toolName, args, result, meta = {}) {
@@ -6361,42 +6921,42 @@ function toolEq(args, meta = {}) {
   const right = resolveDslRuntimeValue(args[1]);
   const result = runtimeValueToText(left) === runtimeValueToText(right);
   const entity = createBooleanResultEntity('eq', args, result, meta);
-  addAtomicMsg('tool', `eq(...) -> @${entity.name}: ${result}`, [entity.name]);
+  logLocalToolResult('eq', args, entity, `eq(...) -> @${entity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolLt(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'lt needs 2 values'); return; }
   const result = resolveDslNumericValue(args[0], 0) < resolveDslNumericValue(args[1], 0);
   const entity = createBooleanResultEntity('lt', args, result, meta);
-  addAtomicMsg('tool', `lt(...) -> @${entity.name}: ${result}`, [entity.name]);
+  logLocalToolResult('lt', args, entity, `lt(...) -> @${entity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolLte(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'lte needs 2 values'); return; }
   const result = resolveDslNumericValue(args[0], 0) <= resolveDslNumericValue(args[1], 0);
   const entity = createBooleanResultEntity('lte', args, result, meta);
-  addAtomicMsg('tool', `lte(...) -> @${entity.name}: ${result}`, [entity.name]);
+  logLocalToolResult('lte', args, entity, `lte(...) -> @${entity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolGt(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'gt needs 2 values'); return; }
   const result = resolveDslNumericValue(args[0], 0) > resolveDslNumericValue(args[1], 0);
   const entity = createBooleanResultEntity('gt', args, result, meta);
-  addAtomicMsg('tool', `gt(...) -> @${entity.name}: ${result}`, [entity.name]);
+  logLocalToolResult('gt', args, entity, `gt(...) -> @${entity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolGte(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'gte needs 2 values'); return; }
   const result = resolveDslNumericValue(args[0], 0) >= resolveDslNumericValue(args[1], 0);
   const entity = createBooleanResultEntity('gte', args, result, meta);
-  addAtomicMsg('tool', `gte(...) -> @${entity.name}: ${result}`, [entity.name]);
+  logLocalToolResult('gte', args, entity, `gte(...) -> @${entity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolNot(args, meta = {}) {
   if (!args.length) { addAtomicMsg('tool', 'not needs 1 value'); return; }
   const result = !runtimeValueToBool(resolveDslRuntimeValue(args[0]));
   const entity = createBooleanResultEntity('not', args, result, meta);
-  addAtomicMsg('tool', `not(...) -> @${entity.name}: ${result}`, [entity.name]);
+  logLocalToolResult('not', args, entity, `not(...) -> @${entity.name}: ${result}`, result, {params: {value: result}});
 }
 
 function toolGuard(args, meta = {}) {
@@ -6408,7 +6968,7 @@ function toolGuard(args, meta = {}) {
   }
   const value = resolveDslRuntimeValue(args[1]);
   const entity = createRuntimeValueEntity(meta.outName || inferTransformOutName('guard', args), value, {tool: 'guard'});
-  addAtomicMsg('tool', `guard(...) -> @${entity.name}`, [entity.name]);
+  logLocalToolResult('guard', args, entity, `guard(...) -> @${entity.name}`, value);
 }
 
 function toolParseTable(args, meta = {}) {
@@ -6417,7 +6977,7 @@ function toolParseTable(args, meta = {}) {
   const table = getRuntimeTableValue(value);
   if (!table?.headers?.length) { addAtomicMsg('tool', 'parse_table could not resolve a markdown table'); return; }
   const resultEntity = createTableEntity(meta.outName || inferTransformOutName('parse_table', args), table, {tool: 'parse_table'});
-  addAtomicMsg('tool', `parse_table(...) -> @${resultEntity.name} (${table.rows.length} rows)`, [resultEntity.name]);
+  logLocalToolResult('parse_table', args, resultEntity, `parse_table(...) -> @${resultEntity.name} (${table.rows.length} rows)`, table, {params: {rows: table.rows.length}});
 }
 
 function toolRowCount(args, meta = {}) {
@@ -6425,7 +6985,7 @@ function toolRowCount(args, meta = {}) {
   const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
   if (!table?.headers?.length) { addAtomicMsg('tool', 'row_count could not resolve a table'); return; }
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('row_count', args), String(table.rows.length), {tool: 'row_count'});
-  addAtomicMsg('tool', `row_count(...) -> @${resultEntity.name}: ${table.rows.length}`, [resultEntity.name]);
+  logLocalToolResult('row_count', args, resultEntity, `row_count(...) -> @${resultEntity.name}: ${table.rows.length}`, table.rows.length, {params: {rows: table.rows.length}});
 }
 
 function toolGetColumn(args, meta = {}) {
@@ -6436,7 +6996,7 @@ function toolGetColumn(args, meta = {}) {
   if (index < 0) { addAtomicMsg('tool', `get_column could not resolve column ${args[1]}`); return; }
   const values = table.rows.map(row => row[index] ?? '');
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('get_column', args), values, {tool: 'get_column'});
-  addAtomicMsg('tool', `get_column(...) -> @${resultEntity.name} (${values.length} items)`, [resultEntity.name]);
+  logLocalToolResult('get_column', args, resultEntity, `get_column(...) -> @${resultEntity.name} (${values.length} items)`, values, {params: {column: table.headers[index], items: values.length}});
 }
 
 function toolSplitRows(args, meta = {}) {
@@ -6447,7 +7007,7 @@ function toolSplitRows(args, meta = {}) {
   const rows = table.rows.map((row, rowIndex) => [String(rowIndex + 1), String(row[labelIndex] ?? row[0] ?? ''), row.map((cell, idx) => `${table.headers[idx]}: ${cell}`).join('\n')]);
   const resultEntity = createEntity(meta.outName || inferTransformOutName('split_rows', args), {source: {tool: 'split_rows'}});
   addDataArea(resultEntity.name, 'items', ['#', 'Label', 'Row'], rows);
-  addAtomicMsg('tool', `split_rows(...) -> @${resultEntity.name} (${rows.length} rows)`, [resultEntity.name]);
+  logLocalToolResult('split_rows', args, resultEntity, `split_rows(...) -> @${resultEntity.name} (${rows.length} rows)`, rows, {params: {label_column: table.headers[labelIndex], rows: rows.length}});
 }
 
 function toolFilterRows(args, meta = {}) {
@@ -6466,7 +7026,9 @@ function toolFilterRows(args, meta = {}) {
     return comparable.every(Boolean);
   });
   const resultEntity = createTableEntity(meta.outName || inferTransformOutName('filter_rows', args), {headers: table.headers, rows: filteredRows}, {tool: 'filter_rows'});
-  addAtomicMsg('tool', `filter_rows(...) -> @${resultEntity.name} (${filteredRows.length} rows)`, [resultEntity.name]);
+  logLocalToolResult('filter_rows', args, resultEntity, `filter_rows(...) -> @${resultEntity.name} (${filteredRows.length} rows)`, {headers: table.headers, rows: filteredRows}, {
+    params: {mode, rows: filteredRows.length, checks: checkIndexes.map(idx => table.headers[idx])}
+  });
 }
 
 function toolRejectReasons(args, meta = {}) {
@@ -6487,7 +7049,9 @@ function toolRejectReasons(args, meta = {}) {
   });
   const resultEntity = createEntity(meta.outName || inferTransformOutName('reject_reasons', args), {source: {tool: 'reject_reasons'}});
   addDataArea(resultEntity.name, 'items', ['#', 'Item', 'Reasons'], rows);
-  addAtomicMsg('tool', `reject_reasons(...) -> @${resultEntity.name} (${rows.length} rows)`, [resultEntity.name]);
+  logLocalToolResult('reject_reasons', args, resultEntity, `reject_reasons(...) -> @${resultEntity.name} (${rows.length} rows)`, rows, {
+    params: {rows: rows.length, checks: checkIndexes.map(idx => table.headers[idx])}
+  });
 }
 
 function toolAcceptedList(args, meta = {}) {
@@ -6504,7 +7068,9 @@ function toolAcceptedList(args, meta = {}) {
     })
     .map(row => String(row[labelIndex] ?? row[1] ?? row[0] ?? ''));
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('accepted_list', args), accepted, {tool: 'accepted_list'});
-  addAtomicMsg('tool', `accepted_list(...) -> @${resultEntity.name} (${accepted.length} items)`, [resultEntity.name]);
+  logLocalToolResult('accepted_list', args, resultEntity, `accepted_list(...) -> @${resultEntity.name} (${accepted.length} items)`, accepted, {
+    params: {items: accepted.length, checks: checkIndexes.map(idx => table.headers[idx])}
+  });
 }
 
 /* Scope вЂ” local variable container. One at a time.
@@ -6718,7 +7284,7 @@ function toolListMacros() {
   if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('list_macros')) {
     pipelineSteps.pop();
   }
-  const names = Object.keys(atomicMacros);
+  const names = Object.keys(atomicMacros).sort((a, b) => a.localeCompare(b));
   if (!names.length) { addAtomicMsg('tool', 'No saved macros'); return; }
   const list = names.map(n => {
     const m = getMacroRecord(n);
@@ -6873,9 +7439,9 @@ function toolAddSlot(args) {
   if (!tmplName || !type) { addAtomicMsg('tool', 'Usage: add_slot(@tmpl, type, label:"x")'); return; }
   const tmpl = cardTemplates[tmplName];
   if (!tmpl) { addAtomicMsg('tool', `Template "${tmplName}" not found`); return; }
-  const VALID_TYPES = new Set(['title','tags','text_area','image','buttons','thread','data_table','reactions','list','form','group']);
+  const VALID_TYPES = new Set(['title','tags','text_area','image','buttons','thread','data_table','reactions','list','form','group','children']);
   if (!VALID_TYPES.has(type)) { addAtomicMsg('tool', `Unknown slot type: ${type}. Valid: ${[...VALID_TYPES].join(', ')}`); return; }
-  builderPushUndo(`add_slot(@${tmplName}, ${type})`);
+  builderPushUndo(`add_slot(${args.join(', ')})`);
   const slot = {
     id: nextSlotId(),
     type,
@@ -6885,9 +7451,24 @@ function toolAddSlot(args) {
     children: type === 'group' ? [] : null
   };
   // Type-specific defaults
-  if (type === 'buttons') slot.options.items = options.items ? JSON.parse(options.items) : ['verify','check','generate'];
+  if (type === 'buttons') {
+    if (options.items) {
+      // Support both JSON ["a","b"] and DSL [a,b,c] format
+      const raw = options.items.trim();
+      try { slot.options.items = JSON.parse(raw); }
+      catch(_) { slot.options.items = raw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean); }
+    } else {
+      slot.options.items = ['verify','check','generate'];
+    }
+  }
   if (type === 'thread') slot.options.mode = options.mode || 'tree';
-  if (type === 'text_area') { slot.options.collapsed = options.collapsed === 'true'; slot.options.editable = options.editable !== 'false'; }
+  if (type === 'text_area') { slot.options.collapsed = options.collapsed !== undefined && options.collapsed !== 'false'; slot.options.editable = options.editable !== 'false'; }
+  if (type === 'list' && options.groups) {
+    const raw = options.groups.trim();
+    try { slot.options.groups = JSON.parse(raw); }
+    catch(_) { slot.options.groups = raw.replace(/^\[|\]$/g, '').split(',').map(s => s.trim()).filter(Boolean); }
+  }
+  if (type === 'children' && options.template) slot.options.template = stripDslQuotes(options.template);
   const parentId = stripDslQuotes(options.parent || '') || null;
   const targetList = findSlotList(tmpl.slots, parentId);
   if (!targetList) { addAtomicMsg('tool', `Parent "${parentId}" not found or not a group`); return; }
@@ -6962,7 +7543,7 @@ function toolSlotOption(args) {
   if (!tmpl) return;
   const slot = findSlotById(tmpl.slots, slotId);
   if (!slot) return;
-  builderPushUndo(`slot_option(@${tmplName}, ${slotId}, ${key})`);
+  builderPushUndo(`slot_option(@${tmplName}, ${slotId}, ${key}, ${value})`);
   // Parse value: JSON, bool, or string
   let parsed = value;
   try { parsed = JSON.parse(value); } catch(_) {
@@ -7188,10 +7769,6 @@ async function toolGenerate(args, meta = {}) {
   if (untilRegex) callParams.until_regex = untilRegex;
   if (Number.isFinite(minChars)) callParams.min_chars = minChars;
 
-  addAtomicMsg('system', `generate(@${ref}) → ${workerRole}  ${Object.entries(callParams).map(([k,v])=>k+':'+v).join('  ')}`);
-  renderAtomicFeed();
-
-  // Call server
   const serverParams = {
     messages, mode,
     ...(grammar ? {grammar} : {}),
@@ -7203,6 +7780,11 @@ async function toolGenerate(args, meta = {}) {
     ...(Number.isFinite(minChars) ? {min_chars: minChars} : {}),
   };
   const serverSettings = {temperature, max_tokens, no_think: noThink, max_continue: parseInt(atomicParams.max_continue || s.max_continue), continue: continueOn};
+  addAtomicMsg('system', `generate(@${ref}) → ${workerRole}  ${Object.entries(callParams).map(([k,v])=>k+':'+v).join('  ')}`, [], {
+    params: callParams,
+    request: {tool: 'generate', role: workerRole, params: serverParams, settings: serverSettings}
+  });
+  renderAtomicFeed();
 
   const result = await callAtomicServer('generate', serverParams, workerRole, serverSettings);
 
@@ -7217,12 +7799,20 @@ async function toolGenerate(args, meta = {}) {
     if (result.captured !== null && result.captured !== undefined) addTag(resultEntity.name, 'captured', String(result.captured));
     addTag(resultEntity.name, 'mode', mode);
     addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name}: ${String(val).slice(0, 100)}`, [resultEntity.name],
-      {params: callParams, response: {continues: result.continues, latency_ms: result.latency_ms, tokens: result.tokens}});
+      {
+        params: callParams,
+        request: {tool: 'generate', role: workerRole, params: serverParams, settings: serverSettings},
+        response: result
+      });
   } else {
     addTextArea(resultEntity.name, 'answer', result.content);
     if (result.think) addTextArea(resultEntity.name, 'think', result.think);
     addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name} (${result.content.length} chars)`, [resultEntity.name],
-      {params: callParams, response: {continues: result.continues, latency_ms: result.latency_ms, tokens: result.tokens}});
+      {
+        params: callParams,
+        request: {tool: 'generate', role: workerRole, params: serverParams, settings: serverSettings},
+        response: result
+      });
   }
 }
 
@@ -7267,7 +7857,20 @@ async function toolTableAsQuery(args, meta = {}) {
   const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
   if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
   const workerUrl = worker.url + '/v1/chat/completions';
-  addAtomicMsg('tool', `table-as-query(@${ref}, [${columns.join(', ')}]) → calling worker...`);
+  addAtomicMsg('tool', `table-as-query(@${ref}, [${columns.join(', ')}]) → calling worker...`, [], {
+    params: {tool: 'table_as_query', worker: worker.name, columns: columns.length},
+    request: {
+      messages: [
+        {role: 'user', content: text.slice(0, 200) + '...'},
+        {role: 'assistant', content: assistantContent}
+      ],
+      continue_assistant_turn: true,
+      cache_prompt: false,
+      temperature: 0.1,
+      max_tokens: 1024,
+      stop: ['**', '\n\n\n']
+    }
+  });
   renderAtomicFeed();
   const res = await fetch(workerUrl, {
     method: 'POST',
@@ -7297,7 +7900,20 @@ async function toolTableAsQuery(args, meta = {}) {
   // Create result entity
   const resultEntity = createEntity(meta.outName || (ref + '_table'), {source: {entityId: ref, tool: 'table-as-query'}});
   resultEntity.data_areas.push({name: 'result', headers: parsedHeaders, rows: dataRows});
-  addAtomicMsg('tool', `table-as-query(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
+  addAtomicMsg('tool', `table-as-query(@${ref}) → @${resultEntity.name}`, [resultEntity.name], {
+    params: {tool: 'table_as_query', worker: worker.name, columns: columns.length},
+    request: {
+      messages: [
+        {role: 'user', content: text.slice(0, 200) + '...'},
+        {role: 'assistant', content: assistantContent}
+      ],
+      continue_assistant_turn: true,
+      cache_prompt: false,
+      temperature: 0.1,
+      max_tokens: 1024
+    },
+    response: {raw: data, parsed_rows: dataRows.length, headers: parsedHeaders}
+  });
 }
 
 async function toolProbe(args, meta = {}) {
@@ -7310,7 +7926,19 @@ async function toolProbe(args, meta = {}) {
   const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
   if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
   const assistantContent = '<think>\n' + text + '\n</think>\n\n' + (inject || '');
-  addAtomicMsg('tool', `probe(@${ref}${inject ? ', ' + inject : ''}) → calling worker...`);
+  addAtomicMsg('tool', `probe(@${ref}${inject ? ', ' + inject : ''}) → calling worker...`, [], {
+    params: {tool: 'probe', worker: worker.name, inject: inject || ''},
+    request: {
+      messages: [
+        {role: 'user', content: 'Analyze the following.'},
+        {role: 'assistant', content: assistantContent}
+      ],
+      continue_assistant_turn: true,
+      cache_prompt: false,
+      temperature: 0.1,
+      max_tokens: 512
+    }
+  });
   renderAtomicFeed();
   const res = await fetch(worker.url + '/v1/chat/completions', {
     method: 'POST',
@@ -7331,7 +7959,20 @@ async function toolProbe(args, meta = {}) {
   const result = data.choices?.[0]?.message?.content || '';
   const resultEntity = createEntity(meta.outName || (ref + '_probe'), {source: {entityId: ref, tool: 'probe'}});
   addTextArea(resultEntity.name, 'result', (inject || '') + result);
-  addAtomicMsg('tool', `probe(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
+  addAtomicMsg('tool', `probe(@${ref}) → @${resultEntity.name}`, [resultEntity.name], {
+    params: {tool: 'probe', worker: worker.name, inject: inject || ''},
+    request: {
+      messages: [
+        {role: 'user', content: 'Analyze the following.'},
+        {role: 'assistant', content: assistantContent}
+      ],
+      continue_assistant_turn: true,
+      cache_prompt: false,
+      temperature: 0.1,
+      max_tokens: 512
+    },
+    response: {raw: data, text: result}
+  });
 }
 
 function toolTranspose(args, meta = {}) {
@@ -7990,6 +8631,18 @@ function renderBuilderPreview() {
   const entityNames = Object.keys(atomicEntities);
   const sample = entityNames.length ? atomicEntities[entityNames[0]] : _builderSampleData();
   el.innerHTML = renderTemplatedCard(sample, tmpl);
+  // Re-apply queued patches
+  _builderPatchQueue.forEach(p => {
+    const els = el.querySelectorAll(p.selector);
+    els.forEach(target => {
+      if (p.action === 'setText') target.textContent = p.value;
+      else if (p.action === 'setHTML') target.innerHTML = p.value;
+      else if (p.property === 'value' && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) target.value = p.value;
+      else if (p.property === 'textContent') target.textContent = p.value;
+      else if (p.property === 'innerHTML') target.innerHTML = p.value;
+      else target.style[p.property] = p.value;
+    });
+  });
 }
 
 function formatHTMLTree(html, indent) {
@@ -8062,6 +8715,146 @@ function formatHTMLWithSlotIdx(html) {
   return result;
 }
 
+/* ================================================================
+   Builder Sidebar Tabs + Components
+   ================================================================ */
+var _activeBuilderSidebarTab = 'dsl';
+var _clientComponents = {}; // {className: {enabled: bool, note: string}}
+try { _clientComponents = JSON.parse(localStorage.getItem('builder_components') || '{}'); } catch(_) {}
+
+// Init missing classes — deferred until _selectableClasses is available
+function _initComponentsIfNeeded() {
+  if (typeof _selectableClasses === 'undefined') return;
+  _selectableClasses.forEach(cls => {
+    if (!_clientComponents[cls]) _clientComponents[cls] = {enabled: true, note: ''};
+  });
+}
+
+function saveComponents() {
+  try { localStorage.setItem('builder_components', JSON.stringify(_clientComponents)); } catch(_) {}
+}
+
+function setBuilderSidebarTab(tab) {
+  _activeBuilderSidebarTab = tab;
+  document.querySelectorAll('.builder-sidebar-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.btab === tab);
+  });
+  const dsl = document.getElementById('builderTabDSL');
+  const html = document.getElementById('builderTabHTML');
+  const comp = document.getElementById('builderTabComponents');
+  if (dsl) dsl.style.display = tab === 'dsl' ? 'flex' : 'none';
+  if (html) html.style.display = tab === 'html' ? 'flex' : 'none';
+  if (comp) comp.style.display = tab === 'components' ? 'block' : 'none';
+  if (tab === 'components') renderComponentsList();
+}
+
+function renderComponentsList() {
+  _initComponentsIfNeeded();
+  const el = document.getElementById('builderComponentsList');
+  if (!el) return;
+  const preview = document.getElementById('builderPreview');
+  // Count occurrences of each class in Live Preview
+  const counts = {};
+  _selectableClasses.forEach(cls => {
+    counts[cls] = preview ? preview.querySelectorAll('.' + cls).length : 0;
+  });
+  // Sort: classes with occurrences first, then alphabetical
+  const sorted = [..._selectableClasses].sort((a, b) => {
+    const ca = counts[a] || 0, cb = counts[b] || 0;
+    if (cb !== ca) return cb - ca;
+    return a.localeCompare(b);
+  });
+  // Check all / Uncheck all header
+  const checkedCount = sorted.filter(cls => _clientComponents[cls]?.enabled !== false).length;
+  let hdr = `<div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">`;
+  hdr += `<button class="btn" id="btnCompCheckAll" style="font-size:9px;padding:1px 6px">✓ All</button>`;
+  hdr += `<button class="btn" id="btnCompUncheckAll" style="font-size:9px;padding:1px 6px">✗ None</button>`;
+  hdr += `<span style="font-size:9px;color:var(--text-dim);margin-left:auto">${checkedCount}/${sorted.length}</span>`;
+  hdr += `</div>`;
+
+  el.innerHTML = hdr + sorted.map(cls => {
+    const c = _clientComponents[cls] || {enabled: true, note: ''};
+    const cnt = counts[cls] || 0;
+    return `<div class="comp-item${c.enabled ? '' : ' disabled'}" data-comp="${esc(cls)}">` +
+      `<input type="checkbox" ${c.enabled ? 'checked' : ''} data-comp-toggle="${esc(cls)}">` +
+      `<span class="comp-name" data-comp-copy="${esc(cls)}">.${esc(cls)}</span>` +
+      `<span class="comp-count">${cnt || ''}</span>` +
+      `<input class="comp-note" data-comp-note="${esc(cls)}" value="${esc(c.note)}" placeholder="note...">` +
+      `</div>`;
+  }).join('');
+  // Bind events
+  el.querySelectorAll('[data-comp-toggle]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const cls = cb.dataset.compToggle;
+      _clientComponents[cls].enabled = cb.checked;
+      cb.closest('.comp-item').classList.toggle('disabled', !cb.checked);
+      saveComponents();
+    });
+  });
+  el.querySelectorAll('[data-comp-copy]').forEach(span => {
+    span.addEventListener('click', () => {
+      const sel = '.' + span.dataset.compCopy;
+      navigator.clipboard.writeText(sel).catch(() => {});
+      const chatInp = document.getElementById('builderChatInp');
+      if (chatInp) { chatInp.value = sel; chatInp.focus(); }
+    });
+  });
+  el.querySelectorAll('[data-comp-note]').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      const cls = inp.dataset.compNote;
+      _clientComponents[cls].note = inp.value;
+      saveComponents();
+    });
+  });
+  // Hover: Components list → Live Preview (highlight all elements with this class)
+  el.querySelectorAll('.comp-item').forEach(item => {
+    item.addEventListener('mouseenter', () => {
+      const cls = item.dataset.comp;
+      const preview = document.getElementById('builderPreview');
+      if (!preview) return;
+      preview.querySelectorAll('.slot-highlight').forEach(e => e.classList.remove('slot-highlight'));
+      preview.querySelectorAll('.' + cls).forEach(e => e.classList.add('slot-highlight'));
+      item.style.background = 'var(--surface2)';
+    });
+    item.addEventListener('mouseleave', () => {
+      const preview = document.getElementById('builderPreview');
+      if (preview) preview.querySelectorAll('.slot-highlight').forEach(e => e.classList.remove('slot-highlight'));
+      item.style.background = '';
+    });
+  });
+  // Check all / Uncheck all
+  document.getElementById('btnCompCheckAll')?.addEventListener('click', () => {
+    _selectableClasses.forEach(cls => { _clientComponents[cls].enabled = true; });
+    saveComponents(); renderComponentsList();
+  });
+  document.getElementById('btnCompUncheckAll')?.addEventListener('click', () => {
+    _selectableClasses.forEach(cls => { _clientComponents[cls].enabled = false; });
+    saveComponents(); renderComponentsList();
+  });
+}
+
+// Get checked component classes (for patch context to LLM)
+function getCheckedComponents() {
+  _initComponentsIfNeeded();
+  const result = [];
+  _selectableClasses.forEach(cls => {
+    const c = _clientComponents[cls];
+    if (c?.enabled) result.push({class: cls, note: c.note || ''});
+  });
+  return result;
+}
+
+// Reverse: Live Preview hover → highlight matching comp-item in Components tab
+function highlightCompItem(cls) {
+  const list = document.getElementById('builderComponentsList');
+  if (!list) return;
+  list.querySelectorAll('.comp-item').forEach(item => item.style.background = '');
+  if (cls) {
+    const item = list.querySelector(`[data-comp="${cls}"]`);
+    if (item) { item.style.background = 'var(--surface2)'; item.scrollIntoView({block: 'nearest', behavior: 'smooth'}); }
+  }
+}
+
 function renderBuilderDSL() {
   const editor = document.getElementById('builderDSLEditor');
   const viewer = document.getElementById('builderHTMLViewer');
@@ -8101,46 +8894,52 @@ const _selectableClasses = new Set([
   'node-form','qf-item',
   'node-children','node-answer',
   'think-block','think-toggle','think-body',
-  'tags-toggle-btn',
+  'tags-toggle-btn','slot-label','arrow',
 ]);
 
 function buildSelector(el, root) {
-  // Build a CSS selector path from element to root
-  const parts = [];
-  let cur = el;
-  while (cur && cur !== root && cur !== document.body) {
-    let sel = cur.tagName.toLowerCase();
-    // Prefer data-slot-idx
-    if (cur.dataset.slotIdx !== undefined) {
-      sel = `[data-slot-idx="${cur.dataset.slotIdx}"]`;
-      parts.unshift(sel);
-      break;
-    }
-    // Prefer meaningful class
-    const cls = [...cur.classList].find(c => _selectableClasses.has(c));
-    if (cls) {
-      sel = '.' + cls;
-      // Add nth-child if multiple siblings with same class
-      const siblings = cur.parentElement ? [...cur.parentElement.children].filter(s => s.classList.contains(cls)) : [];
-      if (siblings.length > 1) {
-        const idx = siblings.indexOf(cur);
-        sel += `:nth-child(${[...cur.parentElement.children].indexOf(cur) + 1})`;
-      }
-    } else if (cur.dataset.slot) {
-      sel = `[data-slot="${cur.dataset.slot}"]`;
-    }
-    parts.unshift(sel);
-    cur = cur.parentElement;
+  // Build short stable selector: [data-slot="id"] .class
+  // Anchor on nearest data-slot (stable id), then class of target
+  const targetCls = [...(el.classList || [])].find(c => _selectableClasses.has(c));
+
+  // Find nearest ancestor with data-slot (stable template slot id)
+  let anchor = el;
+  while (anchor && anchor !== root) {
+    if (anchor.dataset?.slot) break;
+    anchor = anchor.parentElement;
   }
-  return parts.join(' > ');
+
+  if (anchor?.dataset?.slot) {
+    const slotSel = `[data-slot="${anchor.dataset.slot}"]`;
+    if (anchor === el || !targetCls) return slotSel;
+    // Check if class is unique within this slot
+    const matches = anchor.querySelectorAll('.' + targetCls);
+    if (matches.length <= 1) return `${slotSel} .${targetCls}`;
+    // Add nth-of-type for disambiguation
+    const idx = [...matches].indexOf(el);
+    return `${slotSel} .${targetCls}:nth(${idx})`;
+  }
+
+  // Fallback: try data-slot-ref (from renderSlotComponent wrapper)
+  let idxAnchor = el;
+  while (idxAnchor && idxAnchor !== root) {
+    if (idxAnchor.dataset?.slotRef) {
+      const refSel = `[data-slot-ref="${idxAnchor.dataset.slotRef}"]`;
+      if (idxAnchor === el || !targetCls) return refSel;
+      return `${refSel} .${targetCls}`;
+    }
+    idxAnchor = idxAnchor.parentElement;
+  }
+
+  // Fallback: just the class
+  return targetCls ? '.' + targetCls : el.tagName.toLowerCase();
 }
 
 function findSelectableEl(target) {
-  // Find the most specific selectable element (innermost with a meaningful class or data attr)
   let el = target;
   while (el) {
     if (el.dataset?.slotIdx !== undefined) return el;
-    const cls = [...(el.classList || [])].find(c => _selectableClasses.has(c));
+    const cls = [...(el.classList || [])].find(c => _selectableClasses.has(c) && _clientComponents[c]?.enabled !== false);
     if (cls) return el;
     if (el.dataset?.slot) return el;
     el = el.parentElement;
@@ -8176,12 +8975,15 @@ function bindElementSelector() {
     clearHighlights();
     el.classList.add('slot-highlight');
     _lastHighlighted = el;
-    // Sync to HTML viewer — find parent slot block
+    // Sync to HTML viewer
     const htmlBlock = findHTMLLine(viewer, el, preview);
     if (htmlBlock) { htmlBlock.classList.add('html-highlight'); htmlBlock.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+    // Sync to Components tab
+    const cls = [...(el.classList || [])].find(c => _selectableClasses.has(c));
+    if (cls) highlightCompItem(cls);
   };
   preview.onmouseout = (e) => {
-    if (!preview.contains(e.relatedTarget)) clearHighlights();
+    if (!preview.contains(e.relatedTarget)) { clearHighlights(); highlightCompItem(null); }
   };
 
   // HTML viewer hover → Preview highlight (slot-level)
@@ -8205,7 +9007,7 @@ function bindElementSelector() {
     const label = el.className ? '.' + ([...el.classList].find(c => _selectableClasses.has(c)) || el.classList[0]) : el.tagName.toLowerCase();
     navigator.clipboard.writeText(selector).catch(() => {});
     const chatInp = document.getElementById('builderChatInp');
-    if (chatInp) { chatInp.value += (chatInp.value ? ' ' : '') + selector; chatInp.focus(); }
+    if (chatInp) { chatInp.value = selector; chatInp.focus(); }
     addBuilderChatMsg('system', `${label} → ${selector}`);
     e.stopPropagation();
   };
@@ -8215,11 +9017,13 @@ function bindElementSelector() {
     const idx = htmlBlock.dataset.htmlIdx;
     const slotEl = preview.querySelector(`[data-slot-idx="${idx}"]`);
     if (!slotEl) return;
-    const selector = `[data-slot-idx="${idx}"]`;
+    const slotType = slotEl.dataset.slotType || '?';
+    const slotRef = slotEl.dataset.slotRef || '';
+    const selector = `[data-slot="${slotRef}"]`;
     navigator.clipboard.writeText(selector).catch(() => {});
     const chatInp = document.getElementById('builderChatInp');
-    if (chatInp) { chatInp.value += (chatInp.value ? ' ' : '') + selector; chatInp.focus(); }
-    addBuilderChatMsg('system', `slot[${idx}]:${slotEl.dataset.slotType} → ${selector}`);
+    if (chatInp) { chatInp.value = selector; chatInp.focus(); }
+    addBuilderChatMsg('system', `slot[${idx}]:${slotType} → ${selector}`);
   };
 }
 
@@ -8370,6 +9174,14 @@ function renderBuilderProps() {
     h += `<input class="builder-prop" data-prop="children_template" value="${esc(slot.options?.template || '')}" placeholder="template name" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
   }
 
+  // Raw slot object (serialized JSON — shows everything including hidden fields)
+  const slotClean = Object.assign({}, slot);
+  if (slotClean.children) slotClean.children = `[${slotClean.children.length} slots]`;
+  h += `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:8px">`;
+  h += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">Slot Object</div>`;
+  h += `<pre style="font-size:9px;color:var(--green,#a3be8c);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;margin:0;white-space:pre-wrap;word-break:break-all;font-family:monospace;max-height:200px;overflow-y:auto">${esc(JSON.stringify(slotClean, null, 2))}</pre>`;
+  h += `</div>`;
+
   el.innerHTML = h;
 
   // Bind prop changes
@@ -8444,6 +9256,11 @@ document.getElementById('builderConsoleClear').addEventListener('click', () => {
 });
 
 // Builder sidebar: Copy DSL
+// Builder sidebar tabs
+document.querySelectorAll('.builder-sidebar-tab').forEach(btn => {
+  btn.addEventListener('click', () => setBuilderSidebarTab(btn.dataset.btab));
+});
+
 document.getElementById('btnBuilderDSLCopy').addEventListener('click', () => {
   const editor = document.getElementById('builderDSLEditor');
   if (editor) { navigator.clipboard.writeText(editor.value).catch(() => {}); }
@@ -8453,6 +9270,19 @@ document.getElementById('btnBuilderDSLApply').addEventListener('click', async ()
   const editor = document.getElementById('builderDSLEditor');
   if (!editor) return;
   const lines = editor.value.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  if (!lines.length) return;
+
+  // Extract template name from first line: card_template(name)
+  const tmplMatch = lines[0].match(/card_template\((\w+)\)/);
+  const tmplName = tmplMatch ? tmplMatch[1] : _activeCardTemplate;
+
+  // Clear existing template slots before replay (fresh start)
+  if (tmplName && cardTemplates[tmplName]) {
+    cardTemplates[tmplName].slots = [];
+    _cardSlotIdN = 0; // reset slot ID counter so parent refs match
+    saveCardTemplates();
+  }
+
   for (const line of lines) {
     await handleAtomicInput('/' + line);
   }
@@ -8486,6 +9316,228 @@ document.getElementById('builderChatInp').addEventListener('keydown', (e) => {
     e.preventDefault();
     document.getElementById('btnBuilderChatSend').click();
   }
+});
+
+// Builder sidebar: NL Apply (describe template change → send to worker)
+var _builderAskMsgs = [];
+var _builderPatchQueue = []; // persisted patches, re-applied after each preview render
+function addBuilderAskMsg(role, content, imageUrl) {
+  // Detect if content is applyable (JSON patches or DSL)
+  let applyable = false;
+  if (role === 'assistant') {
+    const trimmed = content.trim();
+    if (trimmed.startsWith('[') || trimmed.includes('card_template(')) applyable = true;
+  }
+  const idx = _builderAskMsgs.length;
+  _builderAskMsgs.push({role, content, imageUrl: imageUrl || null, ts: new Date().toLocaleTimeString(), applyable});
+  renderBuilderAskChat();
+}
+async function _applyBuilderMsg(idx) {
+  const m = _builderAskMsgs[idx];
+  if (!m) return;
+  let text = m.content.trim();
+  if (text.startsWith('```')) text = text.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+  // DSL — replay directly
+  if (text.includes('card_template(')) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    const tmplMatch = lines[0].match(/card_template\((\w+)\)/);
+    const tmplName = tmplMatch ? tmplMatch[1] : _activeCardTemplate;
+    if (tmplName && cardTemplates[tmplName]) {
+      cardTemplates[tmplName].slots = [];
+      _cardSlotIdN = 0;
+      saveCardTemplates();
+    }
+    for (const line of lines) {
+      await handleAtomicInput('/' + line);
+    }
+    document.getElementById('builderDSLEditor').value = text;
+    renderBuilderPage();
+    addBuilderAskMsg('system', 'DSL applied');
+    return;
+  }
+  // JSON patches
+  try {
+    const patches = JSON.parse(text);
+    if (Array.isArray(patches)) {
+      const preview = document.getElementById('builderPreview');
+      let applied = 0;
+      patches.forEach(p => {
+        const els = preview ? preview.querySelectorAll(p.selector) : [];
+        els.forEach(el => {
+          if (p.action === 'setText') { el.textContent = p.value; applied++; }
+          else if (p.action === 'setHTML') { el.innerHTML = p.value; applied++; }
+          else if (p.property === 'value' && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')) { el.value = p.value; applied++; }
+          else if (p.property === 'textContent') { el.textContent = p.value; applied++; }
+          else if (p.property === 'innerHTML') { el.innerHTML = p.value; applied++; }
+          else { el.style[p.property] = p.value; applied++; }
+        });
+      });
+      // Save to patch queue so they persist across re-renders
+      patches.forEach(p => _builderPatchQueue.push(p));
+      addBuilderAskMsg('system', `Applied ${applied} patch(es), ${_builderPatchQueue.length} queued`);
+      renderBuilderDSL();
+    }
+  } catch(_) {
+    addBuilderAskMsg('system', 'Could not parse as patches');
+  }
+}
+function renderBuilderAskChat() {
+  const el = document.getElementById('builderAskChat');
+  if (!el) return;
+  el.innerHTML = _builderAskMsgs.slice(-30).map((m, i) => {
+    const realIdx = _builderAskMsgs.length - 30 + i;
+    const idx = realIdx >= 0 ? realIdx : i;
+    const cls = m.role === 'system' ? 'color:var(--text-dim)' : m.role === 'user' ? 'color:var(--accent)' : 'color:var(--green)';
+    let h = `<div style="font-size:10px;padding:2px 0;white-space:pre-wrap;word-break:break-all;${cls}"><span style="opacity:.5">${esc(m.ts)}</span> ${esc(m.content)}`;
+    if (m.applyable) h += ` <button class="btn-small" data-apply-msg="${idx}" style="font-size:9px;padding:0 4px;margin-left:4px">Apply</button>`;
+    h += `</div>`;
+    if (m.imageUrl) h += `<div style="margin:4px 0"><img src="${esc(m.imageUrl)}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--border)"></div>`;
+    return h;
+  }).join('');
+  // Bind Apply buttons
+  el.querySelectorAll('[data-apply-msg]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _applyBuilderMsg(parseInt(btn.dataset.applyMsg));
+    });
+  });
+  el.scrollTop = el.scrollHeight;
+}
+
+// Build context based on active sidebar tab
+function _builderContext() {
+  const tab = _activeBuilderSidebarTab;
+  const dsl = document.getElementById('builderDSLEditor')?.value || '';
+  const html = document.getElementById('builderPreview')?.innerHTML || '';
+  const tmpl = _activeCardTemplate || 'none';
+  let context = `Template: ${tmpl}\n`;
+
+  if (tab === 'dsl') {
+    context += `Current DSL:\n\`\`\`\n${dsl}\n\`\`\`\n`;
+  } else if (tab === 'html') {
+    context += `Live Preview HTML:\n\`\`\`html\n${html.slice(0, 4000)}\n\`\`\`\n`;
+  } else if (tab === 'components') {
+    const comps = getCheckedComponents();
+    context += `Active components (${comps.length}):\n`;
+    comps.forEach(c => { context += `  .${c.class}${c.note ? ' — ' + c.note : ''}\n`; });
+    context += `\nLive Preview HTML:\n\`\`\`html\n${html.slice(0, 2000)}\n\`\`\`\n`;
+  }
+  return context;
+}
+
+// NL Apply — send to analyzer worker, expect DSL/HTML/CSS patches
+document.getElementById('btnBuilderNLApply').addEventListener('click', async () => {
+  const inp = document.getElementById('builderNLInput');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  const worker = getWorkerByRole('analyzer');
+  if (!worker?.url) { addBuilderAskMsg('system', 'No analyzer worker connected'); return; }
+
+  addBuilderAskMsg('user', `[Apply] ${text}`);
+  inp.value = '';
+  inp.disabled = true;
+
+  const tab = _activeBuilderSidebarTab;
+  const context = _builderContext();
+  let instruction = '';
+  if (tab === 'dsl') {
+    instruction = `${context}\nInstruction: ${text}\n\nValid slot types: title, tags, text_area, image, buttons, thread, data_table, reactions, list, form, group, children.\nText content goes in text_area slots (use label for the heading, content goes in the entity data, not the DSL).\nRespond with modified DSL only. No prose. Keep the card_template() header.`;
+  } else if (tab === 'html') {
+    instruction = `You are editing an HTML template. The current Live Preview HTML is shown above.\n\n${context}\nInstruction: ${text}\n\n`
+      + `Respond in ONE of these formats depending on the task:\n`
+      + `1. CSS patches: [{"selector":".class","property":"color","value":"red"}]\n`
+      + `2. DOM patches: [{"selector":"[data-slot=\\"s_4\\"] .answer-ta","action":"setText","value":"new text"}]\n`
+      + `3. Full HTML fragment (if replacing a section)\n`
+      + `No prose, no explanation. Just the patch or HTML.`;
+  } else if (tab === 'components') {
+    instruction = `You are working with CSS component classes for a card template.\n\n${context}\nInstruction: ${text}\n\n`
+      + `Respond with CSS rules or component annotations. No prose.`;
+  } else {
+    instruction = `${context}\nInstruction: ${text}\n\nRespond with the most appropriate format. No prose.`;
+  }
+
+  const url = worker.url.replace(/\/+$/, '') + '/v1/chat/completions';
+  try {
+    const {answer} = await fetchLLMWithContinue(url, [{role: 'user', content: instruction}], {temperature: 0.3, max_tokens: 4096, noThink: true, continueOnLength: true});
+    let result = answer.trim();
+    if (result.startsWith('```')) result = result.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+    addBuilderAskMsg('assistant', result);
+    // Apply button appears automatically on applyable messages (DSL/JSON patches)
+  } catch (e) {
+    addBuilderAskMsg('system', 'Error: ' + e.message);
+  }
+  inp.disabled = false;
+});
+document.getElementById('builderNLInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnBuilderNLApply').click(); }
+});
+
+// Ask — Q&A about template, read-only
+document.getElementById('btnBuilderAskSend').addEventListener('click', async () => {
+  const inp = document.getElementById('builderAskInput');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  const worker = getWorkerByRole('analyzer');
+  if (!worker?.url) { addBuilderAskMsg('system', 'No analyzer worker connected'); return; }
+
+  addBuilderAskMsg('user', text);
+  inp.value = '';
+  inp.disabled = true;
+
+  const context = _builderContext();
+  const url = worker.url.replace(/\/+$/, '') + '/v1/chat/completions';
+  // Build full conversation: system context + all user/assistant messages
+  const messages = [{role: 'system', content: context}];
+  _builderAskMsgs.forEach(m => {
+    if (m.role === 'user' || m.role === 'assistant') {
+      messages.push({role: m.role, content: m.content});
+    }
+  });
+  try {
+    const {answer} = await fetchLLMWithContinue(url, messages, {temperature: 0.3, max_tokens: 2048, noThink: true, continueOnLength: true});
+    addBuilderAskMsg('assistant', answer);
+  } catch (e) {
+    addBuilderAskMsg('system', 'Error: ' + e.message);
+  }
+  inp.disabled = false;
+});
+document.getElementById('builderAskInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnBuilderAskSend').click(); }
+});
+
+// Screenshot: capture Live Preview as image and add to chat
+document.getElementById('btnBuilderScreenshot').addEventListener('click', () => {
+  const preview = document.getElementById('builderPreview');
+  if (!preview) return;
+  // Use html2canvas-like approach: render preview to canvas via SVG foreignObject
+  const rect = preview.getBoundingClientRect();
+  const w = rect.width, h = rect.height;
+  const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+    <foreignObject width="100%" height="100%">
+      <div xmlns="http://www.w3.org/1999/xhtml">${preview.innerHTML}</div>
+    </foreignObject>
+  </svg>`;
+  const img = new Image();
+  const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = w * 2; canvas.height = h * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    const dataUrl = canvas.toDataURL('image/png');
+    addBuilderAskMsg('system', '📷 Live Preview screenshot', dataUrl);
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    addBuilderAskMsg('system', '📷 Screenshot failed (cross-origin). Sending HTML instead.');
+    addBuilderAskMsg('system', `HTML: ${preview.innerHTML.length} chars`);
+  };
+  img.src = url;
 });
 
 // Ctrl+Z for builder undo (only when on builder tab)
@@ -8751,7 +9803,7 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           handleAtomicInput(`import_macro(${JSON.stringify(vals.json)})`);
         });
       }},
-      ...Object.keys(atomicMacros).map(name => ({
+      ...Object.keys(atomicMacros).sort((a, b) => a.localeCompare(b)).map(name => ({
         label: (() => {
           const m = getMacroRecord(name);
           const badges = [];
@@ -8939,45 +9991,24 @@ function dropLegacyBuiltinMacro(oldName, replacementName, expectedDsl) {
 (function() {
   let changedItems = false;
   let changedMacros = false;
+  const constraintsManifestDsl = `@input = $config.prompt
+@constraints_raw = generate(
+  $config.prompt_constraints_strict,
+  worker:analyzer,
+  input:@input,
+  think:false,
+  continue:true,
+  temperature:0.2,
+  max_tokens:1024
+)
 
-  changedItems = ensureGlobalTextItem('prompt_answer_table_rows', `Write exactly $config.target_rows candidate prompts that answer the user's request.
-
-Rules:
-- Output exactly $config.target_rows items
-- Each item must be one prompt only
-- Number them as 1. 2. 3. ...
-- No intro, no outro, no markdown headings
-- Keep each prompt self-contained
-- Follow the user's constraints closely`) || changedItems;
-
-  changedItems = ensureGlobalTextItem('prompt_constraints_strict', `Extract a compact constraint manifest from the user request.
-
-Return exactly this format:
-ENTITIES:
-- column 1
-- column 2
-
-AXIOMS:
-- check 1
-- check 2
-
-HYPOTHESES:
-- reason 1
-- reason 2
-
-Rules:
-- ENTITIES are table columns for each candidate prompt
-- AXIOMS are binary checks for accept or reject
-- HYPOTHESES are short rejection-reason columns
-- No commentary
-- No code fences
-- Keep labels short`) || changedItems;
-
-  changedItems = ensureGlobalTextItem('target_rows', '4') || changedItems;
-  changedItems = ensureGlobalTextItem('max_table_iters', '4') || changedItems;
-  changedItems = ensureGlobalTextItem('hypothesis_cols', '6') || changedItems;
-
-  changedMacros = ensureAtomicMacro('parallel_answer_constraints_verdict', `@input = $config.prompt
+@constraints = parse_sections(
+  @constraints_raw,
+  entities:"ENTITIES:",
+  axioms:"AXIOMS:",
+  hypotheses:"HYPOTHESES:"
+)`;
+  const answerConstraintsVerdictDsl = `@input = $config.prompt
 @chat = "session"
 @table_text = ""
 
@@ -9052,9 +10083,8 @@ loop(while:@need_more, max_iters:$config.max_table_iters) {
 
 @accepted = accepted_list(@table_text, checks:@constraints.axioms)
 @accepted_rows = filter_rows(@table_text, where:all_yes, checks:@constraints.axioms)
-@rejected = reject_reasons(@table_text, checks:@constraints.axioms)`) || changedMacros;
-
-  changedMacros = ensureAtomicMacro('hypothesis_verdict_table', `@input = $config.prompt
+@rejected = reject_reasons(@table_text, checks:@constraints.axioms)`;
+  const hypothesisVerdictDsl = `@input = $config.prompt
 @constraints_raw = generate(
   $config.prompt_constraints_strict,
   worker:analyzer,
@@ -9113,7 +10143,77 @@ loop(while:@hyp_need_more, max_iters:$config.max_table_iters) {
   @hyp_parsed = parse_table(@hyp_table_text)
   @hyp_rows = row_count(@hyp_parsed)
   @hyp_need_more = lt(@hyp_rows, 2)
-}`) || changedMacros;
+}`;
+
+  changedItems = ensureGlobalTextItem('prompt_answer_table_rows', `Write exactly $config.target_rows candidate prompts that answer the user's request.
+
+Rules:
+- Output exactly $config.target_rows items
+- Each item must be one prompt only
+- Number them as 1. 2. 3. ...
+- No intro, no outro, no markdown headings
+- Keep each prompt self-contained
+- Follow the user's constraints closely`) || changedItems;
+
+  changedItems = ensureGlobalTextItem('prompt_constraints_strict', `Extract a compact constraint manifest from the user request.
+
+Return exactly this format:
+ENTITIES:
+- column 1
+- column 2
+
+AXIOMS:
+- check 1
+- check 2
+
+HYPOTHESES:
+- reason 1
+- reason 2
+
+Rules:
+- ENTITIES are table columns for each candidate prompt
+- AXIOMS are binary checks for accept or reject
+- HYPOTHESES are short rejection-reason columns
+- No commentary
+- No code fences
+- Keep labels short`) || changedItems;
+
+  changedItems = ensureGlobalTextItem('target_rows', '4') || changedItems;
+  changedItems = ensureGlobalTextItem('max_table_iters', '4') || changedItems;
+  changedItems = ensureGlobalTextItem('hypothesis_cols', '6') || changedItems;
+
+  changedMacros = ensureAtomicMacro({
+    name: 'constraints_manifest',
+    layer: 'atomic',
+    dsl: constraintsManifestDsl,
+    inputs: ['prompt'],
+    outputs: ['constraints', 'constraints_raw'],
+    tags: ['constraints', 'parse', 'builtin'],
+    description: 'Generate and parse ENTITIES / AXIOMS / HYPOTHESES from the current prompt.'
+  }) || changedMacros;
+
+  changedMacros = ensureAtomicMacro({
+    name: 'answer_constraints_verdict',
+    layer: 'atomic',
+    dsl: answerConstraintsVerdictDsl,
+    inputs: ['prompt', 'prompt_constraints_strict', 'target_rows', 'max_table_iters'],
+    outputs: ['accepted', 'accepted_rows', 'rejected', 'table_text'],
+    tags: ['verdict', 'table', 'builtin'],
+    description: 'Parallel answer + constraints pipeline that builds a verdict table and accepted/rejected lists.'
+  }) || changedMacros;
+
+  changedMacros = ensureAtomicMacro({
+    name: 'hypothesis_verdict',
+    layer: 'atomic',
+    dsl: hypothesisVerdictDsl,
+    inputs: ['prompt', 'prompt_constraints_strict', 'max_table_iters'],
+    outputs: ['hyp_table_text', 'hyp_parsed', 'hyp_rows'],
+    tags: ['hypotheses', 'table', 'builtin'],
+    description: 'Build a separate verdict table for hypothesis columns.'
+  }) || changedMacros;
+
+  changedMacros = dropLegacyBuiltinMacro('parallel_answer_constraints_verdict', 'answer_constraints_verdict', answerConstraintsVerdictDsl) || changedMacros;
+  changedMacros = dropLegacyBuiltinMacro('hypothesis_verdict_table', 'hypothesis_verdict', hypothesisVerdictDsl) || changedMacros;
 
   if (changedItems) saveGlobalItems();
   if (changedMacros) saveMacros();
@@ -9195,6 +10295,7 @@ Core syntax:
   @out = split(@text)
   @out = slice(@text, "FROM:", "TO:")
   @out = concat(@a, @b)
+  @out = flatten(@grid)
   @out = table_header(@entities, @axioms)
   @out = prepend(@list, "#")
   @out = join(@list, sep:" | ", prefix:"| ", suffix:" |")
@@ -9202,6 +10303,18 @@ Core syntax:
   @out = len(@list)
   @out = repeat("---", count:@n)
   @out = chunk(@list, size:2)
+  @out = take(@list, count:3)
+  @out = slice_list(@list, start:1, end:3)
+  @out = unique(@list)
+  @out = first(@list)
+  @out = last(@list)
+  @out = zip(@list_a, @list_b)
+  @out = map_template(@list, "[$n] {$item}")
+  @out = sort(@list, mode:text)
+  @out = reverse(@list)
+  @out = find_in_table(@table, "prompt", "anime", match:contains)
+  @out = pick_fields(@constraints, entities, axioms)
+  @out = to_kv_table(@picked)
   @out = reshape_grid(@value, cols:2)
   @out = lines(@header, @sep)
   @out = parse_table(@table)
@@ -9253,6 +10366,7 @@ Pure transforms:
   loop(...) { ... } repeats body while condition stays truthy
   parse_table / row_count / get_column / split_rows are lower-level table wrappers
   table_header / reshape_grid / join_list / filter_rows / reject_reasons / accepted_list are convenience sugar
+  flatten / take / slice_list / unique / first / last / zip / map_template / sort / reverse / find_in_table / pick_fields / to_kv_table are small local data helpers for list-heavy pipelines
 
 Example header build:
   @cols = concat(@constraints.entities, @constraints.axioms)
