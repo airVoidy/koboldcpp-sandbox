@@ -3773,6 +3773,13 @@ function addAtomicMsg(role, content, entities, meta) {
 /* --- Atomic input handler --- */
 async function handleAtomicInput(text) {
   if (!text.trim()) return;
+  // Check if it's a pipeline DSL (multi-line, starts with # or has multiple tool calls)
+  if (text.includes('\n') && (text.trim().startsWith('#') || text.split('\n').filter(l => l.trim().match(/^\w+\(/)).length >= 2)) {
+    addAtomicMsg('user', '```\n' + text + '\n```');
+    renderAtomicFeed();
+    await runPipeline(text);
+    return;
+  }
   // Check if it's a tool command
   const toolMatch = text.match(/^(\w+)\((.+)\)$/);
   if (toolMatch) {
@@ -3802,6 +3809,118 @@ async function handleAtomicInput(text) {
 /* --- Tool execution --- */
 // --- Macro recording (state initialized at top of Atomic section) ---
 function saveMacros() { try { localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros)); } catch(_) {} }
+
+/* Pipeline DSL — serialize macro steps to text and back.
+   Format:
+     # Pipeline: name
+     @input = "text content here"
+     generate(@input)
+     claims(@input_answer)
+     table-as-query(@input_answer, col1, col2, col3)
+     probe(@entity, inject text here)
+     verify(@table, @axioms)
+   Lines starting with @ = are entity creation, others = tool calls.
+   Args are comma-separated inside parens. */
+function macroToDSL(name, steps) {
+  let lines = [`# Pipeline: ${name}`];
+  // Prepend entity definitions from current state
+  Object.entries(atomicEntities).forEach(([eName, e]) => {
+    const firstText = e.text_areas?.[0]?.text;
+    if (firstText && !e.source) {
+      // Only root entities (user-created, not tool-generated)
+      const escaped = firstText.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      if (firstText.length < 200) {
+        lines.push(`@${eName} = "${escaped}"`);
+      } else {
+        lines.push(`@${eName} = """`);
+        lines.push(firstText);
+        lines.push(`"""`);
+      }
+    }
+  });
+  if (lines.length > 1) lines.push(''); // blank separator
+  steps.forEach(step => {
+    const args = step.args.map(a => String(a)).join(', ');
+    lines.push(`${step.tool}(${args})`);
+  });
+  return lines.join('\n');
+}
+
+function dslToMacro(dslText) {
+  const lines = dslText.split('\n');
+  const steps = [];
+  const entities = {}; // name → text
+  let multilineEntity = null;
+  let multilineText = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    // Multiline entity block
+    if (multilineEntity) {
+      if (line === '"""') {
+        entities[multilineEntity] = multilineText.join('\n');
+        multilineEntity = null;
+        multilineText = [];
+      } else {
+        multilineText.push(raw); // preserve original whitespace
+      }
+      continue;
+    }
+    if (!line || line.startsWith('#')) continue;
+    // Entity definition: @name = "text" or @name = """
+    const entityMatch = line.match(/^@(\w+)\s*=\s*(.+)$/);
+    if (entityMatch) {
+      const [, name, value] = entityMatch;
+      if (value === '"""') {
+        multilineEntity = name;
+        multilineText = [];
+      } else {
+        // Strip surrounding quotes
+        entities[name] = value.replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
+      continue;
+    }
+    // Tool call: tool(arg1, arg2)
+    const toolMatch = line.match(/^([\w_-]+)\(([^)]*)\)$/);
+    if (toolMatch) {
+      const [, tool, argsStr] = toolMatch;
+      const args = argsStr ? argsStr.split(',').map(a => a.trim()) : [];
+      steps.push({tool, args});
+      continue;
+    }
+  }
+  return {steps, entities};
+}
+
+async function runPipeline(dslText) {
+  const {steps, entities} = dslToMacro(dslText);
+  addAtomicMsg('tool', `Running pipeline (${steps.length} steps)...`);
+  renderAtomicFeed();
+  // Create entities from definitions
+  for (const [name, text] of Object.entries(entities)) {
+    if (!atomicEntities[name]) {
+      createEntity(name);
+      addTextArea(name, 'content', text);
+      addAtomicMsg('user', text, [name]);
+    }
+  }
+  // Execute steps sequentially
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    addAtomicMsg('tool', `[${i + 1}/${steps.length}] ${step.tool}(${step.args.join(', ')})`);
+    renderAtomicFeed();
+    try {
+      await applyAtomicTool(step.tool, step.args);
+    } catch (e) {
+      addAtomicMsg('tool', `Pipeline error at step ${i + 1}: ${e.message}`);
+      break;
+    }
+  }
+  addAtomicMsg('tool', `Pipeline complete.`);
+  saveAtomicState();
+  renderAtomicFeed();
+  updateScopeList();
+}
 
 async function applyAtomicTool(toolName, args) {
   // Record macro step (use generic ref $1, $2 etc for entity names)
@@ -4820,45 +4939,59 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
     ]);
   } else {
     // Context menu on empty space — create entity + macros
-    const macroItems = Object.keys(atomicMacros).map(name => ({
-      label: '⏵ ' + name,
-      action: async () => {
-        const inputEntity = prompt('Run macro on entity (@name):', getScope()[0] || '');
-        if (!inputEntity) return;
-        addAtomicMsg('user', `Running macro "${name}" on @${inputEntity}`);
+    const macroItems = Object.keys(atomicMacros).flatMap(name => [
+      {label: '⏵ Run: ' + name, action: async () => {
+        addAtomicMsg('tool', `Running macro "${name}"...`);
         renderAtomicFeed();
         for (const step of atomicMacros[name]) {
-          // Replace first arg with the input entity
-          const args = [...step.args];
-          if (args.length > 0) args[0] = inputEntity;
-          await applyAtomicTool(step.tool, args);
+          await applyAtomicTool(step.tool, [...step.args]);
         }
+        renderAtomicFeed(); updateScopeList();
+      }},
+      {label: '📋 DSL: ' + name, action: () => {
+        const dsl = macroToDSL(name, atomicMacros[name]);
+        navigator.clipboard.writeText(dsl).then(() => {
+          addAtomicMsg('tool', `Pipeline DSL copied to clipboard:\n\`\`\`\n${dsl}\n\`\`\``);
+        }).catch(() => {
+          addAtomicMsg('tool', `Pipeline DSL:\n\`\`\`\n${dsl}\n\`\`\``);
+        });
         renderAtomicFeed();
-        updateScopeList();
-      }
-    }));
+      }},
+    ]);
     showAtomicCtx(e.clientX, e.clientY, [
       {label: 'Create Entity', action: () => {
-        const name = prompt('Entity name:');
-        if (!name) return;
-        const entity = createEntity(name);
-        const text = prompt('Content (optional):');
-        if (text) addTextArea(name, 'content', text);
-        addAtomicMsg('user', `@${entity.name}: ${text || '(empty)'}`, [entity.name]);
-        renderAtomicFeed();
-        updateScopeList();
+        showNamePopup(null, {label: 'Create Entity', fields: [
+          {name: 'name', placeholder: 'entity name', label: 'Name'},
+          {name: 'text', placeholder: 'Content (optional)', label: 'Content', multiline: true}
+        ]}, (vals) => {
+          if (!vals.name) return;
+          const entity = createEntity(vals.name);
+          if (vals.text) addTextArea(vals.name, 'content', vals.text);
+          addAtomicMsg('user', `@${entity.name}: ${vals.text || '(empty)'}`, [entity.name]);
+          renderAtomicFeed(); updateScopeList();
+        });
       }},
       {label: 'Create Entity + Table', action: () => {
-        const name = prompt('Entity name:');
-        if (!name) return;
-        const colsStr = prompt('Table columns (comma-separated):', 'Col1, Col2');
-        if (!colsStr) return;
-        const headers = colsStr.split(',').map(s => s.trim());
-        const entity = createEntity(name);
-        addDataArea(name, 'data', headers, [headers.map(() => '')]);
-        addAtomicMsg('user', `@${entity.name} with table [${headers.join(', ')}]`, [entity.name]);
-        renderAtomicFeed();
-        updateScopeList();
+        showNamePopup(null, {label: 'Create Entity + Table', fields: [
+          {name: 'name', placeholder: 'entity name', label: 'Name'},
+          {name: 'columns', placeholder: 'Col1, Col2, Col3', label: 'Columns (comma-separated)'}
+        ]}, (vals) => {
+          if (!vals.name || !vals.columns) return;
+          const headers = vals.columns.split(',').map(s => s.trim());
+          const entity = createEntity(vals.name);
+          addDataArea(vals.name, 'data', headers, [headers.map(() => '')]);
+          addAtomicMsg('user', `@${entity.name} with table [${headers.join(', ')}]`, [entity.name]);
+          renderAtomicFeed(); updateScopeList();
+        });
+      }},
+      // Pipeline import
+      {label: '📥 Import Pipeline', action: () => {
+        showNamePopup(null, {label: 'Import Pipeline DSL', fields: [
+          {name: 'dsl', placeholder: '# Pipeline: name\n@input = "..."\ngenerate(@input)\nclaims(@input_answer)', label: 'Paste DSL here', multiline: true}
+        ]}, async (vals) => {
+          if (!vals.dsl) return;
+          await runPipeline(vals.dsl);
+        });
       }},
       // Macro controls
       {label: macroRecording ? '⏹ Stop Recording' : '⏺ Record Macro', action: () => {
