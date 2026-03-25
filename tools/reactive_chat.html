@@ -3575,9 +3575,12 @@ function renderAtomicMsg(msg) {
   let h = `<div class="atomic-msg-hdr"><span class="role">${esc(msg.role)}</span>`;
   h += `<span>${new Date(msg.ts).toLocaleTimeString()}</span>`;
   h += `</div>`;
-  // Content with @ref highlighting
+  // Content — editable for user/tool messages, hidden if user msg has entities (text lives in entity)
+  const hasEntities = msg.entities && msg.entities.length > 0;
   const content = msg.content.replace(/@([\w]+(?:\.[\w]+)*)/g, '<span class="atomic-ref">@$1</span>');
-  h += `<div class="atomic-msg-content">${content}</div>`;
+  if (!hasEntities || msg.role !== 'user') {
+    h += `<div class="atomic-msg-content" contenteditable="true" data-msg-id="${msg.id}">${content}</div>`;
+  }
   // Call params + debug (collapsed by default)
   if (msg.meta) {
     const m = msg.meta;
@@ -3612,6 +3615,14 @@ function renderAtomicMsg(msg) {
     });
   }
   el.innerHTML = h;
+  // Bind message content editing (blur → save)
+  el.querySelectorAll('.atomic-msg-content[data-msg-id]').forEach(div => {
+    div.addEventListener('blur', () => {
+      const msgId = div.dataset.msgId;
+      const msg2 = atomicMessages.find(m => m.id === msgId);
+      if (msg2) { msg2.content = div.textContent; saveAtomicState(); }
+    });
+  });
   // Bind @ref clicks
   el.querySelectorAll('.atomic-ref').forEach(ref => {
     ref.addEventListener('click', () => {
@@ -3800,6 +3811,8 @@ async function handleAtomicInput(text) {
     const [, name, content] = entityMatch;
     const entity = createEntity(name);
     addTextArea(name, 'content', content.trim());
+    const ta2 = atomicEntities[name]?.text_areas?.find(t => t.name === 'content');
+    if (ta2) ta2._expanded = true;
     addAtomicMsg('user', text, [name]);
     renderAtomicFeed();
     return;
@@ -4812,6 +4825,8 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           showNamePopup(msgEl, {label: 'Set as @entity', placeholder: 'entity name', defaultValue: 'input'}, (name) => {
             createEntity(name);
             addTextArea(name, 'content', msg.content.replace(/@[\w.]+/g, '').trim() || msg.content);
+            const ta = atomicEntities[name]?.text_areas?.find(t => t.name === 'content');
+            if (ta) ta._expanded = true; // user-created: show editable immediately
             msg.entities = msg.entities || [];
             msg.entities.push(name);
             saveAtomicState();
