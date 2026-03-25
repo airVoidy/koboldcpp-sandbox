@@ -4107,7 +4107,8 @@ async function toolSlice(args) {
   const result = await callAtomicServer('slice', {text, from_delim: fromDelim, to_delim: toDelim || null});
   const e = createEntity(outName, {source: {entityId: ref, tool: 'slice'}});
   addTextArea(e.name, 'content', result.content);
-  addAtomicMsg('tool', `slice(@${ref}, ${label}) → @${e.name} (${result.content.length} chars)`, [e.name]);
+  addAtomicMsg('tool', `slice(@${ref}) → @${e.name} (${result.content.length} chars)`, [e.name],
+    {params: {tool: 'slice', from: fromDelim, to: toDelim || 'end'}});
 }
 
 async function toolSplit(args) {
@@ -4130,7 +4131,8 @@ async function toolSplit(args) {
 
   const e = createEntity(outName, {source: {entityId: ref, tool: 'split'}});
   e.data_areas.push({name: 'items', headers: ['#', 'Item'], rows: items.map((it, i) => [String(i+1), it])});
-  addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items, format:${result.format})`, [e.name]);
+  addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items)`, [e.name],
+    {params: {tool: 'split', format: result.format, items: items.length}});
 }
 
 function toolCheckStatus(args) {
