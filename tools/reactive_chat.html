@@ -3860,7 +3860,28 @@ async function handleAtomicInput(text) {
     await applyAtomicTool(toolName, args);
     return;
   }
-  // @config.name — create entity with raw ref as content, resolved as preview
+  // @name = value — entity assignment (DSL syntax)
+  const assignMatch = text.match(/^@(\w+)\s*=\s*(.+)$/);
+  if (assignMatch) {
+    const [, name, value] = assignMatch;
+    const entity = createEntity(name);
+    if (value.startsWith('@')) {
+      // Reference: @input = @config.input
+      addTextArea(name, 'content', value);
+      const resolved = resolveRefToString(value.replace(/^@/, ''));
+      if (resolved && resolved !== value) addTextArea(name, 'resolved', resolved);
+    } else {
+      // Inline: @input = "text" or @input = text
+      const cleanVal = value.replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+      addTextArea(name, 'content', cleanVal);
+    }
+    pipelineSteps.push({cmd: `@${name} = ${value}`});
+    addAtomicMsg('user', value, [name]);
+    renderAtomicFeed();
+    updateScopeList();
+    return;
+  }
+  // @config.name — shorthand: create entity named after config item
   const configMatch = text.match(/^@config\.(\w+)$/);
   if (configMatch) {
     const configName = configMatch[1];
@@ -3992,35 +4013,18 @@ function dslToMacro(dslText) {
 }
 
 async function runPipeline(dslText) {
-  const {steps, entities} = dslToMacro(dslText);
-  addAtomicMsg('system', `▶ Pipeline: ${steps.length} steps`);
+  // Parse lines, skip comments and blanks, replay each through handleAtomicInput
+  const lines = dslText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  addAtomicMsg('system', `▶ Pipeline: ${lines.length} lines`);
   renderAtomicFeed();
-  // Create entities from definitions
-  for (const [name, rawVal] of Object.entries(entities)) {
-    if (!atomicEntities[name]) {
-      createEntity(name);
-      if (rawVal && typeof rawVal === 'object' && rawVal.ref) {
-        // @config ref — store raw ref as content, resolved as preview
-        addTextArea(name, 'content', rawVal.ref);
-        const resolved = resolveRefToString(rawVal.ref.replace(/^@/, ''));
-        if (resolved && resolved !== rawVal.ref) addTextArea(name, 'resolved', resolved);
-        pipelineSteps.push({cmd: `@${name} = ${rawVal.ref}`});
-        addAtomicMsg('user', rawVal.ref, [name]);
-      } else {
-        addTextArea(name, 'content', rawVal);
-        addAtomicMsg('user', rawVal, [name]);
-      }
-    }
-  }
-  // Execute steps sequentially
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    addAtomicMsg('system', `[${i + 1}/${steps.length}] ${step.tool}(${step.args.join(', ')})`);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    addAtomicMsg('system', `[${i + 1}/${lines.length}] ${line}`);
     renderAtomicFeed();
     try {
-      await applyAtomicTool(step.tool, step.args);
+      await handleAtomicInput(line);
     } catch (e) {
-      addAtomicMsg('system', `✗ Pipeline error at step ${i + 1}: ${e.message}`);
+      addAtomicMsg('system', `✗ Pipeline error at line ${i + 1}: ${e.message}`);
       break;
     }
   }
@@ -4062,7 +4066,13 @@ async function applyAtomicTool(toolName, args) {
       case 'add_text': toolAddText(args); break;
       case 'rename': toolRename(args); break;
       case 'export_dsl': toolExportDSL(args); break;
+      case 'save_macro': toolSaveMacro(args); break;
+      case 'run_macro': await toolRunMacro(args); break;
+      case 'list_macros': toolListMacros(); break;
+      case 'delete_macro': toolDeleteMacro(args); break;
       default:
+        // Check if it's a macro name
+        if (atomicMacros[toolName]) { await toolRunMacro([toolName, ...args]); break; }
         addAtomicMsg('tool', `Unknown tool: ${toolName}`);
     }
   } catch (e) {
@@ -4446,6 +4456,73 @@ function toolExportDSL(args) {
   const dsl = exportPipelineDSL(name);
   addAtomicMsg('tool', `Pipeline DSL:\n\`\`\`\n${dsl}\n\`\`\``);
   navigator.clipboard.writeText(dsl).catch(() => {});
+}
+
+function toolSaveMacro(args) {
+  const name = args[0]?.trim();
+  if (!name) { addAtomicMsg('tool', 'Usage: save_macro(name)'); return; }
+  // Remove save_macro itself from pipeline steps
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('save_macro')) {
+    pipelineSteps.pop();
+  }
+  if (!pipelineSteps.length) { addAtomicMsg('tool', 'No pipeline steps to save'); return; }
+  const dsl = pipelineSteps.map(s => s.cmd).join('\n');
+  atomicMacros[name] = dsl;
+  saveMacros();
+  addAtomicMsg('tool', `Macro "${name}" saved (${pipelineSteps.length} steps):\n\`\`\`\n${dsl}\n\`\`\``);
+}
+
+async function toolRunMacro(args) {
+  const name = args[0]?.trim();
+  if (!name) { addAtomicMsg('tool', 'Usage: run_macro(name)'); return; }
+  let dsl = atomicMacros[name];
+  if (!dsl) { addAtomicMsg('tool', `Macro "${name}" not found`); return; }
+  // Migrate old format: [{tool, args}, ...] → DSL string
+  if (Array.isArray(dsl)) {
+    dsl = dsl.map(s => `${s.tool}(${s.args.join(', ')})`).join('\n');
+    atomicMacros[name] = dsl;
+    saveMacros();
+  }
+  // Remove run_macro itself from pipeline steps
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('run_macro')) {
+    pipelineSteps.pop();
+  }
+  addAtomicMsg('system', `▶ Macro: ${name}`);
+  renderAtomicFeed();
+  const lines = dsl.split('\n').filter(l => l.trim());
+  for (const line of lines) {
+    try { await handleAtomicInput(line); } catch (e) {
+      addAtomicMsg('system', `✗ Macro error: ${e.message}`);
+      break;
+    }
+  }
+  addAtomicMsg('system', `✓ Macro "${name}" complete.`);
+}
+
+function toolListMacros() {
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('list_macros')) {
+    pipelineSteps.pop();
+  }
+  const names = Object.keys(atomicMacros);
+  if (!names.length) { addAtomicMsg('tool', 'No saved macros'); return; }
+  const list = names.map(n => {
+    const m = atomicMacros[n];
+    const lines = typeof m === 'string' ? m.split('\n').filter(l => l.trim()).length : (Array.isArray(m) ? m.length : 0);
+    return `  ${n} (${lines} steps)`;
+  }).join('\n');
+  addAtomicMsg('tool', `Saved macros:\n${list}`);
+}
+
+function toolDeleteMacro(args) {
+  const name = args[0]?.trim();
+  if (!name) { addAtomicMsg('tool', 'Usage: delete_macro(name)'); return; }
+  if (!atomicMacros[name]) { addAtomicMsg('tool', `Macro "${name}" not found`); return; }
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('delete_macro')) {
+    pipelineSteps.pop();
+  }
+  delete atomicMacros[name];
+  saveMacros();
+  addAtomicMsg('system', `Macro "${name}" deleted`);
 }
 
 function toolCheckStatus(args) {
@@ -5319,25 +5396,6 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
     ]);
   } else {
     // Context menu on empty space — create entity + macros
-    const macroItems = Object.keys(atomicMacros).flatMap(name => [
-      {label: '⏵ Run: ' + name, action: async () => {
-        addAtomicMsg('tool', `Running macro "${name}"...`);
-        renderAtomicFeed();
-        for (const step of atomicMacros[name]) {
-          await applyAtomicTool(step.tool, [...step.args]);
-        }
-        renderAtomicFeed(); updateScopeList();
-      }},
-      {label: '📋 DSL: ' + name, action: () => {
-        const dsl = macroToDSL(name, atomicMacros[name]);
-        navigator.clipboard.writeText(dsl).then(() => {
-          addAtomicMsg('tool', `Macro DSL copied:\n\`\`\`\n${dsl}\n\`\`\``);
-        }).catch(() => {
-          addAtomicMsg('tool', `Macro DSL:\n\`\`\`\n${dsl}\n\`\`\``);
-        });
-        renderAtomicFeed();
-      }},
-    ]);
     showAtomicCtx(e.clientX, e.clientY, [
       {label: 'Create Entity', action: () => {
         showNamePopup(null, {label: 'Create Entity', fields: [
@@ -5368,36 +5426,23 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       {label: '📋 Export Pipeline DSL', action: () => handleAtomicInput('export_dsl()')},
       {label: '📥 Import Pipeline', action: () => {
         showNamePopup(null, {label: 'Import Pipeline DSL', fields: [
-          {name: 'dsl', placeholder: '# Pipeline: name\n@input = "..."\ngenerate(@input)\nclaims(@input_answer)', label: 'Paste DSL here', multiline: true}
+          {name: 'dsl', placeholder: '@input = @config.input\ngenerate(@input)\ntag(@input, type, task)', label: 'Paste DSL here', multiline: true}
         ]}, async (vals) => {
           if (!vals.dsl) return;
           await runPipeline(vals.dsl);
         });
       }},
-      // Macro controls
-      {label: macroRecording ? '⏹ Stop Recording' : '⏺ Record Macro', action: () => {
-        if (macroRecording) {
-          macroRecording = false;
-          const savedSteps = [...macroSteps];
-          macroSteps = [];
-          showNamePopup(null, {label: 'Save macro', placeholder: 'macro name', defaultValue: 'my_macro'}, name => {
-            if (name && savedSteps.length) {
-              atomicMacros[name] = savedSteps;
-              saveMacros();
-              addAtomicMsg('tool', `Macro "${name}" saved (${savedSteps.length} steps: ${savedSteps.map(s => s.tool).join(' → ')})`);
-            } else {
-              addAtomicMsg('tool', 'Macro recording cancelled (no steps)');
-            }
-            renderAtomicFeed();
-          });
-        } else {
-          macroRecording = true;
-          macroSteps = [];
-          addAtomicMsg('tool', '⏺ Recording macro... Perform actions, then right-click → Stop Recording');
-          renderAtomicFeed();
-        }
+      // Macros
+      {label: '💾 Save as Macro', action: () => {
+        showNamePopup(null, {label: 'Save pipeline as macro', placeholder: 'macro name'}, name => {
+          if (!name) return;
+          handleAtomicInput(`save_macro(${name})`);
+        });
       }},
-      ...macroItems,
+      {label: '📋 List Macros', action: () => handleAtomicInput('list_macros()')},
+      ...Object.keys(atomicMacros).map(name => ({
+        label: '⏵ ' + name, action: () => handleAtomicInput(`run_macro(${name})`)
+      })),
     ]);
   }
 });
