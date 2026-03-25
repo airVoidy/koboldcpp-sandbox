@@ -1874,6 +1874,8 @@ def create_app(root: str) -> FastAPI:
             return _atomic_slice(params)
         elif tool == "split":
             return _atomic_split(params)
+        elif tool == "parse":
+            return _atomic_parse(params)
         elif tool == "generate":
             return _atomic_generate(params, workers, settings, role)
         elif tool == "claims":
@@ -1932,6 +1934,23 @@ def create_app(root: str) -> FastAPI:
             if cleaned:
                 items.append(cleaned)
         return {"items": items, "format": "lines"}
+
+    def _atomic_parse(params: dict) -> dict:
+        """Slice between delimiters + split into items. Combines slice+split.
+        params: {text, from_delim, to_delim?}
+        Returns: {content (raw slice), items (parsed list), format}
+        """
+        # Step 1: slice
+        sliced = _atomic_slice(params)
+        # Step 2: split the sliced content
+        split_result = _atomic_split({"text": sliced["content"]})
+        return {
+            "content": sliced["content"],
+            "items": split_result["items"],
+            "format": split_result["format"],
+            "from_delim": params.get("from_delim"),
+            "to_delim": params.get("to_delim"),
+        }
 
     async def _atomic_generate(
         params: dict, workers: dict, settings: dict, role: str
