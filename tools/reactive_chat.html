@@ -4018,11 +4018,17 @@ function renderPrompt(templateName, slotMap) {
   return tmpl;
 }
 
-/* Call server-side atomic tool */
-async function callAtomicServer(tool, params, role) {
+/* Call server-side atomic tool. settingsOverride lets generate pass custom temp/tokens/etc. */
+async function callAtomicServer(tool, params, role, settingsOverride) {
   const workerMap = {};
   workers.forEach(w => { if (w.role && w.url) workerMap[w.role] = w.url; });
   const s = getSettings();
+  const defaultSettings = {
+    temperature: parseFloat(atomicParams.temperature || s.temperature),
+    max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
+    max_continue: parseInt(atomicParams.max_continue || s.max_continue),
+    no_think: document.getElementById('settingNoThink')?.checked ?? true,
+  };
   const resp = await fetch(SB() + '/api/atomic/run', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -4030,12 +4036,7 @@ async function callAtomicServer(tool, params, role) {
       tool,
       params,
       workers: workerMap,
-      settings: {
-        temperature: parseFloat(atomicParams.temperature || s.temperature),
-        max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
-        max_continue: parseInt(atomicParams.max_continue || s.max_continue),
-        no_think: document.getElementById('settingNoThink')?.checked ?? true,
-      },
+      settings: settingsOverride ? {...defaultSettings, ...settingsOverride} : defaultSettings,
       role: role || 'generator',
     }),
   });
@@ -4165,6 +4166,7 @@ async function toolGenerate(args) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+
   // Parse key:value options from remaining args
   const opts = {};
   let workerRole = 'generator';
@@ -4172,7 +4174,6 @@ async function toolGenerate(args) {
     const a = args[i].trim();
     const kv = a.match(/^(\w+):(.+)$/);
     if (kv) {
-      // Resolve $param references in values
       let val = kv[2].trim();
       if (val.startsWith('$')) val = resolveParam(val.slice(1));
       opts[kv[1]] = val;
@@ -4180,22 +4181,18 @@ async function toolGenerate(args) {
       workerRole = a;
     }
   }
+
   const mode = opts.mode || 'prompt';
-  const noThink = opts.no_think !== undefined ? opts.no_think !== 'false' : (mode === 'prompt');
   const s = getSettings();
+  const noThink = opts.no_think !== undefined ? opts.no_think !== 'false' : (mode === 'prompt');
   const temperature = opts.temperature ? parseFloat(opts.temperature) : (mode === 'probe_continue' ? 0.1 : parseFloat(atomicParams.temperature || s.temperature));
   const max_tokens = opts.max_tokens ? parseInt(opts.max_tokens) : (mode === 'probe_continue' ? 4 : parseInt(atomicParams.max_tokens || s.max_tokens));
   const stop = opts.stop ? opts.stop.split(',').map(s => s.trim().replace(/^"|"$/g, '')) : undefined;
-  // Grammar: resolve $grammar.name presets
   let grammar = opts.grammar || undefined;
   if (grammar && grammar.startsWith('$grammar.')) grammar = atomicGrammars[grammar.slice(9)] || grammar;
-  const continueOnLength = opts.continue !== undefined ? opts.continue !== 'false' : noThink; // explicit continue flag
+  const continueOn = opts.continue !== undefined ? opts.continue !== 'false' : noThink;
   const captureRegex = opts.capture || undefined;
   const coerce = opts.coerce || undefined;
-
-  const worker = getWorkerByRole(workerRole) || getWorkerByRole('generator') || getWorkerByRole('analyzer');
-  if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
-  const workerUrl = worker.url + '/v1/chat/completions';
 
   // Build messages from entity text_areas
   let messages = [];
@@ -4203,25 +4200,22 @@ async function toolGenerate(args) {
   const assistantArea = entity.text_areas.find(ta => ta.name === 'assistant');
   const systemArea = entity.text_areas.find(ta => ta.name === 'system');
   if (userArea || assistantArea || systemArea) {
-    // Structured messages mode (for continue/probe_continue)
     if (systemArea) messages.push({role: 'system', content: systemArea.text});
     if (userArea) messages.push({role: 'user', content: userArea.text});
     if (assistantArea) messages.push({role: 'assistant', content: assistantArea.text});
   } else {
-    // Simple prompt mode — first text_area as user message
     const text = entity.text_areas.map(ta => ta.text).join('\n');
     if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
     messages.push({role: 'user', content: text});
   }
 
-  // Resolve @refs in message content (reuse resolveRefToString)
+  // Resolve @refs in message content
   messages = messages.map(m => ({
     ...m,
     content: m.content.replace(/@([\w]+(?:\.[\w]+)*)/g, (match, refName) => resolveRefToString(refName))
   }));
 
-  // Build call params for UI visibility
-  const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink, continue: continueOnLength};
+  const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink, continue: continueOn};
   if (grammar) callParams.grammar = '(set)';
   if (stop) callParams.stop = stop.join(',');
   if (captureRegex) callParams.capture = captureRegex;
@@ -4229,57 +4223,35 @@ async function toolGenerate(args) {
   addAtomicMsg('system', `generate(@${ref}) → ${workerRole}  ${Object.entries(callParams).map(([k,v])=>k+':'+v).join('  ')}`);
   renderAtomicFeed();
 
-  if (mode === 'probe_continue' || mode === 'continue') {
-    // Direct fetch with continue_assistant_turn
-    const lastIsAssistant = messages[messages.length - 1]?.role === 'assistant';
-    const body = {
-      messages,
-      continue_assistant_turn: lastIsAssistant,
-      cache_prompt: false,
-      temperature, max_tokens, stream: false,
-    };
-    if (stop) body.stop = stop;
-    if (grammar) body.grammar = grammar;
-    let result = '';
-    let responseData = null;
-    try {
-      const res = await fetch(workerUrl, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-      });
-      responseData = await res.json();
-      result = responseData.choices?.[0]?.message?.content || '';
-    } catch (e) {
-      addAtomicMsg('tool', `Error: ${e.message}`);
-      return;
-    }
-    // Apply capture regex
-    let finalValue = result;
-    if (captureRegex) {
-      const m = result.match(new RegExp(captureRegex));
-      if (m) {
-        finalValue = m[0];
-        if (coerce === 'int') finalValue = parseInt(finalValue);
-      }
-    }
-    const resultEntity = createEntity(ref + '_probe', {source: {entityId: ref, tool: 'generate'}});
-    addTextArea(resultEntity.name, 'result', String(finalValue));
-    if (captureRegex) addTag(resultEntity.name, 'captured', String(finalValue));
+  // Call server
+  const serverParams = {
+    messages, mode,
+    ...(grammar ? {grammar} : {}),
+    ...(stop ? {stop} : {}),
+    ...(captureRegex ? {capture: captureRegex} : {}),
+    ...(coerce ? {coerce} : {}),
+  };
+  const serverSettings = {temperature, max_tokens, no_think: noThink, max_continue: parseInt(atomicParams.max_continue || s.max_continue), continue: continueOn};
+
+  const result = await callAtomicServer('generate', serverParams, workerRole, serverSettings);
+
+  // Create result entity
+  const isProbe = mode === 'probe_continue' || mode === 'continue';
+  const outName = isProbe ? ref + '_probe' : ref + '_answer';
+  const resultEntity = createEntity(outName, {source: {entityId: ref, tool: 'generate'}});
+
+  if (isProbe) {
+    const val = result.captured !== null && result.captured !== undefined ? result.captured : result.content;
+    addTextArea(resultEntity.name, 'result', String(val));
+    if (result.captured !== null && result.captured !== undefined) addTag(resultEntity.name, 'captured', String(result.captured));
     addTag(resultEntity.name, 'mode', mode);
-    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name}: ${String(finalValue).slice(0, 100)}`, [resultEntity.name],
-      {params: callParams, request: body, response: responseData});
+    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name}: ${String(val).slice(0, 100)}`, [resultEntity.name],
+      {params: callParams, response: {continues: result.continues, latency_ms: result.latency_ms, tokens: result.tokens}});
   } else {
-    // Standard prompt mode with fetchLLMWithContinue
-    const requestBody = {messages, temperature, max_tokens, noThink, continueOnLength, maxContinues: s.max_continue, ...(stop ? {stop} : {})};
-    const {answer, think, raw} = await fetchLLMWithContinue(workerUrl, messages,
-      {temperature, max_tokens, noThink, continueOnLength, maxContinues: s.max_continue, ...(stop ? {stop} : {})}
-    );
-    const resultEntity = createEntity(ref + '_answer', {source: {entityId: ref, tool: 'generate'}});
-    addTextArea(resultEntity.name, 'answer', answer);
-    if (think) addTextArea(resultEntity.name, 'think', think);
-    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name} (${answer.length} chars)`, [resultEntity.name],
-      {params: callParams, request: requestBody, response: raw || {answer_length: answer.length}});
+    addTextArea(resultEntity.name, 'answer', result.content);
+    if (result.think) addTextArea(resultEntity.name, 'think', result.think);
+    addAtomicMsg('tool', `generate(@${ref}) → @${resultEntity.name} (${result.content.length} chars)`, [resultEntity.name],
+      {params: callParams, response: {continues: result.continues, latency_ms: result.latency_ms, tokens: result.tokens}});
   }
 }
 
