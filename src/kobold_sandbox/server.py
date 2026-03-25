@@ -1862,6 +1862,75 @@ def create_app(root: str) -> FastAPI:
         except Exception as e:
             raise HTTPException(500, f"{type(e).__name__}: {e}")
 
+    @app.post("/api/atomic/scope")
+    async def atomic_scope(request: Request) -> dict:
+        """Execute a batch of atomic tools in a local scope.
+        Only exported variables survive. One request, no round-trips.
+
+        Body:
+          steps: [{tool, params, role?, out?}, ...]  — sequence of tool calls
+          export: ["name1", "name2"]                  — which results to return
+          workers: {role: url}
+          settings: {temperature, max_tokens, ...}
+
+        Each step's `out` names the result in local scope.
+        Steps can reference previous results via $out_name in params.
+        """
+        body = await request.json()
+        steps = body.get("steps", [])
+        export_names = body.get("export", [])
+        workers = body.get("workers", {})
+        settings = body.get("settings", {})
+
+        if not steps:
+            raise HTTPException(400, "steps is required")
+
+        local_vars: dict[str, dict] = {}  # out_name → result dict
+        log: list[str] = []
+
+        for i, step in enumerate(steps):
+            tool = step.get("tool", "")
+            params = dict(step.get("params", {}))
+            role = step.get("role", "generator")
+            out = step.get("out")
+
+            # Resolve $ref in param values — reference previous step outputs
+            for k, v in params.items():
+                if isinstance(v, str) and v.startswith("$"):
+                    ref_name = v[1:]
+                    ref_field = None
+                    if "." in ref_name:
+                        ref_name, ref_field = ref_name.split(".", 1)
+                    if ref_name in local_vars:
+                        ref_data = local_vars[ref_name]
+                        if ref_field:
+                            params[k] = ref_data.get(ref_field, v)
+                        else:
+                            # Default: use 'content' or 'items' or full result
+                            params[k] = ref_data.get("content") or ref_data.get("items") or ref_data
+                        # Convert list to text if needed
+                        if isinstance(params[k], list):
+                            params[k] = "\n".join(str(x) for x in params[k])
+
+            try:
+                result = _run_atomic_tool(tool, params, workers, settings, role)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                if out:
+                    local_vars[out] = result
+                log.append(f"[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')})" + (f" → ${out}" if out else ""))
+            except Exception as e:
+                log.append(f"[{i+1}] {tool} ERROR: {e}")
+                return {"status": "error", "error": str(e), "step": i + 1, "log": log}
+
+        # Export only requested variables
+        exported = {}
+        for name in export_names:
+            if name in local_vars:
+                exported[name] = local_vars[name]
+
+        return {"status": "ok", "exported": exported, "log": log}
+
     def _run_atomic_tool(
         tool: str,
         params: dict,

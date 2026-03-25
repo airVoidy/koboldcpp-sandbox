@@ -3959,6 +3959,9 @@ async function applyAtomicTool(toolName, args) {
       case 'add_entity': toolAddEntity(args); break;
       case 'add_table': toolAddTable(args); break;
       case 'merge': toolMerge(args); break;
+      case 'scope_begin': toolScopeBegin(); break;
+      case 'scope_end': toolScopeEnd(args); break;
+      case 'drop': toolDrop(args); break;
       default:
         addAtomicMsg('tool', `Unknown tool: ${toolName}`);
     }
@@ -4148,6 +4151,54 @@ async function toolSplit(args) {
   e.data_areas.push({name: 'items', headers: ['#', 'Item'], rows: items.map((it, i) => [String(i+1), it])});
   addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items)`, [e.name],
     {params: {tool: 'split', format: result.format, items: items.length}});
+}
+
+/* Scope — local variable container. One at a time.
+   scope_begin(): snapshot current entities
+   scope_end(@keep1, @keep2): delete everything created since begin, except keep list
+   drop(@name): delete single entity */
+var _scopeSnapshot = null;
+
+function toolScopeBegin() {
+  if (_scopeSnapshot) { addAtomicMsg('system', 'scope: already open, closing previous'); toolScopeEnd([]); }
+  _scopeSnapshot = new Set(Object.keys(atomicEntities));
+  addAtomicMsg('system', `scope_begin (${_scopeSnapshot.size} entities in outer scope)`);
+}
+
+function toolScopeEnd(args) {
+  if (!_scopeSnapshot) { addAtomicMsg('system', 'scope_end: no scope open'); return; }
+  const keep = new Set(args.map(a => a.replace(/^@/, '').trim()).filter(Boolean));
+  const created = Object.keys(atomicEntities).filter(k => !_scopeSnapshot.has(k));
+  const dropped = [];
+  created.forEach(k => {
+    if (!keep.has(k)) {
+      delete atomicEntities[k];
+      // Remove from messages
+      atomicMessages.forEach(m => {
+        if (m.entities) m.entities = m.entities.filter(e => e !== k);
+      });
+      dropped.push(k);
+    }
+  });
+  _scopeSnapshot = null;
+  saveAtomicState();
+  renderAtomicFeed();
+  updateScopeList();
+  addAtomicMsg('system', `scope_end → kept: ${[...keep].map(n=>'@'+n).join(', ') || 'none'} | dropped: ${dropped.length} intermediates`);
+}
+
+function toolDrop(args) {
+  const names = args.map(a => a.replace(/^@/, '').trim()).filter(Boolean);
+  names.forEach(k => {
+    delete atomicEntities[k];
+    atomicMessages.forEach(m => {
+      if (m.entities) m.entities = m.entities.filter(e => e !== k);
+    });
+  });
+  saveAtomicState();
+  renderAtomicFeed();
+  updateScopeList();
+  addAtomicMsg('system', `drop: ${names.map(n=>'@'+n).join(', ')}`);
 }
 
 function toolCheckStatus(args) {
