@@ -4018,53 +4018,60 @@ function renderPrompt(templateName, slotMap) {
   return tmpl;
 }
 
+/* Call server-side atomic tool */
+async function callAtomicServer(tool, params, role) {
+  const workerMap = {};
+  workers.forEach(w => { if (w.role && w.url) workerMap[w.role] = w.url; });
+  const s = getSettings();
+  const resp = await fetch(SB() + '/api/atomic/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      tool,
+      params,
+      workers: workerMap,
+      settings: {
+        temperature: parseFloat(atomicParams.temperature || s.temperature),
+        max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
+        max_continue: parseInt(atomicParams.max_continue || s.max_continue),
+        no_think: document.getElementById('settingNoThink')?.checked ?? true,
+      },
+      role: role || 'generator',
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({detail: resp.statusText}));
+    throw new Error(err.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
 async function toolClaims(args) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   const text = entity.text_areas.map(ta => ta.text).join('\n');
   if (!text) { addAtomicMsg('tool', `@${ref} has no text content`); return; }
-  // Try local parse first
-  let entities = parseListFromText(text, 'ENTITIES', 'tool:claims', 'tool');
-  let axioms = parseListFromText(text, 'AXIOMS', 'tool:claims', 'tool');
-  let hypotheses = parseListFromText(text, 'HYPOTHESES', 'tool:claims', 'tool');
-  // If no sections found locally → call LLM with claims prompt
-  if (!entities.length && !axioms.length && !hypotheses.length) {
-    const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
-    if (!worker?.url) { addAtomicMsg('tool', 'No worker available for claims extraction'); return; }
-    const claimsPrompt = renderPrompt('claims', {input: ref});
-    const claimsParams = {worker: worker.role || 'analyzer', temp: 0.1, max_tokens: 2048, no_think: true, continues: 5};
-    const claimsRequest = [{role: 'user', content: claimsPrompt}];
-    addAtomicMsg('system', `claims(@${ref}) → ${claimsParams.worker}  temp:${claimsParams.temp}  max_tokens:${claimsParams.max_tokens}  no_think:${claimsParams.no_think}`);
-    renderAtomicFeed();
-    const {answer, raw} = await fetchLLMWithContinue(worker.url + '/v1/chat/completions',
-      claimsRequest,
-      {temperature: 0.1, max_tokens: 2048, noThink: true, maxContinues: 5}
-    );
-    // Update last tool message with response
-    const lastToolMsg = [...atomicMessages].reverse().find(m => m.role === 'tool' && m.meta);
-    if (lastToolMsg) lastToolMsg.meta.response = raw || {answer_length: answer?.length};
-    entities = parseListFromText(answer, 'ENTITIES', 'worker:analyzer', 'worker');
-    axioms = parseListFromText(answer, 'AXIOMS', 'worker:analyzer', 'worker');
-    hypotheses = parseListFromText(answer, 'HYPOTHESES', 'worker:analyzer', 'worker');
-  }
+
+  const promptTemplate = getPromptTemplate('claims');
+  addAtomicMsg('system', `claims(@${ref}) → server (analyzer)`);
+  renderAtomicFeed();
+
+  const result = await callAtomicServer('claims', {text, prompt_template: promptTemplate}, 'analyzer');
+  const sections = result.sections || {};
+
+  // Create entities for each section found
   const created = [];
-  if (entities.length) {
-    const e = createEntity('entities', {source: {entityId: ref, tool: 'claims'}});
-    e.data_areas.push({name: 'items', headers: ['#', 'Entity'], rows: entities.map((it, i) => [String(i+1), it.text])});
-    created.push('entities');
-  }
-  if (axioms.length) {
-    const e = createEntity('axioms', {source: {entityId: ref, tool: 'claims'}});
-    e.data_areas.push({name: 'items', headers: ['#', 'Axiom'], rows: axioms.map((it, i) => [String(i+1), it.text])});
-    created.push('axioms');
-  }
-  if (hypotheses.length) {
-    const e = createEntity('hypotheses', {source: {entityId: ref, tool: 'claims'}});
-    e.data_areas.push({name: 'items', headers: ['#', 'Hypothesis'], rows: hypotheses.map((it, i) => [String(i+1), it.text])});
-    created.push('hypotheses');
-  }
-  addAtomicMsg('tool', `claims(@${ref}) → ${created.length ? created.map(n => '@'+n).join(', ') : 'no claims found'}`, created);
+  Object.entries(sections).forEach(([name, items]) => {
+    if (!items.length) return;
+    const e = createEntity(name, {source: {entityId: ref, tool: 'claims'}});
+    const colName = name.charAt(0).toUpperCase() + name.slice(1);
+    e.data_areas.push({name: 'items', headers: ['#', colName], rows: items.map((it, i) => [String(i+1), it])});
+    created.push(name);
+  });
+
+  addAtomicMsg('tool', `claims(@${ref}) → ${created.length ? created.map(n => '@'+n).join(', ') : 'no sections found'}`, created,
+    {params: {tool:'claims', role:'analyzer'}, response: {sections: Object.keys(sections), latency_ms: result.latency_ms}});
 }
 
 function toolNumbered(args) {
@@ -4079,80 +4086,51 @@ function toolNumbered(args) {
   addAtomicMsg('tool', `numbered(@${ref}) → @${e.name} (${lines.length} lines)`, [e.name]);
 }
 
-function toolSlice(args) {
+async function toolSlice(args) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   const text = entity.text_areas.map(ta => ta.text).join('\n');
+  const fromDelim = args[1]?.trim();
+  const toDelim = args[2]?.trim();
 
-  // Check if args are numbers (line slice) or strings (delimiter slice)
-  const isNumeric = args[1] && !isNaN(parseInt(args[1]));
-
-  let sliced, label;
-  if (isNumeric) {
-    // Line-based slice: slice(@ref, fromLine, toLine)
-    const from = parseInt(args[1]) || 1;
-    const to = parseInt(args[2]) || undefined;
-    const lines = text.split('\n');
-    sliced = lines.slice(from - 1, to).join('\n');
-    label = `${from}..${to || 'end'}`;
-  } else {
-    // Delimiter-based slice: slice(@ref, FROM_DELIM, TO_DELIM)
-    const fromDelim = args[1]?.trim();
-    const toDelim = args[2]?.trim();
-    if (!fromDelim) { addAtomicMsg('tool', 'slice: need from delimiter or line number'); return; }
-    const fromIdx = text.indexOf(fromDelim);
-    if (fromIdx < 0) { addAtomicMsg('tool', `slice: delimiter "${fromDelim}" not found in @${ref}`); return; }
-    const contentStart = fromIdx + fromDelim.length;
-    let contentEnd = text.length;
-    if (toDelim) {
-      const toIdx = text.indexOf(toDelim, contentStart);
-      if (toIdx >= 0) contentEnd = toIdx;
-    }
-    sliced = text.slice(contentStart, contentEnd).trim();
-    label = `"${fromDelim}"..${toDelim ? '"' + toDelim + '"' : 'end'}`;
-  }
-
-  // Output name: args[3] if provided (e.g. "→ @name"), else auto
+  // Output name from → @name arg
   let outName = null;
   const arrowArg = args.find(a => a.startsWith('→') || a.startsWith('->'));
   if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
   if (!outName) outName = ref + '_slice';
 
+  const label = fromDelim ? `"${fromDelim}"..${toDelim ? '"'+toDelim+'"' : 'end'}` : 'lines';
+  addAtomicMsg('system', `slice(@${ref}, ${label}) → server`);
+  renderAtomicFeed();
+
+  const result = await callAtomicServer('slice', {text, from_delim: fromDelim, to_delim: toDelim || null});
   const e = createEntity(outName, {source: {entityId: ref, tool: 'slice'}});
-  addTextArea(e.name, 'content', sliced);
-  addAtomicMsg('tool', `slice(@${ref}, ${label}) → @${e.name} (${sliced.length} chars)`, [e.name]);
+  addTextArea(e.name, 'content', result.content);
+  addAtomicMsg('tool', `slice(@${ref}, ${label}) → @${e.name} (${result.content.length} chars)`, [e.name]);
 }
 
-function toolSplit(args) {
+async function toolSplit(args) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   const text = entity.text_areas.map(ta => ta.text).join('\n');
 
-  // Auto-detect format: [a, b, c] or - item\n- item
-  let items = [];
-  const bracketMatch = text.match(/\[([^\]]+)\]/);
-  if (bracketMatch) {
-    items = bracketMatch[1].split(',').map(s => s.trim()).filter(Boolean);
-  } else {
-    // Split by - or • bullets, or newlines
-    items = text.split('\n')
-      .map(l => l.replace(/^[-•*]\s*/, '').trim())
-      .filter(l => l.length > 0);
-  }
-
-  if (!items.length) { addAtomicMsg('tool', `split(@${ref}): no items found`); return; }
-
-  // Output name
   let outName = null;
   const arrowArg = args.find(a => a.startsWith('→') || a.startsWith('->'));
   if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
   if (!outName) outName = ref + '_list';
 
+  addAtomicMsg('system', `split(@${ref}) → server`);
+  renderAtomicFeed();
+
+  const result = await callAtomicServer('split', {text});
+  const items = result.items || [];
+  if (!items.length) { addAtomicMsg('tool', `split(@${ref}): no items found`); return; }
+
   const e = createEntity(outName, {source: {entityId: ref, tool: 'split'}});
   e.data_areas.push({name: 'items', headers: ['#', 'Item'], rows: items.map((it, i) => [String(i+1), it])});
-  addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items)`, [e.name]);
+  addAtomicMsg('tool', `split(@${ref}) → @${e.name} (${items.length} items, format:${result.format})`, [e.name]);
 }
 
 function toolCheckStatus(args) {
