@@ -39,6 +39,7 @@ Canonical responsibilities:
 - `set_text`
 - `append_text`
 - transforms like `split`, `join`, `chunk`, `reshape`
+- macro registry records and metadata for reusable Atomic building blocks
 
 ## Workflow DSL
 
@@ -87,3 +88,17 @@ Leave in Workflow only:
 - orchestration
 - routing
 - trigger composition
+
+## Shared Macro Registry
+
+Macro records should be reusable across layers:
+- `Atomic UI` can save, rename, delete, import, export, and edit metadata
+- `Workflow DSL` can call them through `use_macro`
+- canonical metadata shape includes:
+  - `name`
+  - `layer`
+  - `inputs`
+  - `outputs`
+  - `tags`
+  - `description`
+  - `workflow_alias`

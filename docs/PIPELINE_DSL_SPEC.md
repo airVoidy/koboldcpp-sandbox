@@ -35,6 +35,7 @@ text"""
 @list = split(@answer)
 @slice = slice(@answer, "FROM:", "TO:")
 @cols = concat(@sections.entities, @sections.axioms)
+@flat = flatten(@grid)
 @header = join(@cols, sep:" | ", prefix:"| ", suffix:" |")
 ```
 
@@ -122,6 +123,18 @@ These run locally and do not call an LLM:
 @count = len(@cols1)
 @sep_cells = repeat("---", count:@count)
 @grid = chunk(@items, size:2)
+@top3 = take(@items, count:3)
+@mid = slice_list(@items, start:1, end:3)
+@distinct = unique(@items)
+@first_item = first(@items)
+@last_item = last(@items)
+@pairs = zip(@keys, @values)
+@labels = map_template(@items, "[$n] {$item}")
+@sorted = sort(@items, mode:text)
+@reversed = reverse(@items)
+@hits = find_in_table(@table, "prompt", "anime", match:contains)
+@picked = pick_fields(@constraints, entities, axioms)
+@kv = to_kv_table(@picked)
 @grid2 = reshape_grid(@answer, cols:2)
 @body = lines(@header, @sep)
 @parsed = parse_table(@table)
@@ -137,6 +150,7 @@ These run locally and do not call an LLM:
 
 Supported transforms:
 - `concat(@a, @b, ...)`
+- `flatten(@grid)`
 - `table_header(@entities, @axioms, ...)`
 - `prepend(@list, value1, ...)`
 - `join(@list, sep:"...", prefix:"...", suffix:"...")`
@@ -144,6 +158,18 @@ Supported transforms:
 - `len(@value)`
 - `repeat(value, count:@n)`
 - `chunk(@list, size:2)`
+- `take(@list, count:3)`
+- `slice_list(@list, start:1, end:3)`
+- `unique(@list)`
+- `first(@list)`
+- `last(@list)`
+- `zip(@a, @b, ...)`
+- `map_template(@list, "[$n] {$item}")`
+- `sort(@list, mode:text|numeric, desc:true|false)`
+- `reverse(@list)`
+- `find_in_table(@table, "column", "value", match:exact|contains)`
+- `pick_fields(@source, field1, field2, ...)`
+- `to_kv_table(@value)`
 - `reshape_grid(@value, cols:2)`
 - `lines(@a, @b, ...)`
 - `parse_table(@entity_or_text)`
@@ -170,6 +196,7 @@ Rules:
 - `guard` is the minimal control primitive: it emits nothing when the condition is false
 - `table_header`, `reshape_grid`, `join_list`, `filter_rows`, `reject_reasons`, and `accepted_list` are convenience sugar over the same local transform layer
 - `parse_table`, `row_count`, `get_column`, and `split_rows` are the lower-level table wrappers to compose larger verdict flows
+- `flatten`, `take`, `slice_list`, `unique`, `first`, `last`, `zip`, `map_template`, `sort`, `reverse`, `find_in_table`, `pick_fields`, and `to_kv_table` are low-level helpers for list-heavy pipelines and macro composition
 
 ### Other Output-Producing Tools
 These also support explicit assignment:

@@ -14,10 +14,9 @@ Minimal bridge contract between `GUI DSL`, `Workflow DSL`, and `Atomic DSL`.
 
 ```yaml
 - use_macro:
-    name: parallel_answer_constraints_verdict
+    name: answer_constraints_verdict
     bind:
       input: $input
-      prompt_constraints: $prompt_constraints
     export:
       $accepted: accepted
       $rejected: rejected
@@ -49,7 +48,7 @@ Rules:
 
 Current implementation note:
 - `flow:` and `steps:` are supported now through isolated child execution
-- `dsl:` is planned, but not executed by `workflow_dsl.py` yet
+- `dsl:` is supported now through the inline Atomic DSL bridge
 
 ## 3. GUI -> trigger_workflow
 
@@ -66,7 +65,7 @@ action:
 ```yaml
 action:
   type: run_macro
-  name: hypothesis_verdict_table
+  name: hypothesis_verdict
   bind:
     prompt: @form.prompt
   export:
@@ -90,10 +89,12 @@ action:
 
 ```json
 {
-  "name": "parallel_answer_constraints_verdict",
+  "name": "answer_constraints_verdict",
   "layer": "atomic",
-  "inputs": ["input", "prompt_constraints"],
+  "inputs": ["prompt", "prompt_constraints_strict", "target_rows", "max_table_iters"],
   "outputs": ["accepted", "rejected", "table_text"],
+  "tags": ["verdict", "table", "builtin"],
+  "description": "Parallel answer + constraints pipeline that builds a verdict table and accepted/rejected lists.",
   "dsl": "..."
 }
 ```

@@ -509,6 +509,13 @@ body {
 .at-entity-debug-toggle:hover { color:var(--text); }
 .at-entity-debug { display:none; margin-top:6px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px; }
 .at-entity-debug pre { margin:0; font-size:10px; color:var(--text-dim); white-space:pre-wrap; word-break:break-word; }
+.at-entity-run-item { margin:6px 0; padding:6px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); }
+.at-entity-run-head { display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:10px; color:var(--text-dim); }
+.at-entity-run-title { color:var(--text); font-weight:600; }
+.at-entity-run-body { font-size:11px; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+.at-entity-run-toggle { font-size:10px; color:var(--text-dim); cursor:pointer; user-select:none; margin-top:4px; }
+.at-entity-run-toggle:hover { color:var(--text); }
+.at-entity-run-debug { display:none; margin-top:4px; }
 .at-entity-hdr {
   display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:12px; font-weight:600;
 }
@@ -1030,16 +1037,41 @@ function getSettings() {
 function isAdminMode() { return document.getElementById('settingAdminMode')?.checked || false; }
 
 /* Workers - multiple validator endpoints */
+function normalizeWorkerRecord(worker) {
+  const w = worker || {};
+  return {
+    url: w.url || '',
+    name: w.name || (w.url ? w.url.replace(/^https?:\/\//, '') : 'worker'),
+    role: w.role || 'generator',
+    status: w.status || 'unknown',
+    prompt_prefix: w.prompt_prefix || '',
+    prompt_suffix: w.prompt_suffix || '',
+    include_atomic_console: w.include_atomic_console === true,
+    include_atomic_trace: w.include_atomic_trace === true,
+    include_pipeline_steps: w.include_pipeline_steps === true,
+    console_lines: Number.isFinite(Number(w.console_lines)) ? Math.max(1, Math.floor(Number(w.console_lines))) : 8,
+  };
+}
+
 let workers = [
-  {url: 'http://localhost:5001', name: 'local:5001', role: 'generator'},
-  {url: 'http://192.168.1.15:5050', name: 'remote:5050', role: 'analyzer'},
+  normalizeWorkerRecord({url: 'http://localhost:5001', name: 'local:5001', role: 'generator'}),
+  normalizeWorkerRecord({url: 'http://192.168.1.15:5050', name: 'remote:5050', role: 'analyzer'}),
 ];
+try {
+  const savedWorkers = JSON.parse(localStorage.getItem('reactive_workers') || 'null');
+  if (Array.isArray(savedWorkers) && savedWorkers.length) {
+    workers = savedWorkers.map(normalizeWorkerRecord);
+  } else {
+    localStorage.setItem('reactive_workers', JSON.stringify(workers));
+  }
+} catch(_) {}
 
 /* helpers */
 function ts() { return new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function gid() { return 'n'+(++idN); }
 function setS(c,t) { document.getElementById('dot').className='dot '+c; document.getElementById('stxt').textContent=t; }
+function saveWorkers() { try { localStorage.setItem('reactive_workers', JSON.stringify(workers.map(normalizeWorkerRecord))); } catch(_) {} }
 
 /* API */
 async function post(p,b) {
@@ -1048,6 +1080,15 @@ async function post(p,b) {
   return r.json();
 }
 async function get(p) { const r=await fetch(SB()+p); if(!r.ok) throw new Error(''+r.status); return r.json(); }
+
+function downloadTextFile(filename, text, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], {type: mime});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 
 let _macroRegistrySyncStarted = false;
 let _macroRegistryPersistTimer = null;
@@ -1549,11 +1590,57 @@ function syncTriggerEntityResults(nodeId, entityVars) {
   });
 }
 
+/* Worker prompt helpers */
+function formatAtomicConsoleRecent(limit = 8) {
+  return (atomicConsoleMsgs || []).slice(-limit).map(entry => {
+    const params = entry.meta?.params ? ` params=${JSON.stringify(entry.meta.params)}` : '';
+    return `[${entry.ts}] ${entry.content}${params}`;
+  }).join('\n');
+}
+
+function buildAtomicWorkerTraceSummary() {
+  const stepLines = pipelineSteps.map((s, i) => `${i + 1}. ${s.cmd}`).join('\n') || 'none';
+  const entitySummary = Object.keys(atomicEntities || {}).map(name => {
+    const e = atomicEntities[name];
+    const texts = (e?.text_areas || []).filter(ta => ta.name !== 'resolved').map(ta => `${ta.name}(${ta.text.length})`).join(', ');
+    const tables = (e?.data_areas || []).map(da => `${da.name}[${da.rows.length}]`).join(', ');
+    return `@${name}: ${texts || 'no-text'}${tables ? ' | ' + tables : ''}`;
+  }).join('\n') || 'none';
+  return `Atomic pipeline steps:\n${stepLines}\n\nAtomic entities:\n${entitySummary}`;
+}
+
+function expandWorkerAliases(text, worker) {
+  let out = String(text || '');
+  const aliases = {
+    '@alias.atomic.console_recent': formatAtomicConsoleRecent(worker?.console_lines || 8) || 'none',
+    '@alias.atomic.trace_summary': buildAtomicWorkerTraceSummary(),
+    '@alias.atomic.pipeline_steps': pipelineSteps.map((s, i) => `${i + 1}. ${s.cmd}`).join('\n') || 'none',
+    '@alias.atomic.scope': Object.keys(atomicEntities || {}).map(n => '@' + n).join(', ') || 'empty',
+  };
+  Object.entries(aliases).forEach(([key, value]) => {
+    out = out.split(key).join(value);
+  });
+  return out;
+}
+
+function prepareWorkerMessages(worker, messages) {
+  const prepared = (messages || []).map(msg => ({...msg, content: expandWorkerAliases(msg.content, worker)}));
+  const systemParts = [];
+  if (worker?.prompt_prefix?.trim()) systemParts.push(worker.prompt_prefix.trim());
+  if (worker?.include_pipeline_steps) systemParts.push(`Atomic pipeline steps:\n${pipelineSteps.map((s, i) => `${i + 1}. ${s.cmd}`).join('\n') || 'none'}`);
+  if (worker?.include_atomic_trace) systemParts.push(buildAtomicWorkerTraceSummary());
+  if (worker?.include_atomic_console) systemParts.push(`Recent atomic console:\n${formatAtomicConsoleRecent(worker.console_lines || 8) || 'none'}`);
+  if (worker?.prompt_suffix?.trim()) systemParts.push(worker.prompt_suffix.trim());
+  if (!systemParts.length) return prepared;
+  return [{role: 'system', content: systemParts.join('\n\n')}, ...prepared];
+}
+
 /* LLM fetch. By default prompt calls are single-shot.
    Auto-continue is opt-in, or implied by noThink fastpath. */
 async function fetchLLMWithContinue(url, messages, opts = {}) {
   const s = getSettings();
   const {
+    worker = null,
     temperature = s.temperature,
     max_tokens = s.max_tokens,
     noThink = s.no_think,
@@ -1561,7 +1648,7 @@ async function fetchLLMWithContinue(url, messages, opts = {}) {
     continueOnLength = opts.continueOnLength !== undefined ? opts.continueOnLength : !!noThink,
   } = opts;
   let result = '';
-  const baseMessages = [...messages];
+  const baseMessages = prepareWorkerMessages(worker, [...messages]);
 
   // No-think: add assistant prefill (same as multi_agent_chat.html)
   if (noThink && (baseMessages.length === 0 || baseMessages[baseMessages.length-1].role !== 'assistant')) {
@@ -1642,7 +1729,7 @@ async function requestWorkerCheck(nodeId, workerObj) {
     const url = workerObj.url.replace(/\/+$/,'') + '/v1/chat/completions';
     const prompt = `Evaluate this text. Reply PASS if good, FAIL + reason if not.\n\nText:\n${nd.answer}`;
     const messages = [{role:'user', content:prompt}];
-    const {answer, think} = await fetchLLMWithContinue(url, messages, {temperature:0.2, max_tokens:512});
+    const {answer, think} = await fetchLLMWithContinue(url, messages, {worker: workerObj, temperature:0.2, max_tokens:512});
     const pass = /PASS/i.test(answer);
     addReaction(nodeId, workerObj.name, pass?'\u2705':'\u274C', pass?'pass':'fail', answer.slice(0,100));
     addThread(nodeId, 'verifier', workerObj.name, answer, {status: pass?'pass':'fail', think});
@@ -1692,14 +1779,15 @@ async function verifyAxiomsViaThink(nodeId) {
       fullAssistant += question;
 
       // Continue with stop on newline - model answers until \n
+      const preparedMessages = prepareWorkerMessages(worker, [
+        {role: 'user', content: nd.answer},
+        {role: 'assistant', content: fullAssistant},
+      ]);
       const res = await fetch(url, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          messages: [
-            {role: 'user', content: nd.answer},
-            {role: 'assistant', content: fullAssistant},
-          ],
+          messages: preparedMessages,
           continue_assistant_turn: true,
           cache_prompt: false,
           temperature: 0.1,
@@ -1779,14 +1867,15 @@ async function verifyEntityViaExtract(nodeId, root) {
       const question = `\n${prop}: `;
       fullAssistant += question;
 
+      const preparedMessages = prepareWorkerMessages(worker, [
+        {role: 'user', content: nd.answer},
+        {role: 'assistant', content: fullAssistant},
+      ]);
       const res = await fetch(url, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          messages: [
-            {role: 'user', content: nd.answer},
-            {role: 'assistant', content: fullAssistant},
-          ],
+          messages: preparedMessages,
           continue_assistant_turn: true,
           cache_prompt: false,
           temperature: 0.1,
@@ -1821,14 +1910,15 @@ async function verifyEntityViaExtract(nodeId, root) {
       for (const item of verifyItems) {
         const q = `((${item.text}) == 1) === `;
         verifyAssistant += q;
+        const verifyMessages = prepareWorkerMessages(worker, [
+          {role: 'user', content: nd.answer},
+          {role: 'assistant', content: verifyAssistant},
+        ]);
         const vres = await fetch(url, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            messages: [
-              {role: 'user', content: nd.answer},
-              {role: 'assistant', content: verifyAssistant},
-            ],
+            messages: verifyMessages,
             continue_assistant_turn: true,
             cache_prompt: false,
             temperature: 0.1,
@@ -2489,7 +2579,7 @@ function bindNode(el, nd) {
         const res = await fetchLLMWithContinue(
           worker.url.replace(/\/+$/,'') + '/v1/chat/completions',
           chatMessages,
-          {temperature: 0.6, max_tokens: 2048}
+          {worker, temperature: 0.6, max_tokens: 2048}
         );
         const ts2 = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
         msg.replies.push({role:'assistant', name:worker.name, content: res.answer || String(res), time:ts2, think: res.think || ''});
@@ -2546,7 +2636,7 @@ function bindNode(el, nd) {
       const res = await fetchLLMWithContinue(
         worker.url.replace(/\/+$/,'') + '/v1/chat/completions',
         chatMessages,
-        {temperature: 0.6, max_tokens: 2048}
+        {worker, temperature: 0.6, max_tokens: 2048}
       );
       const ts2 = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
       post.replies.push({role:'assistant', name:worker.name, content: res.answer || String(res), time:ts2, think: res.think || ''});
@@ -2690,14 +2780,15 @@ function distributeAnswerToEntities(parentNodeId) {
 Описание "${p.child.title}" начинается со строки под номером "${startNum}" "${firstLineText}" и длится до строки под номером "line number: `;
 
       try {
+        const preparedMessages = prepareWorkerMessages(generator, [
+          {role: 'user', content: numberedText},
+          {role: 'assistant', content: thinkQ},
+        ]);
         const res = await fetch(url, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            messages: [
-              {role: 'user', content: numberedText},
-              {role: 'assistant', content: thinkQ},
-            ],
+            messages: preparedMessages,
             continue_assistant_turn: true,
             cache_prompt: false,
             temperature: 0.1,
@@ -2764,7 +2855,7 @@ function sendToWorker(nodeId, worker, prompt, tag, opts) {
     try {
       const {answer, think} = await fetchLLMWithContinue(
         url, [{role:'user', content:prompt}],
-        {temperature: opts?.temperature ?? 0.3, max_tokens: opts?.max_tokens ?? getSettings().max_tokens}
+        {worker, temperature: opts?.temperature ?? 0.3, max_tokens: opts?.max_tokens ?? getSettings().max_tokens}
       );
       addThread(nodeId, 'worker', `${worker.name} (${tag})`, answer, {think});
       return answer;
@@ -3358,7 +3449,7 @@ async function workerAction(actionType, nodeId, threadIdx) {
   try {
     const prompt = promptFn(content);
     const url = workerUrl.replace(/\/+$/,'') + '/v1/chat/completions';
-    const {answer, think} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {temperature:0.1, max_tokens:2048});
+    const {answer, think} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {worker, temperature:0.1, max_tokens:2048});
 
     // Show result in thread
     addThread(nodeId, 'worker', `Worker (${actionType})`, answer, {think});
@@ -3524,19 +3615,58 @@ document.getElementById('btnClear').addEventListener('click', async () => {
 // Worker status: 'unknown' | 'reachable' | 'registered'
 function renderWorkers() {
   const el = document.getElementById('workerList');
-  el.innerHTML = workers.map((w,i) => {
+  const rows = workers.map((w,i) => {
     const dotCls = w.status === 'registered' ? 'ok' : w.status === 'reachable' ? 'busy' : '';
+    const badges = [
+      w.include_atomic_console ? 'console' : '',
+      w.include_atomic_trace ? 'trace' : '',
+      w.include_pipeline_steps ? 'steps' : '',
+      w.prompt_prefix ? 'prefix' : '',
+    ].filter(Boolean).join(', ');
     return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;font-size:11px">
       <span class="dot ${dotCls}" style="width:6px;height:6px"></span>
       <span style="color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70px" title="${esc(w.url)}">${esc(w.name)}</span>
-      <select style="background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);font-size:9px;padding:0 2px" onchange="workers[${i}].role=this.value">
+      <select style="background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);font-size:9px;padding:0 2px" onchange="workers[${i}].role=this.value;saveWorkers()">
         <option value="generator"${w.role==='generator'?' selected':''}>generator</option>
         <option value="analyzer"${w.role==='analyzer'?' selected':''}>analyzer</option>
         <option value="verifier"${w.role==='verifier'?' selected':''}>verifier</option>
       </select>
-      <button class="btn" style="padding:1px 5px;font-size:9px" onclick="workers.splice(${i},1);renderWorkers()">x</button>
-    </div>`;
+      <button class="btn" style="padding:1px 5px;font-size:9px" onclick="editWorkerSettings(${i}, this)">⋯</button>
+      <button class="btn" style="padding:1px 5px;font-size:9px" onclick="workers.splice(${i},1);saveWorkers();renderWorkers()">x</button>
+    </div>${badges ? `<div style="margin:-1px 0 4px 12px;font-size:9px;color:var(--text-dim)">${esc(badges)}</div>` : ''}`;
   }).join('');
+  const aliasHint = `<div style="margin-top:6px;font-size:9px;color:var(--text-dim);line-height:1.35">aliases: <code>@alias.atomic.console_recent</code>, <code>@alias.atomic.trace_summary</code>, <code>@alias.atomic.pipeline_steps</code>, <code>@alias.atomic.scope</code></div>`;
+  el.innerHTML = rows + aliasHint;
+}
+
+function editWorkerSettings(index, anchorEl) {
+  const worker = workers[index];
+  if (!worker) return;
+  showNamePopup(anchorEl, {label: `Worker settings: ${worker.name}`, fields: [
+    {name: 'prompt_prefix', label: 'Prompt prefix', default: worker.prompt_prefix || '', multiline: true, placeholder: 'Optional system guidance. Supports @alias.atomic.console_recent and @alias.atomic.trace_summary'},
+    {name: 'prompt_suffix', label: 'Prompt suffix', default: worker.prompt_suffix || '', multiline: true, placeholder: 'Optional closing note'},
+    {name: 'include_atomic_console', label: 'Include recent atomic console (0/1)', default: worker.include_atomic_console ? '1' : '0', placeholder: '0 or 1'},
+    {name: 'include_atomic_trace', label: 'Include atomic trace summary (0/1)', default: worker.include_atomic_trace ? '1' : '0', placeholder: '0 or 1'},
+    {name: 'include_pipeline_steps', label: 'Include pipeline steps (0/1)', default: worker.include_pipeline_steps ? '1' : '0', placeholder: '0 or 1'},
+    {name: 'console_lines', label: 'Recent console lines', default: String(worker.console_lines || 8), placeholder: '8'},
+  ]}, (vals) => {
+    worker.prompt_prefix = vals.prompt_prefix || '';
+    worker.prompt_suffix = vals.prompt_suffix || '';
+    worker.include_atomic_console = vals.include_atomic_console === '1';
+    worker.include_atomic_trace = vals.include_atomic_trace === '1';
+    worker.include_pipeline_steps = vals.include_pipeline_steps === '1';
+    worker.console_lines = Math.max(1, parseInt(vals.console_lines || '8') || 8);
+    saveWorkers();
+    renderWorkers();
+    addConsoleMsg(`worker settings updated: ${worker.name}`, {
+      params: {
+        include_atomic_console: worker.include_atomic_console,
+        include_atomic_trace: worker.include_atomic_trace,
+        include_pipeline_steps: worker.include_pipeline_steps,
+        console_lines: worker.console_lines,
+      }
+    });
+  });
 }
 
 function getWorkerByRole(role) {
@@ -3718,7 +3848,7 @@ document.getElementById('btnWorkflowApplyNL').addEventListener('click', async ()
 
   try {
     const applyNoThink = document.getElementById('settingApplyNoThink')?.checked || false;
-    const {answer} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {temperature:0.3, max_tokens:4096, noThink:applyNoThink, continueOnLength:true});
+    const {answer} = await fetchLLMWithContinue(url, [{role:'user', content:prompt}], {worker, temperature:0.3, max_tokens:4096, noThink:applyNoThink, continueOnLength:true});
     let text = answer.trim();
     if (text.startsWith('```')) text = text.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
 
@@ -3778,7 +3908,7 @@ document.getElementById('btnWorkflowChatSend').addEventListener('click', async (
 
   try {
     const askNoThink = document.getElementById('settingAskNoThink')?.checked || false;
-    const {answer} = await fetchLLMWithContinue(url, messages, {temperature:0.3, max_tokens:2048, noThink:askNoThink, continueOnLength:true});
+    const {answer} = await fetchLLMWithContinue(url, messages, {worker: askWorker, temperature:0.3, max_tokens:2048, noThink:askNoThink, continueOnLength:true});
     addWfChat('assistant', answer);
   } catch(e) {
     addWfChat('assistant', 'Error: ' + e.message);
@@ -4368,7 +4498,11 @@ function renderAtomicMsg(msg) {
       const entity = atomicEntities[eName];
       if (!entity) return;
       const ta = entity.text_areas.find(a => a.name === aName);
-      if (ta) { ta._expanded = !ta._expanded; saveAtomicState(); renderAtomicFeed(); }
+      if (ta) {
+        ta._expanded = !ta._expanded;
+        saveAtomicState();
+        preserveAtomicFeedScroll(() => renderAtomicFeed());
+      }
     });
   });
   el.querySelectorAll('[data-entity-debug]').forEach(toggle => {
@@ -4379,6 +4513,16 @@ function renderAtomicMsg(msg) {
       const open = box.style.display !== 'none';
       box.style.display = open ? 'none' : 'block';
       toggle.textContent = (open ? '▸' : '▾') + ' Debug';
+    });
+  });
+  el.querySelectorAll('[data-entity-run-debug]').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const id = toggle.dataset.entityRunDebug;
+      const box = document.getElementById(id);
+      if (!box) return;
+      const open = box.style.display !== 'none';
+      box.style.display = open ? 'none' : 'block';
+      toggle.textContent = (open ? '▸' : '▾') + toggle.textContent.slice(1);
     });
   });
   // Bind text_area editing
@@ -4802,6 +4946,9 @@ function renderEntityCardV2(entity) {
     String(r.status || ''),
     String(r.detail || ''),
   ]);
+  const relatedRuns = (atomicConsoleMsgs || [])
+    .filter(msg => Array.isArray(msg.meta?.entities) && msg.meta.entities.includes(entity.name))
+    .slice(-6);
   const renderTextAreaBlock = (ta) => {
     const isResolved = ta.name === 'resolved';
     const collapsed = ta._expanded ? '' : ' collapsed';
@@ -4847,6 +4994,18 @@ function renderEntityCardV2(entity) {
   const renderEntitySection = (title, textAreas, dataAreas) => {
     if (!textAreas.length && !dataAreas.length) return '';
     return `<div class="at-entity-section"><div class="at-entity-section-title">${esc(title)}</div>${textAreas.map(renderTextAreaBlock).join('')}${dataAreas.map(renderDataAreaBlock).join('')}</div>`;
+  };
+  const renderEntityRunEntry = (entry, idx) => {
+    const params = entry.meta?.params || null;
+    const request = entry.meta?.request || null;
+    const response = entry.meta?.response || null;
+    const debugIdBase = `entity-run-${esc(entity.name)}-${idx}`;
+    const paramPills = params ? `<div class="at-call-params">${Object.entries(params).map(([k, v]) => `<span class="at-param-pill">${esc(k)}:${esc(String(v))}</span>`).join('')}</div>` : '';
+    const debugBlocks = [
+      request ? `<div><div class="at-entity-run-toggle" data-entity-run-debug="${debugIdBase}-req">▸ request</div><pre id="${debugIdBase}-req" class="at-debug-content at-entity-run-debug">${esc(typeof request === 'string' ? request : JSON.stringify(request, null, 2))}</pre></div>` : '',
+      response ? `<div><div class="at-entity-run-toggle" data-entity-run-debug="${debugIdBase}-res">▸ response</div><pre id="${debugIdBase}-res" class="at-debug-content at-entity-run-debug">${esc(typeof response === 'string' ? response : JSON.stringify(response, null, 2))}</pre></div>` : '',
+    ].join('');
+    return `<div class="at-entity-run-item"><div class="at-entity-run-head"><span>${esc(entry.ts || '')}</span><span class="at-entity-run-title">${esc(entry.content || '')}</span></div><div class="at-entity-run-body">${paramPills}${debugBlocks}</div></div>`;
   };
   const debugPayload = {
     name: entity.name,
@@ -4896,6 +5055,9 @@ function renderEntityCardV2(entity) {
     h += `<div class="at-entity-section"><div class="at-entity-section-title">Worker Reactions</div>`;
     h += renderDataAreaBlock({name: 'reactions', headers: ['#', 'Worker', 'Status', 'Detail'], rows: reactionRows});
     h += `</div>`;
+  }
+  if (relatedRuns.length) {
+    h += `<div class="at-entity-section"><div class="at-entity-section-title">Run Trace</div>${relatedRuns.map(renderEntityRunEntry).join('')}</div>`;
   }
   h += `<div class="at-entity-debug-toggle" data-entity-debug="${esc(entity.name)}">▸ Debug</div>`;
   h += `<div class="at-entity-debug" id="entity-debug-${esc(entity.name)}"><pre>${esc(JSON.stringify(debugPayload, null, 2))}</pre></div>`;
@@ -5029,9 +5191,14 @@ var atomicConsoleMsgs = [];
       <span id="atomicConsoleToggle" style="font-size:8px;color:var(--text-dim)">▾</span>
       <span style="font-size:9px;color:var(--text-dim);font-weight:600">Console</span>
       <span id="atomicConsoleCount" style="font-size:9px;color:var(--text-dim)"></span>
-      <button id="atomicConsoleClear" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;margin-left:auto;padding:0">clear</button>
+      <button id="atomicConsoleExportJson" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;margin-left:auto;padding:0">json</button>
+      <button id="atomicConsoleExportMd" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0">md</button>
+      <button id="atomicConsoleDiffJson" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0">diff-json</button>
+      <button id="atomicConsoleDiffMd" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0">diff-md</button>
+      <button id="atomicConsoleClear" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0">clear</button>
     </div>
-    <div id="atomicConsoleLog" style="overflow-y:auto;padding:0 12px 4px;font-size:9px;font-family:'Cascadia Code','Fira Code',monospace;color:var(--text-dim);line-height:1.4;flex:1"></div>`;
+    <div id="atomicConsoleLog" style="overflow-y:auto;padding:0 12px 4px;font-size:9px;font-family:'Cascadia Code','Fira Code',monospace;color:var(--text-dim);line-height:1.4;flex:1"></div>
+    <input type="file" id="atomicTraceDiffFile" accept=".json" style="display:none">`;
   // Resize handle
   const handle = document.getElementById('atomicConsoleResize');
   let startY, startH;
@@ -5061,12 +5228,334 @@ var atomicConsoleMsgs = [];
     atomicConsoleMsgs = [];
     renderAtomicConsole();
   });
+  document.getElementById('atomicConsoleExportJson').addEventListener('click', (e) => {
+    e.stopPropagation();
+    exportAtomicExecutionTrace('json');
+  });
+  document.getElementById('atomicConsoleExportMd').addEventListener('click', (e) => {
+    e.stopPropagation();
+    exportAtomicExecutionTrace('md');
+  });
+  document.getElementById('atomicConsoleDiffJson').addEventListener('click', (e) => {
+    e.stopPropagation();
+    diffAtomicExecutionTrace('json');
+  });
+  document.getElementById('atomicConsoleDiffMd').addEventListener('click', (e) => {
+    e.stopPropagation();
+    diffAtomicExecutionTrace('md');
+  });
 })();
 
 function addConsoleMsg(content, meta = null) {
   const ts = new Date().toLocaleTimeString();
   atomicConsoleMsgs.push({ts, content, meta});
   renderAtomicConsole();
+}
+
+function buildAtomicExecutionTrace() {
+  return {
+    exported_at: new Date().toISOString(),
+    sandbox_url: SB(),
+    page: 'reactive-chat/atomic',
+    settings: getSettings(),
+    workers: workers.map(w => ({url: w.url, name: w.name, role: w.role, status: w.status || 'unknown'})),
+    pipeline: {
+      step_count: pipelineSteps.length,
+      steps: pipelineSteps.map((step, idx) => ({index: idx + 1, ...step}))
+    },
+    feed: atomicMessages.map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      ts: msg.ts,
+      content: msg.content,
+      entities: msg.entities || [],
+      meta: msg.meta || null
+    })),
+    console: atomicConsoleMsgs.map(msg => ({
+      ts: msg.ts,
+      content: msg.content,
+      meta: msg.meta || null
+    })),
+    entities: Object.fromEntries(Object.entries(atomicEntities).map(([name, entity]) => [name, JSON.parse(JSON.stringify(entity))])),
+    macros: Object.fromEntries(Object.keys(atomicMacros).sort((a, b) => a.localeCompare(b)).map(name => [name, getMacroRecord(name)])),
+  };
+}
+
+function buildAtomicExecutionTraceMarkdown(trace) {
+  const lines = [];
+  lines.push(`# Atomic Execution Trace`);
+  lines.push(``);
+  lines.push(`- Exported: ${trace.exported_at}`);
+  lines.push(`- Sandbox: ${trace.sandbox_url}`);
+  lines.push(`- Pipeline steps: ${trace.pipeline.step_count}`);
+  lines.push(`- Feed messages: ${trace.feed.length}`);
+  lines.push(`- Console entries: ${trace.console.length}`);
+  lines.push(`- Entities: ${Object.keys(trace.entities || {}).length}`);
+  lines.push(``);
+  lines.push(`## Settings`);
+  lines.push(``);
+  lines.push('```json');
+  lines.push(JSON.stringify(trace.settings, null, 2));
+  lines.push('```');
+  lines.push(``);
+  lines.push(`## Workers`);
+  lines.push(``);
+  if (trace.workers.length) {
+    lines.push(`| Name | Role | Status | URL |`);
+    lines.push(`|---|---|---|---|`);
+    trace.workers.forEach(w => lines.push(`| ${w.name || ''} | ${w.role || ''} | ${w.status || ''} | ${w.url || ''} |`));
+  } else {
+    lines.push(`_No workers configured._`);
+  }
+  lines.push(``);
+  lines.push(`## Pipeline`);
+  lines.push(``);
+  if (trace.pipeline.steps.length) {
+    trace.pipeline.steps.forEach(step => lines.push(`${step.index}. \`${step.cmd || ''}\``));
+  } else {
+    lines.push(`_No pipeline steps._`);
+  }
+  lines.push(``);
+  lines.push(`## Entities`);
+  lines.push(``);
+  const entities = Object.values(trace.entities || {});
+  if (entities.length) {
+    entities.forEach(entity => {
+      lines.push(`### @${entity.name}`);
+      lines.push(``);
+      lines.push(`- Status: ${entity.status || 'pending'}`);
+      lines.push(`- Source tool: ${entity.source?.tool || 'manual'}`);
+      if (entity.source?.entityId) lines.push(`- Source entity: @${entity.source.entityId}`);
+      lines.push(`- Text areas: ${(entity.text_areas || []).length}`);
+      lines.push(`- Data areas: ${(entity.data_areas || []).length}`);
+      lines.push(`- Reactions: ${(entity.reactions || []).length}`);
+      if (entity.tags && Object.keys(entity.tags).length) {
+        lines.push(`- Tags: ${Object.entries(entity.tags).map(([k, v]) => `${k}:${v}`).join(', ')}`);
+      }
+      lines.push(``);
+      (entity.text_areas || []).forEach(ta => {
+        lines.push(`#### text:${ta.name}`);
+        lines.push(``);
+        lines.push('```text');
+        lines.push(String(ta.text || ''));
+        lines.push('```');
+        lines.push(``);
+      });
+      (entity.data_areas || []).forEach(da => {
+        lines.push(`#### table:${da.name}`);
+        lines.push(``);
+        lines.push(`| ${da.headers.join(' | ')} |`);
+        lines.push(`|${da.headers.map(() => '---').join('|')}|`);
+        da.rows.forEach(row => lines.push(`| ${row.map(cell => String(cell ?? '')).join(' | ')} |`));
+        lines.push(``);
+      });
+    });
+  } else {
+    lines.push(`_No entities._`);
+    lines.push(``);
+  }
+  lines.push(`## Console`);
+  lines.push(``);
+  if (trace.console.length) {
+    trace.console.forEach(entry => {
+      lines.push(`### ${entry.ts} ${entry.content}`);
+      lines.push(``);
+      if (entry.meta) {
+        lines.push('```json');
+        lines.push(JSON.stringify(entry.meta, null, 2));
+        lines.push('```');
+        lines.push(``);
+      }
+    });
+  } else {
+    lines.push(`_No console entries._`);
+  }
+  return lines.join('\n');
+}
+
+function exportAtomicExecutionTrace(format = 'json') {
+  const trace = buildAtomicExecutionTrace();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  if (format === 'md' || format === 'markdown') {
+    const md = buildAtomicExecutionTraceMarkdown(trace);
+    downloadTextFile(`atomic-execution-trace-${stamp}.md`, md, 'text/markdown;charset=utf-8');
+    addAtomicMsg('tool', `Execution trace exported: atomic-execution-trace-${stamp}.md`);
+    return;
+  }
+  const json = JSON.stringify(trace, null, 2);
+  downloadTextFile(`atomic-execution-trace-${stamp}.json`, json, 'application/json');
+  addAtomicMsg('tool', `Execution trace exported: atomic-execution-trace-${stamp}.json`);
+}
+
+function summarizeEntityForTraceDiff(entity) {
+  return {
+    status: entity?.status || '',
+    source_tool: entity?.source?.tool || '',
+    source_entity: entity?.source?.entityId || '',
+    tags: entity?.tags || {},
+    text_areas: (entity?.text_areas || []).map(ta => ({name: ta.name, text: ta.text})),
+    data_areas: (entity?.data_areas || []).map(da => ({name: da.name, headers: da.headers, rows: da.rows})),
+    reactions: entity?.reactions || [],
+  };
+}
+
+function buildAtomicTraceDiff(baseTrace, otherTrace) {
+  const baseEntities = baseTrace?.entities || {};
+  const otherEntities = otherTrace?.entities || {};
+  const baseNames = new Set(Object.keys(baseEntities));
+  const otherNames = new Set(Object.keys(otherEntities));
+  const addedEntities = [...otherNames].filter(name => !baseNames.has(name)).sort();
+  const removedEntities = [...baseNames].filter(name => !otherNames.has(name)).sort();
+  const changedEntities = [...baseNames].filter(name => otherNames.has(name)).sort().filter(name =>
+    JSON.stringify(summarizeEntityForTraceDiff(baseEntities[name])) !== JSON.stringify(summarizeEntityForTraceDiff(otherEntities[name]))
+  );
+  const basePipeline = (baseTrace?.pipeline?.steps || []).map(step => step.cmd || '');
+  const otherPipeline = (otherTrace?.pipeline?.steps || []).map(step => step.cmd || '');
+  const baseWorkers = (baseTrace?.workers || []).map(w => `${w.name}|${w.role}|${w.url}|${w.status || ''}`);
+  const otherWorkers = (otherTrace?.workers || []).map(w => `${w.name}|${w.role}|${w.url}|${w.status || ''}`);
+  const diff = {
+    compared_at: new Date().toISOString(),
+    current_exported_at: baseTrace?.exported_at || null,
+    other_exported_at: otherTrace?.exported_at || null,
+    summary: {
+      settings_changed: JSON.stringify(baseTrace?.settings || {}) !== JSON.stringify(otherTrace?.settings || {}),
+      pipeline_changed: JSON.stringify(basePipeline) !== JSON.stringify(otherPipeline),
+      workers_changed: JSON.stringify(baseWorkers) !== JSON.stringify(otherWorkers),
+      console_count_delta: (otherTrace?.console?.length || 0) - (baseTrace?.console?.length || 0),
+      entity_count_delta: Object.keys(otherEntities).length - Object.keys(baseEntities).length,
+      added_entities: addedEntities.length,
+      removed_entities: removedEntities.length,
+      changed_entities: changedEntities.length,
+    },
+    settings: {
+      current: baseTrace?.settings || {},
+      other: otherTrace?.settings || {},
+    },
+    workers: {
+      current: baseTrace?.workers || [],
+      other: otherTrace?.workers || [],
+    },
+    pipeline: {
+      current: basePipeline,
+      other: otherPipeline,
+    },
+    entities: {
+      added: addedEntities,
+      removed: removedEntities,
+      changed: changedEntities.map(name => ({
+        name,
+        current: summarizeEntityForTraceDiff(baseEntities[name]),
+        other: summarizeEntityForTraceDiff(otherEntities[name]),
+      })),
+    },
+    console: {
+      current_count: baseTrace?.console?.length || 0,
+      other_count: otherTrace?.console?.length || 0,
+      current_last: (baseTrace?.console || []).slice(-10),
+      other_last: (otherTrace?.console || []).slice(-10),
+    },
+  };
+  return diff;
+}
+
+function buildAtomicTraceDiffMarkdown(diff) {
+  const lines = [];
+  lines.push(`# Atomic Trace Diff`);
+  lines.push(``);
+  lines.push(`- Compared: ${diff.compared_at}`);
+  lines.push(`- Current trace: ${diff.current_exported_at || 'n/a'}`);
+  lines.push(`- Other trace: ${diff.other_exported_at || 'n/a'}`);
+  lines.push(``);
+  lines.push(`## Summary`);
+  lines.push(``);
+  Object.entries(diff.summary).forEach(([k, v]) => lines.push(`- ${k}: ${typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`));
+  lines.push(``);
+  lines.push(`## Pipeline`);
+  lines.push(``);
+  lines.push(`### Current`);
+  lines.push(diff.pipeline.current.length ? diff.pipeline.current.map((cmd, i) => `${i + 1}. \`${cmd}\``).join('\n') : `_No steps._`);
+  lines.push(``);
+  lines.push(`### Other`);
+  lines.push(diff.pipeline.other.length ? diff.pipeline.other.map((cmd, i) => `${i + 1}. \`${cmd}\``).join('\n') : `_No steps._`);
+  lines.push(``);
+  lines.push(`## Entities`);
+  lines.push(``);
+  lines.push(`- Added: ${diff.entities.added.join(', ') || 'none'}`);
+  lines.push(`- Removed: ${diff.entities.removed.join(', ') || 'none'}`);
+  lines.push(`- Changed: ${diff.entities.changed.map(e => e.name).join(', ') || 'none'}`);
+  lines.push(``);
+  diff.entities.changed.forEach(entry => {
+    lines.push(`### @${entry.name}`);
+    lines.push(``);
+    lines.push(`#### Current`);
+    lines.push('```json');
+    lines.push(JSON.stringify(entry.current, null, 2));
+    lines.push('```');
+    lines.push(``);
+    lines.push(`#### Other`);
+    lines.push('```json');
+    lines.push(JSON.stringify(entry.other, null, 2));
+    lines.push('```');
+    lines.push(``);
+  });
+  lines.push(`## Console`);
+  lines.push(``);
+  lines.push(`- Current count: ${diff.console.current_count}`);
+  lines.push(`- Other count: ${diff.console.other_count}`);
+  lines.push(``);
+  lines.push(`### Current last 10`);
+  lines.push('```json');
+  lines.push(JSON.stringify(diff.console.current_last, null, 2));
+  lines.push('```');
+  lines.push(``);
+  lines.push(`### Other last 10`);
+  lines.push('```json');
+  lines.push(JSON.stringify(diff.console.other_last, null, 2));
+  lines.push('```');
+  return lines.join('\n');
+}
+
+async function loadAtomicTraceFile() {
+  const input = document.getElementById('atomicTraceDiffFile');
+  if (!input) throw new Error('trace file input not found');
+  return await new Promise((resolve, reject) => {
+    input.value = '';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) { reject(new Error('no file selected')); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          resolve(JSON.parse(String(reader.result || '{}')));
+        } catch (e) {
+          reject(new Error('invalid trace json'));
+        }
+      };
+      reader.onerror = () => reject(new Error('failed to read file'));
+      reader.readAsText(file, 'utf-8');
+    };
+    input.click();
+  });
+}
+
+async function diffAtomicExecutionTrace(format = 'json') {
+  try {
+    const current = buildAtomicExecutionTrace();
+    const other = await loadAtomicTraceFile();
+    const diff = buildAtomicTraceDiff(current, other);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    if (format === 'md' || format === 'markdown') {
+      const md = buildAtomicTraceDiffMarkdown(diff);
+      downloadTextFile(`atomic-trace-diff-${stamp}.md`, md, 'text/markdown;charset=utf-8');
+      addAtomicMsg('tool', `Trace diff exported: atomic-trace-diff-${stamp}.md`);
+      return;
+    }
+    const json = JSON.stringify(diff, null, 2);
+    downloadTextFile(`atomic-trace-diff-${stamp}.json`, json, 'application/json');
+    addAtomicMsg('tool', `Trace diff exported: atomic-trace-diff-${stamp}.json`);
+  } catch (e) {
+    addAtomicMsg('tool', `trace diff error: ${e.message}`);
+  }
 }
 
 function renderAtomicConsole() {
@@ -5099,6 +5588,17 @@ function renderAtomicConsole() {
   el.scrollTop = el.scrollHeight;
 }
 
+function preserveAtomicFeedScroll(fn) {
+  const feedEl = document.getElementById('atomicFeed');
+  const prevTop = feedEl ? feedEl.scrollTop : 0;
+  const prevLeft = feedEl ? feedEl.scrollLeft : 0;
+  fn();
+  if (feedEl) {
+    feedEl.scrollTop = prevTop;
+    feedEl.scrollLeft = prevLeft;
+  }
+}
+
 function addAtomicMsg(role, content, entities, meta) {
   // System/tool messages go to console log, not main feed
   if (role === 'system' || role === 'tool') {
@@ -5123,7 +5623,7 @@ function addAtomicMsg(role, content, entities, meta) {
 
 /* --- Atomic input handler --- */
 // Editor commands (: prefix) — go to console, not pipeline
-const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','rename_macro','export_macro','import_macro','export_dsl','rename','drop',
+const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','rename_macro','export_macro','import_macro','export_dsl','export_trace','diff_trace','rename','drop',
   'card_template','add_slot','remove_slot','move_slot','bind_slot','slot_option','delete_template','clone_template']);
 
 function recordPipelineStep(cmd, enabled = true) {
@@ -6084,6 +6584,8 @@ async function applyAtomicTool(toolName, args, meta = {}) {
       case 'rename_macro': toolRenameMacro(args); break;
       case 'export_macro': toolExportMacro(args); break;
       case 'import_macro': toolImportMacro(args); break;
+      case 'export_trace': toolExportTrace(args); break;
+      case 'diff_trace': toolDiffTrace(args); break;
       // Card Builder
       case 'card_template': toolCardTemplate(args); break;
       case 'add_slot': toolAddSlot(args); break;
@@ -6178,7 +6680,7 @@ async function callAtomicServer(tool, params, role, settingsOverride) {
     temperature: parseFloat(atomicParams.temperature || s.temperature),
     max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
     max_continue: parseInt(atomicParams.max_continue || s.max_continue),
-    no_think: document.getElementById('settingNoThink')?.checked ?? true,
+    no_think: document.getElementById('settingNoThink')?.checked ?? false,
   };
   const resp = await fetch(SB() + '/api/atomic/run', {
     method: 'POST',
@@ -6206,7 +6708,7 @@ async function callAtomicScope(steps, exportSpec) {
     temperature: parseFloat(atomicParams.temperature || s.temperature),
     max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
     max_continue: parseInt(atomicParams.max_continue || s.max_continue),
-    no_think: document.getElementById('settingNoThink')?.checked ?? true,
+    no_think: document.getElementById('settingNoThink')?.checked ?? false,
   };
   const resp = await fetch(SB() + '/api/atomic/scope', {
     method: 'POST',
@@ -6228,7 +6730,7 @@ async function callAtomicLoop(setupSteps, loopSteps, whileRef, exportSpec, maxIt
     temperature: parseFloat(atomicParams.temperature || s.temperature),
     max_tokens: parseInt(atomicParams.max_tokens || s.max_tokens),
     max_continue: parseInt(atomicParams.max_continue || s.max_continue),
-    no_think: document.getElementById('settingNoThink')?.checked ?? true,
+    no_think: document.getElementById('settingNoThink')?.checked ?? false,
   };
   const resp = await fetch(SB() + '/api/atomic/loop', {
     method: 'POST',
@@ -7308,6 +7810,30 @@ function toolExportMacro(args) {
   navigator.clipboard.writeText(text).catch(() => {});
 }
 
+function toolExportTrace(args) {
+  const format = String(args[0] || 'json').trim().toLowerCase();
+  if (!['json', 'md', 'markdown'].includes(format)) {
+    addAtomicMsg('tool', 'Usage: export_trace(json|md)');
+    return;
+  }
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('export_trace')) {
+    pipelineSteps.pop();
+  }
+  exportAtomicExecutionTrace(format);
+}
+
+function toolDiffTrace(args) {
+  const format = String(args[0] || 'json').trim().toLowerCase();
+  if (!['json', 'md', 'markdown'].includes(format)) {
+    addAtomicMsg('tool', 'Usage: diff_trace(json|md)');
+    return;
+  }
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('diff_trace')) {
+    pipelineSteps.pop();
+  }
+  diffAtomicExecutionTrace(format);
+}
+
 function toolImportMacro(args) {
   const raw = args.join(', ').trim();
   if (!raw) { addAtomicMsg('tool', 'Usage: import_macro({...json...})'); return; }
@@ -7649,10 +8175,11 @@ function toolCheckStatus(args) {
 
 /* --- LLM Tools --- */
 /* Generic LLM call supporting all DSL modes: prompt, continue, probe_continue
-   Usage: generate(@entity)                         — standard prompt, no_think
+   Usage: generate(@entity)                         — standard prompt
           generate(@entity, analyzer)               — pick worker role
           generate(@entity, mode:probe_continue)    — probe mode
-          generate(@entity, no_think:false)          — allow think
+          generate(@entity, no_think:true)          — force no-think prefill
+          generate(@entity, think:true)             — force thinking
           generate(@entity, grammar:root ::= ...)   — GBNF grammar
           generate(@entity, stop:" ","\n")           — stop sequences
           generate(@entity, temperature:0.1)         — override temp
@@ -7696,7 +8223,11 @@ async function toolGenerate(args, meta = {}) {
 
   const mode = opts.mode || 'prompt';
   const s = getSettings();
-  const noThink = opts.think !== undefined ? opts.think !== 'true' : (opts.no_think !== undefined ? opts.no_think !== 'false' : (mode === 'prompt'));
+  const noThink = opts.think !== undefined
+    ? opts.think !== 'true'
+    : (opts.no_think !== undefined
+      ? opts.no_think !== 'false'
+      : !!document.getElementById('settingNoThink')?.checked);
   const temperature = opts.temperature ? parseFloat(opts.temperature) : (mode === 'probe_continue' ? 0.1 : parseFloat(atomicParams.temperature || s.temperature));
   const max_tokens = opts.max_tokens ? parseInt(opts.max_tokens) : (mode === 'probe_continue' ? 4 : parseInt(atomicParams.max_tokens || s.max_tokens));
   let stop = undefined;
@@ -7760,6 +8291,8 @@ async function toolGenerate(args, meta = {}) {
     }
     return {...m, content};
   });
+  const worker = getWorkerByRole(workerRole);
+  messages = prepareWorkerMessages(worker, messages);
 
   const callParams = {mode, worker: workerRole, temp: temperature, max_tokens, no_think: noThink, continue: continueOn};
   if (grammar) callParams.grammar = '(set)';
@@ -7857,13 +8390,14 @@ async function toolTableAsQuery(args, meta = {}) {
   const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
   if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
   const workerUrl = worker.url + '/v1/chat/completions';
+  const preparedMessages = prepareWorkerMessages(worker, [
+    {role: 'user', content: text},
+    {role: 'assistant', content: assistantContent}
+  ]);
   addAtomicMsg('tool', `table-as-query(@${ref}, [${columns.join(', ')}]) → calling worker...`, [], {
     params: {tool: 'table_as_query', worker: worker.name, columns: columns.length},
     request: {
-      messages: [
-        {role: 'user', content: text.slice(0, 200) + '...'},
-        {role: 'assistant', content: assistantContent}
-      ],
+      messages: preparedMessages,
       continue_assistant_turn: true,
       cache_prompt: false,
       temperature: 0.1,
@@ -7876,10 +8410,7 @@ async function toolTableAsQuery(args, meta = {}) {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
-      messages: [
-        {role: 'user', content: text.slice(0, 200) + '...'},
-        {role: 'assistant', content: assistantContent}
-      ],
+      messages: preparedMessages,
       continue_assistant_turn: true,
       cache_prompt: false,
       temperature: 0.1,
@@ -7903,10 +8434,7 @@ async function toolTableAsQuery(args, meta = {}) {
   addAtomicMsg('tool', `table-as-query(@${ref}) → @${resultEntity.name}`, [resultEntity.name], {
     params: {tool: 'table_as_query', worker: worker.name, columns: columns.length},
     request: {
-      messages: [
-        {role: 'user', content: text.slice(0, 200) + '...'},
-        {role: 'assistant', content: assistantContent}
-      ],
+      messages: preparedMessages,
       continue_assistant_turn: true,
       cache_prompt: false,
       temperature: 0.1,
@@ -7926,13 +8454,14 @@ async function toolProbe(args, meta = {}) {
   const worker = getWorkerByRole('analyzer') || getWorkerByRole('generator');
   if (!worker?.url) { addAtomicMsg('tool', 'No worker available'); return; }
   const assistantContent = '<think>\n' + text + '\n</think>\n\n' + (inject || '');
+  const preparedMessages = prepareWorkerMessages(worker, [
+    {role: 'user', content: 'Analyze the following.'},
+    {role: 'assistant', content: assistantContent}
+  ]);
   addAtomicMsg('tool', `probe(@${ref}${inject ? ', ' + inject : ''}) → calling worker...`, [], {
     params: {tool: 'probe', worker: worker.name, inject: inject || ''},
     request: {
-      messages: [
-        {role: 'user', content: 'Analyze the following.'},
-        {role: 'assistant', content: assistantContent}
-      ],
+      messages: preparedMessages,
       continue_assistant_turn: true,
       cache_prompt: false,
       temperature: 0.1,
@@ -7944,10 +8473,7 @@ async function toolProbe(args, meta = {}) {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
-      messages: [
-        {role: 'user', content: 'Analyze the following.'},
-        {role: 'assistant', content: assistantContent}
-      ],
+      messages: preparedMessages,
       continue_assistant_turn: true,
       cache_prompt: false,
       temperature: 0.1,
@@ -7962,10 +8488,7 @@ async function toolProbe(args, meta = {}) {
   addAtomicMsg('tool', `probe(@${ref}) → @${resultEntity.name}`, [resultEntity.name], {
     params: {tool: 'probe', worker: worker.name, inject: inject || ''},
     request: {
-      messages: [
-        {role: 'user', content: 'Analyze the following.'},
-        {role: 'assistant', content: assistantContent}
-      ],
+      messages: preparedMessages,
       continue_assistant_turn: true,
       cache_prompt: false,
       temperature: 0.1,
@@ -9405,12 +9928,18 @@ function renderBuilderAskChat() {
 }
 
 // Build context based on active sidebar tab
+function _builderComponentRef() {
+  return `Available slot types: title, tags, text_area, image, buttons, thread, data_table, reactions, list, form, group, children (others are not available).
+DSL is layout only — no data fields in add_slot commands.
+`;
+}
+
 function _builderContext() {
   const tab = _activeBuilderSidebarTab;
   const dsl = document.getElementById('builderDSLEditor')?.value || '';
   const html = document.getElementById('builderPreview')?.innerHTML || '';
   const tmpl = _activeCardTemplate || 'none';
-  let context = `Template: ${tmpl}\n`;
+  let context = _builderComponentRef() + `\nTemplate: ${tmpl}\n`;
 
   if (tab === 'dsl') {
     context += `Current DSL:\n\`\`\`\n${dsl}\n\`\`\`\n`;
@@ -9442,7 +9971,7 @@ document.getElementById('btnBuilderNLApply').addEventListener('click', async () 
   const context = _builderContext();
   let instruction = '';
   if (tab === 'dsl') {
-    instruction = `${context}\nInstruction: ${text}\n\nValid slot types: title, tags, text_area, image, buttons, thread, data_table, reactions, list, form, group, children.\nText content goes in text_area slots (use label for the heading, content goes in the entity data, not the DSL).\nRespond with modified DSL only. No prose. Keep the card_template() header.`;
+    instruction = `${context}\nInstruction: ${text}\n\nRespond with modified DSL only. No prose. Keep the card_template() header.`;
   } else if (tab === 'html') {
     instruction = `You are editing an HTML template. The current Live Preview HTML is shown above.\n\n${context}\nInstruction: ${text}\n\n`
       + `Respond in ONE of these formats depending on the task:\n`
@@ -9459,7 +9988,7 @@ document.getElementById('btnBuilderNLApply').addEventListener('click', async () 
 
   const url = worker.url.replace(/\/+$/, '') + '/v1/chat/completions';
   try {
-    const {answer} = await fetchLLMWithContinue(url, [{role: 'user', content: instruction}], {temperature: 0.3, max_tokens: 4096, noThink: true, continueOnLength: true});
+    const {answer} = await fetchLLMWithContinue(url, [{role: 'user', content: instruction}], {worker, temperature: 0.3, max_tokens: 4096, noThink: true, continueOnLength: true});
     let result = answer.trim();
     if (result.startsWith('```')) result = result.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
     addBuilderAskMsg('assistant', result);
@@ -9496,7 +10025,7 @@ document.getElementById('btnBuilderAskSend').addEventListener('click', async () 
     }
   });
   try {
-    const {answer} = await fetchLLMWithContinue(url, messages, {temperature: 0.3, max_tokens: 2048, noThink: true, continueOnLength: true});
+    const {answer} = await fetchLLMWithContinue(url, messages, {worker, temperature: 0.3, max_tokens: 2048, noThink: true, continueOnLength: true});
     addBuilderAskMsg('assistant', answer);
   } catch (e) {
     addBuilderAskMsg('system', 'Error: ' + e.message);
@@ -9732,6 +10261,10 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       }},
       // Pipeline DSL
       {label: '📋 Export Pipeline DSL', action: () => handleAtomicInput('export_dsl()')},
+      {label: '🧾 Export Trace JSON', action: () => handleAtomicInput('export_trace(json)')},
+      {label: '📝 Export Trace MD', action: () => handleAtomicInput('export_trace(md)')},
+      {label: '⇄ Diff Trace JSON', action: () => handleAtomicInput('diff_trace(json)')},
+      {label: '⇄ Diff Trace MD', action: () => handleAtomicInput('diff_trace(md)')},
       {label: '🔄 Restart Pipeline', action: async () => {
         const steps = pipelineSteps.map(s => s.cmd);
         if (!steps.length) { addAtomicMsg('system', 'No pipeline steps to restart'); renderAtomicFeed(); return; }
@@ -9925,6 +10458,8 @@ Reactivity:
 Editor commands (not part of pipeline, prefixed with /):
   /save_macro(name)  /run_macro(name)  /rename_macro(old, new)
   /delete_macro(name)  /export_macro(name)  /import_macro(json)  /export_dsl(name)
+  /export_trace(json|md)
+  /diff_trace(json|md)
   /rename(@old, new)  /drop(@entity)  /list_macros()
 
 Rules:
@@ -10273,6 +10808,8 @@ Editor commands:
   /export_macro(name)
   /import_macro(json)
   /export_dsl(name)
+  /export_trace(json|md)
+  /diff_trace(json|md)
   /rename(@old, new)
   /drop(@entity)
   /list_macros()
@@ -10281,6 +10818,12 @@ Rules:
 - Output only DSL inside a \\\`\\\`\\\`pipeline code block
 - Prefer $config.* over long inline prompt text
 - Prefer explicit @out = ... assignments
+- Do not write @a = @b. Assignment only supports literals and $config.* sources
+- If you already have an entity, pass it directly to tools like generate(@a) or parse_sections(@a, ...)
+- Preferred pattern:
+  @input = $config.prompt
+  @claims = generate($config.prompt_claims, worker:analyzer, input:@input)
+  generate(@input)
 - Use key:value options, not positional analyzer/no_think syntax
 - Keep the pipeline minimal`;
 
@@ -10385,6 +10928,8 @@ Editor commands:
   /export_macro(name)
   /import_macro(json)
   /export_dsl(name)
+  /export_trace(json|md)
+  /diff_trace(json|md)
   /rename(@old, new)
   /drop(@entity)
   /list_macros()
@@ -10393,6 +10938,12 @@ Rules:
 - Output only DSL inside a \\\`\\\`\\\`pipeline code block
 - Prefer $config.* over long inline prompt text
 - Prefer explicit @out = ... assignments
+- Do not write @a = @b. Assignment only supports literals and $config.* sources
+- If you already have an entity, pass it directly to tools like generate(@a) or parse_sections(@a, ...)
+- Preferred pattern:
+  @input = $config.prompt
+  @claims = generate($config.prompt_claims, worker:analyzer, input:@input)
+  generate(@input)
 - Use key:value options, not positional analyzer/no_think syntax
 - Keep the pipeline minimal`;
 
@@ -10410,7 +10961,12 @@ function buildPipelineChatContext() {
   const helpItem = globalItems.find(g => g.name === 'dsl_help');
   const basePrompt = helpItem?.text || NORMALIZED_DSL_HELP;
 
-  const configItems = (globalItems || []).filter(g => g.name !== 'dsl_help').map(g => `$config.${g.name}: ${g.type === 'text' ? g.text.slice(0, 100) + '...' : 'table [' + g.headers?.join(', ') + ']'}`).join('\n');
+  const configItems = (globalItems || []).filter(g => g.name !== 'dsl_help').map(g => {
+    if (g.type === 'text') {
+      return `$config.${g.name}:\n"""${g.text}"""`;
+    }
+    return `$config.${g.name}: table [${g.headers?.join(', ')}]`;
+  }).join('\n');
   const scope = Object.keys(atomicEntities).map(n => '@' + n).join(', ') || 'empty';
   const steps = pipelineSteps.map(s => s.cmd).join('\n') || 'none';
 
@@ -10428,7 +10984,7 @@ ${Object.entries(atomicEntities).map(([name, e]) => {
   const parts = [`@${name}`];
   if (Object.keys(e.tags || {}).length) parts.push(`tags: ${JSON.stringify(e.tags)}`);
   e.text_areas.filter(ta => ta.name !== 'resolved').forEach(ta => {
-    parts.push(`${ta.name}: ${ta.text.length > 120 ? ta.text.slice(0, 120) + '...' : ta.text}`);
+    parts.push(`${ta.name}: """${ta.text}"""`);
   });
   e.data_areas.forEach(da => {
     parts.push(`${da.name}: table [${da.headers.join(', ')}] ${da.rows.length} rows`);
@@ -10459,7 +11015,7 @@ document.getElementById('btnAtomicChatSend').addEventListener('click', async () 
   ];
 
   try {
-    const {answer} = await fetchLLMWithContinue(url, messages, {temperature: 0.3, max_tokens: 2048, noThink: false, continueOnLength: true});
+    const {answer} = await fetchLLMWithContinue(url, messages, {worker, temperature: 0.3, max_tokens: 2048, noThink: false, continueOnLength: true});
     addAtomicChat('assistant', answer);
 
     // Auto-extract pipeline code blocks from worker response and offer to add

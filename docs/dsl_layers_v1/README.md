@@ -13,6 +13,7 @@ This folder is an architectural example and orientation point, not an enforced i
 - [LAYER_MAP.md](/C:/llm/KoboldCPP%20agentic%20sandbox/docs/dsl_layers_v1/LAYER_MAP.md)
 - [BRIDGE_SPEC_V1.md](/C:/llm/KoboldCPP%20agentic%20sandbox/docs/dsl_layers_v1/BRIDGE_SPEC_V1.md)
 - [bridge_models.py](/C:/llm/KoboldCPP%20agentic%20sandbox/docs/dsl_layers_v1/bridge_models.py)
+- [macro_registry.json](/C:/llm/KoboldCPP%20agentic%20sandbox/docs/dsl_layers_v1/macro_registry.json)
 
 ## Intent
 
@@ -31,5 +32,13 @@ This folder is an architectural example and orientation point, not an enforced i
 
 Current implementation:
 - `use_macro` is wired in `workflow_dsl.py`
-- `atomic` currently supports isolated inline `flow` / `steps`
-- inline `atomic.dl` string execution is still a follow-up step
+- `atomic` supports isolated inline `flow`, `steps`, and `dsl`
+- shared macro records now carry metadata like `layer`, `inputs`, `outputs`, `tags`, `description`, `workflow_alias`
+- Atomic UI exposes a separate `Metadata` tab for macro records
+
+## Canonical Builtins
+
+Current builtin-oriented macro names:
+- `constraints_manifest`
+- `answer_constraints_verdict`
+- `hypothesis_verdict`

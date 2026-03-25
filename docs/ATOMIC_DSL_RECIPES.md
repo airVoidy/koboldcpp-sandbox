@@ -77,6 +77,23 @@ Sugar form:
 @checks_2x2 = reshape_grid(@constraints.hypotheses, cols:2)
 ```
 
+## Small List Helpers
+
+```pipeline
+@flat = flatten(@answers_2x2)
+@top2 = take(@flat, count:2)
+@distinct_checks = unique(@constraints.hypotheses)
+@first_check = first(@distinct_checks)
+@last_check = last(@distinct_checks)
+@middle_checks = slice_list(@distinct_checks, start:1, end:3)
+@indexed_checks = map_template(@distinct_checks, "[$n] {$item}")
+@sorted_checks = sort(@distinct_checks, mode:text)
+@pairs = zip(@distinct_checks, @sorted_checks)
+@pairs_rev = reverse(@pairs)
+@picked = pick_fields(@constraints, entities, axioms)
+@picked_kv = to_kv_table(@picked)
+```
+
 ## Probe After Draft
 
 ```pipeline
@@ -111,6 +128,7 @@ append_text(@chat, assistant, "\n\nCheck whether all looks are really distinct. 
 @accepted = accepted_list(@table, checks:@constraints.axioms)
 @accepted_rows = filter_rows(@table, where:all_yes, checks:@constraints.axioms)
 @rejected = reject_reasons(@table, checks:@constraints.axioms)
+@anime_rows = find_in_table(@table, "prompt", "anime", match:contains)
 ```
 
 ## Continue Until Row Target
@@ -148,7 +166,7 @@ Recommended config seeds:
 Seeded macro:
 
 ```text
-/run_macro(parallel_answer_constraints_verdict)
+/run_macro(answer_constraints_verdict)
 ```
 
 What it does:
@@ -170,7 +188,7 @@ Main outputs:
 Seeded macro:
 
 ```text
-/run_macro(hypothesis_verdict_table)
+/run_macro(hypothesis_verdict)
 ```
 
 What it does:

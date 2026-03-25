@@ -1,24 +1,17 @@
 {
   "version": 1,
   "macros": {
-    "claims_bootstrap": {
-      "name": "claims_bootstrap",
+    "constraints_manifest": {
+      "name": "constraints_manifest",
       "layer": "atomic",
       "inputs": [
-        "input"
+        "prompt"
       ],
       "outputs": [
-        "claims",
-        "entities",
-        "axioms",
-        "hypotheses"
+        "constraints_raw",
+        "constraints"
       ],
-      "description": "Example shared macro with a workflow-callable alias.",
-      "tags": [
-        "bridge",
-        "example"
-      ],
-      "dsl": "@claims = generate($config.prompt_constraints_strict, worker:analyzer, input:@input)\n@parts = parse_sections(@claims, entities:\"ENTITIES:\", axioms:\"AXIOMS:\", hypotheses:\"HYPOTHESES:\")",
+      "dsl": "@input = $config.prompt\n@constraints_raw = generate(\n  $config.prompt_constraints_strict,\n  worker:analyzer,\n  input:@input,\n  think:false,\n  continue:true,\n  temperature:0.2,\n  max_tokens:1024\n)\n\n@constraints = parse_sections(\n  @constraints_raw,\n  entities:\"ENTITIES:\",\n  axioms:\"AXIOMS:\",\n  hypotheses:\"HYPOTHESES:\"\n)",
       "workflow_alias": [
         {
           "analyzer -> $claims": {
@@ -38,7 +31,99 @@
             ]
           }
         }
-      ]
+      ],
+      "tags": [
+        "constraints",
+        "parse",
+        "builtin"
+      ],
+      "description": "Generate and parse ENTITIES / AXIOMS / HYPOTHESES from the current prompt."
+    },
+    "answer_constraints_verdict": {
+      "name": "answer_constraints_verdict",
+      "layer": "atomic",
+      "inputs": [
+        "prompt",
+        "prompt_constraints_strict",
+        "target_rows",
+        "max_table_iters"
+      ],
+      "outputs": [
+        "accepted",
+        "accepted_rows",
+        "rejected",
+        "table_text"
+      ],
+      "dsl": "@input = $config.prompt\n@chat = \"session\"\n@table_text = \"\"\n\nset_text(@chat, user, @input)\nset_text(@chat, assistant, \"<think>\\n\\n</think>\\n\\n\")\n\non @input -> @draft = generate(\n  @chat,\n  mode:continue,\n  continue:true,\n  temperature:0.6,\n  max_tokens:2048\n)\n\non @input -> @constraints_raw = generate(\n  $config.prompt_constraints_strict,\n  worker:analyzer,\n  input:@input,\n  think:false,\n  continue:true,\n  temperature:0.2,\n  max_tokens:1024\n)\n\non @constraints_raw -> @constraints = parse_sections(\n  @constraints_raw,\n  entities:\"ENTITIES:\",\n  axioms:\"AXIOMS:\",\n  hypotheses:\"HYPOTHESES:\"\n)\n\non @constraints -> @answers_header = table_header(@constraints.entities, @constraints.axioms)\n\non @draft, @answers_header -> append_text(@chat, assistant, @draft.answer)\non @draft, @answers_header -> append_text(@chat, assistant, \"\\n\\n\")\non @draft, @answers_header -> append_text(@chat, assistant, @answers_header.content)\non @draft, @answers_header -> append_text(@chat, assistant, \"\\n| 1 |\")\n\non @draft, @answers_header -> append_text(@table_text, content, @answers_header.content)\non @draft, @answers_header -> append_text(@table_text, content, \"\\n| 1 |\")\n\non @draft, @answers_header -> @table_chunk = generate(\n  @chat,\n  mode:continue,\n  continue:false,\n  temperature:0.1,\n  max_tokens:1024,\n  stop:\"\\n\\n\\n\"\n)\n\non @table_chunk -> append_text(@chat, assistant, @table_chunk.answer)\non @table_chunk -> append_text(@table_text, content, @table_chunk.answer)\non @table_chunk -> @parsed = parse_table(@table_text)\non @parsed -> @row_total = row_count(@parsed)\non @row_total -> @need_more = lt(@row_total, $config.target_rows)\n\nloop(while:@need_more, max_iters:$config.max_table_iters) {\n  @table_chunk = generate(\n    @chat,\n    mode:continue,\n    continue:false,\n    temperature:0.1,\n    max_tokens:1024,\n    stop:\"\\n\\n\\n\"\n  )\n  append_text(@chat, assistant, @table_chunk.answer)\n  append_text(@table_text, content, @table_chunk.answer)\n  @parsed = parse_table(@table_text)\n  @row_total = row_count(@parsed)\n  @need_more = lt(@row_total, $config.target_rows)\n}\n\n@accepted = accepted_list(@table_text, checks:@constraints.axioms)\n@accepted_rows = filter_rows(@table_text, where:all_yes, checks:@constraints.axioms)\n@rejected = reject_reasons(@table_text, checks:@constraints.axioms)",
+      "workflow_alias": [],
+      "tags": [
+        "verdict",
+        "table",
+        "builtin"
+      ],
+      "description": "Parallel answer + constraints pipeline that builds a verdict table and accepted/rejected lists."
+    },
+    "hypothesis_verdict": {
+      "name": "hypothesis_verdict",
+      "layer": "atomic",
+      "inputs": [
+        "prompt",
+        "prompt_constraints_strict",
+        "max_table_iters"
+      ],
+      "outputs": [
+        "hyp_table_text",
+        "hyp_parsed",
+        "hyp_rows"
+      ],
+      "dsl": "@input = $config.prompt\n@constraints_raw = generate(\n  $config.prompt_constraints_strict,\n  worker:analyzer,\n  input:@input,\n  think:false,\n  continue:true,\n  temperature:0.2,\n  max_tokens:1024\n)\n\n@constraints = parse_sections(\n  @constraints_raw,\n  entities:\"ENTITIES:\",\n  axioms:\"AXIOMS:\",\n  hypotheses:\"HYPOTHESES:\"\n)\n\n@hyp_header = table_header(@constraints.hypotheses)\n@hyp_table_text = \"\"\n\nappend_text(@hyp_table_text, content, @hyp_header.content)\nappend_text(@hyp_table_text, content, \"\\n| 1 |\")\n\n@hyp_chat = \"session\"\nset_text(@hyp_chat, user, @input)\nset_text(@hyp_chat, assistant, @hyp_header.content)\nappend_text(@hyp_chat, assistant, \"\\n| 1 |\")\n\n@hyp_chunk = generate(\n  @hyp_chat,\n  mode:continue,\n  continue:false,\n  temperature:0.1,\n  max_tokens:768,\n  stop:\"\\n\\n\\n\"\n)\n\nappend_text(@hyp_chat, assistant, @hyp_chunk.answer)\nappend_text(@hyp_table_text, content, @hyp_chunk.answer)\n\n@hyp_parsed = parse_table(@hyp_table_text)\n@hyp_rows = row_count(@hyp_parsed)\n@hyp_need_more = lt(@hyp_rows, 2)\n\nloop(while:@hyp_need_more, max_iters:$config.max_table_iters) {\n  @hyp_chunk = generate(\n    @hyp_chat,\n    mode:continue,\n    continue:false,\n    temperature:0.1,\n    max_tokens:768,\n    stop:\"\\n\\n\\n\"\n  )\n  append_text(@hyp_chat, assistant, @hyp_chunk.answer)\n  append_text(@hyp_table_text, content, @hyp_chunk.answer)\n  @hyp_parsed = parse_table(@hyp_table_text)\n  @hyp_rows = row_count(@hyp_parsed)\n  @hyp_need_more = lt(@hyp_rows, 2)\n}",
+      "workflow_alias": [],
+      "tags": [
+        "hypotheses",
+        "table",
+        "builtin"
+      ],
+      "description": "Build a separate verdict table for hypothesis columns."
+    },
+    "demoness_claims": {
+      "name": "demoness_claims",
+      "layer": "atomic",
+      "inputs": [],
+      "outputs": [],
+      "dsl": "generate(@input)\nclaims(@input)",
+      "workflow_alias": [],
+      "tags": [],
+      "description": ""
+    },
+    "demo_setup": {
+      "name": "demo_setup",
+      "layer": "atomic",
+      "inputs": [],
+      "outputs": [],
+      "dsl": "@input = @config.input\ntag(@input, type, task_prompt)",
+      "workflow_alias": [],
+      "tags": [],
+      "description": ""
+    },
+    "/save_macro(answer_constraints_table)": {
+      "name": "/save_macro(answer_constraints_table)",
+      "layer": "atomic",
+      "inputs": [],
+      "outputs": [],
+      "dsl": "@input = $config.prompt\n@chat = \"session\"\nset_text(@chat, user, @input)\nset_text(@chat, assistant, \"<think>\\n\\n</think>\\n\\n\")\non @input -> @draft = generate(@chat, mode:continue, continue:true, temperature:0.6, max_tokens:2048)\non @input -> @constraints_raw = generate($config.prompt_constraints, worker:analyzer, input:@input, think:false, continue:true, temperature:0.2, max_tokens:1024)\non @constraints_raw -> @constraints = parse_sections(@constraints_raw, entities:\"ENTITIES:\", axioms:\"AXIOMS:\", hypotheses:\"HYPOTHESES:\")\non @constraints -> @answers_header = table_header(@constraints.entities, @constraints.axioms)\non @constraints -> @hyp_grid = reshape_grid(@constraints.hypotheses, cols:$config.hypothesis_cols)\non @draft, @answers_header -> append_text(@chat, assistant, @draft.answer)\non @draft, @answers_header -> append_text(@chat, assistant, \"\\n\\n\")\non @draft, @answers_header -> append_text(@chat, assistant, @answers_header.content)\non @draft, @answers_header -> append_text(@chat, assistant, \"\\n| 1 |\")\non @draft, @answers_header -> @table = generate(@chat, mode:continue, continue:false, temperature:0.1, max_tokens:1024, stop:\"\\n\\n\\n\")",
+      "workflow_alias": [],
+      "tags": [],
+      "description": ""
+    },
+    "answer_constraints_accept_reject": {
+      "name": "answer_constraints_accept_reject",
+      "layer": "atomic",
+      "inputs": [],
+      "outputs": [],
+      "dsl": "@input = $config.prompt\n@chat = \"session\"\nset_text(@chat, user, @input)\nset_text(@chat, assistant, \"<think>\\n\\n</think>\\n\\n\")\non @input -> @draft = generate(@chat, mode:continue, continue:true, temperature:0.6, max_tokens:2048)\non @input -> @constraints_raw = generate($config.prompt_constraints, worker:analyzer, input:@input, think:false, continue:true, temperature:0.2, max_tokens:1024)\non @constraints_raw -> @constraints = parse_sections(@constraints_raw, entities:\"ENTITIES:\", axioms:\"AXIOMS:\", hypotheses:\"HYPOTHESES:\")\non @constraints -> @answers_header = table_header(@constraints.entities, @constraints.axioms)\non @constraints -> @hyp_grid = reshape_grid(@constraints.hypotheses, cols:$config.hypothesis_cols)\non @draft, @answers_header -> append_text(@chat, assistant, @draft.answer)\non @draft, @answers_header -> append_text(@chat, assistant, \"\\n\\n\")\non @draft, @answers_header -> append_text(@chat, assistant, @answers_header.content)\non @draft, @answers_header -> append_text(@chat, assistant, \"\\n| 1 |\")\non @draft, @answers_header -> @table = generate(@chat, mode:continue, continue:false, temperature:0.1, max_tokens:1024, stop:\"\\n\\n\\n\")\non @table, @constraints -> @accepted = accepted_list(@table, checks:@constraints.axioms)\non @table, @constraints -> @accepted_rows = filter_rows(@table, where:all_yes, checks:@constraints.axioms)\non @table, @constraints -> @rejected = reject_reasons(@table, checks:@constraints.axioms)",
+      "workflow_alias": [],
+      "tags": [],
+      "description": ""
     }
   }
 }
