@@ -3426,6 +3426,7 @@ var globalItems = [];
 var macroRecording = false;
 var macroSteps = [];
 var atomicMacros = {};
+var pipelineSteps = []; // always-on recording of executed commands for DSL export
 try { const sc = JSON.parse(localStorage.getItem('atomic_config') || '{}'); if (sc.params) atomicParams = sc.params; if (sc.grammars) atomicGrammars = sc.grammars; } catch(_) {}
 try { const si = JSON.parse(localStorage.getItem('global_items') || '[]'); if (Array.isArray(si)) globalItems = si; } catch(_) {}
 try { atomicMacros = JSON.parse(localStorage.getItem('atomic_macros') || '{}'); } catch(_) {}
@@ -3870,6 +3871,7 @@ async function handleAtomicInput(text) {
     if (resolved && resolved !== rawRef) {
       addTextArea(configName, 'resolved', resolved);
     }
+    pipelineSteps.push({cmd: `@${configName} = ${rawRef}`});
     addAtomicMsg('user', rawRef, [configName]);
     renderAtomicFeed();
     updateScopeList();
@@ -3996,16 +3998,18 @@ async function runPipeline(dslText) {
   // Create entities from definitions
   for (const [name, rawVal] of Object.entries(entities)) {
     if (!atomicEntities[name]) {
-      // Resolve @config.* references
-      let text = rawVal;
-      if (rawVal && typeof rawVal === 'object' && rawVal.ref) {
-        const resolved = resolveRefToString(rawVal.ref.replace(/^@/, ''));
-        text = (resolved && resolved !== rawVal.ref) ? resolved : '';
-        if (!text) { addAtomicMsg('system', `⚠ Unresolved ref: ${rawVal.ref}`); }
-      }
       createEntity(name);
-      addTextArea(name, 'content', text);
-      addAtomicMsg('user', text, [name]);
+      if (rawVal && typeof rawVal === 'object' && rawVal.ref) {
+        // @config ref — store raw ref as content, resolved as preview
+        addTextArea(name, 'content', rawVal.ref);
+        const resolved = resolveRefToString(rawVal.ref.replace(/^@/, ''));
+        if (resolved && resolved !== rawVal.ref) addTextArea(name, 'resolved', resolved);
+        pipelineSteps.push({cmd: `@${name} = ${rawVal.ref}`});
+        addAtomicMsg('user', rawVal.ref, [name]);
+      } else {
+        addTextArea(name, 'content', rawVal);
+        addAtomicMsg('user', rawVal, [name]);
+      }
     }
   }
   // Execute steps sequentially
@@ -4031,6 +4035,9 @@ async function applyAtomicTool(toolName, args) {
   if (macroRecording) {
     macroSteps.push({tool: toolName, args: [...args]});
   }
+  // Always record for pipeline DSL export
+  const argsStr = args.map(a => String(a).startsWith('@') ? a : (a.includes(',') || a.includes(' ') ? a : a)).join(', ');
+  pipelineSteps.push({cmd: `${toolName}(${argsStr})`});
   setS('busy', 'Running ' + toolName + '...');
   try {
     switch (toolName) {
@@ -4051,6 +4058,10 @@ async function applyAtomicTool(toolName, args) {
       case 'scope_begin': toolScopeBegin(); break;
       case 'scope_end': toolScopeEnd(args); break;
       case 'drop': toolDrop(args); break;
+      case 'tag': toolTag(args); break;
+      case 'add_text': toolAddText(args); break;
+      case 'rename': toolRename(args); break;
+      case 'export_dsl': toolExportDSL(args); break;
       default:
         addAtomicMsg('tool', `Unknown tool: ${toolName}`);
     }
@@ -4379,6 +4390,62 @@ function toolDrop(args) {
   renderAtomicFeed();
   updateScopeList();
   addAtomicMsg('system', `drop: ${names.map(n=>'@'+n).join(', ')}`);
+}
+
+function toolTag(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const key = args[1]?.trim();
+  const value = args.slice(2).join(', ').trim();
+  if (!ref || !key) { addAtomicMsg('tool', 'Usage: tag(@entity, key, value)'); return; }
+  if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  addTag(ref, key, value);
+  addAtomicMsg('system', `tag(@${ref}, ${key}, ${value})`);
+  saveAtomicState();
+}
+
+function toolAddText(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const name = args[1]?.trim();
+  const text = args.slice(2).join(', ').trim();
+  if (!ref || !name) { addAtomicMsg('tool', 'Usage: add_text(@entity, name, text)'); return; }
+  if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  addTextArea(ref, name, text);
+  addAtomicMsg('system', `add_text(@${ref}, ${name})`);
+  saveAtomicState();
+}
+
+function toolRename(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const newName = args[1]?.trim();
+  if (!ref || !newName) { addAtomicMsg('tool', 'Usage: rename(@entity, new_name)'); return; }
+  const entity = atomicEntities[ref];
+  if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  delete atomicEntities[ref];
+  entity.name = newName;
+  atomicEntities[newName] = entity;
+  atomicMessages.forEach(m => {
+    const idx = m.entities?.indexOf(ref);
+    if (idx >= 0) m.entities[idx] = newName;
+  });
+  addAtomicMsg('system', `rename(@${ref} → @${newName})`);
+  saveAtomicState();
+}
+
+function exportPipelineDSL(name) {
+  let lines = [`# Pipeline: ${name || 'untitled'}`];
+  pipelineSteps.forEach(step => { lines.push(step.cmd); });
+  return lines.join('\n');
+}
+
+function toolExportDSL(args) {
+  const name = args[0] || 'untitled';
+  // Remove this export_dsl step from pipeline (meta command, not a pipeline step)
+  if (pipelineSteps.length && pipelineSteps[pipelineSteps.length - 1].cmd.startsWith('export_dsl')) {
+    pipelineSteps.pop();
+  }
+  const dsl = exportPipelineDSL(name);
+  addAtomicMsg('tool', `Pipeline DSL:\n\`\`\`\n${dsl}\n\`\`\``);
+  navigator.clipboard.writeText(dsl).catch(() => {});
 }
 
 function toolCheckStatus(args) {
@@ -4777,6 +4844,7 @@ document.getElementById('btnAtomicClear').addEventListener('click', () => {
   atomicMessages = [];
   atomicEntities = {};
   atomicIdN = 0;
+  pipelineSteps = [];
   saveAtomicState();
   renderAtomicFeed();
   updateScopeList();
@@ -5169,18 +5237,18 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
     const hasText = atomicEntities[entityName]?.text_areas?.length > 0;
     const hasTable = atomicEntities[entityName]?.data_areas?.length > 0;
     const toolItems = [];
-    // Tool actions (discoverable, no DSL knowledge needed)
+    // Tool actions — all route through handleAtomicInput for logging + pipeline tracking
     if (hasText) {
       toolItems.push(
-        {label: '▶ Extract Claims', action: () => { applyAtomicTool('claims', [entityName]); }},
-        {label: '▶ Generate answer', action: () => { applyAtomicTool('generate', [entityName]); }},
-        {label: '▶ Number lines', action: () => { applyAtomicTool('numbered', [entityName]); }},
-        {label: '▶ Check status', action: () => { applyAtomicTool('check_status', [entityName]); }},
+        {label: '▶ Extract Claims', action: () => handleAtomicInput(`claims(@${entityName})`)},
+        {label: '▶ Generate answer', action: () => handleAtomicInput(`generate(@${entityName})`)},
+        {label: '▶ Number lines', action: () => handleAtomicInput(`numbered(@${entityName})`)},
+        {label: '▶ Check status', action: () => handleAtomicInput(`check(@${entityName})`)},
       );
     }
     if (hasTable) {
       toolItems.push(
-        {label: '▶ Transpose table', action: () => { applyAtomicTool('transpose', [entityName]); }},
+        {label: '▶ Transpose table', action: () => handleAtomicInput(`transpose(@${entityName})`)},
       );
     }
     if (hasText) {
@@ -5190,14 +5258,14 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
             {name: 'columns', placeholder: 'Column names (comma-separated)', label: 'Columns'}
           ]}, (vals) => {
             if (!vals.columns) return;
-            applyAtomicTool('table_as_query', [entityName, ...vals.columns.split(',').map(s => s.trim())]);
+            handleAtomicInput(`table_as_query(@${entityName}, ${vals.columns})`);
           });
         }},
         {label: '▶ Probe continue...', action: () => {
           showNamePopup(entityCard, {label: 'Probe continue', fields: [
             {name: 'inject', placeholder: 'Text to inject after </think> (optional)', label: 'Inject text', multiline: true}
           ]}, (vals) => {
-            applyAtomicTool('probe_continue', vals.inject ? [entityName, vals.inject] : [entityName]);
+            handleAtomicInput(vals.inject ? `probe(@${entityName}, ${vals.inject})` : `probe(@${entityName})`);
           });
         }},
       );
@@ -5206,22 +5274,21 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       toolItems.push(
         {label: '▶ Verify against...', action: () => {
           showNamePopup(entityCard, {label: 'Verify against', placeholder: 'entity name', defaultValue: ''}, (other) => {
-            applyAtomicTool('verify', [entityName, other.replace(/^@/, '')]);
+            handleAtomicInput(`verify(@${entityName}, @${other.replace(/^@/, '')})`);
           });
         }},
       );
     }
     showAtomicCtx(e.clientX, e.clientY, [
       ...toolItems,
-      // Structural operations
+      // Structural operations — route through handleAtomicInput for logging
       {label: 'Add tag', action: () => {
         showNamePopup(entityCard, {label: 'Add tag', fields: [
           {name: 'key', placeholder: 'key', label: 'Tag key'},
           {name: 'value', placeholder: 'value', label: 'Tag value'}
         ]}, (vals) => {
           if (!vals.key) return;
-          addTag(entityName, vals.key, vals.value || '');
-          renderAtomicFeed();
+          handleAtomicInput(`tag(@${entityName}, ${vals.key}, ${vals.value || ''})`);
         });
       }},
       {label: 'Add text area', action: () => {
@@ -5230,8 +5297,7 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           {name: 'text', placeholder: 'Text content...', label: 'Text', multiline: true}
         ]}, (vals) => {
           if (!vals.name) return;
-          addTextArea(entityName, vals.name, vals.text || '');
-          renderAtomicFeed();
+          handleAtomicInput(`add_text(@${entityName}, ${vals.name}, ${vals.text || ''})`);
         });
       }},
       {label: 'Add table', action: () => {
@@ -5240,34 +5306,16 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           {name: 'columns', placeholder: 'Col1, Col2, Col3', label: 'Columns (comma-separated)'}
         ]}, (vals) => {
           if (!vals.name || !vals.columns) return;
-          const headers = vals.columns.split(',').map(s => s.trim());
-          addDataArea(entityName, vals.name, headers, [headers.map(() => '')]);
-          renderAtomicFeed();
+          handleAtomicInput(`add_table(@${entityName}, ${vals.name}, ${vals.columns})`);
         });
       }},
       {label: 'Rename', action: () => {
         showNamePopup(entityCard, {label: 'Rename entity', placeholder: 'new name', defaultValue: entityName}, (newName) => {
           if (!newName || newName === entityName) return;
-          const entity = atomicEntities[entityName];
-          if (!entity) return;
-          delete atomicEntities[entityName];
-          entity.name = newName;
-          atomicEntities[newName] = entity;
-          atomicMessages.forEach(m => {
-            const idx = m.entities?.indexOf(entityName);
-            if (idx >= 0) m.entities[idx] = newName;
-          });
-          saveAtomicState();
-          renderAtomicFeed();
-          updateScopeList();
+          handleAtomicInput(`rename(@${entityName}, ${newName})`);
         });
       }},
-      {label: 'Delete', danger: true, action: () => {
-        delete atomicEntities[entityName];
-        saveAtomicState();
-        renderAtomicFeed();
-        updateScopeList();
-      }},
+      {label: 'Delete', danger: true, action: () => handleAtomicInput(`drop(@${entityName})`)},
     ]);
   } else {
     // Context menu on empty space — create entity + macros
@@ -5283,9 +5331,9 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       {label: '📋 DSL: ' + name, action: () => {
         const dsl = macroToDSL(name, atomicMacros[name]);
         navigator.clipboard.writeText(dsl).then(() => {
-          addAtomicMsg('tool', `Pipeline DSL copied to clipboard:\n\`\`\`\n${dsl}\n\`\`\``);
+          addAtomicMsg('tool', `Macro DSL copied:\n\`\`\`\n${dsl}\n\`\`\``);
         }).catch(() => {
-          addAtomicMsg('tool', `Pipeline DSL:\n\`\`\`\n${dsl}\n\`\`\``);
+          addAtomicMsg('tool', `Macro DSL:\n\`\`\`\n${dsl}\n\`\`\``);
         });
         renderAtomicFeed();
       }},
@@ -5316,7 +5364,8 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
           renderAtomicFeed(); updateScopeList();
         });
       }},
-      // Pipeline import
+      // Pipeline DSL
+      {label: '📋 Export Pipeline DSL', action: () => handleAtomicInput('export_dsl()')},
       {label: '📥 Import Pipeline', action: () => {
         showNamePopup(null, {label: 'Import Pipeline DSL', fields: [
           {name: 'dsl', placeholder: '# Pipeline: name\n@input = "..."\ngenerate(@input)\nclaims(@input_answer)', label: 'Paste DSL here', multiline: true}
