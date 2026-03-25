@@ -1,0 +1,19 @@
+{
+  "demo_card": {
+    "name": "demo_card",
+    "slots": [
+      {"id": "s_1", "type": "title", "label": "title", "binding": null, "options": {}, "children": null},
+      {"id": "s_2", "type": "tags", "label": "tags", "binding": null, "options": {}, "children": null},
+      {
+        "id": "s_3", "type": "group", "label": "Answer", "binding": null, "options": {},
+        "children": [
+          {"id": "s_4", "type": "text_area", "label": "RESULT", "binding": null, "options": {"collapsed": false, "editable": true}, "children": null},
+          {"id": "s_5", "type": "image", "label": "image", "binding": null, "options": {}, "children": null},
+          {"id": "s_6", "type": "buttons", "label": "buttons", "binding": null, "options": {"items": ["verify", "check", "generate"]}, "children": null}
+        ]
+      },
+      {"id": "s_7", "type": "reactions", "label": "reactions", "binding": null, "options": {}, "children": null},
+      {"id": "s_8", "type": "thread", "label": "thread", "binding": null, "options": {"mode": "tree"}, "children": null}
+    ]
+  }
+}
