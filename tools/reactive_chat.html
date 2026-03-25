@@ -4093,8 +4093,41 @@ function addAtomicMsg(role, content, entities, meta) {
 }
 
 /* --- Atomic input handler --- */
+// Editor commands (: prefix) — go to console, not pipeline
+const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','export_dsl','rename','drop']);
+
 async function handleAtomicInput(text) {
   if (!text.trim()) return;
+  // Editor command: :command(args) — route to console, don't record in pipeline
+  if (text.trim().startsWith(':')) {
+    const editorText = text.trim().slice(1);
+    const toolMatch = editorText.match(/^([\w_-]+)\(([^)]*)\)$/);
+    if (toolMatch) {
+      const [, toolName, argsStr] = toolMatch;
+      const args = argsStr ? argsStr.split(',').map(s => s.trim()) : [];
+      addConsoleMsg(`> :${editorText}`);
+      // Run without pipeline recording
+      const savedSteps = [...pipelineSteps];
+      await applyAtomicTool(toolName, args);
+      pipelineSteps.length = 0;
+      pipelineSteps.push(...savedSteps);
+      renderPipelineSteps();
+      return;
+    }
+  }
+  // Auto-detect editor commands without : prefix (backward compat)
+  const bareToolMatch = text.trim().match(/^([\w_-]+)\(([^)]*)\)$/);
+  if (bareToolMatch && EDITOR_COMMANDS.has(bareToolMatch[1])) {
+    addConsoleMsg(`> ${text.trim()}`);
+    const [, toolName, argsStr] = bareToolMatch;
+    const args = argsStr ? argsStr.split(',').map(s => s.trim()) : [];
+    const savedSteps = [...pipelineSteps];
+    await applyAtomicTool(toolName, args);
+    pipelineSteps.length = 0;
+    pipelineSteps.push(...savedSteps);
+    renderPipelineSteps();
+    return;
+  }
   // Check if it's a pipeline DSL (multi-line, starts with # or has multiple tool calls)
   if (text.includes('\n') && (text.trim().startsWith('#') || text.split('\n').filter(l => l.trim().match(/^\w+\(/)).length >= 2)) {
     addAtomicMsg('user', '```\n' + text + '\n```');
@@ -5805,35 +5838,53 @@ function addAtomicChat(role, content) {
   atomicChatMessages.push({role, content});
 }
 
-const DEFAULT_DSL_HELP = `You are a pipeline builder assistant. You help create Atomic Task pipelines using DSL commands.
+const DEFAULT_DSL_HELP = `You are a pipeline builder. Generate DSL v2 commands.
 
-Available commands (one per line):
-- @name = @config.ref — bind entity to Global Params config item
-- @name = "literal text" — create entity with inline text
-- generate(@entity) — LLM generation, creates @entity_answer
-- generate(@entity, analyzer) — use analyzer worker
-- generate(@entity, analyzer, no_think:false) — with thinking enabled
-- generate(@config.prompt, analyzer, input:@config.input) — slot mapping
-- parse_sections(@entity, DELIM1:, DELIM2:, DELIM3:) — extract sections, creates @entity_constraints
-- tag(@entity, key, value) / remove_tag(@entity, key) — metadata tags
-- scope_begin() / scope_end(@keep1, @keep2) — local scope
-- drop(@entity) — delete entity and its pipeline steps
-- save_macro(name) / run_macro(name) — save/replay sequences
-- export_dsl(name) — export pipeline as DSL text
-- add_text(@entity, name, text) / add_table(@entity, name, cols)
-- rename(@entity, new_name)
+Syntax:
+  @local = expr                    — assignment
+  tag(@entity, key:"value")        — metadata
+  untag(@entity, key)              — remove tag
+  on @dep1, @dep2 -> @out = expr   — reactive trigger
 
-Key behaviors:
-- generate() auto-creates result: @source_answer
-- @config.* refs resolve at call time (multi-pass for nested refs)
-- parse_sections uses server scope — one call for all sections
-- Slot mappings: input:@config.input replaces @input in template
+Names:
+  @name         — local entity
+  $config.name  — global param (read-only)
+  @name.field   — entity field
+  "text" or triple-quoted """text"""
+
+Expressions:
+  @x = $config.input
+  @answer = generate(@input)
+  @claims = generate($config.prompt, worker:analyzer, input:@input, think:true)
+  @sections = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
+  @tbl = table(cols:["name","status"])
+  @doc = text(title:"notes", body:@answer)
+
+Options (key:value only):
+  worker:generator|analyzer|verifier  think:true|false  temperature:0.2
+  max_tokens:2048  mode:prompt|continue|probe_continue  input:@ref
+  grammar:$config.grammar_name  stop:"\\n"
+
+Scope:
+  @result = scope {
+    @draft = generate(@input)
+    @parts = parse_sections(@draft, a:"A:", b:"B:")
+    export { entities: @parts.a, axioms: @parts.b }
+  }
+
+Reactivity:
+  on @input -> @draft = generate(@input)
+  on @draft -> @claims = parse_sections(@draft, e:"E:", a:"A:", h:"H:")
+
+Editor commands (not part of pipeline, prefixed with :):
+  :save_macro(name)  :run_macro(name)  :export_dsl(name)
+  :rename(@old, new)  :drop(@entity)  :list_macros()
 
 Rules:
-- Output DSL commands inside a \\\`\\\`\\\`pipeline code block
-- Use @config.* refs, never hardcode long text
-- Be minimal — no prose between commands in the code block
-- Explain briefly before the code block if asked`;
+- Output DSL inside \\\`\\\`\\\`pipeline code block
+- Use $config.* refs, never hardcode long text
+- All generate() must have explicit @result = assignment
+- Options as key:value, not positional`;
 
 // Create @config.dsl_help if missing
 (function() {
