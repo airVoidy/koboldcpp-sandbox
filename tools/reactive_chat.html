@@ -777,6 +777,17 @@ body {
   </div>
 </div>
 
+<!-- Console Log — full width, below everything -->
+<div id="atomicConsolePanel" style="position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--border);z-index:99;display:none;flex-direction:column;max-height:150px">
+  <div id="atomicConsoleHeader" style="display:flex;align-items:center;padding:2px 12px;cursor:pointer;gap:4px;flex-shrink:0">
+    <span id="atomicConsoleToggle" style="font-size:8px;color:var(--text-dim)">▾</span>
+    <span style="font-size:9px;color:var(--text-dim);font-weight:600">Console</span>
+    <span id="atomicConsoleCount" style="font-size:9px;color:var(--text-dim)"></span>
+    <button id="atomicConsoleClear" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;margin-left:auto;padding:0" onclick="event.stopPropagation();atomicConsoleMsgs=[];renderAtomicConsole()">clear</button>
+  </div>
+  <div id="atomicConsoleLog" style="overflow-y:auto;padding:0 12px 4px;font-size:9px;font-family:'Cascadia Code','Fira Code',monospace;color:var(--text-dim);line-height:1.4"></div>
+</div>
+
 <script>
 /* ================================================================
    State
@@ -4006,7 +4017,36 @@ document.getElementById('btnSaveMacroFromSteps').addEventListener('click', () =>
 
 
 /* --- Message handling --- */
+var atomicConsoleMsgs = [];
+
+function addConsoleMsg(content) {
+  const ts = new Date().toLocaleTimeString();
+  atomicConsoleMsgs.push({ts, content});
+  renderAtomicConsole();
+}
+
+function renderAtomicConsole() {
+  const el = document.getElementById('atomicConsoleLog');
+  const countEl = document.getElementById('atomicConsoleCount');
+  if (!el) return;
+  countEl.textContent = atomicConsoleMsgs.length ? `(${atomicConsoleMsgs.length})` : '';
+  el.innerHTML = atomicConsoleMsgs.map(m => `<div><span style="color:var(--text-dim);opacity:0.5">${m.ts}</span> ${esc(m.content)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('atomicConsoleHeader').addEventListener('click', () => {
+  const log = document.getElementById('atomicConsoleLog');
+  const toggle = document.getElementById('atomicConsoleToggle');
+  if (log.style.display === 'none') { log.style.display = ''; toggle.textContent = '▾'; }
+  else { log.style.display = 'none'; toggle.textContent = '▸'; }
+});
+
 function addAtomicMsg(role, content, entities, meta) {
+  // System messages go to console log, not main feed
+  if (role === 'system') {
+    addConsoleMsg(content);
+    return;
+  }
   const msg = {
     id: atomicGid(),
     role,
@@ -5135,8 +5175,11 @@ document.getElementById('btnAtomicClear').addEventListener('click', () => {
   atomicIdN = 0;
   pipelineSteps = [];
   _selectedPipelineSteps.clear();
+  _selectedStepIdx = -1;
+  atomicConsoleMsgs = [];
   saveAtomicState();
   renderAtomicFeed();
+  renderAtomicConsole();
   updateScopeList();
   renderPipelineSteps();
 });
@@ -5696,6 +5739,8 @@ function updateChatPanelVisibility() {
   const panel = document.getElementById('atomicChatPanel');
   const sidebar = document.getElementById('rightSidebar');
   if (!panel || !sidebar) return;
+  const consolePanel = document.getElementById('atomicConsolePanel');
+  if (consolePanel) consolePanel.style.display = activePage === 'atomic' ? 'flex' : 'none';
   if (activePage !== 'atomic' || sidebar.classList.contains('collapsed')) {
     panel.style.display = 'none';
     return;
