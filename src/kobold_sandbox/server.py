@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 import json
 import re
@@ -1824,6 +1825,269 @@ def create_app(root: str) -> FastAPI:
             "completion_tokens": completion_tokens,
             "tokens_per_second": tokens_per_second,
             "raw": raw,
+        }
+
+    # ================================================================
+    #  Atomic Tasks — server-side tool execution
+    # ================================================================
+
+    @app.post("/api/atomic/run")
+    async def atomic_run(request: Request) -> dict:
+        """Execute an atomic tool server-side.
+
+        Body:
+          tool: "slice" | "split" | "generate" | "claims" | ...
+          params: tool-specific params (text, from_delim, to_delim, etc.)
+          workers: {role: url} for LLM tools
+          settings: {temperature, max_tokens, no_think, max_continue}
+          role: which worker role to use (for LLM tools)
+        """
+        body = await request.json()
+        tool = body.get("tool", "")
+        params = body.get("params", {})
+        workers = body.get("workers", {})
+        settings = body.get("settings", {})
+        role = body.get("role", "generator")
+
+        if not tool:
+            raise HTTPException(400, "tool is required")
+
+        try:
+            result = _run_atomic_tool(tool, params, workers, settings, role)
+            if asyncio.iscoroutine(result):
+                result = await result
+            return {"status": "ok", **result}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            raise HTTPException(500, f"{type(e).__name__}: {e}")
+
+    def _run_atomic_tool(
+        tool: str,
+        params: dict,
+        workers: dict,
+        settings: dict,
+        role: str,
+    ) -> dict:
+        """Dispatch atomic tool. Returns dict with tool-specific results."""
+        if tool == "slice":
+            return _atomic_slice(params)
+        elif tool == "split":
+            return _atomic_split(params)
+        elif tool == "generate":
+            return _atomic_generate(params, workers, settings, role)
+        elif tool == "claims":
+            return _atomic_claims(params, workers, settings, role)
+        else:
+            raise ValueError(f"Unknown tool: {tool}")
+
+    def _atomic_slice(params: dict) -> dict:
+        """Slice text between two delimiters.
+        params: {text, from_delim, to_delim?}
+        """
+        text = params.get("text", "")
+        from_delim = params.get("from_delim", "")
+        to_delim = params.get("to_delim")
+
+        if not text:
+            raise ValueError("text is required")
+        if not from_delim:
+            raise ValueError("from_delim is required")
+
+        from_idx = text.find(from_delim)
+        if from_idx < 0:
+            raise ValueError(f'delimiter "{from_delim}" not found')
+
+        content_start = from_idx + len(from_delim)
+        content_end = len(text)
+        if to_delim:
+            to_idx = text.find(to_delim, content_start)
+            if to_idx >= 0:
+                content_end = to_idx
+
+        sliced = text[content_start:content_end].strip()
+        return {"content": sliced, "from_delim": from_delim, "to_delim": to_delim}
+
+    def _atomic_split(params: dict) -> dict:
+        """Split text into items. Auto-detects [a,b] or - item format.
+        params: {text, separator?}
+        """
+        text = params.get("text", "")
+        if not text:
+            raise ValueError("text is required")
+
+        _re = re
+
+        # Try bracket list: [a, b, c]
+        bracket = _re.search(r"\[([^\]]+)\]", text)
+        if bracket:
+            items = [s.strip() for s in bracket.group(1).split(",") if s.strip()]
+            return {"items": items, "format": "bracket"}
+
+        # Try bullet list: - item or • item
+        lines = text.strip().split("\n")
+        items = []
+        for line in lines:
+            cleaned = _re.sub(r"^[-•*]\s*", "", line.strip())
+            if cleaned:
+                items.append(cleaned)
+        return {"items": items, "format": "lines"}
+
+    async def _atomic_generate(
+        params: dict, workers: dict, settings: dict, role: str
+    ) -> dict:
+        """Generate via LLM worker.
+        params: {messages, mode?, grammar?, stop?, capture?, coerce?}
+        """
+        messages = params.get("messages", [])
+        if not messages:
+            raise ValueError("messages is required")
+
+        base_url = workers.get(role, "").rstrip("/")
+        if not base_url:
+            raise ValueError(f"No worker for role '{role}'")
+
+        temperature = float(settings.get("temperature", 0.6))
+        max_tokens = int(settings.get("max_tokens", 2048))
+        no_think = settings.get("no_think", True)
+        max_continue = int(settings.get("max_continue", 20))
+        continue_on = settings.get("continue", no_think)
+        grammar = params.get("grammar")
+        stop = params.get("stop")
+        mode = params.get("mode", "prompt")
+
+        # No-think prefill
+        if no_think and (not messages or messages[-1].get("role") != "assistant"):
+            messages = [*messages, {"role": "assistant", "content": "<think>\n\n</think>\n\n"}]
+
+        has_prefill = messages and messages[-1].get("role") == "assistant"
+        url = f"{base_url}/v1/chat/completions"
+        result = ""
+        raw_responses = []
+
+        started_at = time.perf_counter()
+        for i in range(max_continue + 1):
+            if i == 0:
+                cur_messages = messages
+            elif has_prefill:
+                cur_messages = [*messages[:-1], {"role": "assistant", "content": (("<think>\n\n</think>\n\n" if no_think else "") + result)}]
+            else:
+                cur_messages = [*messages, {"role": "assistant", "content": result}]
+
+            payload: dict = {
+                "messages": cur_messages,
+                "continue_assistant_turn": i > 0 or no_think,
+                "cache_prompt": False,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": False,
+            }
+            if grammar:
+                payload["grammar"] = grammar
+            if stop:
+                payload["stop"] = stop if isinstance(stop, list) else [stop]
+
+            resp = httpx.post(url, json=payload, timeout=180.0, trust_env=False)
+            resp.raise_for_status()
+            data = resp.json()
+            raw_responses.append(data)
+
+            choice = (data.get("choices") or [{}])[0]
+            chunk = choice.get("message", {}).get("content", "")
+            finish_reason = choice.get("finish_reason", "stop")
+            result += chunk
+
+            if not continue_on:
+                break
+            if finish_reason not in ("length", "max_tokens"):
+                break
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+
+        # Separate think and answer
+        _re = re
+        think = ""
+        answer = result
+        think_match = _re.search(r"<think\b[^>]*>([\s\S]*?)</think>", result, _re.IGNORECASE)
+        if think_match:
+            think = think_match.group(1).strip()
+            answer = _re.sub(r"<think\b[^>]*>[\s\S]*?</think>\s*", "", result, flags=_re.IGNORECASE).strip()
+
+        # Apply capture regex
+        captured = None
+        if params.get("capture"):
+            m = _re.search(params["capture"], result)
+            if m:
+                captured = m.group(0)
+                if params.get("coerce") == "int":
+                    captured = int(captured)
+
+        usage = raw_responses[-1].get("usage", {}) if raw_responses else {}
+        return {
+            "content": answer,
+            "think": think,
+            "captured": captured,
+            "continues": len(raw_responses) - 1,
+            "latency_ms": latency_ms,
+            "tokens": {
+                "prompt": usage.get("prompt_tokens"),
+                "completion": usage.get("completion_tokens"),
+            },
+        }
+
+    async def _atomic_claims(
+        params: dict, workers: dict, settings: dict, role: str
+    ) -> dict:
+        """Extract claims via LLM. Returns parsed entities/axioms/hypotheses.
+        params: {text, prompt_template?}
+        """
+        text = params.get("text", "")
+        if not text:
+            raise ValueError("text is required")
+
+        prompt_template = params.get("prompt_template",
+            "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\n"
+            "Верни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\n"
+            "AXIOMS:\n- утверждение 1\n- утверждение 2\n"
+            "HYPOTHESES:\n- гипотеза 1\n\n"
+            "Требования:\n- AXIOMS = факты, данные как условие.\n"
+            "- HYPOTHESES = выводы, предположения.\n"
+            "- Каждое утверждение атомарное и короткое.\n"
+            "- Не выводи прозу или JSON.\n- Отвечай на языке текста.\n\n"
+            "Текст для анализа:\n@input"
+        )
+        prompt = prompt_template.replace("@input", text)
+
+        gen_result = await _atomic_generate(
+            {"messages": [{"role": "user", "content": prompt}], "mode": "prompt"},
+            workers, {**settings, "temperature": 0.1, "no_think": True}, role or "analyzer"
+        )
+        answer = gen_result.get("content", "")
+
+        # Parse sections from answer
+        _re = re
+        sections = {}
+        # Find all SECTION_NAME: headers
+        header_pattern = _re.compile(r"^([A-Z_]+)\s*:", _re.MULTILINE)
+        matches = list(header_pattern.finditer(answer))
+        for i, m in enumerate(matches):
+            name = m.group(1).lower()
+            start = m.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(answer)
+            section_text = answer[start:end].strip()
+            # Parse bracket or bullet list
+            bracket = _re.search(r"\[([^\]]+)\]", section_text)
+            if bracket:
+                items = [s.strip() for s in bracket.group(1).split(",") if s.strip()]
+            else:
+                items = [_re.sub(r"^[-•*]\s*", "", l.strip()) for l in section_text.split("\n") if l.strip()]
+            sections[name] = items
+
+        return {
+            "content": answer,
+            "sections": sections,
+            "latency_ms": gen_result.get("latency_ms"),
+            "tokens": gen_result.get("tokens"),
         }
 
     def _serialize(v: Any) -> Any:
