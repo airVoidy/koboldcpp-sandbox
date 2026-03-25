@@ -3570,6 +3570,15 @@ function resolveRef(ref) {
   // @name or @name.field or @name.field.subfield
   const clean = ref.replace(/^@/, '');
   const parts = clean.split('.');
+  // @config.name — resolve from Global Params (globalItems)
+  if (parts[0] === 'config' && parts.length >= 2) {
+    const itemName = parts[1];
+    const item = globalItems.find(g => g.name === itemName);
+    if (!item) return atomicParams[itemName] !== undefined ? atomicParams[itemName] : null;
+    if (item.type === 'text') return item.text;
+    if (item.type === 'table') return item; // {headers, rows}
+    return item;
+  }
   const entity = atomicEntities[parts[0]];
   if (!entity) return null;
   if (parts.length === 1) return entity;
@@ -3697,12 +3706,13 @@ function renderAtomicMsg(msg) {
       const key = tagEl.dataset.key;
       const entity = atomicEntities[eName];
       if (!entity) return;
-      const newVal = prompt(`Edit tag "${key}":`, entity.tags[key]);
-      if (newVal !== null) {
-        entity.tags[key] = newVal;
-        saveAtomicState();
-        renderAtomicFeed();
-      }
+      showNamePopup(tagEl, {label: `Edit tag "${key}"`, placeholder: 'value', defaultValue: entity.tags[key]}, newVal => {
+        if (newVal !== null) {
+          entity.tags[key] = newVal;
+          saveAtomicState();
+          renderAtomicFeed();
+        }
+      });
     });
   });
   // Bind text_area toggle (click label to expand/collapse)
@@ -3886,13 +3896,19 @@ function macroToDSL(name, steps) {
     const firstText = e.text_areas?.[0]?.text;
     if (firstText && !e.source) {
       // Only root entities (user-created, not tool-generated)
-      const escaped = firstText.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      if (firstText.length < 200) {
-        lines.push(`@${eName} = "${escaped}"`);
+      // Check if text matches a @config.* item — emit reference instead of inline
+      const configRef = globalItems.find(g => g.type === 'text' && g.text === firstText);
+      if (configRef) {
+        lines.push(`@${eName} = @config.${configRef.name}`);
       } else {
-        lines.push(`@${eName} = """`);
-        lines.push(firstText);
-        lines.push(`"""`);
+        const escaped = firstText.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        if (firstText.length < 200) {
+          lines.push(`@${eName} = "${escaped}"`);
+        } else {
+          lines.push(`@${eName} = """`);
+          lines.push(firstText);
+          lines.push(`"""`);
+        }
       }
     }
   });
@@ -3925,13 +3941,16 @@ function dslToMacro(dslText) {
       continue;
     }
     if (!line || line.startsWith('#')) continue;
-    // Entity definition: @name = "text" or @name = """
+    // Entity definition: @name = "text" or @name = """ or @name = @config.ref
     const entityMatch = line.match(/^@(\w+)\s*=\s*(.+)$/);
     if (entityMatch) {
       const [, name, value] = entityMatch;
       if (value === '"""') {
         multilineEntity = name;
         multilineText = [];
+      } else if (value.startsWith('@')) {
+        // Reference: @input = @config.input — resolve at runtime
+        entities[name] = {ref: value};
       } else {
         // Strip surrounding quotes
         entities[name] = value.replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
@@ -3955,8 +3974,15 @@ async function runPipeline(dslText) {
   addAtomicMsg('system', `▶ Pipeline: ${steps.length} steps`);
   renderAtomicFeed();
   // Create entities from definitions
-  for (const [name, text] of Object.entries(entities)) {
+  for (const [name, rawVal] of Object.entries(entities)) {
     if (!atomicEntities[name]) {
+      // Resolve @config.* references
+      let text = rawVal;
+      if (rawVal && typeof rawVal === 'object' && rawVal.ref) {
+        const resolved = resolveRefToString(rawVal.ref.replace(/^@/, ''));
+        text = (resolved && resolved !== rawVal.ref) ? resolved : '';
+        if (!text) { addAtomicMsg('system', `⚠ Unresolved ref: ${rawVal.ref}`); }
+      }
       createEntity(name);
       addTextArea(name, 'content', text);
       addAtomicMsg('user', text, [name]);
@@ -4680,16 +4706,20 @@ function renderGrammarList() {
       const name = item.dataset.grammar;
       showAtomicCtx(e.clientX, e.clientY, [
         {label: 'Edit', action: () => {
-          const newGrammar = prompt(`Grammar "${name}":`, atomicGrammars[name]);
-          if (newGrammar !== null) { atomicGrammars[name] = newGrammar; saveAtomicConfig(); renderGrammarList(); }
+          showNamePopup(null, {label: `Grammar "${name}"`, fields: [
+            {name: 'grammar', placeholder: 'GBNF grammar', default: atomicGrammars[name], multiline: true}
+          ]}, vals => {
+            if (vals.grammar !== undefined) { atomicGrammars[name] = vals.grammar; saveAtomicConfig(); renderGrammarList(); }
+          });
         }},
         {label: 'Rename', action: () => {
-          const newName = prompt('New name:', name);
-          if (newName && newName !== name) {
-            atomicGrammars[newName] = atomicGrammars[name];
-            delete atomicGrammars[name];
-            saveAtomicConfig(); renderGrammarList();
-          }
+          showNamePopup(null, {label: 'Rename grammar', placeholder: 'new name', defaultValue: name}, newName => {
+            if (newName && newName !== name) {
+              atomicGrammars[newName] = atomicGrammars[name];
+              delete atomicGrammars[name];
+              saveAtomicConfig(); renderGrammarList();
+            }
+          });
         }},
         {label: 'Copy to input', action: () => {
           const inp = document.getElementById('atomicInp');
@@ -4704,24 +4734,29 @@ function renderGrammarList() {
   });
 }
 
-document.getElementById('btnAddParam').addEventListener('click', () => {
-  const key = prompt('Param key:');
-  if (!key) return;
-  const val = prompt('Value:', '');
-  if (val === null) return;
-  atomicParams[key] = val;
-  saveAtomicConfig();
-  renderParamsTable();
+document.getElementById('btnAddParam').addEventListener('click', (e) => {
+  showNamePopup(e.target, {label: 'Add Param', fields: [
+    {name: 'key', placeholder: 'param key'},
+    {name: 'value', placeholder: 'value'}
+  ]}, vals => {
+    const key = vals.key?.trim(); if (!key) return;
+    atomicParams[key] = vals.value || '';
+    saveAtomicConfig();
+    renderParamsTable();
+  });
 });
 
-document.getElementById('btnAddGrammar').addEventListener('click', () => {
-  const name = prompt('Grammar preset name:');
-  if (!name) return;
-  const grammar = prompt('GBNF grammar (use \\n for newlines):', 'root ::= digit term\ndigit ::= "0" | "1"\nterm ::= " " | "\\n"');
-  if (!grammar) return;
-  atomicGrammars[name] = grammar;
-  saveAtomicConfig();
-  renderGrammarList();
+document.getElementById('btnAddGrammar').addEventListener('click', (e) => {
+  showNamePopup(e.target, {label: 'Add Grammar Preset', fields: [
+    {name: 'name', placeholder: 'preset name'},
+    {name: 'grammar', placeholder: 'root ::= ...', label: 'GBNF grammar', default: 'root ::= digit term\ndigit ::= "0" | "1"\nterm ::= " " | "\\n"', multiline: true}
+  ]}, vals => {
+    const name = vals.name?.trim(); if (!name) return;
+    if (!vals.grammar) return;
+    atomicGrammars[name] = vals.grammar;
+    saveAtomicConfig();
+    renderGrammarList();
+  });
 });
 
 // Init render
@@ -4769,9 +4804,11 @@ function renderParamsPage() {
       e.preventDefault();
       showAtomicCtx(e.clientX, e.clientY, [
         {label: 'Rename', action: () => {
-          const n = prompt('New name:', name); if (!n || n === name) return;
-          atomicGrammars[n] = atomicGrammars[name]; delete atomicGrammars[name];
-          saveAtomicConfig(); renderParamsPage();
+          showNamePopup(null, {label: 'Rename grammar', placeholder: 'new name', defaultValue: name}, n => {
+            if (!n || n === name) return;
+            atomicGrammars[n] = atomicGrammars[name]; delete atomicGrammars[name];
+            saveAtomicConfig(); renderParamsPage();
+          });
         }},
         {label: 'Delete', danger: true, action: () => {
           delete atomicGrammars[name]; saveAtomicConfig(); renderParamsPage();
@@ -4811,14 +4848,18 @@ function renderParamsPage() {
       e.preventDefault();
       showAtomicCtx(e.clientX, e.clientY, [
         {label: 'Rename', action: () => {
-          const n = prompt('New name:', item.name); if (!n) return;
-          item.name = n; saveGlobalItems(); renderParamsPage();
+          showNamePopup(null, {label: 'Rename item', placeholder: 'new name', defaultValue: item.name}, n => {
+            if (!n) return;
+            item.name = n; saveGlobalItems(); renderParamsPage();
+          });
         }},
         ...(item.type === 'table' ? [{label: 'Add column', action: () => {
-          const col = prompt('Column name:'); if (!col) return;
-          item.headers.push(col);
-          item.rows.forEach(r => r.push(''));
-          saveGlobalItems(); renderParamsPage();
+          showNamePopup(null, {label: 'Add column', placeholder: 'column name'}, col => {
+            if (!col) return;
+            item.headers.push(col);
+            item.rows.forEach(r => r.push(''));
+            saveGlobalItems(); renderParamsPage();
+          });
         }}] : []),
         {label: 'Delete', danger: true, action: () => {
           globalItems.splice(idx, 1); saveGlobalItems(); renderParamsPage();
@@ -4843,22 +4884,45 @@ function renderParamsPage() {
 }
 
 // Params page buttons
-document.getElementById('btnParamsAddTable').addEventListener('click', () => {
-  const name = prompt('Table name:'); if (!name) return;
-  const cols = prompt('Columns (comma-separated):', 'Col1, Col2'); if (!cols) return;
-  const headers = cols.split(',').map(s => s.trim());
-  globalItems.push({type: 'table', name, headers, rows: [headers.map(() => '')]});
-  saveGlobalItems(); renderParamsPage();
+document.getElementById('btnParamsAddTable').addEventListener('click', (e) => {
+  showNamePopup(e.target, {
+    label: 'Add Table',
+    fields: [
+      {name: 'name', placeholder: 'table name'},
+      {name: 'cols', placeholder: 'Col1, Col2, Col3', label: 'Columns (comma-separated)', default: 'Col1, Col2'}
+    ]
+  }, vals => {
+    const name = vals.name?.trim(); if (!name) return;
+    const cols = vals.cols || 'Col1, Col2';
+    const headers = cols.split(',').map(s => s.trim());
+    globalItems.push({type: 'table', name, headers, rows: [headers.map(() => '')]});
+    saveGlobalItems(); renderParamsPage();
+  });
 });
-document.getElementById('btnParamsAddText').addEventListener('click', () => {
-  const name = prompt('Text area name:'); if (!name) return;
-  globalItems.push({type: 'text', name, text: ''});
-  saveGlobalItems(); renderParamsPage();
+document.getElementById('btnParamsAddText').addEventListener('click', (e) => {
+  showNamePopup(e.target, {
+    label: 'Add Text Area',
+    fields: [
+      {name: 'name', placeholder: 'text area name'},
+      {name: 'text', placeholder: 'initial text (optional)', multiline: true}
+    ]
+  }, vals => {
+    const name = vals.name?.trim(); if (!name) return;
+    globalItems.push({type: 'text', name, text: vals.text || ''});
+    saveGlobalItems(); renderParamsPage();
+  });
 });
-document.getElementById('btnParamsAddParam').addEventListener('click', () => {
-  const key = prompt('Param key:'); if (!key) return;
-  const val = prompt('Value:', ''); if (val === null) return;
-  atomicParams[key] = val; saveAtomicConfig(); renderParamsPage(); renderParamsTable();
+document.getElementById('btnParamsAddParam').addEventListener('click', (e) => {
+  showNamePopup(e.target, {
+    label: 'Add Key:Value Param',
+    fields: [
+      {name: 'key', placeholder: 'param key'},
+      {name: 'value', placeholder: 'value'}
+    ]
+  }, vals => {
+    const key = vals.key?.trim(); if (!key) return;
+    atomicParams[key] = vals.value || ''; saveAtomicConfig(); renderParamsPage(); renderParamsTable();
+  });
 });
 // Export/Import
 document.getElementById('btnParamsExport').addEventListener('click', () => {
@@ -5123,16 +5187,18 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       {label: macroRecording ? '⏹ Stop Recording' : '⏺ Record Macro', action: () => {
         if (macroRecording) {
           macroRecording = false;
-          const name = prompt('Save macro as:', 'my_macro');
-          if (name && macroSteps.length) {
-            atomicMacros[name] = [...macroSteps];
-            saveMacros();
-            addAtomicMsg('tool', `Macro "${name}" saved (${macroSteps.length} steps: ${macroSteps.map(s => s.tool).join(' → ')})`);
-          } else {
-            addAtomicMsg('tool', 'Macro recording cancelled (no steps)');
-          }
+          const savedSteps = [...macroSteps];
           macroSteps = [];
-          renderAtomicFeed();
+          showNamePopup(null, {label: 'Save macro', placeholder: 'macro name', defaultValue: 'my_macro'}, name => {
+            if (name && savedSteps.length) {
+              atomicMacros[name] = savedSteps;
+              saveMacros();
+              addAtomicMsg('tool', `Macro "${name}" saved (${savedSteps.length} steps: ${savedSteps.map(s => s.tool).join(' → ')})`);
+            } else {
+              addAtomicMsg('tool', 'Macro recording cancelled (no steps)');
+            }
+            renderAtomicFeed();
+          });
         } else {
           macroRecording = true;
           macroSteps = [];
