@@ -645,6 +645,7 @@ body {
       <textarea id="atomicInp" placeholder="Type message, @entity reference, or tool command..." rows="2"></textarea>
       <button class="btn primary" id="btnAtomicSend">Send</button>
     </div>
+    <div id="atomicConsoleInline" style="border-top:1px solid var(--border);flex-shrink:0;max-height:120px;display:flex;flex-direction:column;overflow:hidden"></div>
   </div>
   <!-- Global Params page (hidden by default) -->
   <div class="atomic-feed-area" id="paramsFeedArea">
@@ -777,16 +778,6 @@ body {
   </div>
 </div>
 
-<!-- Console Log — full width, below everything -->
-<div id="atomicConsolePanel" style="position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--border);z-index:99;display:none;flex-direction:column;max-height:150px">
-  <div id="atomicConsoleHeader" style="display:flex;align-items:center;padding:2px 12px;cursor:pointer;gap:4px;flex-shrink:0">
-    <span id="atomicConsoleToggle" style="font-size:8px;color:var(--text-dim)">▾</span>
-    <span style="font-size:9px;color:var(--text-dim);font-weight:600">Console</span>
-    <span id="atomicConsoleCount" style="font-size:9px;color:var(--text-dim)"></span>
-    <button id="atomicConsoleClear" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;margin-left:auto;padding:0" onclick="event.stopPropagation();atomicConsoleMsgs=[];renderAtomicConsole()">clear</button>
-  </div>
-  <div id="atomicConsoleLog" style="overflow-y:auto;padding:0 12px 4px;font-size:9px;font-family:'Cascadia Code','Fira Code',monospace;color:var(--text-dim);line-height:1.4"></div>
-</div>
 
 <script>
 /* ================================================================
@@ -4019,6 +4010,50 @@ document.getElementById('btnSaveMacroFromSteps').addEventListener('click', () =>
 /* --- Message handling --- */
 var atomicConsoleMsgs = [];
 
+// Build console panel DOM into inline container
+(function() {
+  const container = document.getElementById('atomicConsoleInline');
+  if (!container) return;
+  container.innerHTML = `
+    <div id="atomicConsoleResize" style="height:3px;cursor:ns-resize;background:var(--border);flex-shrink:0" title="Drag to resize"></div>
+    <div id="atomicConsoleHeader" style="display:flex;align-items:center;padding:2px 12px;cursor:pointer;gap:4px;flex-shrink:0">
+      <span id="atomicConsoleToggle" style="font-size:8px;color:var(--text-dim)">▾</span>
+      <span style="font-size:9px;color:var(--text-dim);font-weight:600">Console</span>
+      <span id="atomicConsoleCount" style="font-size:9px;color:var(--text-dim)"></span>
+      <button id="atomicConsoleClear" style="font-size:8px;color:var(--text-dim);background:none;border:none;cursor:pointer;margin-left:auto;padding:0">clear</button>
+    </div>
+    <div id="atomicConsoleLog" style="overflow-y:auto;padding:0 12px 4px;font-size:9px;font-family:'Cascadia Code','Fira Code',monospace;color:var(--text-dim);line-height:1.4;flex:1"></div>`;
+  // Resize handle
+  const handle = document.getElementById('atomicConsoleResize');
+  let startY, startH;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = container.offsetHeight;
+    const onMove = (ev) => {
+      const h = Math.max(24, Math.min(400, startH - (ev.clientY - startY)));
+      container.style.maxHeight = h + 'px';
+      container.style.height = h + 'px';
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  // Toggle
+  document.getElementById('atomicConsoleHeader').addEventListener('click', () => {
+    const log = document.getElementById('atomicConsoleLog');
+    const toggle = document.getElementById('atomicConsoleToggle');
+    if (log.style.display === 'none') { log.style.display = ''; toggle.textContent = '▾'; }
+    else { log.style.display = 'none'; toggle.textContent = '▸'; }
+  });
+  // Clear
+  document.getElementById('atomicConsoleClear').addEventListener('click', (e) => {
+    e.stopPropagation();
+    atomicConsoleMsgs = [];
+    renderAtomicConsole();
+  });
+})();
+
 function addConsoleMsg(content) {
   const ts = new Date().toLocaleTimeString();
   atomicConsoleMsgs.push({ts, content});
@@ -4030,16 +4065,9 @@ function renderAtomicConsole() {
   const countEl = document.getElementById('atomicConsoleCount');
   if (!el) return;
   countEl.textContent = atomicConsoleMsgs.length ? `(${atomicConsoleMsgs.length})` : '';
-  el.innerHTML = atomicConsoleMsgs.map(m => `<div><span style="color:var(--text-dim);opacity:0.5">${m.ts}</span> ${esc(m.content)}</div>`).join('');
+  el.innerHTML = atomicConsoleMsgs.map(m => `<div><span style="opacity:0.5">${m.ts}</span> ${esc(m.content)}</div>`).join('');
   el.scrollTop = el.scrollHeight;
 }
-
-document.getElementById('atomicConsoleHeader').addEventListener('click', () => {
-  const log = document.getElementById('atomicConsoleLog');
-  const toggle = document.getElementById('atomicConsoleToggle');
-  if (log.style.display === 'none') { log.style.display = ''; toggle.textContent = '▾'; }
-  else { log.style.display = 'none'; toggle.textContent = '▸'; }
-});
 
 function addAtomicMsg(role, content, entities, meta) {
   // System messages go to console log, not main feed
@@ -5739,8 +5767,6 @@ function updateChatPanelVisibility() {
   const panel = document.getElementById('atomicChatPanel');
   const sidebar = document.getElementById('rightSidebar');
   if (!panel || !sidebar) return;
-  const consolePanel = document.getElementById('atomicConsolePanel');
-  if (consolePanel) consolePanel.style.display = activePage === 'atomic' ? 'flex' : 'none';
   if (activePage !== 'atomic' || sidebar.classList.contains('collapsed')) {
     panel.style.display = 'none';
     return;
