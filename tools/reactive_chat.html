@@ -6570,6 +6570,24 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       }},
       // Pipeline DSL
       {label: '📋 Export Pipeline DSL', action: () => handleAtomicInput('export_dsl()')},
+      {label: '🔄 Restart Pipeline', action: async () => {
+        const steps = pipelineSteps.map(s => s.cmd);
+        if (!steps.length) { addAtomicMsg('system', 'No pipeline steps to restart'); renderAtomicFeed(); return; }
+        // Clear entities, messages, watchers but keep config
+        Object.keys(atomicEntities).forEach(k => delete atomicEntities[k]);
+        atomicMessages.length = 0;
+        atomicWatchers.length = 0;
+        pipelineSteps.length = 0;
+        _selectedPipelineSteps.clear();
+        saveAtomicState();
+        renderAtomicFeed();
+        renderPipelineSteps();
+        updateScopeList();
+        addAtomicMsg('system', `🔄 Restarting pipeline (${steps.length} steps)`);
+        renderAtomicFeed();
+        const dsl = steps.join('\n');
+        await runPipeline(dsl);
+      }},
       {label: '📥 Import Pipeline', action: () => {
         showNamePopup(null, {label: 'Import Pipeline DSL', fields: [
           {name: 'dsl', placeholder: '@input = $config.input\ngenerate(@input)\ntag(@input, type, task)', label: 'Paste DSL here', multiline: true}
