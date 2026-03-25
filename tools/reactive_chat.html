@@ -663,6 +663,7 @@ body {
         <button class="btn" id="btnParamsAddTable">+ Table</button>
         <button class="btn" id="btnParamsAddText">+ Text Area</button>
         <button class="btn" id="btnParamsAddParam">+ Key:Value Param</button>
+        <button class="btn" id="btnParamsAddAlias">+ Alias</button>
       </div>
     </div>
   </div>
@@ -3634,7 +3635,11 @@ function resolveRef(ref) {
   // @config.name — resolve from Global Params (globalItems)
   if (parts[0] === 'config' && parts.length >= 2) {
     const itemName = parts[1];
-    const item = globalItems.find(g => g.name === itemName);
+    let item = globalItems.find(g => g.name === itemName);
+    // Follow alias chain (max 5 hops)
+    for (let hop = 0; hop < 5 && item?.type === 'alias'; hop++) {
+      item = globalItems.find(g => g.name === item.ref);
+    }
     if (!item) return atomicParams[itemName] !== undefined ? atomicParams[itemName] : null;
     if (item.type === 'text') return item.text;
     if (item.type === 'table') return item; // {headers, rows}
@@ -4935,6 +4940,9 @@ async function applyAtomicTool(toolName, args, meta = {}) {
       case 'chunk': toolChunk(args, meta); break;
       case 'reshape_grid': await toolReshapeGrid(args, meta); break;
       case 'lines': toolLines(args, meta); break;
+      case 'filter_rows': toolFilterRows(args, meta); break;
+      case 'reject_reasons': toolRejectReasons(args, meta); break;
+      case 'accepted_list': toolAcceptedList(args, meta); break;
       case 'check_status': case 'check': await toolCheckStatus(args, meta); break;
       case 'table_as_query': case 'table-as-query': await toolTableAsQuery(args, meta); break;
       case 'generate': case 'gen': await toolGenerate(args, meta); break;
@@ -5296,6 +5304,79 @@ function splitTextIntoList(text) {
   return normalized.split('\n').map(line => line.trim()).filter(Boolean);
 }
 
+function parseMarkdownTableText(text) {
+  const lines = String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('|') && line.endsWith('|'));
+  if (lines.length < 2) return null;
+  const headers = lines[0].split('|').slice(1, -1).map(cell => cell.trim());
+  if (!headers.length) return null;
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split('|').slice(1, -1).map(cell => cell.trim());
+    if (!cells.length) continue;
+    const isSeparator = cells.every(cell => /^:?-{3,}:?$/.test(cell));
+    if (isSeparator) continue;
+    rows.push(cells);
+  }
+  return rows.length ? {headers, rows} : null;
+}
+
+function getRuntimeTableValue(value) {
+  if (!value) return null;
+  if (value?.headers && value?.rows) return {headers: value.headers.slice(), rows: value.rows.map(row => row.slice())};
+  if (value?.data_areas?.length) {
+    const area = value.data_areas[0];
+    if (area?.headers && area?.rows) return {headers: area.headers.slice(), rows: area.rows.map(row => row.slice())};
+  }
+  if (typeof value === 'string') return parseMarkdownTableText(value);
+  if (value?.answer) return parseMarkdownTableText(value.answer);
+  if (value?.content) return parseMarkdownTableText(value.content);
+  return null;
+}
+
+function normalizeBoolish(cell) {
+  const text = String(cell ?? '').trim().toLowerCase();
+  if (!text) return null;
+  if (['yes', 'true', 'pass', 'ok', '1', 'y'].includes(text)) return true;
+  if (['no', 'false', 'fail', '0', 'n'].includes(text)) return false;
+  return null;
+}
+
+function resolveCheckColumnIndexes(table, checksRef) {
+  if (!table?.headers?.length) return [];
+  const explicit = checksRef ? runtimeValueToList(resolveDslRuntimeValue(checksRef)).map(item => String(item).trim().toLowerCase()) : [];
+  const normalizedHeaders = table.headers.map(header => String(header).trim().toLowerCase());
+  if (explicit.length) {
+    return explicit.map(name => normalizedHeaders.indexOf(name)).filter(idx => idx >= 0);
+  }
+  const indices = [];
+  table.rows.forEach(row => {
+    row.forEach((cell, idx) => {
+      if (idx === 0) return;
+      if (normalizeBoolish(cell) !== null && !indices.includes(idx)) indices.push(idx);
+    });
+  });
+  return indices;
+}
+
+function inferTableLabelIndex(table, checkIndexes) {
+  if (!table?.headers?.length) return 0;
+  const blocked = new Set([0, ...checkIndexes]);
+  for (let i = 1; i < table.headers.length; i++) {
+    if (!blocked.has(i)) return i;
+  }
+  return Math.min(1, table.headers.length - 1);
+}
+
+function createTableEntity(name, table, source) {
+  const entity = createEntity(name, {source});
+  addDataArea(entity.name, 'items', table.headers, table.rows);
+  return entity;
+}
+
 function toolPrepend(args, meta = {}) {
   if (args.length < 2) { addAtomicMsg('tool', 'prepend needs a list and at least 1 value'); return; }
   const base = runtimeValueToList(resolveDslRuntimeValue(args[0]));
@@ -5375,6 +5456,63 @@ function toolLines(args, meta = {}) {
     .join('\n');
   const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('lines', args), joined, {tool: 'lines'});
   addAtomicMsg('tool', `lines(...) -> @${resultEntity.name}`, [resultEntity.name]);
+}
+
+function toolFilterRows(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'filter_rows needs a table'); return; }
+  const {options} = parseDslCallOptions(args, 1);
+  const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'filter_rows could not resolve a table'); return; }
+  const mode = String(options.where || options.mode || 'all_yes').trim().toLowerCase();
+  const checkIndexes = resolveCheckColumnIndexes(table, options.checks);
+  const filteredRows = table.rows.filter(row => {
+    const values = (checkIndexes.length ? checkIndexes : row.map((_, idx) => idx).slice(1)).map(idx => normalizeBoolish(row[idx]));
+    const comparable = values.filter(v => v !== null);
+    if (!comparable.length) return false;
+    if (mode === 'any_yes') return comparable.some(Boolean);
+    if (mode === 'any_no') return comparable.some(v => v === false);
+    return comparable.every(Boolean);
+  });
+  const resultEntity = createTableEntity(meta.outName || inferTransformOutName('filter_rows', args), {headers: table.headers, rows: filteredRows}, {tool: 'filter_rows'});
+  addAtomicMsg('tool', `filter_rows(...) -> @${resultEntity.name} (${filteredRows.length} rows)`, [resultEntity.name]);
+}
+
+function toolRejectReasons(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'reject_reasons needs a table'); return; }
+  const {options} = parseDslCallOptions(args, 1);
+  const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'reject_reasons could not resolve a table'); return; }
+  const checkIndexes = resolveCheckColumnIndexes(table, options.checks);
+  const labelIndex = inferTableLabelIndex(table, checkIndexes);
+  const rows = [];
+  table.rows.forEach((row, rowIndex) => {
+    const failed = checkIndexes
+      .filter(idx => normalizeBoolish(row[idx]) === false)
+      .map(idx => table.headers[idx]);
+    if (!failed.length) return;
+    const label = String(row[labelIndex] ?? row[1] ?? row[0] ?? `row_${rowIndex + 1}`);
+    rows.push([String(rows.length + 1), label, failed.join(' | ')]);
+  });
+  const resultEntity = createEntity(meta.outName || inferTransformOutName('reject_reasons', args), {source: {tool: 'reject_reasons'}});
+  addDataArea(resultEntity.name, 'items', ['#', 'Item', 'Reasons'], rows);
+  addAtomicMsg('tool', `reject_reasons(...) -> @${resultEntity.name} (${rows.length} rows)`, [resultEntity.name]);
+}
+
+function toolAcceptedList(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'accepted_list needs a table'); return; }
+  const {options} = parseDslCallOptions(args, 1);
+  const table = getRuntimeTableValue(resolveRef(args[0]?.replace(/^@/, '')) || resolveDslRuntimeValue(args[0]));
+  if (!table?.headers?.length) { addAtomicMsg('tool', 'accepted_list could not resolve a table'); return; }
+  const checkIndexes = resolveCheckColumnIndexes(table, options.checks);
+  const labelIndex = inferTableLabelIndex(table, checkIndexes);
+  const accepted = table.rows
+    .filter(row => {
+      const values = checkIndexes.map(idx => normalizeBoolish(row[idx])).filter(v => v !== null);
+      return values.length && values.every(Boolean);
+    })
+    .map(row => String(row[labelIndex] ?? row[1] ?? row[0] ?? ''));
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('accepted_list', args), accepted, {tool: 'accepted_list'});
+  addAtomicMsg('tool', `accepted_list(...) -> @${resultEntity.name} (${accepted.length} items)`, [resultEntity.name]);
 }
 
 /* Scope вЂ” local variable container. One at a time.
@@ -6278,6 +6416,8 @@ function renderParamsPage() {
         saveGlobalItems(); renderParamsPage();
       });
       card.appendChild(addRow);
+    } else if (item.type === 'alias') {
+      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">$config.${esc(item.name)}</span> <span style="font-size:10px;color:var(--text-dim)">→ $config.${esc(item.ref)}</span></div>`;
     } else {
       card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">$config.${esc(item.name)}</span></div>
         <div class="at-text-area-content" contenteditable="true" data-gti="${idx}" style="min-height:40px">${esc(item.text || '')}</div>`;
@@ -6361,6 +6501,21 @@ document.getElementById('btnParamsAddParam').addEventListener('click', (e) => {
   }, vals => {
     const key = vals.key?.trim(); if (!key) return;
     atomicParams[key] = vals.value || ''; saveAtomicConfig(); renderParamsPage(); renderParamsTable();
+  });
+});
+document.getElementById('btnParamsAddAlias').addEventListener('click', (e) => {
+  showNamePopup(e.target, {
+    label: 'Add Alias',
+    fields: [
+      {name: 'name', placeholder: 'alias name'},
+      {name: 'ref', placeholder: 'target name (e.g. prompt_constraints)'}
+    ]
+  }, vals => {
+    const name = vals.name?.trim(); const ref = vals.ref?.trim();
+    if (!name || !ref) return;
+    if (!globalItems.find(g => g.name === ref)) { alert(`Target $config.${ref} not found`); return; }
+    globalItems.push({type: 'alias', name, ref});
+    saveGlobalItems(); renderParamsPage();
   });
 });
 // Export/Import
@@ -6808,6 +6963,9 @@ Core syntax:
   @out = chunk(@list, size:2)
   @out = reshape_grid(@value, cols:2)
   @out = lines(@header, @sep)
+  @out = filter_rows(@table, where:all_yes, checks:@axioms)
+  @out = reject_reasons(@table, checks:@axioms)
+  @out = accepted_list(@table, checks:@axioms)
   set_text(@chat, user, $config.prompt)
   append_text(@chat, assistant, @draft.answer)
   tag(@entity, key:"value")
@@ -6835,7 +6993,8 @@ Pure transforms:
   join/lines work on text output
   len returns a scalar length
   data areas like @constraints.entities resolve as plain lists
-  table_header / reshape_grid / join_list are convenience sugar
+  markdown tables can be filtered locally
+  table_header / reshape_grid / join_list / filter_rows / reject_reasons / accepted_list are convenience sugar
 
 Example header build:
   @cols = concat(@constraints.entities, @constraints.axioms)
