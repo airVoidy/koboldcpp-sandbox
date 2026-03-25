@@ -553,6 +553,7 @@ body {
     <button class="header-tab active" data-page="workflow">Workflow</button>
     <button class="header-tab" data-page="atomic">Atomic Tasks</button>
     <button class="header-tab" data-page="params">Global Params</button>
+    <button class="header-tab" data-page="builder">Card Builder</button>
   </div>
   <div class="status"><span class="dot" id="dot"></span><span id="stxt">Ready</span></div>
   <div class="hdr-right">
@@ -664,6 +665,52 @@ body {
         <button class="btn" id="btnParamsAddText">+ Text Area</button>
         <button class="btn" id="btnParamsAddParam">+ Key:Value Param</button>
         <button class="btn" id="btnParamsAddAlias">+ Alias</button>
+      </div>
+    </div>
+  </div>
+  <!-- Card Builder -->
+  <div class="atomic-feed-area" id="builderFeedArea" style="display:none">
+    <div style="display:flex;height:100%;overflow:hidden">
+      <!-- Palette -->
+      <div id="builderPalette" style="width:180px;border-right:1px solid var(--border);padding:12px;overflow-y:auto;flex-shrink:0">
+        <div style="font-size:12px;font-weight:600;color:var(--accent3);margin-bottom:8px">Components</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Layout</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+          <button class="btn builder-add-slot" data-slot-type="title" style="font-size:10px;padding:2px 8px">Title</button>
+          <button class="btn builder-add-slot" data-slot-type="tags" style="font-size:10px;padding:2px 8px">Tags</button>
+          <button class="btn builder-add-slot" data-slot-type="group" style="font-size:10px;padding:2px 8px">Group</button>
+        </div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Content</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+          <button class="btn builder-add-slot" data-slot-type="text_area" style="font-size:10px;padding:2px 8px">Text</button>
+          <button class="btn builder-add-slot" data-slot-type="image" style="font-size:10px;padding:2px 8px">Image</button>
+          <button class="btn builder-add-slot" data-slot-type="data_table" style="font-size:10px;padding:2px 8px">Table</button>
+          <button class="btn builder-add-slot" data-slot-type="list" style="font-size:10px;padding:2px 8px">List</button>
+        </div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Interactive</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+          <button class="btn builder-add-slot" data-slot-type="buttons" style="font-size:10px;padding:2px 8px">Buttons</button>
+          <button class="btn builder-add-slot" data-slot-type="thread" style="font-size:10px;padding:2px 8px">Thread</button>
+          <button class="btn builder-add-slot" data-slot-type="reactions" style="font-size:10px;padding:2px 8px">Reactions</button>
+          <button class="btn builder-add-slot" data-slot-type="form" style="font-size:10px;padding:2px 8px">Form</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+          <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Templates</div>
+          <div id="builderTemplateList"></div>
+          <button class="btn" id="btnBuilderNewTemplate" style="font-size:10px;margin-top:6px;width:100%">+ New Template</button>
+        </div>
+      </div>
+      <!-- Canvas -->
+      <div id="builderCanvas" style="flex:1;padding:16px;overflow-y:auto">
+        <div id="builderCanvasToolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span id="builderCanvasTitle" style="font-size:14px;font-weight:600;color:var(--accent3)">No template selected</span>
+        </div>
+        <div id="builderCanvasSlots" style="min-height:200px"></div>
+      </div>
+      <!-- Properties -->
+      <div id="builderProps" style="width:240px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;flex-shrink:0">
+        <div style="font-size:12px;font-weight:600;color:var(--accent3);margin-bottom:8px">Properties</div>
+        <div id="builderPropsContent" style="font-size:11px;color:var(--text-dim)">Select a slot on the canvas</div>
       </div>
     </div>
   </div>
@@ -3499,6 +3546,8 @@ function switchPage(page) {
   document.getElementById('workflowFeedArea').style.display = page === 'workflow' ? '' : 'none';
   document.getElementById('atomicFeedArea').style.display = page === 'atomic' ? 'flex' : 'none';
   document.getElementById('paramsFeedArea').style.display = page === 'params' ? 'flex' : 'none';
+  document.getElementById('builderFeedArea').style.display = page === 'builder' ? 'flex' : 'none';
+  if (page === 'builder') renderBuilderPage();
   // Right sidebar content
   document.getElementById('workflowSidebarContent').style.display = page === 'workflow' ? 'flex' : 'none';
   const tp = document.getElementById('atomicToolPalette');
@@ -6065,7 +6114,7 @@ function toolAddSlot(args) {
     id: nextSlotId(),
     type,
     label: stripDslQuotes(options.label || type),
-    binding: options.bind || options.binding || null,
+    binding: stripDslQuotes(options.bind || options.binding || '') || null,
     options: {},
     children: type === 'group' ? [] : null
   };
@@ -6073,7 +6122,7 @@ function toolAddSlot(args) {
   if (type === 'buttons') slot.options.items = options.items ? JSON.parse(options.items) : ['verify','check','generate'];
   if (type === 'thread') slot.options.mode = options.mode || 'tree';
   if (type === 'text_area') { slot.options.collapsed = options.collapsed === 'true'; slot.options.editable = options.editable !== 'false'; }
-  const parentId = options.parent || null;
+  const parentId = stripDslQuotes(options.parent || '') || null;
   const targetList = findSlotList(tmpl.slots, parentId);
   if (!targetList) { addAtomicMsg('tool', `Parent "${parentId}" not found or not a group`); return; }
   targetList.push(slot);
@@ -6987,6 +7036,181 @@ document.getElementById('paramsFileInput').addEventListener('change', async (e) 
   e.target.value = '';
 });
 
+/* === Card Builder UI === */
+
+const SLOT_ICONS = {title:'#', tags:'●', text_area:'T', image:'🖼', buttons:'▶', thread:'💬', data_table:'⊞', reactions:'😀', list:'≡', form:'☐', group:'📁'};
+
+function renderBuilderPage() {
+  // Template list
+  const listEl = document.getElementById('builderTemplateList');
+  if (!listEl) return;
+  const names = Object.keys(cardTemplates);
+  listEl.innerHTML = names.map(n =>
+    `<div class="builder-tmpl-item${n === _activeCardTemplate ? ' active' : ''}" data-tmpl="${esc(n)}" style="padding:3px 6px;font-size:11px;cursor:pointer;border-radius:4px;margin-bottom:2px;${n === _activeCardTemplate ? 'background:var(--accent);color:#fff' : 'color:var(--text)'}">${esc(n)}</div>`
+  ).join('') || '<div style="font-size:10px;color:var(--text-dim)">No templates yet</div>';
+
+  // Template list click
+  listEl.querySelectorAll('.builder-tmpl-item').forEach(el => {
+    el.addEventListener('click', () => {
+      _activeCardTemplate = el.dataset.tmpl;
+      _selectedSlotId = null;
+      renderBuilderPage();
+    });
+  });
+
+  // Canvas title
+  document.getElementById('builderCanvasTitle').textContent = _activeCardTemplate ? `Template: ${_activeCardTemplate}` : 'No template selected';
+
+  // Canvas slots
+  const slotsEl = document.getElementById('builderCanvasSlots');
+  const tmpl = _activeCardTemplate ? cardTemplates[_activeCardTemplate] : null;
+  if (!tmpl || !tmpl.slots.length) {
+    slotsEl.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:40px;text-align:center">Add components from the palette<br>or type: card_template(name)</div>';
+  } else {
+    slotsEl.innerHTML = renderSlotTree(tmpl.slots, 0);
+  }
+
+  // Canvas slot interactions
+  slotsEl.querySelectorAll('.builder-slot').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _selectedSlotId = el.dataset.slotId;
+      renderBuilderPage();
+    });
+    // Delete button
+    const delBtn = el.querySelector('.builder-slot-del');
+    if (delBtn) {
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleAtomicInput(`/remove_slot(@${_activeCardTemplate}, ${el.dataset.slotId})`);
+      });
+    }
+  });
+
+  // Properties panel
+  renderBuilderProps();
+}
+
+function renderSlotTree(slots, depth) {
+  return slots.map((slot, idx) => {
+    const selected = slot.id === _selectedSlotId;
+    const icon = SLOT_ICONS[slot.type] || '?';
+    const indent = depth * 16;
+    let h = `<div class="builder-slot${selected ? ' selected' : ''}" data-slot-id="${slot.id}" data-slot-idx="${idx}" style="margin-left:${indent}px;padding:8px 10px;margin-bottom:4px;border:1px solid ${selected ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${selected ? 'var(--surface2)' : 'var(--surface)'};cursor:pointer;display:flex;align-items:center;gap:8px">`;
+    h += `<span style="font-size:14px;opacity:0.6">${icon}</span>`;
+    h += `<span style="font-size:11px;font-weight:600;color:var(--text)">${esc(slot.type)}</span>`;
+    if (slot.label && slot.label !== slot.type) h += `<span style="font-size:10px;color:var(--text-dim)">${esc(slot.label)}</span>`;
+    if (slot.binding) h += `<span style="font-size:9px;color:var(--accent);margin-left:auto">${esc(slot.binding)}</span>`;
+    h += `<button class="builder-slot-del" style="margin-left:${slot.binding ? '4px' : 'auto'};background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:0 4px">×</button>`;
+    h += `</div>`;
+    if (slot.children?.length) {
+      h += renderSlotTree(slot.children, depth + 1);
+    }
+    return h;
+  }).join('');
+}
+
+function renderBuilderProps() {
+  const el = document.getElementById('builderPropsContent');
+  if (!el) return;
+  if (!_activeCardTemplate || !_selectedSlotId) {
+    el.innerHTML = '<div style="color:var(--text-dim)">Select a slot on the canvas</div>';
+    return;
+  }
+  const tmpl = cardTemplates[_activeCardTemplate];
+  const slot = tmpl ? findSlotById(tmpl.slots, _selectedSlotId) : null;
+  if (!slot) { el.innerHTML = '<div style="color:var(--text-dim)">Slot not found</div>'; return; }
+
+  let h = `<div style="margin-bottom:8px"><span style="font-size:10px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:3px">${esc(slot.type)}</span> <span style="font-size:10px;color:var(--text-dim)">${slot.id}</span></div>`;
+  h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Label</label>`;
+  h += `<input class="builder-prop" data-prop="label" value="${esc(slot.label || '')}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
+  h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Binding</label>`;
+  h += `<input class="builder-prop" data-prop="binding" value="${esc(slot.binding || '')}" placeholder="@entity.field" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
+
+  // Type-specific options
+  if (slot.type === 'text_area') {
+    h += `<label style="font-size:10px;color:var(--text-dim)"><input type="checkbox" class="builder-opt" data-opt="collapsed" ${slot.options?.collapsed ? 'checked' : ''}> Collapsed</label><br>`;
+    h += `<label style="font-size:10px;color:var(--text-dim)"><input type="checkbox" class="builder-opt" data-opt="editable" ${slot.options?.editable !== false ? 'checked' : ''}> Editable</label>`;
+  }
+  if (slot.type === 'buttons') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Buttons (comma-sep)</label>`;
+    h += `<input class="builder-prop" data-prop="buttons_items" value="${esc((slot.options?.items || []).join(', '))}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
+  }
+  if (slot.type === 'thread') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Mode</label>`;
+    h += `<select class="builder-prop" data-prop="thread_mode" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:3px 6px">`;
+    h += `<option value="tree" ${slot.options?.mode === 'tree' ? 'selected' : ''}>Tree (forum/slack)</option>`;
+    h += `<option value="flat" ${slot.options?.mode === 'flat' ? 'selected' : ''}>Flat (mIRC chat)</option>`;
+    h += `</select>`;
+  }
+  if (slot.type === 'list') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Groups (comma-sep)</label>`;
+    h += `<input class="builder-prop" data-prop="list_groups" value="${esc((slot.options?.groups || []).join(', '))}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
+  }
+
+  el.innerHTML = h;
+
+  // Bind prop changes
+  el.querySelectorAll('.builder-prop').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      const prop = inp.dataset.prop;
+      const val = inp.value.trim();
+      if (prop === 'label') {
+        handleAtomicInput(`/slot_option(@${_activeCardTemplate}, ${_selectedSlotId}, label, "${val}")`);
+        slot.label = val; // immediate update
+      } else if (prop === 'binding') {
+        handleAtomicInput(`/bind_slot(@${_activeCardTemplate}, ${_selectedSlotId}, ${val})`);
+      } else if (prop === 'buttons_items') {
+        const items = val.split(',').map(s => s.trim()).filter(Boolean);
+        slot.options.items = items;
+        saveCardTemplates();
+      } else if (prop === 'thread_mode') {
+        slot.options.mode = val;
+        saveCardTemplates();
+      } else if (prop === 'list_groups') {
+        slot.options.groups = val.split(',').map(s => s.trim()).filter(Boolean);
+        saveCardTemplates();
+      }
+    });
+    if (inp.tagName === 'SELECT') {
+      inp.addEventListener('change', () => inp.dispatchEvent(new Event('blur')));
+    }
+  });
+  el.querySelectorAll('.builder-opt').forEach(inp => {
+    inp.addEventListener('change', () => {
+      slot.options[inp.dataset.opt] = inp.checked;
+      saveCardTemplates();
+    });
+  });
+}
+
+// Palette click → add slot
+document.querySelectorAll('.builder-add-slot').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!_activeCardTemplate) {
+      showNamePopup(btn, {label: 'Create template first', placeholder: 'template name'}, name => {
+        if (!name) return;
+        handleAtomicInput(`/card_template(${name})`);
+        handleAtomicInput(`/add_slot(@${name}, ${btn.dataset.slotType})`);
+      });
+      return;
+    }
+    // If a group is selected, add inside it
+    const tmpl = cardTemplates[_activeCardTemplate];
+    const selectedSlot = _selectedSlotId ? findSlotById(tmpl.slots, _selectedSlotId) : null;
+    const parentArg = selectedSlot?.type === 'group' ? `, parent:"${_selectedSlotId}"` : '';
+    handleAtomicInput(`/add_slot(@${_activeCardTemplate}, ${btn.dataset.slotType}${parentArg})`);
+  });
+});
+
+// New template button
+document.getElementById('btnBuilderNewTemplate').addEventListener('click', (e) => {
+  showNamePopup(e.target, {label: 'New Card Template', placeholder: 'template name'}, name => {
+    if (!name) return;
+    handleAtomicInput(`/card_template(${name})`);
+  });
+});
+
 /* --- Atomic context menu (right-click) --- */
 function showAtomicCtx(x, y, items) {
   document.querySelectorAll('.admin-ctx').forEach(m => m.remove());
@@ -7331,6 +7555,140 @@ Rules:
     globalItems.push({type: 'text', name: 'dsl_help', text: DEFAULT_DSL_HELP});
     saveGlobalItems();
   }
+})();
+
+function ensureGlobalTextItem(name, text) {
+  if (globalItems.find(g => g.name === name)) return false;
+  globalItems.push({type: 'text', name, text});
+  return true;
+}
+
+function ensureAtomicMacro(name, dsl) {
+  if (atomicMacros[name]) return false;
+  atomicMacros[name] = dsl;
+  return true;
+}
+
+(function() {
+  let changedItems = false;
+  let changedMacros = false;
+
+  changedItems = ensureGlobalTextItem('prompt_answer_table_rows', `Write exactly $config.target_rows candidate prompts that answer the user's request.
+
+Rules:
+- Output exactly $config.target_rows items
+- Each item must be one prompt only
+- Number them as 1. 2. 3. ...
+- No intro, no outro, no markdown headings
+- Keep each prompt self-contained
+- Follow the user's constraints closely`) || changedItems;
+
+  changedItems = ensureGlobalTextItem('prompt_constraints_strict', `Extract a compact constraint manifest from the user request.
+
+Return exactly this format:
+ENTITIES:
+- column 1
+- column 2
+
+AXIOMS:
+- check 1
+- check 2
+
+HYPOTHESES:
+- reason 1
+- reason 2
+
+Rules:
+- ENTITIES are table columns for each candidate prompt
+- AXIOMS are binary checks for accept or reject
+- HYPOTHESES are short rejection-reason columns
+- No commentary
+- No code fences
+- Keep labels short`) || changedItems;
+
+  changedItems = ensureGlobalTextItem('target_rows', '4') || changedItems;
+  changedItems = ensureGlobalTextItem('max_table_iters', '4') || changedItems;
+  changedItems = ensureGlobalTextItem('hypothesis_cols', '6') || changedItems;
+
+  changedMacros = ensureAtomicMacro('parallel_answer_constraints_verdict', `@input = $config.prompt
+@chat = "session"
+@table_text = ""
+
+set_text(@chat, user, @input)
+set_text(@chat, assistant, "<think>\\n\\n</think>\\n\\n")
+
+on @input -> @draft = generate(
+  @chat,
+  mode:continue,
+  continue:true,
+  temperature:0.6,
+  max_tokens:2048
+)
+
+on @input -> @constraints_raw = generate(
+  $config.prompt_constraints_strict,
+  worker:analyzer,
+  input:@input,
+  think:false,
+  continue:true,
+  temperature:0.2,
+  max_tokens:1024
+)
+
+on @constraints_raw -> @constraints = parse_sections(
+  @constraints_raw,
+  entities:"ENTITIES:",
+  axioms:"AXIOMS:",
+  hypotheses:"HYPOTHESES:"
+)
+
+on @constraints -> @answers_header = table_header(@constraints.entities, @constraints.axioms)
+
+on @draft, @answers_header -> append_text(@chat, assistant, @draft.answer)
+on @draft, @answers_header -> append_text(@chat, assistant, "\\n\\n")
+on @draft, @answers_header -> append_text(@chat, assistant, @answers_header.content)
+on @draft, @answers_header -> append_text(@chat, assistant, "\\n| 1 |")
+
+on @draft, @answers_header -> append_text(@table_text, content, @answers_header.content)
+on @draft, @answers_header -> append_text(@table_text, content, "\\n| 1 |")
+
+on @draft, @answers_header -> @table_chunk = generate(
+  @chat,
+  mode:continue,
+  continue:false,
+  temperature:0.1,
+  max_tokens:1024,
+  stop:"\\n\\n\\n"
+)
+
+on @table_chunk -> append_text(@chat, assistant, @table_chunk.answer)
+on @table_chunk -> append_text(@table_text, content, @table_chunk.answer)
+on @table_chunk -> @parsed = parse_table(@table_text)
+on @parsed -> @row_total = row_count(@parsed)
+on @row_total -> @need_more = lt(@row_total, $config.target_rows)
+
+loop(while:@need_more, max_iters:$config.max_table_iters) {
+  @table_chunk = generate(
+    @chat,
+    mode:continue,
+    continue:false,
+    temperature:0.1,
+    max_tokens:1024,
+    stop:"\\n\\n\\n"
+  )
+  append_text(@chat, assistant, @table_chunk.answer)
+  append_text(@table_text, content, @table_chunk.answer)
+  @parsed = parse_table(@table_text)
+  @row_total = row_count(@parsed)
+  @need_more = lt(@row_total, $config.target_rows)
+}
+
+@accepted = accepted_list(@table_text, checks:@constraints.axioms)
+@accepted_rows = filter_rows(@table_text, where:all_yes, checks:@constraints.axioms)
+@rejected = reject_reasons(@table_text, checks:@constraints.axioms)`) || changedMacros;
+
+  if (changedItems) saveGlobalItems();
+  if (changedMacros) saveMacros();
 })();
 
 const LEGACY_NORMALIZED_DSL_HELP = `You are a pipeline builder. Generate short valid Atomic DSL.
