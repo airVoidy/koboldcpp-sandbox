@@ -657,7 +657,7 @@ body {
         <button class="btn" id="btnParamsImport" style="font-size:10px">Import</button>
         <input type="file" id="paramsFileInput" accept=".json" style="display:none">
       </div>
-      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Named tables and text areas accessible from all pages via $key or @config.name. Right-click items to edit/delete.</p>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Named tables and text areas accessible from all pages via $config.name. Right-click items to edit/delete.</p>
       <div id="paramsContent"></div>
       <div style="display:flex;gap:6px;margin-top:12px">
         <button class="btn" id="btnParamsAddTable">+ Table</button>
@@ -4681,7 +4681,7 @@ async function legacyHandleAtomicInput(text) {
     const [, name, value] = assignMatch;
     const entity = createEntity(name);
     if (value.startsWith('@')) {
-      // Reference: @input = @config.input
+      // Reference: @input = $config.input (internally @config.input)
       addTextArea(name, 'content', value);
       const resolved = resolveRefToString(value.replace(/^@/, ''));
       if (resolved && resolved !== value) addTextArea(name, 'resolved', resolved);
@@ -4818,10 +4818,10 @@ function macroToDSL(name, steps) {
     const firstText = e.text_areas?.[0]?.text;
     if (firstText && !e.source) {
       // Only root entities (user-created, not tool-generated)
-      // Check if text matches a @config.* item — emit reference instead of inline
+      // Check if text matches a $config.* item — emit reference instead of inline
       const configRef = globalItems.find(g => g.type === 'text' && g.text === firstText);
       if (configRef) {
-        lines.push(`@${eName} = @config.${configRef.name}`);
+        lines.push(`@${eName} = $config.${configRef.name}`);
       } else {
         const escaped = firstText.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         if (firstText.length < 200) {
@@ -4863,7 +4863,7 @@ function dslToMacro(dslText) {
       continue;
     }
     if (!line || line.startsWith('#')) continue;
-    // Entity definition: @name = "text" or @name = """ or @name = @config.ref
+    // Entity definition: @name = "text" or @name = """ or @name = $config.ref
     const entityMatch = line.match(/^@(\w+)\s*=\s*(.+)$/);
     if (entityMatch) {
       const [, name, value] = entityMatch;
@@ -4871,7 +4871,7 @@ function dslToMacro(dslText) {
         multilineEntity = name;
         multilineText = [];
       } else if (value.startsWith('@')) {
-        // Reference: @input = @config.input — resolve at runtime
+        // Reference: @input = $config.input — resolve at runtime
         entities[name] = {ref: value};
       } else {
         // Strip surrounding quotes
@@ -6263,7 +6263,7 @@ function renderParamsPage() {
     card.className = 'at-entity';
     card.style.marginTop = '12px';
     if (item.type === 'table') {
-      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">@config.${esc(item.name)}</span></div>
+      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">$config.${esc(item.name)}</span></div>
         <table class="at-table" style="width:100%"><thead><tr>${item.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
         <tbody>${item.rows.map((row, ri) => `<tr>${row.map((cell, ci) =>
           `<td contenteditable="true" data-gi="${idx}" data-gr="${ri}" data-gc="${ci}">${esc(String(cell))}</td>`
@@ -6279,7 +6279,7 @@ function renderParamsPage() {
       });
       card.appendChild(addRow);
     } else {
-      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">@config.${esc(item.name)}</span></div>
+      card.innerHTML = `<div class="at-entity-hdr"><span class="at-entity-name">$config.${esc(item.name)}</span></div>
         <div class="at-text-area-content" contenteditable="true" data-gti="${idx}" style="min-height:40px">${esc(item.text || '')}</div>`;
     }
     // Context menu
@@ -6572,7 +6572,7 @@ document.getElementById('atomicFeed').addEventListener('contextmenu', (e) => {
       {label: '📋 Export Pipeline DSL', action: () => handleAtomicInput('export_dsl()')},
       {label: '📥 Import Pipeline', action: () => {
         showNamePopup(null, {label: 'Import Pipeline DSL', fields: [
-          {name: 'dsl', placeholder: '@input = @config.input\ngenerate(@input)\ntag(@input, type, task)', label: 'Paste DSL here', multiline: true}
+          {name: 'dsl', placeholder: '@input = $config.input\ngenerate(@input)\ntag(@input, type, task)', label: 'Paste DSL here', multiline: true}
         ]}, async (vals) => {
           if (!vals.dsl) return;
           await runPipeline(vals.dsl);
@@ -6705,7 +6705,7 @@ Rules:
 - All generate() must have explicit @result = assignment
 - Options as key:value, not positional`;
 
-// Create @config.dsl_help if missing
+// Create $config.dsl_help if missing
 (function() {
   if (!globalItems.find(g => g.name === 'dsl_help')) {
     globalItems.push({type: 'text', name: 'dsl_help', text: DEFAULT_DSL_HELP});
@@ -6852,7 +6852,7 @@ Rules:
 })();
 
 function buildPipelineChatContext() {
-  // Read prompt from @config.dsl_help (editable by user)
+  // Read prompt from $config.dsl_help (editable by user)
   const helpItem = globalItems.find(g => g.name === 'dsl_help');
   const basePrompt = helpItem?.text || NORMALIZED_DSL_HELP;
 

@@ -36,7 +36,7 @@ scope(3x parse) → @input_constraints {entities, axioms, hypotheses}
 
 ## What's Next
 - Global Params UI: + Table, + Text Area, + Key:Value buttons
-- `@config.input` / `@config.prompt_claims` — all through config, no manual text
+- `$config.input` / `$config.prompt_claims` — all through config, no manual text
 - Resolved preview: show @ref substitution result in entity card
 - Wire client scope_begin/scope_end to server /api/atomic/scope
 - table-as-query via scope

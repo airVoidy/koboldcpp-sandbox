@@ -9,8 +9,8 @@ Server-side framework: JS is display only, all tools go through `/api/atomic/run
 ## Immediate TODOs:
 
 1. **Global Params UI buttons**: + Table, + Text Area, + Key:Value Param (currently only + param exists)
-2. **@config.input** — store task text in Global Params config, not as manual entity
-3. **@config.prompt_claims** — prompt template in config with `@input` reference
+2. **$config.input** — store task text in Global Params config, not as manual entity
+3. **$config.prompt_claims** — prompt template in config with `@input` reference
 4. **Resolved preview** — show @ref substitution result in entity card (collapsed "▸ resolved" section)
 5. **Wire client scope to server** — scope_begin/scope_end → single `/api/atomic/scope` call
 
