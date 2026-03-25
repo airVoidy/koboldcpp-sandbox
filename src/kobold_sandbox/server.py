@@ -2117,6 +2117,24 @@ def create_app(root: str) -> FastAPI:
         grammar = params.get("grammar")
         stop = params.get("stop")
         mode = params.get("mode", "prompt")
+        until_contains = params.get("until_contains")
+        if until_contains is None and params.get("until") is not None:
+            until_contains = params.get("until")
+        if isinstance(until_contains, str):
+            until_contains = [until_contains]
+        elif not isinstance(until_contains, list):
+            until_contains = []
+        until_regex = params.get("until_regex")
+        min_chars = int(params.get("min_chars", 0) or 0)
+
+        def _continue_conditions_met(text: str) -> bool:
+            if min_chars and len(text or "") < min_chars:
+                return False
+            if until_contains and not all(str(needle) in (text or "") for needle in until_contains):
+                return False
+            if until_regex and not re.search(until_regex, text or ""):
+                return False
+            return True
 
         # No-think prefill
         if no_think and (not messages or messages[-1].get("role") != "assistant"):
@@ -2138,7 +2156,8 @@ def create_app(root: str) -> FastAPI:
 
             payload: dict = {
                 "messages": cur_messages,
-                "continue_assistant_turn": i > 0 or no_think,
+                # Continue immediately when we already have an assistant prefill/message tail.
+                "continue_assistant_turn": i > 0 or no_think or has_prefill or mode in ("continue", "probe_continue"),
                 "cache_prompt": False,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -2161,7 +2180,11 @@ def create_app(root: str) -> FastAPI:
 
             if not continue_on:
                 break
-            if finish_reason not in ("length", "max_tokens"):
+            if finish_reason in ("length", "max_tokens"):
+                continue
+            if not _continue_conditions_met(result):
+                if i < max_continue:
+                    continue
                 break
 
         latency_ms = int((time.perf_counter() - started_at) * 1000)

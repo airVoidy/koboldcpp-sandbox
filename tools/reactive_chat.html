@@ -3549,7 +3549,7 @@ function checkWatchers() {
     setTimeout(() => {
       addAtomicMsg('system', `trigger: ${w.deps.map(d => '@'+d).join(', ')} → ${w.action}`);
       renderAtomicFeed();
-      handleAtomicInput(w.action);
+      handleAtomicInput(w.action, {recordPipeline: false, showUser: false});
     }, 0);
   });
   // Cleanup fired watchers
@@ -3584,6 +3584,24 @@ function addTextArea(entityName, areaName, text) {
   const e = atomicEntities[entityName];
   if (!e) return;
   e.text_areas.push({name: areaName, text});
+  saveAtomicState();
+}
+
+function setTextArea(entityName, areaName, text) {
+  const e = atomicEntities[entityName];
+  if (!e) return;
+  const existing = e.text_areas.find(a => a.name === areaName);
+  if (existing) existing.text = text;
+  else e.text_areas.push({name: areaName, text});
+  saveAtomicState();
+}
+
+function appendTextArea(entityName, areaName, text) {
+  const e = atomicEntities[entityName];
+  if (!e) return;
+  const existing = e.text_areas.find(a => a.name === areaName);
+  if (existing) existing.text = (existing.text || '') + text;
+  else e.text_areas.push({name: areaName, text});
   saveAtomicState();
 }
 
@@ -4096,7 +4114,510 @@ function addAtomicMsg(role, content, entities, meta) {
 // Editor commands (: prefix) — go to console, not pipeline
 const EDITOR_COMMANDS = new Set(['save_macro','run_macro','list_macros','delete_macro','export_dsl','rename','drop']);
 
-async function handleAtomicInput(text) {
+function recordPipelineStep(cmd, enabled = true) {
+  if (!enabled || !cmd) return;
+  const entry = {cmd};
+  if (_currentMacroGroup) entry.parentGroup = _currentMacroGroup;
+  pipelineSteps.push(entry);
+}
+
+function stripPipelineCodeFence(text) {
+  const trimmed = (text || '').trim();
+  const match = trimmed.match(/^```(?:pipeline)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1] : text;
+}
+
+function splitPipelineStatements(text) {
+  const source = stripPipelineCodeFence(text || '').replace(/\r/g, '');
+  const lines = source.split('\n');
+  const statements = [];
+  let multilineHeader = null;
+  let multilineBody = [];
+  let current = '';
+  let quote = null;
+  let escape = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+
+  function scanLine(line) {
+    for (const ch of line) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (quote) {
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        continue;
+      }
+      if (ch === '(') parenDepth++;
+      else if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+      else if (ch === '[') bracketDepth++;
+      else if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (ch === '{') braceDepth++;
+      else if (ch === '}') braceDepth = Math.max(0, braceDepth - 1);
+    }
+  }
+
+  function flushCurrent() {
+    const trimmed = current.trim();
+    if (trimmed) statements.push(trimmed);
+    current = '';
+  }
+
+  lines.forEach(rawLine => {
+    const trimmed = rawLine.trim();
+    if (multilineHeader) {
+      multilineBody.push(rawLine);
+      if (trimmed === '"""') {
+        statements.push(multilineHeader + '\n' + multilineBody.join('\n'));
+        multilineHeader = null;
+        multilineBody = [];
+      }
+      return;
+    }
+    if (!trimmed || trimmed.startsWith('#')) {
+      if (!current.trim()) return;
+      current += '\n' + rawLine;
+      return;
+    }
+    if (/^@\w+\s*=\s*"""\s*$/.test(trimmed)) {
+      multilineHeader = trimmed;
+      multilineBody = [];
+      return;
+    }
+    current = current ? current + '\n' + rawLine : trimmed;
+    scanLine(rawLine);
+    if (!quote && !parenDepth && !bracketDepth && !braceDepth) flushCurrent();
+  });
+
+  if (multilineHeader) statements.push(multilineHeader + (multilineBody.length ? '\n' + multilineBody.join('\n') : ''));
+  if (current.trim()) flushCurrent();
+  return statements;
+}
+
+function looksLikeAtomicDslLine(line) {
+  const trimmed = (line || '').trim();
+  if (!trimmed || trimmed.startsWith('#')) return false;
+  return /^\/?[\w_-]+\(/.test(trimmed)
+    || /^@\w+\s*=/.test(trimmed)
+    || /^@\w+\s*:/.test(trimmed)
+    || /^(@config|\$config)\.\w+/.test(trimmed)
+    || /^on\s+@/i.test(trimmed);
+}
+
+function looksLikePipelineText(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('```')) return true;
+  const lines = stripPipelineCodeFence(trimmed).split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  const dslish = lines.filter(looksLikeAtomicDslLine).length;
+  return dslish >= Math.max(2, lines.length - 1);
+}
+
+function splitAtomicArgs(input) {
+  const args = [];
+  let current = '';
+  let quote = null;
+  let escape = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+
+  for (const ch of (input || '')) {
+    if (escape) {
+      current += ch;
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      current += ch;
+      escape = true;
+      continue;
+    }
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '(') parenDepth++;
+    else if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+    else if (ch === '[') bracketDepth++;
+    else if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+    else if (ch === '{') braceDepth++;
+    else if (ch === '}') braceDepth = Math.max(0, braceDepth - 1);
+
+    if (ch === ',' && !parenDepth && !bracketDepth && !braceDepth) {
+      if (current.trim()) args.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+function stripDslQuotes(value) {
+  const trimmed = (value || '').trim();
+  if (trimmed.startsWith('"""') && trimmed.endsWith('"""')) return trimmed.slice(3, -3);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try { return JSON.parse(trimmed); } catch (_) {}
+    return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1).replace(/\\'/g, "'");
+  return trimmed;
+}
+
+function normalizeDslToken(token) {
+  const trimmed = (token || '').trim();
+  if (!trimmed) return trimmed;
+  const kv = trimmed.match(/^(\w+)\s*:\s*([\s\S]+)$/);
+  if (kv) {
+    const key = kv[1];
+    const val = kv[2].trim();
+    if (val.startsWith('$config.')) return `${key}:@config.${val.slice(8)}`;
+    return `${key}:${val}`;
+  }
+  if (trimmed.startsWith('$config.')) return '@config.' + trimmed.slice(8);
+  return trimmed;
+}
+
+function formatDslToken(token) {
+  return String(token || '').replace(/@config\./g, '$config.');
+}
+
+function normalizeToolName(toolName) {
+  const map = {
+    gen: 'generate',
+    probe: 'probe_continue',
+    check: 'check_status',
+    'table-as-query': 'table_as_query',
+    join_list: 'join',
+    set: 'set_text',
+    append: 'append_text',
+    remove_tag: 'untag',
+  };
+  return map[toolName] || toolName;
+}
+
+function parseAtomicCall(text) {
+  const match = (text || '').trim().match(/^([\w_-]+)\(([\s\S]*)\)$/);
+  if (!match) return null;
+  const tool = normalizeToolName(match[1]);
+  const args = splitAtomicArgs(match[2]).map(normalizeDslToken);
+  return {tool, args};
+}
+
+function canonicalizeGenerateArgs(args) {
+  if (!args.length) return args;
+  const result = [formatDslToken(args[0])];
+  let worker = null;
+  args.slice(1).forEach(arg => {
+    const trimmed = String(arg).trim();
+    if (['generator','analyzer','verifier'].includes(trimmed)) {
+      worker = trimmed;
+      return;
+    }
+    if (/^worker:/.test(trimmed)) {
+      worker = trimmed.split(':', 2)[1].trim();
+      return;
+    }
+    if (/^no_think:(true|false)$/i.test(trimmed)) {
+      const thinkEnabled = trimmed.split(':', 2)[1].trim().toLowerCase() === 'false';
+      result.push(`think:${thinkEnabled ? 'true' : 'false'}`);
+      return;
+    }
+    result.push(formatDslToken(trimmed));
+  });
+  if (worker) result.splice(1, 0, `worker:${worker}`);
+  return result;
+}
+
+function canonicalizeParseSectionsArgs(args) {
+  if (!args.length) return args;
+  const first = formatDslToken(args[0]);
+  const sections = [];
+  args.slice(1).forEach(arg => {
+    const trimmed = String(arg).trim();
+    if (/^\w+\s*:/.test(trimmed)) {
+      sections.push(formatDslToken(trimmed));
+      return;
+    }
+    const name = trimmed.replace(/^"+|"+$/g, '').replace(/[:\s]+$/g, '').toLowerCase() || `section${sections.length + 1}`;
+    sections.push(`${name}:${JSON.stringify(stripDslQuotes(trimmed))}`);
+  });
+  return [first, ...sections];
+}
+
+function buildCanonicalToolCommand(tool, args, outName) {
+  let canonArgs = args.map(formatDslToken);
+  if (tool === 'generate') canonArgs = canonicalizeGenerateArgs(args);
+  if (tool === 'parse_sections') canonArgs = canonicalizeParseSectionsArgs(args);
+  const call = `${tool}(${canonArgs.join(', ')})`;
+  return outName ? `@${outName} = ${call}` : call;
+}
+
+function parseAtomicLine(text) {
+  const raw = (text || '').trim();
+  if (!raw) return {kind: 'empty'};
+
+  if (raw.startsWith('/')) {
+    const editorCall = parseAtomicCall(raw.slice(1));
+    if (editorCall) {
+      return {
+        kind: 'editor',
+        tool: editorCall.tool,
+        args: editorCall.args,
+        canonical: `/${editorCall.tool}(${editorCall.args.map(formatDslToken).join(', ')})`,
+      };
+    }
+  }
+
+  const triggerMatch = raw.match(/^on\s+(@[\w]+(?:\s*,\s*@[\w]+)*)\s*(?:->|:)\s*(.+)$/i);
+  if (triggerMatch) {
+    const deps = triggerMatch[1].split(',').map(d => d.trim().replace(/^@/, '')).filter(Boolean);
+    const action = parseAtomicLine(triggerMatch[2].trim());
+    const actionText = action?.canonical || triggerMatch[2].trim();
+    return {
+      kind: 'trigger',
+      deps,
+      actionText,
+      canonical: `on ${deps.map(d => '@' + d).join(', ')} -> ${actionText}`,
+    };
+  }
+
+  const assignMatch = raw.match(/^@(\w+)\s*=\s*([\s\S]+)$/);
+  if (assignMatch) {
+    const [, name, rhs] = assignMatch;
+    const call = parseAtomicCall(rhs.trim());
+    if (call) {
+      return {
+        kind: 'assign_tool',
+        name,
+        tool: call.tool,
+        args: call.args,
+        canonical: buildCanonicalToolCommand(call.tool, call.args, name),
+      };
+    }
+    const normalizedValue = normalizeDslToken(rhs.trim());
+    return {
+      kind: 'assign_value',
+      name,
+      value: normalizedValue,
+      canonical: `@${name} = ${formatDslToken(normalizedValue)}`,
+    };
+  }
+
+  if (/^(@config|\$config)\.\w+$/.test(raw)) {
+    const ref = normalizeDslToken(raw);
+    const name = ref.split('.').slice(-1)[0];
+    return {
+      kind: 'assign_value',
+      name,
+      value: ref,
+      canonical: `@${name} = ${formatDslToken(ref)}`,
+    };
+  }
+
+  const entityMatch = raw.match(/^@(\w+)\s*:\s*([\s\S]+)/);
+  if (entityMatch) {
+    const [, name, content] = entityMatch;
+    const value = JSON.stringify(content.trim());
+    return {
+      kind: 'assign_value',
+      name,
+      value,
+      canonical: `@${name} = ${value}`,
+    };
+  }
+
+  const toolCall = parseAtomicCall(raw);
+  if (toolCall) {
+    if (EDITOR_COMMANDS.has(toolCall.tool)) {
+      return {
+        kind: 'editor',
+        tool: toolCall.tool,
+        args: toolCall.args,
+        canonical: `/${toolCall.tool}(${toolCall.args.map(formatDslToken).join(', ')})`,
+      };
+    }
+    return {
+      kind: 'tool',
+      tool: toolCall.tool,
+      args: toolCall.args,
+      canonical: buildCanonicalToolCommand(toolCall.tool, toolCall.args),
+    };
+  }
+
+  return {kind: 'message', text};
+}
+
+function bindEntityFromDsl(name, value) {
+  createEntity(name);
+  const normalizedValue = normalizeDslToken(value);
+  if (normalizedValue.startsWith('@')) {
+    addTextArea(name, 'content', normalizedValue);
+    const resolved = resolveRefToString(normalizedValue.replace(/^@/, ''));
+    if (resolved && resolved !== normalizedValue) addTextArea(name, 'resolved', resolved);
+  } else {
+    addTextArea(name, 'content', stripDslQuotes(normalizedValue));
+  }
+}
+
+function resolveDslTextValue(value) {
+  const normalizedValue = normalizeDslToken(String(value || ''));
+  if (normalizedValue.startsWith('@')) return resolveRefToString(normalizedValue.replace(/^@/, ''));
+  return stripDslQuotes(normalizedValue);
+}
+
+function parseDslCallOptions(args, startIndex = 1) {
+  const options = {};
+  const positional = [];
+  (args || []).slice(startIndex).forEach(arg => {
+    const trimmed = String(arg || '').trim();
+    const kv = trimmed.match(/^(\w+)\s*:\s*([\s\S]+)$/);
+    if (kv) options[kv[1]] = kv[2].trim();
+    else if (trimmed) positional.push(trimmed);
+  });
+  return {options, positional};
+}
+
+function getEntityPrimaryTextArea(entity) {
+  if (!entity?.text_areas?.length) return null;
+  const preferred = ['answer', 'content', 'result'];
+  for (const name of preferred) {
+    const found = entity.text_areas.find(ta => ta.name === name);
+    if (found) return found;
+  }
+  return entity.text_areas.find(ta => ta.name !== 'resolved') || entity.text_areas[0] || null;
+}
+
+function getEntityPrimaryDataArea(entity) {
+  if (!entity?.data_areas?.length) return null;
+  return entity.data_areas[0] || null;
+}
+
+function runtimeValueToText(value) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.map(runtimeValueToText).join(' ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function runtimeValueToLines(value) {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) {
+    if (value.some(item => Array.isArray(item))) return value.map(row => runtimeValueToText(row));
+    return value.map(item => runtimeValueToText(item));
+  }
+  return [runtimeValueToText(value)];
+}
+
+function runtimeValueToList(value) {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) return value.slice();
+  return [value];
+}
+
+function dataAreaToRuntimeValue(area) {
+  if (!area) return null;
+  const headers = Array.isArray(area.headers) ? area.headers : [];
+  const rows = Array.isArray(area.rows) ? area.rows : [];
+  if (!headers.length) return rows.map(row => Array.isArray(row) ? row.slice() : [row]);
+  if (headers.length === 2 && String(headers[0]).trim() === '#') {
+    return rows.map(row => row?.[1] ?? '');
+  }
+  if (headers.length === 1) {
+    return rows.map(row => row?.[0] ?? '');
+  }
+  return rows.map(row => Array.isArray(row) ? row.slice() : [row]);
+}
+
+function entityToRuntimeValue(entity) {
+  if (!entity) return null;
+  const primaryText = getEntityPrimaryTextArea(entity);
+  if (primaryText) return primaryText.text;
+  const primaryData = getEntityPrimaryDataArea(entity);
+  if (primaryData) return dataAreaToRuntimeValue(primaryData);
+  return null;
+}
+
+function resolveDslRuntimeValue(value) {
+  const normalizedValue = normalizeDslToken(String(value || '').trim());
+  if (!normalizedValue) return '';
+  if (normalizedValue.startsWith('@')) {
+    const resolved = resolveRef(normalizedValue.replace(/^@/, ''));
+    if (resolved === null || resolved === undefined) return null;
+    if (typeof resolved === 'string' || typeof resolved === 'number' || typeof resolved === 'boolean') return resolved;
+    if (resolved?.headers && resolved?.rows) return dataAreaToRuntimeValue(resolved);
+    if (resolved?.text_areas || resolved?.data_areas) return entityToRuntimeValue(resolved);
+    return resolved;
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(normalizedValue)) return Number(normalizedValue);
+  if (/^(true|false)$/i.test(normalizedValue)) return normalizedValue.toLowerCase() === 'true';
+  if ((normalizedValue.startsWith('[') && normalizedValue.endsWith(']')) || (normalizedValue.startsWith('{') && normalizedValue.endsWith('}'))) {
+    try { return JSON.parse(normalizedValue); } catch (_) {}
+  }
+  return stripDslQuotes(normalizedValue);
+}
+
+function resolveDslNumericValue(value, fallback = 0) {
+  const resolved = resolveDslRuntimeValue(value);
+  if (Array.isArray(resolved)) return resolved.length;
+  if (typeof resolved === 'number' && Number.isFinite(resolved)) return resolved;
+  const parsed = Number(runtimeValueToText(resolved).trim());
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function inferTransformOutName(toolName, args) {
+  const refArg = (args || []).find(arg => /^\s*@/.test(String(arg || '')));
+  if (refArg) {
+    const base = normalizeDslToken(String(refArg)).replace(/^@/, '').split('.')[0];
+    if (base) return `${base}_${toolName}`;
+  }
+  return `${toolName}_${entityGid()}`;
+}
+
+function createRuntimeValueEntity(name, value, source) {
+  const entity = createEntity(name, {source});
+  if (Array.isArray(value)) {
+    if (value.some(item => Array.isArray(item))) {
+      const width = value.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 1), 0) || 1;
+      const headers = Array.from({length: width}, (_, i) => String(i + 1));
+      const rows = value.map(row => {
+        const cells = Array.isArray(row) ? row : [row];
+        return Array.from({length: width}, (_, i) => runtimeValueToText(cells[i] ?? ''));
+      });
+      addDataArea(entity.name, 'items', headers, rows);
+      return entity;
+    }
+    addDataArea(entity.name, 'items', ['#', 'Value'], value.map((item, i) => [String(i + 1), runtimeValueToText(item)]));
+    return entity;
+  }
+  if (value && typeof value === 'object') {
+    addDataArea(entity.name, 'items', ['Key', 'Value'], Object.entries(value).map(([key, val]) => [key, runtimeValueToText(val)]));
+    return entity;
+  }
+  addTextArea(entity.name, 'content', runtimeValueToText(value));
+  return entity;
+}
+
+async function legacyHandleAtomicInput(text) {
   if (!text.trim()) return;
   // Editor command: :command(args) — route to console, don't record in pipeline
   if (text.trim().startsWith('/')) {
@@ -4215,6 +4736,66 @@ async function handleAtomicInput(text) {
   renderAtomicFeed();
 }
 
+async function handleAtomicInput(text, options = {}) {
+  const opts = {recordPipeline: true, showUser: true, ...options};
+  const raw = (text || '').trim();
+  if (!raw) return;
+
+  if (looksLikePipelineText(raw)) {
+    if (opts.showUser) addAtomicMsg('user', '```pipeline\n' + stripPipelineCodeFence(raw).trim() + '\n```');
+    renderAtomicFeed();
+    await runPipeline(raw);
+    return;
+  }
+
+  const statements = splitPipelineStatements(raw);
+  const parsed = parseAtomicLine(statements[0] || raw);
+  if (!parsed || parsed.kind === 'empty') return;
+
+  if (parsed.kind === 'editor') {
+    addConsoleMsg(`> ${parsed.canonical}`);
+    await applyAtomicTool(parsed.tool, parsed.args, {record: false});
+    renderPipelineSteps();
+    return;
+  }
+
+  if (parsed.kind === 'trigger') {
+    if (opts.showUser) addAtomicMsg('user', parsed.canonical);
+    recordPipelineStep(parsed.canonical, opts.recordPipeline);
+    registerWatcher(parsed.deps, parsed.actionText);
+    renderAtomicFeed();
+    renderPipelineSteps();
+    return;
+  }
+
+  if (parsed.kind === 'assign_value') {
+    bindEntityFromDsl(parsed.name, parsed.value);
+    recordPipelineStep(parsed.canonical, opts.recordPipeline);
+    if (opts.showUser) addAtomicMsg('user', parsed.canonical, [parsed.name]);
+    renderAtomicFeed();
+    updateScopeList();
+    renderPipelineSteps();
+    return;
+  }
+
+  if (parsed.kind === 'assign_tool') {
+    if (opts.showUser) addAtomicMsg('user', parsed.canonical);
+    renderAtomicFeed();
+    await applyAtomicTool(parsed.tool, parsed.args, {record: opts.recordPipeline, recordCmd: parsed.canonical, outName: parsed.name});
+    return;
+  }
+
+  if (parsed.kind === 'tool') {
+    if (opts.showUser) addAtomicMsg('user', parsed.canonical);
+    renderAtomicFeed();
+    await applyAtomicTool(parsed.tool, parsed.args, {record: opts.recordPipeline, recordCmd: parsed.canonical});
+    return;
+  }
+
+  addAtomicMsg('user', parsed.text || text);
+  renderAtomicFeed();
+}
+
 /* --- Tool execution --- */
 // --- Macro recording (state initialized at top of Atomic section) ---
 function saveMacros() { try { localStorage.setItem('atomic_macros', JSON.stringify(atomicMacros)); } catch(_) {} }
@@ -4311,8 +4892,7 @@ function dslToMacro(dslText) {
 }
 
 async function runPipeline(dslText) {
-  // Parse lines, skip comments and blanks, replay each through handleAtomicInput
-  const lines = dslText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const lines = splitPipelineStatements(dslText);
   addAtomicMsg('system', `▶ Pipeline: ${lines.length} lines`);
   renderAtomicFeed();
   for (let i = 0; i < lines.length; i++) {
@@ -4332,40 +4912,48 @@ async function runPipeline(dslText) {
   updateScopeList();
 }
 
-async function applyAtomicTool(toolName, args) {
+async function applyAtomicTool(toolName, args, meta = {}) {
   // Record macro step (use generic ref $1, $2 etc for entity names)
   if (macroRecording) {
     macroSteps.push({tool: toolName, args: [...args]});
   }
-  // Always record for pipeline DSL export
-  const argsStr = args.map(a => String(a).startsWith('@') ? a : (a.includes(',') || a.includes(' ') ? a : a)).join(', ');
-  const stepEntry = {cmd: `${toolName}(${argsStr})`};
-  if (_currentMacroGroup) stepEntry.parentGroup = _currentMacroGroup;
-  pipelineSteps.push(stepEntry);
+  const recordCmd = meta.recordCmd || buildCanonicalToolCommand(normalizeToolName(toolName), args);
+  recordPipelineStep(recordCmd, meta.record !== false);
   setS('busy', 'Running ' + toolName + '...');
   try {
     switch (toolName) {
-      case 'claims': await toolClaims(args); break;
-      case 'numbered': await toolNumbered(args); break;
-      case 'slice': await toolSlice(args); break;
-      case 'split': await toolSplit(args); break;
-      case 'check_status': case 'check': await toolCheckStatus(args); break;
-      case 'table_as_query': case 'table-as-query': await toolTableAsQuery(args); break;
-      case 'generate': case 'gen': await toolGenerate(args); break;
-      case 'probe_continue': case 'probe': await toolProbe(args); break;
-      case 'transpose': await toolTranspose(args); break;
+      case 'claims': await toolClaims(args, meta); break;
+      case 'numbered': await toolNumbered(args, meta); break;
+      case 'slice': await toolSlice(args, meta); break;
+      case 'split': await toolSplit(args, meta); break;
+      case 'concat': toolConcat(args, meta); break;
+      case 'table_header': toolTableHeader(args, meta); break;
+      case 'prepend': toolPrepend(args, meta); break;
+      case 'join': case 'join_list': toolJoin(args, meta); break;
+      case 'len': case 'length': toolLen(args, meta); break;
+      case 'repeat': toolRepeat(args, meta); break;
+      case 'chunk': toolChunk(args, meta); break;
+      case 'reshape_grid': toolReshapeGrid(args, meta); break;
+      case 'lines': toolLines(args, meta); break;
+      case 'check_status': case 'check': await toolCheckStatus(args, meta); break;
+      case 'table_as_query': case 'table-as-query': await toolTableAsQuery(args, meta); break;
+      case 'generate': case 'gen': await toolGenerate(args, meta); break;
+      case 'probe_continue': case 'probe': await toolProbe(args, meta); break;
+      case 'transpose': await toolTranspose(args, meta); break;
       case 'verify': await toolVerify(args); break;
       case 'add_entity': toolAddEntity(args); break;
       case 'add_table': toolAddTable(args); break;
       case 'merge': toolMerge(args); break;
-      case 'parse_sections': await toolParseSections(args); break;
+      case 'parse_sections': await toolParseSections(args, meta); break;
       case 'render': toolRender(args); break;
       case 'scope_begin': toolScopeBegin(); break;
       case 'scope_end': toolScopeEnd(args); break;
       case 'drop': toolDrop(args); break;
       case 'tag': toolTag(args); break;
-      case 'remove_tag': toolRemoveTag(args); break;
+      case 'remove_tag': case 'untag': toolRemoveTag(args); break;
       case 'add_text': toolAddText(args); break;
+      case 'set_text': toolSetText(args); break;
+      case 'append_text': toolAppendText(args); break;
       case 'rename': toolRename(args); break;
       case 'export_dsl': toolExportDSL(args); break;
       case 'save_macro': toolSaveMacro(args); break;
@@ -4501,12 +5089,22 @@ async function callAtomicScope(steps, exportSpec) {
 /* parse_sections(@entity, DELIM1:, DELIM2:, DELIM3:) → @entity_constraints
    Sends scope request: parse between consecutive delimiters, compose into one entity.
    Result entity has data_areas for each section (items) and tags. */
-async function toolParseSections(args) {
+async function toolParseSections(args, meta = {}) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
-  const delimiters = args.slice(1).map(a => a.trim()).filter(Boolean);
-  if (delimiters.length < 2) { addAtomicMsg('tool', 'Need at least 2 section delimiters'); return; }
+  const sectionSpecs = [];
+  args.slice(1).forEach(arg => {
+    const trimmed = String(arg).trim();
+    const kv = trimmed.match(/^(\w+)\s*:\s*([\s\S]+)$/);
+    if (kv) {
+      sectionSpecs.push({name: kv[1], delim: stripDslQuotes(kv[2])});
+      return;
+    }
+    const name = trimmed.replace(/^"+|"+$/g, '').replace(/[:\s]+$/g, '').toLowerCase() || `section${sectionSpecs.length + 1}`;
+    sectionSpecs.push({name, delim: stripDslQuotes(trimmed)});
+  });
+  if (!sectionSpecs.length) { addAtomicMsg('tool', 'Need at least 1 section delimiter'); return; }
 
   // Get source text
   const text = entity.text_areas.filter(ta => ta.name !== 'resolved').map(ta => ta.text).join('\n');
@@ -4514,16 +5112,15 @@ async function toolParseSections(args) {
 
   // Build scope steps: parse between consecutive delimiters
   const steps = [];
-  const sectionNames = [];
-  for (let i = 0; i < delimiters.length; i++) {
-    const name = delimiters[i].replace(/[:\s]+$/, '').toLowerCase();
-    sectionNames.push(name);
+  const sectionNames = sectionSpecs.map(spec => spec.name);
+  for (let i = 0; i < sectionSpecs.length; i++) {
+    const name = sectionSpecs[i].name;
     steps.push({
       tool: 'parse',
       params: {
         text: text,
-        from_delim: delimiters[i],
-        ...(i < delimiters.length - 1 ? {to_delim: delimiters[i + 1]} : {})
+        from_delim: sectionSpecs[i].delim,
+        ...(i < sectionSpecs.length - 1 ? {to_delim: sectionSpecs[i + 1].delim} : {})
       },
       out: name
     });
@@ -4532,9 +5129,10 @@ async function toolParseSections(args) {
   // Export: compose into single dict
   const exportMapping = {};
   sectionNames.forEach(name => { exportMapping[name] = '$' + name + '.items'; });
-  const exportSpec = {[ref + '_constraints']: exportMapping};
+  const outName = meta.outName || (ref + '_constraints');
+  const exportSpec = {[outName]: exportMapping};
 
-  addAtomicMsg('system', `parse_sections(@${ref}, ${delimiters.join(', ')}) → scope(${steps.length} steps)`);
+  addAtomicMsg('system', `parse_sections(@${ref}, ${sectionSpecs.map(s => s.delim).join(', ')}) → scope(${steps.length} steps)`);
   renderAtomicFeed();
 
   const result = await callAtomicScope(steps, exportSpec);
@@ -4544,7 +5142,6 @@ async function toolParseSections(args) {
   }
 
   // Create composed entity
-  const outName = ref + '_constraints';
   const exported = result.exported[outName];
   if (!exported) {
     addAtomicMsg('tool', `scope returned no export for ${outName}`);
@@ -4561,7 +5158,7 @@ async function toolParseSections(args) {
     }
   });
   addAtomicMsg('tool', `parse_sections → @${outName} (${sectionNames.join(', ')})`, [outName],
-    {params: {delimiters, sections: sectionNames}, response: {log: result.log}});
+    {params: {delimiters: sectionSpecs.map(s => s.delim), sections: sectionNames}, response: {log: result.log}});
   saveAtomicState();
   renderAtomicFeed();
   updateScopeList();
@@ -4596,31 +5193,31 @@ async function toolClaims(args) {
     {params: {tool:'claims', role:'analyzer'}, response: {sections: Object.keys(sections), latency_ms: result.latency_ms}});
 }
 
-function toolNumbered(args) {
+function toolNumbered(args, meta = {}) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   const text = entity.text_areas.map(ta => ta.text).join('\n');
   const lines = text.split('\n');
   const numbered = lines.map((l, i) => `${i+1}. ${l}`).join('\n');
-  const e = createEntity(ref + '_numbered', {source: {entityId: ref, tool: 'numbered'}});
+  const e = createEntity(meta.outName || (ref + '_numbered'), {source: {entityId: ref, tool: 'numbered'}});
   addTextArea(e.name, 'content', numbered);
   addAtomicMsg('tool', `numbered(@${ref}) → @${e.name} (${lines.length} lines)`, [e.name]);
 }
 
-async function toolSlice(args) {
+async function toolSlice(args, meta = {}) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   const text = entity.text_areas.map(ta => ta.text).join('\n');
-  const fromDelim = args[1]?.trim();
-  const toDelim = args[2]?.trim();
+  const fromDelim = stripDslQuotes(args[1]?.trim() || '');
+  const toDelim = stripDslQuotes(args[2]?.trim() || '');
 
   // Output name from → @name arg
   let outName = null;
   const arrowArg = args.find(a => a.startsWith('→') || a.startsWith('->'));
   if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
-  if (!outName) outName = ref + '_slice';
+  if (!outName) outName = meta.outName || (ref + '_slice');
 
   const label = fromDelim ? `"${fromDelim}"..${toDelim ? '"'+toDelim+'"' : 'end'}` : 'lines';
   addAtomicMsg('system', `slice(@${ref}, ${label}) → server`);
@@ -4633,7 +5230,7 @@ async function toolSlice(args) {
     {params: {tool: 'slice', from: fromDelim, to: toDelim || 'end'}});
 }
 
-async function toolSplit(args) {
+async function toolSplit(args, meta = {}) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
@@ -4642,7 +5239,7 @@ async function toolSplit(args) {
   let outName = null;
   const arrowArg = args.find(a => a.startsWith('→') || a.startsWith('->'));
   if (arrowArg) outName = arrowArg.replace(/^(→|->)\s*@?/, '').trim();
-  if (!outName) outName = ref + '_list';
+  if (!outName) outName = meta.outName || (ref + '_list');
 
   addAtomicMsg('system', `split(@${ref}) → server`);
   renderAtomicFeed();
@@ -4658,6 +5255,128 @@ async function toolSplit(args) {
 }
 
 /* Scope — local variable container. One at a time.
+   scope_begin(): snapshot current entities
+   scope_end(@keep1, @keep2): delete everything created since begin, except keep list
+   drop(@name): delete single entity */
+/* --- Local pure transforms --- */
+function toolConcat(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'concat needs at least 1 value'); return; }
+  const merged = [];
+  args.forEach(arg => { merged.push(...runtimeValueToList(resolveDslRuntimeValue(arg))); });
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('concat', args), merged, {tool: 'concat'});
+  addAtomicMsg('tool', `concat(...) -> @${resultEntity.name} (${merged.length} items)`, [resultEntity.name]);
+}
+
+function toolTableHeader(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'table_header needs at least 1 list'); return; }
+  const columns = [];
+  args.forEach(arg => { columns.push(...runtimeValueToList(resolveDslRuntimeValue(arg)).map(item => runtimeValueToText(item))); });
+  const allColumns = ['#', ...columns];
+  const header = `| ${allColumns.join(' | ')} |`;
+  const sep = '|' + allColumns.map(() => '---').join('|') + '|';
+  const resultEntity = createEntity(meta.outName || inferTransformOutName('table_header', args), {source: {tool: 'table_header'}});
+  addTextArea(resultEntity.name, 'content', `${header}\n${sep}`);
+  addDataArea(resultEntity.name, 'columns', ['#', 'Value'], allColumns.map((item, i) => [String(i + 1), item]));
+  addAtomicMsg('tool', `table_header(...) -> @${resultEntity.name}`, [resultEntity.name]);
+}
+
+function splitTextIntoList(text) {
+  const normalized = String(text || '').replace(/\r/g, '').trim();
+  if (!normalized) return [];
+  const numbered = normalized
+    .split(/\n(?=\s*(?:\d+[.)]|[-*•])\s+)/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (numbered.length > 1) {
+    return numbered.map(part => part.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, '').trim()).filter(Boolean);
+  }
+  const blocks = normalized.split(/\n\s*\n+/).map(part => part.trim()).filter(Boolean);
+  if (blocks.length > 1) return blocks;
+  return normalized.split('\n').map(line => line.trim()).filter(Boolean);
+}
+
+function toolPrepend(args, meta = {}) {
+  if (args.length < 2) { addAtomicMsg('tool', 'prepend needs a list and at least 1 value'); return; }
+  const base = runtimeValueToList(resolveDslRuntimeValue(args[0]));
+  const prefix = [];
+  args.slice(1).forEach(arg => { prefix.push(...runtimeValueToList(resolveDslRuntimeValue(arg))); });
+  const result = [...prefix, ...base];
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('prepend', args), result, {tool: 'prepend'});
+  addAtomicMsg('tool', `prepend(...) -> @${resultEntity.name} (${result.length} items)`, [resultEntity.name]);
+}
+
+function toolJoin(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'join needs a list value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const sep = resolveDslTextValue(options.sep !== undefined ? options.sep : (positional[0] || ''));
+  const prefix = resolveDslTextValue(options.prefix || '""');
+  const suffix = resolveDslTextValue(options.suffix || '""');
+  const items = runtimeValueToList(resolveDslRuntimeValue(args[0])).map(item => runtimeValueToText(item));
+  const joined = `${prefix}${items.join(sep)}${suffix}`;
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('join', args), joined, {tool: 'join'});
+  addAtomicMsg('tool', `join(...) -> @${resultEntity.name}`, [resultEntity.name]);
+}
+
+function toolLen(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'len needs a value'); return; }
+  const value = resolveDslRuntimeValue(args[0]);
+  let result = 0;
+  if (Array.isArray(value)) result = value.length;
+  else if (typeof value === 'string') result = value.length;
+  else if (value && typeof value === 'object') result = Object.keys(value).length;
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('len', args), String(result), {tool: 'len'});
+  addAtomicMsg('tool', `len(...) -> @${resultEntity.name}: ${result}`, [resultEntity.name]);
+}
+
+function toolRepeat(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'repeat needs a value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const countArg = options.count !== undefined ? options.count : positional[0];
+  const count = Math.max(0, Math.floor(resolveDslNumericValue(countArg, 0)));
+  const sourceItems = runtimeValueToList(resolveDslRuntimeValue(args[0]));
+  const result = [];
+  for (let i = 0; i < count; i++) result.push(...sourceItems);
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('repeat', args), result, {tool: 'repeat'});
+  addAtomicMsg('tool', `repeat(...) -> @${resultEntity.name} (${result.length} items)`, [resultEntity.name]);
+}
+
+function toolChunk(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'chunk needs a list value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const sizeArg = options.size !== undefined ? options.size : positional[0];
+  const size = Math.max(1, Math.floor(resolveDslNumericValue(sizeArg, 0)));
+  if (!size) { addAtomicMsg('tool', 'chunk size must be > 0'); return; }
+  const items = runtimeValueToList(resolveDslRuntimeValue(args[0]));
+  const result = [];
+  for (let i = 0; i < items.length; i += size) result.push(items.slice(i, i + size));
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('chunk', args), result, {tool: 'chunk'});
+  addAtomicMsg('tool', `chunk(...) -> @${resultEntity.name} (${result.length} rows)`, [resultEntity.name]);
+}
+
+function toolReshapeGrid(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'reshape_grid needs a value'); return; }
+  const {options, positional} = parseDslCallOptions(args, 1);
+  const colsArg = options.cols !== undefined ? options.cols : (options.size !== undefined ? options.size : positional[0]);
+  const cols = Math.max(1, Math.floor(resolveDslNumericValue(colsArg, 0)));
+  if (!cols) { addAtomicMsg('tool', 'reshape_grid cols must be > 0'); return; }
+  const value = resolveDslRuntimeValue(args[0]);
+  const items = typeof value === 'string' ? splitTextIntoList(value) : runtimeValueToList(value);
+  const result = [];
+  for (let i = 0; i < items.length; i += cols) result.push(items.slice(i, i + cols));
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('reshape_grid', args), result, {tool: 'reshape_grid'});
+  addAtomicMsg('tool', `reshape_grid(...) -> @${resultEntity.name} (${result.length} rows)`, [resultEntity.name]);
+}
+
+function toolLines(args, meta = {}) {
+  if (!args.length) { addAtomicMsg('tool', 'lines needs at least 1 value'); return; }
+  const joined = args
+    .flatMap(arg => runtimeValueToLines(resolveDslRuntimeValue(arg)))
+    .join('\n');
+  const resultEntity = createRuntimeValueEntity(meta.outName || inferTransformOutName('lines', args), joined, {tool: 'lines'});
+  addAtomicMsg('tool', `lines(...) -> @${resultEntity.name}`, [resultEntity.name]);
+}
+
+/* Scope вЂ” local variable container. One at a time.
    scope_begin(): snapshot current entities
    scope_end(@keep1, @keep2): delete everything created since begin, except keep list
    drop(@name): delete single entity */
@@ -4717,8 +5436,15 @@ function toolDrop(args) {
 
 function toolTag(args) {
   const ref = args[0]?.replace(/^@/, '');
-  const key = args[1]?.trim();
-  const value = args.slice(2).join(', ').trim();
+  let key = args[1]?.trim();
+  let value = args.slice(2).join(', ').trim();
+  const kv = key?.match(/^(\w+)\s*:\s*([\s\S]+)$/);
+  if (kv) {
+    key = kv[1];
+    value = stripDslQuotes(kv[2]);
+  } else {
+    value = stripDslQuotes(value);
+  }
   if (!ref || !key) { addAtomicMsg('tool', 'Usage: tag(@entity, key, value)'); return; }
   if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   addTag(ref, key, value);
@@ -4741,11 +5467,33 @@ function toolRemoveTag(args) {
 function toolAddText(args) {
   const ref = args[0]?.replace(/^@/, '');
   const name = args[1]?.trim();
-  const text = args.slice(2).join(', ').trim();
+  const text = resolveDslTextValue(args.slice(2).join(', ').trim());
   if (!ref || !name) { addAtomicMsg('tool', 'Usage: add_text(@entity, name, text)'); return; }
   if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
   addTextArea(ref, name, text);
   addAtomicMsg('system', `add_text(@${ref}, ${name})`);
+  saveAtomicState();
+}
+
+function toolSetText(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const name = args[1]?.trim();
+  const text = resolveDslTextValue(args.slice(2).join(', ').trim());
+  if (!ref || !name) { addAtomicMsg('tool', 'Usage: set_text(@entity, name, text)'); return; }
+  if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  setTextArea(ref, name, text);
+  addAtomicMsg('system', `set_text(@${ref}, ${name})`);
+  saveAtomicState();
+}
+
+function toolAppendText(args) {
+  const ref = args[0]?.replace(/^@/, '');
+  const name = args[1]?.trim();
+  const text = resolveDslTextValue(args.slice(2).join(', ').trim());
+  if (!ref || !name) { addAtomicMsg('tool', 'Usage: append_text(@entity, name, text)'); return; }
+  if (!atomicEntities[ref]) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
+  appendTextArea(ref, name, text);
+  addAtomicMsg('system', `append_text(@${ref}, ${name})`);
   saveAtomicState();
 }
 
@@ -4855,49 +5603,43 @@ function toolDeleteMacro(args) {
 }
 
 /* render(@template, slot1:@ref1, slot2:@ref2) → @template_rendered
-   Pure text substitution: replaces @slot1, @slot2 in template with resolved values.
-   No LLM call. */
-function toolRender(args) {
+   Server-side template rendering via /api/atomic/run.
+   Resolves refs client-side, sends text + slots to server. */
+async function toolRender(args) {
   const ref = args[0]?.replace(/^@/, '');
   if (!ref) { addAtomicMsg('tool', 'Usage: render(@template, key:@value, ...)'); return; }
 
-  // Get template text (entity or @config.*)
+  // Resolve template text (multi-pass for nested @refs)
   let template = resolveRefToString(ref);
   if (!template || template === '@' + ref) { addAtomicMsg('tool', `@${ref} not found or empty`); return; }
-
-  // Parse slot mappings from remaining args
-  const slots = {};
-  for (let i = 1; i < args.length; i++) {
-    const kv = args[i].trim().match(/^(\w+):(.+)$/);
-    if (kv) {
-      const [, key, valRef] = kv;
-      // Multi-pass resolve for nested refs (@input → @config.input → actual text)
-      let resolved = resolveRefToString(valRef.trim().replace(/^@/, ''));
-      for (let p = 0; p < 5; p++) {
-        const next = resolved.replace(/@([\w]+(?:\.[\w]+)*)/g, (m, r) => resolveRefToString(r));
-        if (next === resolved) break;
-        resolved = next;
-      }
-      slots[key] = resolved;
-    }
-  }
-
-  // Substitute slots, then resolve any remaining @refs
-  Object.entries(slots).forEach(([key, val]) => {
-    template = template.replace(new RegExp('@' + key + '\\b', 'g'), val);
-  });
-  // Final multi-pass to catch remaining @refs
-  for (let pass = 0; pass < 5; pass++) {
+  for (let p = 0; p < 5; p++) {
     const next = template.replace(/@([\w]+(?:\.[\w]+)*)/g, (m, r) => resolveRefToString(r));
     if (next === template) break;
     template = next;
   }
 
-  // Create result entity
+  // Parse and resolve slot values
+  const slots = {};
+  for (let i = 1; i < args.length; i++) {
+    const kv = args[i].trim().match(/^(\w+):(.+)$/);
+    if (kv) {
+      let resolved = resolveRefToString(kv[2].trim().replace(/^@/, ''));
+      for (let p = 0; p < 5; p++) {
+        const next = resolved.replace(/@([\w]+(?:\.[\w]+)*)/g, (m, r) => resolveRefToString(r));
+        if (next === resolved) break;
+        resolved = next;
+      }
+      slots[kv[1]] = resolved;
+    }
+  }
+
+  addAtomicMsg('system', `render(@${ref}, ${Object.keys(slots).join(', ')}) → server`);
+  const result = await callAtomicServer('render', {template, slots});
+
   const outName = ref.replace(/^config\./, '') + '_rendered';
   createEntity(outName);
-  addTextArea(outName, 'content', template);
-  addAtomicMsg('tool', `render(@${ref}) → @${outName} (${template.length} chars, ${Object.keys(slots).length} slots)`, [outName]);
+  addTextArea(outName, 'content', result.content);
+  addAtomicMsg('tool', `render(@${ref}) → @${outName} (${result.content.length} chars, ${(result.slots_applied || []).length} slots)`, [outName]);
   saveAtomicState();
 }
 
@@ -4927,7 +5669,7 @@ function toolCheckStatus(args) {
           generate(@entity, capture:[0-9]+)          — regex capture
    Supports messages entity: if @entity has text_areas named "user"/"assistant"/"system"
    they become the message list (for continue/probe_continue modes). */
-async function toolGenerate(args) {
+async function toolGenerate(args, meta = {}) {
   let ref = args[0]?.replace(/^@/, '');
   // @config.name → auto-create entity from Global Params
   if (!atomicEntities[ref] && ref.startsWith('config.')) {
@@ -4955,6 +5697,7 @@ async function toolGenerate(args) {
       let val = kv[2].trim();
       if (val.startsWith('$')) val = resolveParam(val.slice(1));
       opts[kv[1]] = val;
+      if (kv[1] === 'worker') workerRole = val;
     } else if (['generator','analyzer','verifier'].includes(a)) {
       workerRole = a;
     }
@@ -4962,15 +5705,32 @@ async function toolGenerate(args) {
 
   const mode = opts.mode || 'prompt';
   const s = getSettings();
-  const noThink = opts.no_think !== undefined ? opts.no_think !== 'false' : (mode === 'prompt');
+  const noThink = opts.think !== undefined ? opts.think !== 'true' : (opts.no_think !== undefined ? opts.no_think !== 'false' : (mode === 'prompt'));
   const temperature = opts.temperature ? parseFloat(opts.temperature) : (mode === 'probe_continue' ? 0.1 : parseFloat(atomicParams.temperature || s.temperature));
   const max_tokens = opts.max_tokens ? parseInt(opts.max_tokens) : (mode === 'probe_continue' ? 4 : parseInt(atomicParams.max_tokens || s.max_tokens));
-  const stop = opts.stop ? opts.stop.split(',').map(s => s.trim().replace(/^"|"$/g, '')) : undefined;
+  let stop = undefined;
+  if (opts.stop) {
+    const stopValue = String(opts.stop).trim();
+    if (stopValue.startsWith('[') && stopValue.endsWith(']')) {
+      try { stop = JSON.parse(stopValue); } catch (_) {}
+    }
+    if (!stop) stop = stopValue.split(',').map(s => stripDslQuotes(s.trim()));
+  }
   let grammar = opts.grammar || undefined;
   if (grammar && grammar.startsWith('$grammar.')) grammar = atomicGrammars[grammar.slice(9)] || grammar;
   const continueOn = opts.continue !== undefined ? opts.continue !== 'false' : noThink;
   const captureRegex = opts.capture || undefined;
   const coerce = opts.coerce || undefined;
+  let untilContains = opts.until_contains ?? opts.until ?? undefined;
+  if (untilContains) {
+    const untilValue = String(untilContains).trim();
+    if (untilValue.startsWith('[') && untilValue.endsWith(']')) {
+      try { untilContains = JSON.parse(untilValue); } catch (_) {}
+    }
+    if (!Array.isArray(untilContains)) untilContains = [stripDslQuotes(untilValue)];
+  }
+  const untilRegex = opts.until_regex || undefined;
+  const minChars = opts.min_chars ? parseInt(opts.min_chars) : undefined;
 
   // Build messages from entity text_areas
   let messages = [];
@@ -4988,7 +5748,7 @@ async function toolGenerate(args) {
   }
 
   // Slot mappings: unknown opts keys become @key → resolved value replacements
-  const knownOpts = new Set(['mode','no_think','temperature','max_tokens','stop','grammar','continue','capture','coerce']);
+  const knownOpts = new Set(['mode','worker','think','no_think','temperature','max_tokens','stop','grammar','continue','capture','coerce']);
   const slotMap = {};
   Object.entries(opts).forEach(([k, v]) => {
     if (!knownOpts.has(k)) slotMap[k] = v;
@@ -5014,6 +5774,9 @@ async function toolGenerate(args) {
   if (grammar) callParams.grammar = '(set)';
   if (stop) callParams.stop = stop.join(',');
   if (captureRegex) callParams.capture = captureRegex;
+  if (untilContains?.length) callParams.until = untilContains.join(' | ');
+  if (untilRegex) callParams.until_regex = untilRegex;
+  if (Number.isFinite(minChars)) callParams.min_chars = minChars;
 
   addAtomicMsg('system', `generate(@${ref}) → ${workerRole}  ${Object.entries(callParams).map(([k,v])=>k+':'+v).join('  ')}`);
   renderAtomicFeed();
@@ -5025,14 +5788,17 @@ async function toolGenerate(args) {
     ...(stop ? {stop} : {}),
     ...(captureRegex ? {capture: captureRegex} : {}),
     ...(coerce ? {coerce} : {}),
+    ...(untilContains?.length ? {until_contains: untilContains} : {}),
+    ...(untilRegex ? {until_regex: untilRegex} : {}),
+    ...(Number.isFinite(minChars) ? {min_chars: minChars} : {}),
   };
   const serverSettings = {temperature, max_tokens, no_think: noThink, max_continue: parseInt(atomicParams.max_continue || s.max_continue), continue: continueOn};
 
   const result = await callAtomicServer('generate', serverParams, workerRole, serverSettings);
 
   // Create result entity
-  const isProbe = mode === 'probe_continue' || mode === 'continue';
-  const outName = isProbe ? ref + '_probe' : ref + '_answer';
+  const isProbe = mode === 'probe_continue';
+  const outName = meta.outName || (isProbe ? ref + '_probe' : ref + '_answer');
   const resultEntity = createEntity(outName, {source: {entityId: ref, tool: 'generate'}});
 
   if (isProbe) {
@@ -5050,7 +5816,7 @@ async function toolGenerate(args) {
   }
 }
 
-async function toolTableAsQuery(args) {
+async function toolTableAsQuery(args, meta = {}) {
   // table-as-query(@entity, columns: col1, col2, ...)
   // or table-as-query(@entity, @columns_entity)
   const ref = args[0]?.replace(/^@/, '');
@@ -5119,12 +5885,12 @@ async function toolTableAsQuery(args) {
     return cells;
   }).filter(r => r.length > 0);
   // Create result entity
-  const resultEntity = createEntity(ref + '_table', {source: {entityId: ref, tool: 'table-as-query'}});
+  const resultEntity = createEntity(meta.outName || (ref + '_table'), {source: {entityId: ref, tool: 'table-as-query'}});
   resultEntity.data_areas.push({name: 'result', headers: parsedHeaders, rows: dataRows});
   addAtomicMsg('tool', `table-as-query(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
 }
 
-async function toolProbe(args) {
+async function toolProbe(args, meta = {}) {
   const ref = args[0]?.replace(/^@/, '');
   const inject = args.slice(1).join(', ').trim();
   const entity = atomicEntities[ref];
@@ -5153,12 +5919,12 @@ async function toolProbe(args) {
   });
   const data = await res.json();
   const result = data.choices?.[0]?.message?.content || '';
-  const resultEntity = createEntity(ref + '_probe', {source: {entityId: ref, tool: 'probe'}});
+  const resultEntity = createEntity(meta.outName || (ref + '_probe'), {source: {entityId: ref, tool: 'probe'}});
   addTextArea(resultEntity.name, 'result', (inject || '') + result);
   addAtomicMsg('tool', `probe(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
 }
 
-function toolTranspose(args) {
+function toolTranspose(args, meta = {}) {
   const ref = args[0]?.replace(/^@/, '');
   const entity = atomicEntities[ref];
   if (!entity) { addAtomicMsg('tool', `Entity @${ref} not found`); return; }
@@ -5172,7 +5938,7 @@ function toolTranspose(args) {
     da.rows.forEach(r => row.push(r[c] || ''));
     newRows.push(row);
   }
-  const resultEntity = createEntity(ref + '_T', {source: {entityId: ref, tool: 'transpose'}});
+  const resultEntity = createEntity(meta.outName || (ref + '_T'), {source: {entityId: ref, tool: 'transpose'}});
   resultEntity.data_areas.push({name: 'transposed', headers: newHeaders, rows: newRows});
   addAtomicMsg('tool', `transpose(@${ref}) → @${resultEntity.name}`, [resultEntity.name]);
 }
@@ -5942,12 +6708,150 @@ Rules:
   }
 })();
 
+const LEGACY_NORMALIZED_DSL_HELP = `You are a pipeline builder. Generate short valid Atomic DSL.
+
+Core syntax:
+  @name = "text"
+  @name = """multiline text"""
+  @name = $config.input
+  @out = generate(@input, worker:analyzer, input:@input, think:true)
+  @out = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
+  @out = split(@text)
+  @out = slice(@text, "FROM:", "TO:")
+  set_text(@chat, user, $config.prompt)
+  append_text(@chat, assistant, @draft.answer)
+  tag(@entity, key:"value")
+  untag(@entity, key)
+  on @dep1, @dep2 -> @out = generate(@dep1)
+
+Names:
+  @name        local entity
+  $config.name global param
+  @name.field  entity field
+
+Options:
+  worker:generator|analyzer|verifier
+  think:true|false
+  temperature:0.2
+  max_tokens:2048
+  mode:prompt|continue|probe_continue
+  continue:true|false
+  input:@ref
+  grammar:$grammar.name
+  stop:"\\n"
+
+Staged chat pattern:
+  @chat = "session"
+  set_text(@chat, user, $config.prompt)
+  set_text(@chat, assistant, "<think>\\n\\n</think>\\n\\n")
+  @draft = generate(@chat, mode:continue, continue:true)
+  append_text(@chat, assistant, @draft.answer)
+  append_text(@chat, assistant, "\\n\\n| # | col1 | col2 |\\n|---|---|---|\\n| 1 |")
+  @table = generate(@chat, mode:continue, temperature:0.1, stop:"\\n\\n\\n")
+
+Editor commands:
+  /save_macro(name)
+  /run_macro(name)
+  /export_dsl(name)
+  /rename(@old, new)
+  /drop(@entity)
+  /list_macros()
+
+Rules:
+- Output only DSL inside a \\\`\\\`\\\`pipeline code block
+- Prefer $config.* over long inline prompt text
+- Prefer explicit @out = ... assignments
+- Use key:value options, not positional analyzer/no_think syntax
+- Keep the pipeline minimal`;
+
+const NORMALIZED_DSL_HELP = `You are a pipeline builder. Generate short valid Atomic DSL.
+
+Core syntax:
+  @name = "text"
+  @name = """multiline text"""
+  @name = $config.input
+  @out = generate(@input, worker:analyzer, input:@input, think:true)
+  @out = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
+  @out = split(@text)
+  @out = slice(@text, "FROM:", "TO:")
+  @out = concat(@a, @b)
+  @out = table_header(@entities, @axioms)
+  @out = prepend(@list, "#")
+  @out = join(@list, sep:" | ", prefix:"| ", suffix:" |")
+  @out = join_list(@list, sep:" | ")
+  @out = len(@list)
+  @out = repeat("---", count:@n)
+  @out = chunk(@list, size:2)
+  @out = reshape_grid(@value, cols:2)
+  @out = lines(@header, @sep)
+  set_text(@chat, user, $config.prompt)
+  append_text(@chat, assistant, @draft.answer)
+  tag(@entity, key:"value")
+  untag(@entity, key)
+  on @dep1, @dep2 -> @out = generate(@dep1)
+
+Names:
+  @name        local entity
+  $config.name global param
+  @name.field  entity field
+
+Options:
+  worker:generator|analyzer|verifier
+  think:true|false
+  temperature:0.2
+  max_tokens:2048
+  mode:prompt|continue|probe_continue
+  continue:true|false
+  input:@ref
+  grammar:$grammar.name
+  stop:"\\n"
+
+Pure transforms:
+  concat/prepend/repeat/chunk work on lists
+  join/lines work on text output
+  len returns a scalar length
+  data areas like @constraints.entities resolve as plain lists
+  table_header / reshape_grid / join_list are convenience sugar
+
+Example header build:
+  @cols = concat(@constraints.entities, @constraints.axioms)
+  @cols1 = prepend(@cols, "#")
+  @header = join(@cols1, sep:" | ", prefix:"| ", suffix:" |")
+  @n = len(@cols1)
+  @sep_cells = repeat("---", count:@n)
+  @sep = join(@sep_cells, sep:"|", prefix:"|", suffix:"|")
+  @table_head = lines(@header, @sep)
+
+Editor commands:
+  /save_macro(name)
+  /run_macro(name)
+  /export_dsl(name)
+  /rename(@old, new)
+  /drop(@entity)
+  /list_macros()
+
+Rules:
+- Output only DSL inside a \\\`\\\`\\\`pipeline code block
+- Prefer $config.* over long inline prompt text
+- Prefer explicit @out = ... assignments
+- Use key:value options, not positional analyzer/no_think syntax
+- Keep the pipeline minimal`;
+
+(function() {
+  const helpItem = globalItems.find(g => g.name === 'dsl_help');
+  if (!helpItem) return;
+  if (!helpItem.text || helpItem.text === DEFAULT_DSL_HELP || helpItem.text === LEGACY_NORMALIZED_DSL_HELP) {
+    helpItem.text = NORMALIZED_DSL_HELP;
+    saveGlobalItems();
+  }
+})();
+
 function buildPipelineChatContext() {
   // Read prompt from @config.dsl_help (editable by user)
   const helpItem = globalItems.find(g => g.name === 'dsl_help');
-  const basePrompt = helpItem?.text || DEFAULT_DSL_HELP;
+  const basePrompt = helpItem?.text || NORMALIZED_DSL_HELP;
 
-  const configItems = (globalItems || []).filter(g => g.name !== 'dsl_help').map(g => `@config.${g.name}: ${g.type === 'text' ? g.text.slice(0, 100) + '...' : 'table [' + g.headers?.join(', ') + ']'}`).join('\n');
+  const configItems = (globalItems || []).filter(g => g.name !== 'dsl_help').map(g => `$config.${g.name}: ${g.type === 'text' ? g.text.slice(0, 100) + '...' : 'table [' + g.headers?.join(', ') + ']'}`).join('\n');
   const scope = Object.keys(atomicEntities).map(n => '@' + n).join(', ') || 'empty';
   const steps = pipelineSteps.map(s => s.cmd).join('\n') || 'none';
 

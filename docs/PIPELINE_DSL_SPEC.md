@@ -1,147 +1,258 @@
-# Pipeline DSL Specification
+# Atomic DSL Spec
 
-## Overview
-Declarative DSL for composing LLM tool pipelines. Each line is one operation. Order = execution order. All data flows through named entities (`@name`).
+## Goal
+Compact DSL for Atomic Tasks pipelines. One line is one statement. The language has two layers:
 
-## Entity References
+- Runtime DSL: entities, tool calls, reactive triggers
+- Editor commands: macros, export, rename, drop
+
+Editor commands are prefixed with `/` and are not part of exported pipelines.
+
+## Names
 
 | Syntax | Meaning |
-|--------|---------|
-| `@name` | Entity in scope |
-| `@config.name` | Global Params text area / key:value |
-| `@name.field` | Entity's text_area or data_area by name |
+|---|---|
+| `@name` | Local entity |
+| `@name.field` | Entity field |
+| `$config.name` | Global param |
 
-## Operations
+## Runtime Statements
 
-### 1. Bind — create entity from config or literal
+### Value Assignment
+```pipeline
+@input = $config.input
+@note = "short text"
+@prompt = """multi
+line
+text"""
 ```
-@input = @config.input
-@prompt = @config.prompt_claims
-@note = "some literal text"
-```
-Creates entity, stores raw ref as `content`. If `@config.*`, resolved text stored as `resolved` preview.
 
-### 2. Generate — LLM call, result assigned to new entity
-```
+### Tool Assignment
+```pipeline
 @answer = generate(@input)
-@answer = generate(@input, analyzer)
-@answer = generate(@input, analyzer, no_think:false)
-@claims = generate(@config.prompt_claims, analyzer, input:@config.input)
+@claims = generate($config.prompt_claims, worker:analyzer, input:@input, think:true)
+@sections = parse_sections(@claims, entities:"ENTITIES:", axioms:"AXIOMS:", hypotheses:"HYPOTHESES:")
+@list = split(@answer)
+@slice = slice(@answer, "FROM:", "TO:")
+@cols = concat(@sections.entities, @sections.axioms)
+@header = join(@cols, sep:" | ", prefix:"| ", suffix:" |")
 ```
 
-**Full form with assignment:**
-```
-@result = generate @source(slot1=@value1, no_think=false, temperature:0.2)
-```
-
-**Options (comma-separated after source):**
-| Option | Default | Description |
-|--------|---------|-------------|
-| `analyzer`/`generator`/`verifier` | generator | Worker role |
-| `no_think:false` | true for prompt mode | Allow think block |
-| `temperature:0.6` | from $params | Override temperature |
-| `max_tokens:2048` | from $params | Override max tokens |
-| `mode:prompt` | prompt | prompt / continue / probe_continue |
-| `grammar:$grammar.name` | none | GBNF grammar constraint |
-| `stop:"\\n"` | none | Stop sequences |
-| `input:@ref` | none | Slot mapping: @input in template → @ref |
-
-**Result:** Creates `@source_answer` entity (or `@result` if assigned).
-
-### 3. Parse Sections — extract structured data from delimited text
-```
-parse_sections(@source, DELIM1:, DELIM2:, DELIM3:)
+### In-Place Calls
+```pipeline
+tag(@sections, kind:"constraints")
+untag(@sections, kind)
+set_text(@chat, assistant, "<think>\n\n</think>\n\n")
+append_text(@chat, assistant, @draft.answer)
+verify(@table_a, @table_b)
 ```
 
-**Declarative form:**
-```
-parse @output.(field1, field2, field3) from @source(DELIM1..DELIM2, DELIM2..DELIM3, DELIM3..)
-```
-
-Calls server `/api/atomic/scope` with slice+split between consecutive delimiters. Result: entity `@output` with data_areas per field.
-
-**Delimiter ranges:**
-- `DELIM1..DELIM2` — text between DELIM1 and DELIM2
-- `DELIM3..` — text from DELIM3 to end
-
-### 4. Tag — annotate entity with key:value metadata
-```
-tag(@entity, key, value)
+### Reactive Triggers
+```pipeline
+on @input -> @answer = generate(@input)
+on @answer -> @sections = parse_sections(@answer, entities:"ENTITIES:", axioms:"AXIOMS:")
 ```
 
-### 5. Scope — client-side entity scope management
-```
-scope_begin()
-scope_end(@keep1, @keep2)
-drop(@entity)
-```
+## Tool Calls
 
-### 6. Structural — create entities and tables
-```
-add_entity(@name)
-add_text(@entity, area_name, text content)
-add_table(@entity, table_name, Col1, Col2, Col3)
-rename(@entity, new_name)
+### `generate`
+```pipeline
+@out = generate(@source, worker:analyzer, input:@input, think:true)
 ```
 
-### 7. Macros — save and replay command sequences
-```
-save_macro(name)
-run_macro(name)
-list_macros()
-delete_macro(name)
-```
+Supported options:
+- `worker:generator|analyzer|verifier`
+- `think:true|false`
+- `temperature:0.2`
+- `max_tokens:2048`
+- `mode:prompt|continue|probe_continue`
+- `continue:true|false`
+- `input:@ref`
+- `grammar:$grammar.name`
+- `stop:"\n"`
+- `capture:"regex"`
+- `coerce:"type"`
 
-### 8. Export
-```
-export_dsl(pipeline_name)
-```
-
-## Full Pipeline Example
-
-### Setup (Global Params)
-- `@config.input` — task text: "написать 4 описания внешности демониц..."
-- `@config.prompt_claims` — claims extraction prompt template with `@input` slot
-
-### Pipeline
-```
-# Pipeline: demoness_analysis
-
-# 1. Bind input from config
-@input = @config.input
-
-# 2. Generate descriptions
-generate(@input)
-
-# 3. Extract claims using analyzer with prompt template
-generate(@config.prompt_claims, analyzer)
-
-# 4. Parse claims into structured sections
-parse_sections(@prompt_claims_answer, ENTITIES:, AXIOMS:, HYPOTHESES:)
+Backward-compatible legacy forms still parse:
+```pipeline
+generate(@source, analyzer)
+generate(@source, analyzer, no_think:false)
 ```
 
-### Declarative form (equivalent)
+### `parse_sections`
+```pipeline
+@sections = parse_sections(
+  @claims,
+  entities:"ENTITIES:",
+  axioms:"AXIOMS:",
+  hypotheses:"HYPOTHESES:"
+)
 ```
-@input = @config.input
-@input_answer = generate(@input)
-@claims = generate(@config.prompt_claims, analyzer)
-parse @claims_constraints.(entities, axioms, hypotheses) from @claims(ENTITIES:..AXIOMS:, AXIOMS:..HYPOTHESES:, HYPOTHESES:..)
+
+Rules:
+- Named sections are preferred
+- Positional delimiters still work
+- Result is one entity with fields per section
+- Without explicit assignment, default output is `@source_constraints`
+
+### Local Pure Transforms
+These run locally and do not call an LLM:
+
+```pipeline
+@cols = concat(@a, @b)
+@md_head = table_header(@entities, @axioms)
+@cols1 = prepend(@cols, "#")
+@header = join(@cols1, sep:" | ", prefix:"| ", suffix:" |")
+@hyp_line = join_list(@hypotheses, sep:" | ")
+@count = len(@cols1)
+@sep_cells = repeat("---", count:@count)
+@grid = chunk(@items, size:2)
+@grid2 = reshape_grid(@answer, cols:2)
+@body = lines(@header, @sep)
 ```
 
-## Available Workers
-| Role | Purpose | Typical use |
-|------|---------|-------------|
-| generator | Creative text generation | generate(@input) |
-| analyzer | Structured extraction, logic | claims, parse prompts |
-| verifier | Fact-checking, validation | verify(@table, @axioms) |
+Supported transforms:
+- `concat(@a, @b, ...)`
+- `table_header(@entities, @axioms, ...)`
+- `prepend(@list, value1, ...)`
+- `join(@list, sep:"...", prefix:"...", suffix:"...")`
+- `join_list(@list, sep:"...")`
+- `len(@value)`
+- `repeat(value, count:@n)`
+- `chunk(@list, size:2)`
+- `reshape_grid(@value, cols:2)`
+- `lines(@a, @b, ...)`
 
-## Server Endpoints
-- `POST /api/atomic/run` — single tool: `{tool, params, workers, settings, role}`
-- `POST /api/atomic/scope` — batch: `{steps[], export, workers, settings}`
+Rules:
+- flat `data_area`s like `['#', 'Value']` resolve as plain lists
+- nested transform results are stored back as grid-like `data_area`s
+- `table_header`, `reshape_grid`, and `join_list` are convenience sugar over the same local transform layer
 
-## Notes for LLM Pipeline Generation
-- Every `generate()` creates `@source_answer` entity automatically
-- `@config.*` refs are resolved at call time (multi-pass, up to 5 levels)
-- Slot mappings in generate: `input:@config.input` replaces `@input` in template
-- `parse_sections` uses server scope — one HTTP call for all sections
-- Pipeline steps are recorded and can be exported/saved as macros
+### Other Output-Producing Tools
+These also support explicit assignment:
+```pipeline
+@n = numbered(@text)
+@slice = slice(@text, "FROM:", "TO:")
+@items = split(@text)
+@table = table_as_query(@text, col1, col2)
+@probe = probe_continue(@text, mode:probe_continue)
+@t = transpose(@table)
+```
+
+### Message Mutation
+Use these for staged assistant continuation flows:
+```pipeline
+set_text(@chat, user, $config.prompt)
+set_text(@chat, assistant, "<think>\n\n</think>\n\n")
+append_text(@chat, assistant, @draft.answer)
+append_text(@chat, assistant, @table_head)
+```
+
+Rules:
+- `set_text` replaces or creates one named text area
+- `append_text` appends to an existing text area
+- values can be literals, `$config.*`, `@entity`, or `@entity.field`
+- when the last message is an `assistant` field, `generate(..., mode:continue)` continues that assistant turn
+
+## Editor Commands
+
+```text
+/save_macro(name)
+/run_macro(name)
+/export_dsl(name)
+/rename(@old, new_name)
+/drop(@entity)
+/list_macros()
+/delete_macro(name)
+```
+
+## Export Rules
+
+- Exported pipelines contain runtime statements only
+- `$config.*` is preferred over `@config.*` in exported text
+- Explicit assignment is preferred over implicit `@source_answer`
+- `untag` is preferred over `remove_tag`
+
+## Example
+
+```pipeline
+@input = $config.input
+
+@draft = generate(@input)
+
+@claims = generate(
+  $config.prompt_claims,
+  worker:analyzer,
+  input:@input,
+  think:true
+)
+
+@sections = parse_sections(
+  @claims,
+  entities:"ENTITIES:",
+  axioms:"AXIOMS:",
+  hypotheses:"HYPOTHESES:"
+)
+
+tag(@sections, kind:"logic_constraints")
+```
+
+## Staged Example
+
+```pipeline
+@chat = "session"
+set_text(@chat, user, $config.prompt)
+set_text(@chat, assistant, "<think>\n\n</think>\n\n")
+
+@draft = generate(
+  @chat,
+  mode:continue,
+  continue:true,
+  temperature:0.6,
+  max_tokens:2048
+)
+
+@claims = generate(
+  $config.prompt_claims,
+  worker:analyzer,
+  input:$config.prompt,
+  think:true
+)
+
+@constraints = parse_sections(
+  @claims,
+  entities:"ENTITIES:",
+  axioms:"AXIOMS:",
+  hypotheses:"HYPOTHESES:"
+)
+
+@cols = concat(@constraints.entities, @constraints.axioms)
+@cols1 = prepend(@cols, "#")
+@header = join(@cols1, sep:" | ", prefix:"| ", suffix:" |")
+@n = len(@cols1)
+@sep_cells = repeat("---", count:@n)
+@sep = join(@sep_cells, sep:"|", prefix:"|", suffix:"|")
+@table_head = lines(@header, @sep)
+
+append_text(@chat, assistant, @draft.answer)
+append_text(@chat, assistant, "\n\n")
+append_text(@chat, assistant, @table_head)
+append_text(@chat, assistant, "\n| 1 |")
+
+@table = generate(
+  @chat,
+  mode:continue,
+  continue:false,
+  temperature:0.1,
+  max_tokens:1024,
+  stop:"\n\n\n"
+)
+```
+
+## Notes
+
+- Triple-quoted assignment is supported in pipeline execution
+- Multi-line fenced code blocks using ```pipeline are supported
+- Triggers are exported as declarative `on ... -> ...` statements
+- Server scope remains an implementation detail behind `parse_sections`
+- See `ATOMIC_DSL_RECIPES.md` for staged continuation and transform patterns
