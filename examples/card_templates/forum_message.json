@@ -1,0 +1,13 @@
+{
+  "forum_message": {
+    "name": "forum_message",
+    "slots": [
+      {"id": "s_1", "type": "title", "label": "Author", "binding": "author", "options": {}, "children": null},
+      {"id": "s_2", "type": "tags", "label": "Meta", "binding": "tags", "options": {}, "children": null},
+      {"id": "s_3", "type": "text_area", "label": "Content", "binding": "text", "options": {"collapsed": false, "editable": true}, "children": null},
+      {"id": "s_4", "type": "reactions", "label": "reactions", "binding": "reactions", "options": {}, "children": null},
+      {"id": "s_5", "type": "buttons", "label": "Actions", "binding": "actions", "options": {"items": ["reply", "quote", "edit"]}, "children": null},
+      {"id": "s_6", "type": "children", "label": "Replies", "binding": "replies", "options": {"template": "forum_message"}, "children": null}
+    ]
+  }
+}

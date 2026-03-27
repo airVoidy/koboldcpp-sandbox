@@ -133,6 +133,108 @@ def _check_status(text: Any) -> str:
     return "pending"
 
 
+def _source_fixture_key(source: Any) -> str:
+    if isinstance(source, dict) and source.get("_kind") == "chat":
+        messages = source.get("messages", [])
+        if not isinstance(messages, list):
+            return str(source)
+        parts: list[str] = []
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "user").strip().lower()
+            content = str(item.get("content") or "")
+            parts.append(f"{role}:{content}")
+        return "\n".join(parts)
+    return str(source)
+
+
+def _extract_replay_text(payload: Any) -> str:
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, dict):
+        choices = payload.get("choices") or []
+        if choices:
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return "".join(str(item.get("text") or "") for item in content if isinstance(item, dict))
+        results = payload.get("results") or []
+        if results:
+            return str(results[0].get("text") or "")
+        if "text" in payload:
+            return str(payload.get("text") or "")
+        if "_text" in payload:
+            return str(payload.get("_text") or "")
+    raise ValueError(f"Cannot extract replay text from payload: {payload!r}")
+
+
+def _generate_via_mode(ctx: "WorkflowContext", source: Any, role: str) -> str | None:
+    mode = str(ctx.settings.get("gen_mode") or "live").strip().lower()
+    if mode == "live":
+        return None
+
+    if mode == "mock":
+        mock_value = ctx.settings.get("gen_mock_response")
+        if isinstance(mock_value, dict):
+            if role in mock_value:
+                return str(mock_value[role])
+            if "__default__" in mock_value:
+                return str(mock_value["__default__"])
+        if mock_value is None:
+            return ""
+        return str(mock_value)
+
+    if mode == "fixture":
+        fixtures = ctx.settings.get("gen_fixtures") or {}
+        if not isinstance(fixtures, dict):
+            raise ValueError("gen_fixtures must be a dict in fixture mode")
+        key = _source_fixture_key(source)
+        if key in fixtures:
+            return str(fixtures[key])
+        if role in fixtures:
+            role_map = fixtures.get(role)
+            if isinstance(role_map, dict):
+                if key in role_map:
+                    return str(role_map[key])
+                if "__default__" in role_map:
+                    return str(role_map["__default__"])
+            elif role_map is not None:
+                return str(role_map)
+        if "__default__" in fixtures:
+            return str(fixtures["__default__"])
+        raise ValueError(f"No fixture response for GEN source {key!r} and role {role!r}")
+
+    if mode == "replay":
+        replays = ctx.settings.get("gen_replays")
+        replay_single = ctx.settings.get("gen_replay_response")
+        key = _source_fixture_key(source)
+        if replays is not None:
+            if not isinstance(replays, dict):
+                raise ValueError("gen_replays must be a dict in replay mode")
+            if key in replays:
+                return _extract_replay_text(replays[key])
+            if role in replays:
+                role_map = replays.get(role)
+                if isinstance(role_map, dict):
+                    if key in role_map:
+                        return _extract_replay_text(role_map[key])
+                    if "__default__" in role_map:
+                        return _extract_replay_text(role_map["__default__"])
+                elif role_map is not None:
+                    return _extract_replay_text(role_map)
+            if "__default__" in replays:
+                return _extract_replay_text(replays["__default__"])
+            raise ValueError(f"No replay response for GEN source {key!r} and role {role!r}")
+        if replay_single is not None:
+            return _extract_replay_text(replay_single)
+        raise ValueError("Replay mode requires gen_replays or gen_replay_response")
+
+    raise ValueError(f"Unsupported gen_mode: {mode}")
+
+
 def build_default_builtins(overrides: dict[str, Callable] | None = None) -> dict[str, Callable]:
     builtins: dict[str, Callable] = {
         "claims": lambda x: (
@@ -347,6 +449,16 @@ class WorkflowContext:
 
         if messages is None:
             messages = [{"role": "user", "content": prompt or ""}]
+
+        source_for_mode: Any
+        if prompt is not None and (messages is None or len(messages) == 1):
+            source_for_mode = prompt
+        else:
+            source_for_mode = {"_kind": "chat", "messages": messages}
+        mode_result = _generate_via_mode(self, source_for_mode, role)
+        if mode_result is not None:
+            self.on_thread("worker", f"{role} ({self.settings.get('gen_mode', 'live')})", mode_result, {"tag": tag})
+            return mode_result
 
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
         normalized_grammar = _normalize_grammar(grammar)
@@ -1041,6 +1153,10 @@ def _atomic_apply_function(ctx: WorkflowContext, fn_name: str, pos_args: list[An
     if fn_name == "generate":
         source = pos_args[0] if pos_args else kw_args.get("input") or kw_args.get("prompt") or ""
         role = str(kw_args.get("worker") or "generator")
+        mode_result = _generate_via_mode(ctx, source, role)
+        if mode_result is not None:
+            ctx.on_thread("worker", f"{role} (atomic:{ctx.settings.get('gen_mode', 'live')})", mode_result, {"tag": "atomic"})
+            return mode_result
         mode = str(kw_args.get("mode") or "prompt")
         no_think = not bool(kw_args.get("think", True))
         temperature = float(kw_args.get("temperature", ctx.settings.get("temperature", 0.6)))

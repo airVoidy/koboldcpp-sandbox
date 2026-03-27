@@ -8,6 +8,7 @@ import typer
 import uvicorn
 
 from .kobold_client import KoboldClient, KoboldGenerationConfig
+from .llm_continue import llm_call_with_continue
 from .logic_manifest import (
     build_logic_manifest_prompt,
     load_first_thoughts_example,
@@ -29,6 +30,17 @@ def sandbox_from_root(root: Path) -> Sandbox:
     if not sandbox.exists():
         raise typer.BadParameter(f"Sandbox is not initialized in {root}")
     return sandbox
+
+
+def _read_prompt_input(prompt: str | None, prompt_file: Path | None) -> str:
+    if prompt is not None:
+        return prompt
+    if prompt_file is not None:
+        return prompt_file.read_text(encoding="utf-8")
+    stdin_text = sys.stdin.read()
+    if stdin_text.strip():
+        return stdin_text
+    raise typer.BadParameter("Provide prompt text, --prompt-file, or stdin input.")
 
 
 @app.command()
@@ -161,6 +173,49 @@ def logic_example(
             indent=2,
         )
     )
+
+
+@app.command("continue-generate")
+def continue_generate(
+    prompt: str | None = typer.Argument(None, help="Prompt text. If omitted, uses --prompt-file or stdin."),
+    prompt_file: Path | None = typer.Option(None, help="Read prompt text from a UTF-8 file."),
+    base_url: str = typer.Option("http://127.0.0.1:5001", help="Worker base URL."),
+    temperature: float = typer.Option(0.2, help="Sampling temperature."),
+    max_tokens: int = typer.Option(256, help="Per-call max token length."),
+    max_continue: int = typer.Option(4, help="Maximum number of continue attempts."),
+    stop: list[str] = typer.Option(None, "--stop", help="Stop token. Repeat to pass multiple stop tokens."),
+    prompt_mode: str = typer.Option("instruct", help="Prompt mode: instruct, chat, or auto."),
+    no_think: bool = typer.Option(True, help="Prefill no-think mode for chat calls."),
+    json_output: bool = typer.Option(False, "--json", help="Print result bundle as JSON."),
+) -> None:
+    prompt_text = _read_prompt_input(prompt, prompt_file)
+    result = llm_call_with_continue(
+        base_url,
+        [{"role": "user", "content": prompt_text}],
+        temperature=temperature,
+        max_tokens=max_tokens,
+        no_think=no_think,
+        max_continue=max_continue,
+        continue_on_length=True,
+        stop=stop or None,
+        prompt_mode=prompt_mode,
+    )
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "answer": result.answer,
+                    "finish_reason": result.finish_reason,
+                    "continues": result.continues,
+                    "prompt_mode": result.prompt_mode,
+                    "latency_ms": result.latency_ms,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    typer.echo(result.answer)
 
 
 if __name__ == "__main__":

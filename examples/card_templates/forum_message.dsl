@@ -1,0 +1,7 @@
+card_template(forum_message)
+  add_slot(@forum_message, title, label:"Author", bind:author)
+  add_slot(@forum_message, tags, label:"Meta", bind:tags)
+  add_slot(@forum_message, text_area, label:"Content", bind:text)
+  add_slot(@forum_message, reactions, bind:reactions)
+  add_slot(@forum_message, buttons, label:"Actions", items:[reply,quote,edit], bind:actions)
+  add_slot(@forum_message, children, label:"Replies", template:forum_message, bind:replies)

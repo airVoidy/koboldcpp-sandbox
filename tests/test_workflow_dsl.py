@@ -318,3 +318,104 @@ flow:
 
     assert http_client is not None
     assert http_client.calls[0]["messages"][0]["content"] == "from request"
+
+
+def test_generate_mock_mode_skips_http_and_returns_configured_text() -> None:
+    yaml_text = """
+dsl: workflow/v2
+
+flow:
+  - generator -> $answer:
+      prompt: "hello"
+      max_tokens: 8
+"""
+
+    ctx = run_workflow(
+        yaml_text=yaml_text,
+        workers={"generator": "http://fake-worker"},
+        settings={"gen_mode": "mock", "gen_mock_response": "mocked answer"},
+    )
+    try:
+        assert ctx.vars["answer"] == "mocked answer"
+    finally:
+        ctx.close()
+
+
+def test_generate_fixture_mode_uses_source_key_without_http() -> None:
+    yaml_text = """
+dsl: workflow/v2
+
+flow:
+  - generator -> $answer:
+      prompt: "fixture prompt"
+      max_tokens: 8
+"""
+
+    ctx = run_workflow(
+        yaml_text=yaml_text,
+        workers={"generator": "http://fake-worker"},
+        settings={
+            "gen_mode": "fixture",
+            "gen_fixtures": {
+                "fixture prompt": "fixture answer",
+            },
+        },
+    )
+    try:
+        assert ctx.vars["answer"] == "fixture answer"
+    finally:
+        ctx.close()
+
+
+def test_generate_replay_mode_uses_recorded_native_raw_response() -> None:
+    yaml_text = """
+dsl: workflow/v2
+
+flow:
+  - generator -> $answer:
+      prompt: "replay prompt"
+      max_tokens: 8
+"""
+
+    ctx = run_workflow(
+        yaml_text=yaml_text,
+        workers={"generator": "http://fake-worker"},
+        settings={
+            "gen_mode": "replay",
+            "gen_replays": {
+                "replay prompt": {
+                    "results": [{"text": "replayed native answer"}],
+                },
+            },
+        },
+    )
+    try:
+        assert ctx.vars["answer"] == "replayed native answer"
+    finally:
+        ctx.close()
+
+
+def test_generate_replay_mode_uses_single_openai_like_bundle() -> None:
+    yaml_text = """
+dsl: workflow/v2
+
+flow:
+  - generator -> $answer:
+      prompt: "ignored"
+      max_tokens: 8
+"""
+
+    ctx = run_workflow(
+        yaml_text=yaml_text,
+        workers={"generator": "http://fake-worker"},
+        settings={
+            "gen_mode": "replay",
+            "gen_replay_response": {
+                "choices": [{"message": {"content": "replayed chat answer"}}],
+            },
+        },
+    )
+    try:
+        assert ctx.vars["answer"] == "replayed chat answer"
+    finally:
+        ctx.close()

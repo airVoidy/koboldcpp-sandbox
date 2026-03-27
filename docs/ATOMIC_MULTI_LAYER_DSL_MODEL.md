@@ -82,6 +82,12 @@ It expands semantic calls into:
 
 This layer is still DSL, but much closer to execution mechanics.
 
+**See**: `ASSEMBLY_DSL_SPEC_V0_1.md` for the concrete spec with 8 opcodes:
+`MOV`, `GEN`, `PUT`, `PARSE`, `CALL`, `CMP`, `JIF`, `LOOP`.
+
+**Interpreter**: `src/kobold_sandbox/assembly_dsl.py`
+**API endpoint**: `POST /api/dsl/asm`
+
 ## 3. Runtime Macro Layer
 
 This is optional but likely useful.

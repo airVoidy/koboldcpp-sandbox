@@ -30,6 +30,17 @@ class ResolveRequest(BaseModel):
     object_name: str = "object"
 
 
+class AsmRequest(BaseModel):
+    code: str
+    config: dict[str, Any] = {}
+    state: dict[str, Any] = {}
+    workers: dict[str, str] = {}  # role → base_url
+
+
+class EventCompileRequest(BaseModel):
+    dsl: str
+
+
 # ── helpers ─────────────────────────────────────────────────────────
 
 def _type_name(v: Any) -> str:
@@ -209,5 +220,73 @@ def create_atomic_dsl_router() -> APIRouter:
             "node": "resolved_json",
             "value": resolved,
         }
+
+    @router.post("/asm")
+    def asm_execute(req: AsmRequest) -> dict[str, Any]:
+        """Execute Assembly DSL code."""
+        from .assembly_dsl import execute
+        from .workflow_dsl import WorkflowContext, build_default_builtins
+
+        workers = req.workers
+        if not workers:
+            workers = {"generator": "http://127.0.0.1:5001", "analyzer": "http://127.0.0.1:5001", "verifier": "http://127.0.0.1:5001"}
+
+        thread_log: list[dict[str, Any]] = []
+
+        def on_thread(role: str, name: str, content: str, extra: dict) -> None:
+            thread_log.append({"role": role, "name": name, "content": content[:500], **extra})
+
+        ctx = WorkflowContext(
+            workers=workers,
+            settings=req.config,
+            builtins=build_default_builtins(),
+            on_thread=on_thread,
+        )
+
+        # Pre-load state
+        for key, val in req.state.items():
+            ref = key if key.startswith(("$", "@")) else "$" + key
+            ctx.set(ref, val)
+
+        # Pre-load config as $config.*
+        for key, val in req.config.items():
+            ctx.set(f"$config.{key}", val)
+
+        try:
+            result = execute(req.code, ctx)
+            return {
+                "state": result.state,
+                "log": result.log,
+                "thread": thread_log,
+                "error": result.error,
+            }
+        except Exception as exc:
+            return {
+                "state": {},
+                "log": [],
+                "thread": thread_log,
+                "error": str(exc),
+            }
+        finally:
+            ctx.close()
+
+    @router.post("/event/compile")
+    def event_compile(req: EventCompileRequest) -> dict[str, Any]:
+        from .event_dsl import EventDslSyntaxError, compile_event_dsl, parse_event_dsl
+
+        try:
+            statements = parse_event_dsl(req.dsl)
+            assembly = compile_event_dsl(req.dsl)
+            return {
+                "assembly": assembly,
+                "statement_count": len(statements),
+                "error": None,
+            }
+        except EventDslSyntaxError as exc:
+            return {
+                "assembly": "",
+                "statement_count": 0,
+                "error": str(exc),
+            }
 
     return router

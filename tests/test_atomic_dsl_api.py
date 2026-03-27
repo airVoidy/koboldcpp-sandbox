@@ -69,3 +69,110 @@ def test_atomic_dsl_resolve_returns_original_payload_shape_without_object_wrappe
         "temperature": 0.5,
         "settings": {"mode": "draft"},
     }
+
+
+def test_atomic_dsl_event_compile_returns_assembly_for_generate_miniflow(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/dsl/event/compile",
+        json={
+            "dsl": """
+emit("task.input", {
+  data: {
+    text: "hello"
+  }
+})
+
+emit("generate.request", {
+  schema: "native_generate_request",
+  defaults: "native_generate_defaults",
+  data: {
+    prompt: @task.input.text,
+    model: "local-model",
+    max_length: 256
+  },
+  checks: ["complete"]
+})
+
+on("generate.request", "response", {
+  bind: "generate.response",
+  schema: "native_generate_response",
+  checks: ["complete"]
+})
+""".strip()
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["statement_count"] == 3
+    assert payload["error"] is None
+    assert 'MOV  @task.input.text, "hello"' in payload["assembly"]
+    assert "GEN  @generate.call.raw, @task.input.text, worker:generator, temp:0.2, max:256" in payload["assembly"]
+
+
+def test_atomic_dsl_asm_supports_gen_mock_mode_without_worker(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/dsl/asm",
+        json={
+            "code": 'GEN  @out, "hello", worker:generator, temp:0.2, max:8',
+            "config": {
+                "gen_mode": "mock",
+                "gen_mock_response": "mocked-from-config",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"] is None
+    assert payload["state"]["out"] == "mocked-from-config"
+
+
+def test_atomic_dsl_asm_supports_gen_fixture_mode_without_worker(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/dsl/asm",
+        json={
+            "code": 'GEN  @out, "fixture prompt", worker:generator, temp:0.2, max:8',
+            "config": {
+                "gen_mode": "fixture",
+                "gen_fixtures": {
+                    "fixture prompt": "fixture result",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"] is None
+    assert payload["state"]["out"] == "fixture result"
+
+
+def test_atomic_dsl_asm_supports_gen_replay_mode_without_worker(tmp_path) -> None:
+    client = TestClient(create_app(str(tmp_path)))
+
+    response = client.post(
+        "/api/dsl/asm",
+        json={
+            "code": 'GEN  @out, "replay prompt", worker:generator, temp:0.2, max:8',
+            "config": {
+                "gen_mode": "replay",
+                "gen_replays": {
+                    "replay prompt": {
+                        "results": [{"text": "replayed result"}],
+                    },
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"] is None
+    assert payload["state"]["out"] == "replayed result"
