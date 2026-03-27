@@ -1,0 +1,5 @@
+card_template(mirc_chat)
+  add_slot(@mirc_chat, title, label:"Channel")
+  add_slot(@mirc_chat, tags, label:"Users Online")
+  add_slot(@mirc_chat, thread, label:"Messages", mode:"flat")
+  add_slot(@mirc_chat, buttons, label:"actions", items:[send,emote,whisper])

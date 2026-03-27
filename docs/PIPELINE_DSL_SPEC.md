@@ -8,6 +8,35 @@ Compact DSL for Atomic Tasks pipelines. One line is one statement. The language 
 
 Editor commands are prefixed with `/` and are not part of exported pipelines.
 
+## Design Direction
+
+Atomic DSL should optimize for model generation safety, not for minimal syntax.
+
+That means:
+
+- commands may be redundant if redundancy reduces critical mistakes
+- explicit named options are preferred over dense shorthand
+- the language should be easy for models to emit consistently
+- critical control mistakes should be hard to express accidentally
+
+Atomic should stay focused on runtime orchestration and visible state mutation.
+Prompt construction should be separated into dedicated prompt factories instead of being silently baked into runtime commands.
+
+## Prompt Factories
+
+Prompt factories should be treated as a separate layer adjacent to Atomic DSL.
+
+They should make explicit at least:
+
+- `context`
+- `instruction`
+- `think`
+- `format`
+- optional `examples`
+- optional `policy`
+
+Atomic may call prompt-factory outputs, but prompt factories should remain distinct from the core runtime DSL.
+
 ## Names
 
 | Syntax | Meaning |

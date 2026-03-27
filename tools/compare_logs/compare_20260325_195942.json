@@ -1,0 +1,250 @@
+{
+  "timestamp": "20260325_195942",
+  "model_info": {
+    "9B": {
+      "result": "koboldcpp/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q4_K_M"
+    },
+    "27B": {
+      "result": "koboldcpp/Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q4_K_M"
+    }
+  },
+  "gen_params": {
+    "max_context_length": 2048,
+    "top_a": 0.0,
+    "typical": 1.0,
+    "tfs": 1.0,
+    "rep_pen": 1.1,
+    "rep_pen_range": 256,
+    "rep_pen_slope": 1.0,
+    "min_p": 0.0,
+    "mirostat": 0,
+    "mirostat_tau": 5.0,
+    "mirostat_eta": 0.1,
+    "sampler_order": [
+      6,
+      0,
+      1,
+      3,
+      4,
+      2,
+      5
+    ],
+    "seed": -1,
+    "stop_sequence": [
+      "<|im_end|>",
+      "<|endoftext|>"
+    ],
+    "trim_stop": true,
+    "memory": "",
+    "use_story": false,
+    "use_memory": false,
+    "use_authors_note": false,
+    "use_world_info": false,
+    "max_length": 200,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 40
+  },
+  "comparisons": [
+    {
+      "prompt_name": "reasoning",
+      "prompt_user": "A farmer has 17 sheep. All but 9 run away. How many sheep does the farmer have left? Explain your reasoning step by step.",
+      "results": {
+        "9B": {
+          "text": "The farmer has **9** sheep left.\n\nHere is the step-by-step reasoning:\n\n1.  Start with the total number of sheep: **17**.\n2.  The phrase \"all but 9\" means that every sheep ran away *except* for 9.\n3.  Therefore, you do not need to subtract 9 from 17 and then add them back; the group that stayed is explicitly defined as being equal to that number.\n4.  The number of sheep remaining is simply the \"but\" amount mentioned in the problem.\n\n**Answer:** 9 sheep.",
+          "elapsed_s": 3.864,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "The farmer has **9** sheep left.\n\nHere is the step-by-step reasoning:\n\n1.  Start with the total number of sheep: **17**.\n2.  The phrase \"all but 9\" means that every sheep ran away *except* for 9.\n3.  Therefore, you do not need to subtract 9 from 17 and then add them back; the group that stayed is explicitly defined as being equal to that number.\n4.  The number of sheep remaining is simply the \"but\" amount mentioned in the problem.\n\n**Answer:** 9 sheep.",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 60,
+                "completion_tokens": 127
+              }
+            ]
+          }
+        },
+        "27B": {
+          "text": "The farmer has **9** sheep left.\n\nHere is the step-by-step reasoning:\n1.  Start with the total number of sheep: **17**.\n2.  Analyze the phrase \"All but 9 run away.\" This means that every sheep *except* for 9 of them ran away.\n3.  Therefore, the 9 sheep mentioned did not run away; they stayed behind.\n4.  The remaining number of sheep is exactly those that stayed: **9**.\n\n(Mathematically: $17 - (17 - 9) = 9$).",
+          "elapsed_s": 8.087,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "The farmer has **9** sheep left.\n\nHere is the step-by-step reasoning:\n1.  Start with the total number of sheep: **17**.\n2.  Analyze the phrase \"All but 9 run away.\" This means that every sheep *except* for 9 of them ran away.\n3.  Therefore, the 9 sheep mentioned did not run away; they stayed behind.\n4.  The remaining number of sheep is exactly those that stayed: **9**.\n\n(Mathematically: $17 - (17 - 9) = 9$).",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 60,
+                "completion_tokens": 126
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "prompt_name": "creative",
+      "prompt_user": "Write a short 4-line poem about a cat who learned to code.",
+      "results": {
+        "9B": {
+          "text": "The cursor blinked with green-eyed grace,\nA purr of \"Hello World\" he traced.\nHe caught the bug within the loop,\nThen slept through every compile's deep scope.",
+          "elapsed_s": 2.755,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "The cursor blinked with green-eyed grace,\nA purr of \"Hello World\" he traced.\nHe caught the bug within the loop,\nThen slept through every compile's deep scope.",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 44,
+                "completion_tokens": 40
+              }
+            ]
+          }
+        },
+        "27B": {
+          "text": "A feline sat before the screen,\nTo fix the bugs within his code.\nWith paws that tapped and eyes so keen,\nHe typed a script on quiet roads.",
+          "elapsed_s": 4.05,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "A feline sat before the screen,\nTo fix the bugs within his code.\nWith paws that tapped and eyes so keen,\nHe typed a script on quiet roads.",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 44,
+                "completion_tokens": 38
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "prompt_name": "extraction",
+      "prompt_user": "Extract all colors mentioned in this text: \"The azure sky met the crimson sunset, while emerald leaves rustled and a golden bird flew past the silver lake.\"\nReturn them as a JSON array.",
+      "results": {
+        "9B": {
+          "text": "```json\n[\n  \"azure\",\n  \"crimson\",\n  \"emerald\",\n  \"golden\",\n  \"silver\"\n]\n```",
+          "elapsed_s": 2.805,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "```json\n[\n  \"azure\",\n  \"crimson\",\n  \"emerald\",\n  \"golden\",\n  \"silver\"\n]\n```",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 70,
+                "completion_tokens": 36
+              }
+            ]
+          }
+        },
+        "27B": {
+          "text": "```json\n[\"azure\", \"crimson\", \"emerald\", \"golden\", \"silver\"]\n```",
+          "elapsed_s": 3.445,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "```json\n[\"azure\", \"crimson\", \"emerald\", \"golden\", \"silver\"]\n```",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 70,
+                "completion_tokens": 23
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "prompt_name": "translation",
+      "prompt_user": "Translate to Russian: \"The quick brown fox jumps over the lazy dog.\"",
+      "results": {
+        "9B": {
+          "text": "«Быстрая коричневая лиса прыгает через ленивую собаку».",
+          "elapsed_s": 2.562,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "«Быстрая коричневая лиса прыгает через ленивую собаку».",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 44,
+                "completion_tokens": 19
+              }
+            ]
+          }
+        },
+        "27B": {
+          "text": "Быстрая коричневая лиса перепрыгивает через ленивую собаку.",
+          "elapsed_s": 3.282,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "Быстрая коричневая лиса перепрыгивает через ленивую собаку.",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 44,
+                "completion_tokens": 22
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "prompt_name": "code",
+      "prompt_user": "Write a Python function that checks if a string is a palindrome. Keep it short.",
+      "results": {
+        "9B": {
+          "text": "```python\ndef is_palindrome(s: str) -> bool:\n    return s == s[::-1]\n```",
+          "elapsed_s": 2.613,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "```python\ndef is_palindrome(s: str) -> bool:\n    return s == s[::-1]\n```",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 46,
+                "completion_tokens": 26
+              }
+            ]
+          }
+        },
+        "27B": {
+          "text": "```python\ndef is_palindrome(s: str) -> bool:\n    return s == s[::-1]\n```",
+          "elapsed_s": 3.492,
+          "status": 200,
+          "raw": {
+            "results": [
+              {
+                "text": "```python\ndef is_palindrome(s: str) -> bool:\n    return s == s[::-1]\n```",
+                "tool_calls": [],
+                "finish_reason": "stop",
+                "logprobs": null,
+                "prompt_tokens": 46,
+                "completion_tokens": 26
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

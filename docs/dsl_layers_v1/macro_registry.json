@@ -8,8 +8,8 @@
         "prompt"
       ],
       "outputs": [
-        "constraints_raw",
-        "constraints"
+        "constraints",
+        "constraints_raw"
       ],
       "dsl": "@input = $config.prompt\n@constraints_raw = generate(\n  $config.prompt_constraints_strict,\n  worker:analyzer,\n  input:@input,\n  think:false,\n  continue:true,\n  temperature:0.2,\n  max_tokens:1024\n)\n\n@constraints = parse_sections(\n  @constraints_raw,\n  entities:\"ENTITIES:\",\n  axioms:\"AXIOMS:\",\n  hypotheses:\"HYPOTHESES:\"\n)",
       "workflow_alias": [
@@ -124,6 +124,37 @@
       "workflow_alias": [],
       "tags": [],
       "description": ""
+    },
+    "constraints_manifest_tail": {
+      "name": "constraints_manifest_tail",
+      "layer": "atomic",
+      "inputs": [
+        "prompt",
+        "prompt_constraints_entities_seed",
+        "prompt_constraints_entities_tail",
+        "prompt_constraints_axioms_seed",
+        "prompt_constraints_axioms_tail",
+        "prompt_constraints_hypotheses_seed",
+        "prompt_constraints_hypotheses_tail"
+      ],
+      "outputs": [
+        "constraints",
+        "constraints_tail",
+        "tail_log",
+        "entities_all",
+        "axioms_all",
+        "hypotheses_all"
+      ],
+      "dsl": "@input = $config.prompt\n@tail_log = \"\"\n\n@entities_seed_raw = generate(\n  $config.prompt_constraints_entities_seed,\n  worker:generator,\n  input:@input,\n  think:false,\n  continue:false,\n  temperature:0.2,\n  max_tokens:384,\n  format:instruct\n)\nappend_text(@tail_log, content, \"entities.seed\\n\")\nappend_text(@tail_log, content, @entities_seed_raw.answer)\nappend_text(@tail_log, content, \"\\n\\n\")\n@entities_seed = split(@entities_seed_raw)\n@entities_seed_json = join(@entities_seed, sep:\", \", prefix:\"[\", suffix:\"]\")\n\n@entities_tail_raw = generate(\n  $config.prompt_constraints_entities_tail,\n  worker:analyzer,\n  input:@input,\n  known:@entities_seed_json,\n  think:false,\n  continue:false,\n  temperature:0.1,\n  max_tokens:256,\n  format:instruct\n)\nappend_text(@tail_log, content, \"entities.tail\\n\")\nappend_text(@tail_log, content, @entities_tail_raw.answer)\nappend_text(@tail_log, content, \"\\n\\n\")\n@entities_tail = split(@entities_tail_raw)\n@entities_all0 = concat(@entities_seed, @entities_tail)\n@entities_all = unique(@entities_all0)\n@entities_all_json = join(@entities_all, sep:\", \", prefix:\"[\", suffix:\"]\")\n\n@axioms_seed_raw = generate(\n  $config.prompt_constraints_axioms_seed,\n  worker:generator,\n  input:@input,\n  entities:@entities_all_json,\n  think:false,\n  continue:false,\n  temperature:0.2,\n  max_tokens:512,\n  format:instruct\n)\nappend_text(@tail_log, content, \"axioms.seed\\n\")\nappend_text(@tail_log, content, @axioms_seed_raw.answer)\nappend_text(@tail_log, content, \"\\n\\n\")\n@axioms_seed = split(@axioms_seed_raw)\n@axioms_seed_json = join(@axioms_seed, sep:\", \", prefix:\"[\", suffix:\"]\")\n\n@axioms_tail_raw = generate(\n  $config.prompt_constraints_axioms_tail,\n  worker:analyzer,\n  input:@input,\n  entities:@entities_all_json,\n  known:@axioms_seed_json,\n  think:false,\n  continue:false,\n  temperature:0.1,\n  max_tokens:320,\n  format:instruct\n)\nappend_text(@tail_log, content, \"axioms.tail\\n\")\nappend_text(@tail_log, content, @axioms_tail_raw.answer)\nappend_text(@tail_log, content, \"\\n\\n\")\n@axioms_tail = split(@axioms_tail_raw)\n@axioms_all0 = concat(@axioms_seed, @axioms_tail)\n@axioms_all = unique(@axioms_all0)\n@axioms_all_json = join(@axioms_all, sep:\", \", prefix:\"[\", suffix:\"]\")\n\n@hypotheses_seed_raw = generate(\n  $config.prompt_constraints_hypotheses_seed,\n  worker:generator,\n  input:@input,\n  entities:@entities_all_json,\n  axioms:@axioms_all_json,\n  think:false,\n  continue:false,\n  temperature:0.2,\n  max_tokens:384,\n  format:instruct\n)\nappend_text(@tail_log, content, \"hypotheses.seed\\n\")\nappend_text(@tail_log, content, @hypotheses_seed_raw.answer)\nappend_text(@tail_log, content, \"\\n\\n\")\n@hypotheses_seed = split(@hypotheses_seed_raw)\n@hypotheses_seed_json = join(@hypotheses_seed, sep:\", \", prefix:\"[\", suffix:\"]\")\n\n@hypotheses_tail_raw = generate(\n  $config.prompt_constraints_hypotheses_tail,\n  worker:analyzer,\n  input:@input,\n  entities:@entities_all_json,\n  axioms:@axioms_all_json,\n  known:@hypotheses_seed_json,\n  think:false,\n  continue:false,\n  temperature:0.1,\n  max_tokens:256,\n  format:instruct\n)\nappend_text(@tail_log, content, \"hypotheses.tail\\n\")\nappend_text(@tail_log, content, @hypotheses_tail_raw.answer)\nappend_text(@tail_log, content, \"\\n\\n\")\n@hypotheses_tail = split(@hypotheses_tail_raw)\n@hypotheses_all0 = concat(@hypotheses_seed, @hypotheses_tail)\n@hypotheses_all = unique(@hypotheses_all0)\n@hypotheses_all_json = join(@hypotheses_all, sep:\", \", prefix:\"[\", suffix:\"]\")\n\n@constraints_tail = \"\"\nappend_text(@constraints_tail, content, \"ENTITIES:\\n\")\nappend_text(@constraints_tail, content, @entities_all_json.content)\nappend_text(@constraints_tail, content, \"\\n\\nAXIOMS:\\n\")\nappend_text(@constraints_tail, content, @axioms_all_json.content)\nappend_text(@constraints_tail, content, \"\\n\\nHYPOTHESES:\\n\")\nappend_text(@constraints_tail, content, @hypotheses_all_json.content)\n\n@constraints = parse_sections(\n  @constraints_tail,\n  entities:\"ENTITIES:\",\n  axioms:\"AXIOMS:\",\n  hypotheses:\"HYPOTHESES:\"\n)",
+      "workflow_alias": [],
+      "tags": [
+        "constraints",
+        "parse",
+        "builtin",
+        "experimental",
+        "tail"
+      ],
+      "description": "Experimental two-worker tail-chase manifest extraction: generator seeds, analyzer probes missing items, local merge/dedupe assembles the final manifest."
     }
   }
 }

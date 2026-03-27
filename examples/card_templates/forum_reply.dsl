@@ -1,0 +1,5 @@
+card_template(forum_reply)
+  add_slot(@forum_reply, title, label:"Author")
+  add_slot(@forum_reply, text_area, label:"Reply")
+  add_slot(@forum_reply, reactions, label:"reactions")
+  add_slot(@forum_reply, thread, label:"Nested Replies", mode:"tree")

@@ -15,11 +15,8 @@ import yaml
 import httpx
 from typing import Any, Callable
 
+from .llm_continue import llm_call_with_continue, strip_think
 from .macro_registry import get_macro
-
-
-def _is_token_limit_finish(finish_reason: str | None) -> bool:
-    return str(finish_reason or "").strip().lower() in {"length", "max_tokens"}
 
 
 _EXACT_CALL_RE = re.compile(r"^[A-Za-z_]\w*\((.*)\)$", re.DOTALL)
@@ -347,102 +344,45 @@ class WorkflowContext:
         base_url = self.workers.get(role, "").rstrip("/")
         if not base_url:
             raise ValueError(f"No worker for role '{role}'")
-        url = f"{base_url}/v1/chat/completions"
 
-        # Build messages
         if messages is None:
             messages = [{"role": "user", "content": prompt or ""}]
 
-        # no_think: add assistant prefill to skip reasoning
-        if no_think and (not messages or messages[-1]["role"] != "assistant"):
-            messages = list(messages) + [{"role": "assistant", "content": "<think>\n\n</think>\n\n"}]
-
-        is_continue = mode in ("continue", "probe_continue") or no_think
-        payload: dict[str, Any] = {
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-            "cache_prompt": False,
-        }
-        if is_continue:
-            payload["continue_assistant_turn"] = True
-        if stop:
-            payload["stop"] = stop
-        normalized_grammar = _normalize_grammar(grammar)
-        if normalized_grammar:
-            payload["grammar"] = normalized_grammar
-            payload["grammar_string"] = normalized_grammar
-
-        # Execute
-        resp = self._http.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        chunk = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        finish = data.get("choices", [{}])[0].get("finish_reason", "stop")
-
-        result = chunk
-
-        full_assistant = result
-        if messages and messages[-1]["role"] == "assistant":
-            full_assistant = messages[-1]["content"] + result
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
-        for cont_i in range(continue_limit):
-            if not _is_token_limit_finish(finish):
-                break
-            if mode == "probe_continue" and _probe_value_ready(result, grammar, capture):
-                break
-            cont_messages = list(messages[:-1]) if messages and messages[-1]["role"] == "assistant" else list(messages)
-            cont_messages.append({"role": "assistant", "content": full_assistant})
-            cont_payload = {**payload, "messages": cont_messages, "continue_assistant_turn": True}
-            try:
-                resp = self._http.post(url, json=cont_payload)
-                resp.raise_for_status()
-            except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError):
-                # Connection reset — retry with fresh client
-                self._http.close()
-                self._http = httpx.Client(timeout=60, trust_env=False)
-                try:
-                    resp = self._http.post(url, json=cont_payload)
-                    resp.raise_for_status()
-                except Exception:
-                    break  # Return partial result
-            except httpx.HTTPStatusError:
-                break  # Server error, return partial result
-            cont_data = resp.json()
-            new_chunk = cont_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            result += new_chunk
-            full_assistant += new_chunk
-            finish = cont_data.get("choices", [{}])[0].get("finish_reason", "stop")
+        normalized_grammar = _normalize_grammar(grammar)
+
+        is_probe = mode == "probe_continue"
+        res = llm_call_with_continue(
+            base_url,
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            no_think=no_think,
+            max_continue=continue_limit,
+            continue_on_length=not is_probe,  # probes are single-shot
+            stop=stop,
+            grammar=normalized_grammar,
+            prompt_mode="chat",  # always use chat completions API
+            http=self._http,
+        )
 
         if mode == "probe_continue":
-            probe_value = _clean_probe_result(result, grammar, capture)
+            probe_value = _clean_probe_result(res.raw, grammar, capture)
             self.on_thread(
                 "worker",
                 f"{role} ({tag or 'probe'})",
                 probe_value,
-                {"tag": tag, "finish_reason": finish, "raw": result},
+                {"tag": tag, "finish_reason": res.finish_reason, "raw": res.raw},
             )
             return probe_value
 
-        # Strip think
-        think = ""
-        answer = result
-        think_match = re.search(r"<think\b[^>]*>([\s\S]*?)</think>", result, re.IGNORECASE)
-        if think_match:
-            think = think_match.group(1).strip()
-            answer = re.sub(r"<think\b[^>]*>[\s\S]*?</think>\s*", "", result, flags=re.DOTALL | re.IGNORECASE).strip()
-        elif "<think>" in result:
-            idx = result.find("<think>")
-            end_idx = result.rfind("</think>")
-            if end_idx > idx:
-                think = result[idx + 7:end_idx].strip()
-                answer = result[end_idx + 8:].strip()
-        elif _has_unclosed_think(result):
-            start_match = re.search(r"<think\b[^>]*>", result, re.IGNORECASE)
+        # Use shared think stripping, with unclosed-think fallback
+        answer, think = res.answer, res.think
+        if not think and _has_unclosed_think(res.raw):
+            start_match = re.search(r"<think\b[^>]*>", res.raw, re.IGNORECASE)
             if start_match:
-                think = result[start_match.end():].strip()
-                answer = result[:start_match.start()].strip()
+                think = res.raw[start_match.end():].strip()
+                answer = res.raw[:start_match.start()].strip()
 
         self.on_thread("worker", f"{role} ({tag or mode})", answer, {"think": think, "tag": tag})
         return answer

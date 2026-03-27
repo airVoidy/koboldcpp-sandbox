@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .llm_continue import llm_call_with_continue
+
 
 class PromptKind(str, Enum):
     SYSTEM = "system"
@@ -338,101 +340,22 @@ class LLMBackend:
         if client is None:
             raise ValueError(f"No LLM client registered for agent '{agent_name}'")
 
-        import httpx
-        import re as _re
-
-        # Build messages — same approach as multi_agent_chat.html
         messages: list[dict] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        # No-think: add assistant prefill + continue_assistant_turn
-        # This is the correct way — prefill as assistant message, not appended to user
-        if no_think:
-            messages.append({"role": "assistant", "content": "<think>\n\n</think>\n\n"})
-
-        payload: dict = {
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-        }
-        if no_think:
-            payload["continue_assistant_turn"] = True
-
-        base_url = client.base_url.rstrip("/")
-        http = httpx.Client(timeout=client.timeout, trust_env=False)
-
-        try:
-            resp = http.post(f"{base_url}/v1/chat/completions", json=payload)
-            resp.raise_for_status()
-            raw = resp.json()
-
-            chunk = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
-            finish = raw.get("choices", [{}])[0].get("finish_reason", "stop")
-
-            # With no_think + continue_assistant_turn, KoboldCpp returns ONLY new tokens
-            # (not the prefill), so chunk IS the result directly
-            raw_result = chunk
-
-            # For continue: full_assistant = prefill + all chunks so far
-            if no_think:
-                full_assistant = "<think>\n\n</think>\n\n" + raw_result
-            else:
-                full_assistant = raw_result
-
-            # Continue loop until EoT (finish_reason != "length") or max_continue.
-            # Even if </think> appeared, keep going — model hasn't sent EoT yet,
-            # answer text is still being generated.
-            for i in range(max_continue):
-                if str(finish).strip().lower() not in {"length", "max_tokens"}:
-                    break
-
-                # Send same base messages + full assistant content for KV cache match
-                cont_messages = list(messages[:-1]) if no_think else list(messages)
-                cont_messages.append({"role": "assistant", "content": full_assistant})
-
-                continue_payload = {
-                    "messages": cont_messages,
-                    "continue_assistant_turn": True,
-                    "cache_prompt": False,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "stream": False,
-                }
-                try:
-                    resp = http.post(f"{base_url}/v1/chat/completions", json=continue_payload)
-                    resp.raise_for_status()
-                except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError) as exc:
-                    # Connection reset — retry once with fresh client
-                    http.close()
-                    http = httpx.Client(timeout=client.timeout, trust_env=False)
-                    try:
-                        resp = http.post(f"{base_url}/v1/chat/completions", json=continue_payload)
-                        resp.raise_for_status()
-                    except Exception:
-                        break  # Give up, return partial result
-                except httpx.HTTPStatusError:
-                    break  # Server error, return partial result
-                cont_raw = resp.json()
-                new_chunk = cont_raw.get("choices", [{}])[0].get("message", {}).get("content", "")
-                raw_result += new_chunk
-                full_assistant += new_chunk
-                finish = cont_raw.get("choices", [{}])[0].get("finish_reason", "stop")
-
-            # Strip think blocks from final result
-            result = _re.sub(r"<think\b[^>]*>.*?</think>\s*", "", raw_result, flags=_re.DOTALL | _re.IGNORECASE).strip()
-            if "<think>" in result:
-                # Unclosed think — take everything after </think> if present, or discard think
-                if "</think>" in raw_result:
-                    result = raw_result[raw_result.rindex("</think>") + len("</think>"):].strip()
-                else:
-                    result = _re.sub(r"<think>[\s\S]*", "", result).strip()
-        finally:
-            http.close()
-
-        return result
+        res = llm_call_with_continue(
+            client.base_url,
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            no_think=no_think,
+            max_continue=max_continue,
+            continue_on_length=True,
+            timeout=client.timeout,
+        )
+        return res.answer
 
 
 class BehaviorOrchestrator:

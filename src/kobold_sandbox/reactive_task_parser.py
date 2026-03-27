@@ -17,6 +17,8 @@ import json
 import re
 from typing import Any, TYPE_CHECKING
 
+from .llm_continue import llm_call_with_continue
+
 if TYPE_CHECKING:
     from .behavior_orchestrator import LLMBackend
 
@@ -118,88 +120,24 @@ def call_worker(
     Returns (answer, think) — both visible in thread.
     No system_prompt — just the conversation messages.
     """
-    import httpx
-
     settings = settings or {}
     client = llm.get(agent_name)
     if client is None:
         raise ValueError(f"No worker registered as '{agent_name}'")
 
-    # Build ChatML messages — full conversation history
     messages = [{"role": m["role"], "content": m["content"]} for m in state["messages"]]
 
-    no_think = settings.get("no_think", True)
-    if no_think:
-        messages.append({"role": "assistant", "content": "<think>\n\n</think>\n\n"})
-
-    temperature = settings.get("temperature", 0.3)
-    max_tokens = settings.get("max_tokens", 2048)
-    max_continue = settings.get("max_continue", 20)
-
-    base_url = client.base_url.rstrip("/")
-    http = httpx.Client(timeout=client.timeout, trust_env=False)
-
-    try:
-        # First request
-        payload = {
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-        }
-        if no_think:
-            payload["continue_assistant_turn"] = True
-
-        resp = http.post(f"{base_url}/v1/chat/completions", json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        raw_result = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        finish = data.get("choices", [{}])[0].get("finish_reason", "stop")
-
-        if no_think:
-            full_assistant = "<think>\n\n</think>\n\n" + raw_result
-        else:
-            full_assistant = raw_result
-
-        # Continue loop until EoT
-        for i in range(max_continue):
-            if str(finish).strip().lower() not in {"length", "max_tokens"}:
-                break
-            cont_messages = list(messages[:-1]) if no_think else list(messages)
-            cont_messages.append({"role": "assistant", "content": full_assistant})
-            cont_payload = {
-                "messages": cont_messages,
-                "continue_assistant_turn": True,
-                "cache_prompt": False,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False,
-            }
-            resp = http.post(f"{base_url}/v1/chat/completions", json=cont_payload)
-            resp.raise_for_status()
-            cont_data = resp.json()
-            chunk = cont_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            raw_result += chunk
-            full_assistant += chunk
-            finish = cont_data.get("choices", [{}])[0].get("finish_reason", "stop")
-    finally:
-        http.close()
-
-    # Separate think and answer
-    think = ""
-    answer = raw_result
-    think_match = re.search(r"<think\b[^>]*>([\s\S]*?)</think>", raw_result, re.IGNORECASE)
-    if think_match:
-        think = think_match.group(1).strip()
-        answer = re.sub(r"<think\b[^>]*>[\s\S]*?</think>\s*", "", raw_result, flags=re.DOTALL | re.IGNORECASE).strip()
-    elif "<think>" in raw_result:
-        idx = raw_result.find("<think>")
-        end_idx = raw_result.rfind("</think>")
-        if end_idx > idx:
-            think = raw_result[idx + 7:end_idx].strip()
-            answer = raw_result[end_idx + 8:].strip()
-
-    return answer, think
+    res = llm_call_with_continue(
+        client.base_url,
+        messages,
+        temperature=settings.get("temperature", 0.3),
+        max_tokens=settings.get("max_tokens", 2048),
+        no_think=settings.get("no_think", True),
+        max_continue=settings.get("max_continue", 20),
+        continue_on_length=True,
+        timeout=client.timeout,
+    )
+    return res.answer, res.think
 
 
 # ---------------------------------------------------------------------------

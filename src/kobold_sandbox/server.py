@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import uuid
 import json
 import re
@@ -38,6 +39,7 @@ from .logic_manifest import (
     prepare_reasoning_excerpt,
     verify_logic,
 )
+from .llm_continue import llm_call_with_continue, strip_think
 from .reactive import AtomRuntime, ReactiveAtom, evaluate_atom
 from .orchestrator import export_graph, run_task
 from .kobold_client import KoboldClient, KoboldGenerationConfig
@@ -45,6 +47,8 @@ from .macro_registry import MacroRecord, get_macro, load_macro_registry, save_ma
 from .storage import Sandbox
 from .core import build_schema_backends_from_linear, linear_schema_to_puzzle_schema
 from .data_store.api import create_datastore_router
+from .data_store.store import DataStore
+from .atomic_wiki import create_atomic_wiki_router
 
 
 class CreateNodeRequest(BaseModel):
@@ -349,6 +353,7 @@ def create_app(root: str) -> FastAPI:
     # Mount DataStore API
     datastore_root = Path(root).resolve() / ".sandbox" / "datastore"
     app.include_router(create_datastore_router(datastore_root), prefix="/api/datastore")
+    app.include_router(create_atomic_wiki_router(DataStore(datastore_root)), prefix="/api/atomic-wiki")
 
     sessions: dict[str, dict[str, Any]] = {
         "default": {
@@ -1870,6 +1875,69 @@ def create_app(root: str) -> FastAPI:
         }
 
     # ================================================================
+    #  LLM generate — centralised continue-on-length
+    # ================================================================
+
+    @app.post("/api/llm/generate")
+    async def llm_generate(request: Request) -> dict:
+        """Centralised LLM call with auto-continue on max_tokens.
+
+        Body:
+          url: worker base URL (e.g. "http://localhost:5001")
+          messages: [{role, content}, ...]
+          temperature?: float (default 0.6)
+          max_tokens?: int (default 2048)
+          no_think?: bool (default true)
+          max_continue?: int (default 20)
+          continue_on_length?: bool (default true)
+          stop?: list[str]
+          grammar?: str
+          prompt_mode?: "auto"|"chat"|"instruct"
+
+        Returns:
+          {answer, think, continues, finish_reason, latency_ms, tokens}
+        """
+        body = await request.json()
+        base_url = (body.get("url") or "").rstrip("/")
+        if not base_url:
+            raise HTTPException(400, "url is required")
+        messages = body.get("messages", [])
+        if not messages:
+            raise HTTPException(400, "messages is required")
+
+        no_think = body.get("no_think", True)
+        try:
+            res = llm_call_with_continue(
+                base_url,
+                messages,
+                temperature=float(body.get("temperature", 0.6)),
+                max_tokens=int(body.get("max_tokens", 2048)),
+                no_think=no_think,
+                max_continue=int(body.get("max_continue", 20)),
+                continue_on_length=body.get("continue_on_length", True),
+                stop=body.get("stop"),
+                grammar=body.get("grammar"),
+                prompt_mode=body.get("prompt_mode", "auto"),
+            )
+        except Exception as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+        usage = res.raw_responses[-1].get("usage", {}) if res.raw_responses else {}
+        return {
+            "status": "ok",
+            "answer": res.answer,
+            "think": res.think,
+            "continues": res.continues,
+            "finish_reason": res.finish_reason,
+            "prompt_mode": res.prompt_mode,
+            "latency_ms": res.latency_ms,
+            "tokens": {
+                "prompt": usage.get("prompt_tokens"),
+                "completion": usage.get("completion_tokens"),
+            },
+        }
+
+    # ================================================================
     #  Atomic Tasks — server-side tool execution
     # ================================================================
 
@@ -1904,14 +1972,137 @@ def create_app(root: str) -> FastAPI:
         except Exception as e:
             raise HTTPException(500, f"{type(e).__name__}: {e}")
 
+    def _scope_contexts(scope_vars: dict[str, Any]) -> dict[str, str]:
+        contexts = scope_vars.get("__contexts__")
+        if not isinstance(contexts, dict):
+            contexts = {}
+            scope_vars["__contexts__"] = contexts
+        return contexts
+
+    def _scope_get_context(scope_vars: dict[str, Any], name: str) -> str:
+        return str(_scope_contexts(scope_vars).get(name, "") or "")
+
+    def _scope_set_context(scope_vars: dict[str, Any], name: str, text: Any) -> str:
+        value = str(text or "")
+        _scope_contexts(scope_vars)[name] = value
+        return value
+
+    def _scope_append_context(
+        scope_vars: dict[str, Any],
+        name: str,
+        text: Any,
+        separator: str = "\n\n",
+    ) -> str:
+        appended = str(text or "").strip()
+        current = _scope_get_context(scope_vars, name)
+        if not appended:
+            return current
+        merged = f"{current}{separator if current else ''}{appended}"
+        _scope_contexts(scope_vars)[name] = merged
+        return merged
+
+    def _scope_resolve_ref(ref_str: Any, scope_vars: dict[str, Any]) -> Any:
+        if not isinstance(ref_str, str) or not ref_str.startswith("$"):
+            return ref_str
+        path = ref_str[1:]
+        parts = path.split(".", 1)
+        data = scope_vars.get(parts[0])
+        if data is None:
+            return ref_str
+        if len(parts) > 1:
+            return data.get(parts[1], ref_str) if isinstance(data, dict) else ref_str
+        return data
+
+    def _scope_inject_context(step: dict, params: dict, scope_vars: dict[str, Any]) -> dict:
+        context_name = str(step.get("context") or "").strip()
+        if not context_name:
+            return params
+        context_text = _scope_get_context(scope_vars, context_name)
+        if not context_text:
+            return params
+        context_prefix = str(step.get("context_prefix") or "Context:\n{context}\n\n")
+        injected = context_prefix.replace("{context}", context_text)
+        next_params = copy.deepcopy(params)
+        messages = next_params.get("messages")
+        if isinstance(messages, list) and messages:
+            if len(messages) == 1 and str(messages[0].get("role", "")).lower() == "user":
+                messages[0]["content"] = f"{injected}{messages[0].get('content') or ''}"
+            else:
+                first_role = str(messages[0].get("role", "")).lower()
+                if first_role == "system":
+                    messages[0]["content"] = f"{messages[0].get('content') or ''}\n\n{injected}".strip()
+                else:
+                    messages.insert(0, {"role": "system", "content": injected.strip()})
+            next_params["messages"] = messages
+            return next_params
+        for key in ("text", "prompt_template", "prompt", "content"):
+            if isinstance(next_params.get(key), str):
+                next_params[key] = f"{injected}{next_params[key]}"
+                break
+        return next_params
+
+    def _scope_default_context_growth(result: Any) -> str:
+        if isinstance(result, dict):
+            for key in ("content", "answer", "text"):
+                value = result.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+        return ""
+
+    def _scope_apply_context_growth(step: dict, result: Any, scope_vars: dict[str, Any]) -> None:
+        context_name = str(step.get("context") or "").strip()
+        if not context_name:
+            return
+        tool_name = str(step.get("tool") or "").strip().lower()
+        if "context_grow" not in step and tool_name in {"context_append", "prompt_factory"}:
+            return
+        if step.get("context_grow", True) is False:
+            return
+        append_spec = step.get("context_append")
+        if append_spec is None:
+            append_text = _scope_default_context_growth(result)
+        else:
+            ref_scope = dict(scope_vars)
+            ref_scope["result"] = result
+            resolved = _scope_resolve_ref(append_spec, ref_scope)
+            append_text = resolved if isinstance(resolved, str) else json.dumps(resolved, ensure_ascii=False)
+        _scope_append_context(scope_vars, context_name, append_text, str(step.get("context_separator") or "\n\n"))
+
+    def _scope_run_factory_step(step: dict, params: dict, scope_vars: dict[str, Any]) -> dict | None:
+        tool = str(step.get("tool") or "").strip().lower()
+        if tool == "context_append":
+            context_name = str(params.get("context") or step.get("context") or "main").strip() or "main"
+            text = _scope_resolve_ref(params.get("text") or params.get("content") or "", scope_vars)
+            merged = _scope_append_context(
+                scope_vars,
+                context_name,
+                text,
+                str(params.get("separator") or step.get("context_separator") or "\n\n"),
+            )
+            return {"content": merged, "context_name": context_name, "appended": str(text or "")}
+        if tool == "prompt_factory":
+            context_name = str(params.get("context") or step.get("context") or "main").strip() or "main"
+            prompt = str(params.get("prompt") or params.get("text") or params.get("content") or "")
+            context_text = _scope_get_context(scope_vars, context_name)
+            prefix = str(params.get("context_prefix") or step.get("context_prefix") or "Context:\n{context}\n\n")
+            assembled = f"{prefix.replace('{context}', context_text)}{prompt}" if context_text else prompt
+            return {
+                "content": assembled,
+                "prompt": prompt,
+                "context": context_text,
+                "context_name": context_name,
+            }
+        return None
+
     @app.post("/api/atomic/scope")
     async def atomic_scope(request: Request) -> dict:
         """Execute a batch of atomic tools in a local scope.
         Only exported variables survive. One request, no round-trips.
 
         Body:
-          steps: [{tool, params, role?, out?, on?}, ...]
+          steps: [{tool, params, role?, out?, on?, context?, context_grow?}, ...]
           export: ["name1"] or {"out": {"field": "$ref.field"}}
+          contexts: {name: text}
           workers: {role: url}
           settings: {temperature, max_tokens, ...}
 
@@ -1925,12 +2116,16 @@ def create_app(root: str) -> FastAPI:
         export_names = body.get("export", [])
         workers = body.get("workers", {})
         settings = body.get("settings", {})
+        initial_contexts = body.get("contexts", {})
 
         if not steps:
             raise HTTPException(400, "steps is required")
 
         local_vars: dict[str, dict] = {}  # out_name → result dict
         log: list[str] = []
+        if isinstance(initial_contexts, dict):
+            for context_name, context_text in initial_contexts.items():
+                _scope_set_context(local_vars, str(context_name), context_text)
 
         def _resolve_params(params_raw: dict, scope_vars: dict[str, Any]) -> dict:
             """Resolve $ref and $ref.field in param values."""
@@ -2009,18 +2204,24 @@ def create_app(root: str) -> FastAPI:
                         continue
                     tool = step.get("tool", "")
                     params = _resolve_params(step.get("params", {}), scope_vars)
+                    params = _scope_inject_context(step, params, scope_vars)
                     role = step.get("role", "generator")
                     out = step.get("out")
                     try:
-                        result = _run_atomic_tool(tool, params, workers, settings, role)
-                        if asyncio.iscoroutine(result):
-                            result = await result
+                        result = _scope_run_factory_step(step, params, scope_vars)
+                        if result is None:
+                            result = _run_atomic_tool(tool, params, workers, settings, role)
+                            if asyncio.iscoroutine(result):
+                                result = await result
                         if out:
                             scope_vars[out] = result
+                        _scope_apply_context_growth(step, result, scope_vars)
                         dep_str = f" (on: {', '.join(deps)})" if deps else ""
                         prefix = f"{step_prefix}" if step_prefix else ""
+                        context_name = str(step.get("context") or "").strip()
+                        context_suffix = f" [ctx:{context_name}]" if context_name else ""
                         log.append(
-                            f"{prefix}[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}"
+                            f"{prefix}[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}{context_suffix}"
                             + (f" → ${out}" if out else "")
                         )
                         progress = True
@@ -2050,24 +2251,25 @@ def create_app(root: str) -> FastAPI:
                     # Compose: {"entities": "$ent.items", "axioms": "$ax.items"}
                     composed = {}
                     for field, ref in mapping.items():
-                        composed[field] = _resolve_ref(ref, local_vars) if isinstance(ref, str) else ref
+                        composed[field] = _scope_resolve_ref(ref, local_vars) if isinstance(ref, str) else ref
                     exported[out_name] = composed
                 elif isinstance(mapping, str):
                     # Simple: {"input_constraints": "$ent"}
-                    exported[out_name] = _resolve_ref(mapping, local_vars)
+                    exported[out_name] = _scope_resolve_ref(mapping, local_vars)
 
-        return {"status": "ok", "exported": exported, "log": log}
+        return {"status": "ok", "exported": exported, "log": log, "contexts": _scope_contexts(local_vars)}
 
     @app.post("/api/atomic/loop")
     async def atomic_loop(request: Request) -> dict:
         """Execute setup once, then loop body while a local condition remains truthy.
 
         Body:
-          setup: [{tool, params, role?, out?, on?}, ...]
-          loop: [{tool, params, role?, out?, on?}, ...]
+          setup: [{tool, params, role?, out?, on?, context?, context_grow?}, ...]
+          loop: [{tool, params, role?, out?, on?, context?, context_grow?}, ...]
           while: "$var" or "$var.field"
           max_iters: 8
           export: ["name1"] or {"out": {"field": "$ref.field"}}
+          contexts: {name: text}
           workers: {role: url}
           settings: {temperature, max_tokens, ...}
         """
@@ -2079,13 +2281,17 @@ def create_app(root: str) -> FastAPI:
         export_names = body.get("export", [])
         workers = body.get("workers", {})
         settings = body.get("settings", {})
+        initial_contexts = body.get("contexts", {})
 
         if not loop_steps:
             raise HTTPException(400, "loop is required")
         if not while_ref:
             raise HTTPException(400, "while is required")
 
-        local_vars: dict[str, dict] = {}
+        local_vars: dict[str, Any] = {}
+        if isinstance(initial_contexts, dict):
+            for context_name, context_text in initial_contexts.items():
+                _scope_set_context(local_vars, str(context_name), context_text)
         log: list[str] = []
 
         def _resolve_params(params_raw: dict, scope_vars: dict[str, Any]) -> dict:
@@ -2164,17 +2370,23 @@ def create_app(root: str) -> FastAPI:
                         continue
                     tool = step.get("tool", "")
                     params = _resolve_params(step.get("params", {}), scope_vars)
+                    params = _scope_inject_context(step, params, scope_vars)
                     role = step.get("role", "generator")
                     out = step.get("out")
                     try:
-                        result = _run_atomic_tool(tool, params, workers, settings, role)
-                        if asyncio.iscoroutine(result):
-                            result = await result
+                        result = _scope_run_factory_step(step, params, scope_vars)
+                        if result is None:
+                            result = _run_atomic_tool(tool, params, workers, settings, role)
+                            if asyncio.iscoroutine(result):
+                                result = await result
                         if out:
                             scope_vars[out] = result
+                        _scope_apply_context_growth(step, result, scope_vars)
                         dep_str = f" (on: {', '.join(deps)})" if deps else ""
+                        context_name = str(step.get("context") or "").strip()
+                        context_suffix = f" [ctx:{context_name}]" if context_name else ""
                         log.append(
-                            f"{step_prefix}[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}"
+                            f"{step_prefix}[{i+1}] {tool}({', '.join(f'{k}={str(v)[:30]}' for k,v in params.items() if k != 'text')}){dep_str}{context_suffix}"
                             + (f" → ${out}" if out else "")
                         )
                         progress = True
@@ -2194,7 +2406,7 @@ def create_app(root: str) -> FastAPI:
                 return error
 
         iterations = 0
-        while _truthy(_resolve_ref(while_ref, local_vars)):
+        while _truthy(_scope_resolve_ref(while_ref, local_vars)):
             if iterations >= max_iters:
                 log.append(f"LOOP LIMIT: max_iters={max_iters}")
                 return {"status": "error", "error": "loop iteration limit reached", "log": log}
@@ -2213,12 +2425,18 @@ def create_app(root: str) -> FastAPI:
                 if isinstance(mapping, dict):
                     composed = {}
                     for field, ref in mapping.items():
-                        composed[field] = _resolve_ref(ref, local_vars) if isinstance(ref, str) else ref
+                        composed[field] = _scope_resolve_ref(ref, local_vars) if isinstance(ref, str) else ref
                     exported[out_name] = composed
                 elif isinstance(mapping, str):
-                    exported[out_name] = _resolve_ref(mapping, local_vars)
+                    exported[out_name] = _scope_resolve_ref(mapping, local_vars)
 
-        return {"status": "ok", "iterations": iterations, "exported": exported, "log": log}
+        return {
+            "status": "ok",
+            "iterations": iterations,
+            "exported": exported,
+            "log": log,
+            "contexts": _scope_contexts(local_vars),
+        }
 
     def _run_atomic_tool(
         tool: str,
@@ -2429,7 +2647,7 @@ def create_app(root: str) -> FastAPI:
         params: dict, workers: dict, settings: dict, role: str
     ) -> dict:
         """Generate via LLM worker.
-        params: {messages, mode?, grammar?, stop?, capture?, coerce?}
+        params: {messages, mode?, grammar?, stop?, capture?, coerce?, format?}
         """
         messages = params.get("messages", [])
         if not messages:
@@ -2442,11 +2660,15 @@ def create_app(root: str) -> FastAPI:
         temperature = float(settings.get("temperature", 0.6))
         max_tokens = int(settings.get("max_tokens", 2048))
         no_think = settings.get("no_think", True)
-        max_continue = int(settings.get("max_continue", 20))
+        max_cont = int(settings.get("max_continue", 20))
         continue_on = settings.get("continue", no_think)
         grammar = params.get("grammar")
+        prompt_mode = str(params.get("format") or params.get("prompt_mode") or "auto").strip().lower()
         stop = params.get("stop")
-        mode = params.get("mode", "prompt")
+        if stop and not isinstance(stop, list):
+            stop = [stop]
+
+        # until_contains / until_regex / min_chars — post-loop conditions
         until_contains = params.get("until_contains")
         if until_contains is None and params.get("until") is not None:
             until_contains = params.get("until")
@@ -2456,6 +2678,7 @@ def create_app(root: str) -> FastAPI:
             until_contains = []
         until_regex = params.get("until_regex")
         min_chars = int(params.get("min_chars", 0) or 0)
+        has_post_conditions = bool(until_contains or until_regex or min_chars)
 
         def _continue_conditions_met(text: str) -> bool:
             if min_chars and len(text or "") < min_chars:
@@ -2466,72 +2689,59 @@ def create_app(root: str) -> FastAPI:
                 return False
             return True
 
-        # No-think prefill
-        if no_think and (not messages or messages[-1].get("role") != "assistant"):
-            messages = [*messages, {"role": "assistant", "content": "<think>\n\n</think>\n\n"}]
+        # If there are post-conditions, we need a custom loop; otherwise delegate fully
+        if has_post_conditions:
+            # Custom loop: keep calling until post-conditions met OR max_continue
+            res = llm_call_with_continue(
+                base_url, messages,
+                temperature=temperature, max_tokens=max_tokens,
+                no_think=no_think, max_continue=0,  # single shot first
+                continue_on_length=False,
+                stop=stop, grammar=grammar,
+                prompt_mode=prompt_mode,
+            )
+            result = res.raw
+            raw_responses = list(res.raw_responses)
+            finish = res.finish_reason
 
-        has_prefill = messages and messages[-1].get("role") == "assistant"
-        url = f"{base_url}/v1/chat/completions"
-        result = ""
-        raw_responses = []
+            if continue_on:
+                for i in range(max_cont):
+                    if not (finish in ("length", "max_tokens") or not _continue_conditions_met(result)):
+                        break
+                    next_res = llm_call_with_continue(
+                        base_url,
+                        [*messages, {"role": "assistant", "content": result}],
+                        temperature=temperature, max_tokens=max_tokens,
+                        no_think=False,  # prefill already in result
+                        max_continue=0, continue_on_length=False,
+                        stop=stop, grammar=grammar,
+                        extra_payload={"continue_assistant_turn": True},
+                        prompt_mode=prompt_mode,
+                    )
+                    result += next_res.raw
+                    raw_responses.extend(next_res.raw_responses)
+                    finish = next_res.finish_reason
 
-        started_at = time.perf_counter()
-        for i in range(max_continue + 1):
-            if i == 0:
-                cur_messages = messages
-            elif has_prefill:
-                cur_messages = [*messages[:-1], {"role": "assistant", "content": (("<think>\n\n</think>\n\n" if no_think else "") + result)}]
-            else:
-                cur_messages = [*messages, {"role": "assistant", "content": result}]
-
-            payload: dict = {
-                "messages": cur_messages,
-                # Continue immediately when we already have an assistant prefill/message tail.
-                "continue_assistant_turn": i > 0 or no_think or has_prefill or mode in ("continue", "probe_continue"),
-                "cache_prompt": False,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False,
-            }
-            if grammar:
-                payload["grammar"] = grammar
-            if stop:
-                payload["stop"] = stop if isinstance(stop, list) else [stop]
-
-            resp = httpx.post(url, json=payload, timeout=180.0, trust_env=False)
-            resp.raise_for_status()
-            data = resp.json()
-            raw_responses.append(data)
-
-            choice = (data.get("choices") or [{}])[0]
-            chunk = choice.get("message", {}).get("content", "")
-            finish_reason = choice.get("finish_reason", "stop")
-            result += chunk
-
-            if not continue_on:
-                break
-            if finish_reason in ("length", "max_tokens"):
-                continue
-            if not _continue_conditions_met(result):
-                if i < max_continue:
-                    continue
-                break
-
-        latency_ms = int((time.perf_counter() - started_at) * 1000)
-
-        # Separate think and answer
-        _re = re
-        think = ""
-        answer = result
-        think_match = _re.search(r"<think\b[^>]*>([\s\S]*?)</think>", result, _re.IGNORECASE)
-        if think_match:
-            think = think_match.group(1).strip()
-            answer = _re.sub(r"<think\b[^>]*>[\s\S]*?</think>\s*", "", result, flags=_re.IGNORECASE).strip()
+            answer, think = strip_think(result)
+            latency_ms = res.latency_ms
+        else:
+            res = llm_call_with_continue(
+                base_url, messages,
+                temperature=temperature, max_tokens=max_tokens,
+                no_think=no_think, max_continue=max_cont,
+                continue_on_length=bool(continue_on),
+                stop=stop, grammar=grammar,
+                prompt_mode=prompt_mode,
+            )
+            result = res.raw
+            raw_responses = res.raw_responses
+            answer, think = res.answer, res.think
+            latency_ms = res.latency_ms
 
         # Apply capture regex
         captured = None
         if params.get("capture"):
-            m = _re.search(params["capture"], result)
+            m = re.search(params["capture"], result)
             if m:
                 captured = m.group(0)
                 if params.get("coerce") == "int":
@@ -2542,8 +2752,9 @@ def create_app(root: str) -> FastAPI:
             "content": answer,
             "think": think,
             "captured": captured,
-            "continues": len(raw_responses) - 1,
+            "continues": max(0, len(raw_responses) - 1),
             "latency_ms": latency_ms,
+            "prompt_mode": res.prompt_mode,
             "tokens": {
                 "prompt": usage.get("prompt_tokens"),
                 "completion": usage.get("completion_tokens"),
@@ -2617,6 +2828,11 @@ def create_app(root: str) -> FastAPI:
     @app.get("/reactive-chat", response_class=HTMLResponse)
     def reactive_chat_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "reactive_chat.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/gui-builder", response_class=HTMLResponse)
+    def gui_builder_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "gui_builder.html"
         return html_path.read_text(encoding="utf-8")
 
     @app.get("/think-lab", response_class=HTMLResponse)

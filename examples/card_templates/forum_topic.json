@@ -1,0 +1,22 @@
+{
+  "forum_topic": {
+    "name": "forum_topic",
+    "slots": [
+      {"id": "s_1", "type": "title", "label": "Topic", "binding": null, "options": {}, "children": null},
+      {"id": "s_2", "type": "tags", "label": "Category", "binding": null, "options": {}, "children": null},
+      {"id": "s_3", "type": "text_area", "label": "Original Post", "binding": null, "options": {"collapsed": false, "editable": true}, "children": null},
+      {"id": "s_4", "type": "reactions", "label": "reactions", "binding": null, "options": {}, "children": null},
+      {"id": "s_5", "type": "buttons", "label": "actions", "binding": null, "options": {"items": ["reply", "quote", "bookmark"]}, "children": null},
+      {"id": "s_6", "type": "children", "label": "Replies", "binding": null, "options": {"template": "forum_reply"}, "children": null}
+    ]
+  },
+  "forum_reply": {
+    "name": "forum_reply",
+    "slots": [
+      {"id": "s_1", "type": "title", "label": "Author", "binding": null, "options": {}, "children": null},
+      {"id": "s_2", "type": "text_area", "label": "Reply", "binding": null, "options": {"collapsed": false, "editable": true}, "children": null},
+      {"id": "s_3", "type": "reactions", "label": "reactions", "binding": null, "options": {}, "children": null},
+      {"id": "s_4", "type": "thread", "label": "Nested Replies", "binding": null, "options": {"mode": "tree"}, "children": null}
+    ]
+  }
+}

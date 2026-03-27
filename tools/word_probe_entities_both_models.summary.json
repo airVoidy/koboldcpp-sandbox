@@ -1,0 +1,231 @@
+{
+  "5001_9b": {
+    "unique_words": 257,
+    "positive_words": 143,
+    "binary_avg_ms": 137.4,
+    "category_avg_ms": 150.3,
+    "category_counts": {
+      "anime": 88,
+      "hair_color": 36,
+      "eye_color": 3,
+      "pose": 16
+    },
+    "sample_positive": [
+      {
+        "word": "Вот",
+        "is_relevant": "1",
+        "binary_ms": 383.8,
+        "category": "anime",
+        "category_ms": 167.2
+      },
+      {
+        "word": "демониц",
+        "is_relevant": "1",
+        "binary_ms": 136.4,
+        "category": "anime",
+        "category_ms": 134.7
+      },
+      {
+        "word": "образах",
+        "is_relevant": "1",
+        "binary_ms": 134.9,
+        "category": "anime",
+        "category_ms": 152.7
+      },
+      {
+        "word": "выполненные",
+        "is_relevant": "1",
+        "binary_ms": 141.2,
+        "category": "anime",
+        "category_ms": 155.0
+      },
+      {
+        "word": "аниме",
+        "is_relevant": "1",
+        "binary_ms": 135.7,
+        "category": "anime",
+        "category_ms": 152.6
+      },
+      {
+        "word": "Каждое",
+        "is_relevant": "1",
+        "binary_ms": 132.4,
+        "category": "hair_color",
+        "category_ms": 149.4
+      },
+      {
+        "word": "описание",
+        "is_relevant": "1",
+        "binary_ms": 138.0,
+        "category": "anime",
+        "category_ms": 136.1
+      },
+      {
+        "word": "содержит",
+        "is_relevant": "1",
+        "binary_ms": 138.8,
+        "category": "anime",
+        "category_ms": 132.5
+      },
+      {
+        "word": "глаз",
+        "is_relevant": "1",
+        "binary_ms": 139.7,
+        "category": "eye_color",
+        "category_ms": 157.1
+      },
+      {
+        "word": "явные",
+        "is_relevant": "1",
+        "binary_ms": 138.3,
+        "category": "anime",
+        "category_ms": 153.1
+      },
+      {
+        "word": "маркеры",
+        "is_relevant": "1",
+        "binary_ms": 134.9,
+        "category": "anime",
+        "category_ms": 155.0
+      },
+      {
+        "word": "демоническую",
+        "is_relevant": "1",
+        "binary_ms": 137.7,
+        "category": "anime",
+        "category_ms": 153.4
+      },
+      {
+        "word": "лесная",
+        "is_relevant": "1",
+        "binary_ms": 142.9,
+        "category": "anime",
+        "category_ms": 156.3
+      },
+      {
+        "word": "Темно-бордовый",
+        "is_relevant": "1",
+        "binary_ms": 134.7,
+        "category": "hair_color",
+        "category_ms": 149.5
+      },
+      {
+        "word": "огненно-оранжевыми",
+        "is_relevant": "1",
+        "binary_ms": 133.5,
+        "category": "hair_color",
+        "category_ms": 173.1
+      },
+      {
+        "word": "кончиками",
+        "is_relevant": "1",
+        "binary_ms": 131.8,
+        "category": "hair_color",
+        "category_ms": 162.8
+      },
+      {
+        "word": "Ярко-янтарный",
+        "is_relevant": "1",
+        "binary_ms": 136.1,
+        "category": "hair_color",
+        "category_ms": 167.8
+      },
+      {
+        "word": "вертикальными",
+        "is_relevant": "1",
+        "binary_ms": 140.9,
+        "category": "hair_color",
+        "category_ms": 171.5
+      },
+      {
+        "word": "зрачками",
+        "is_relevant": "1",
+        "binary_ms": 136.6,
+        "category": "eye_color",
+        "category_ms": 153.4
+      },
+      {
+        "word": "узких",
+        "is_relevant": "1",
+        "binary_ms": 143.0,
+        "category": "anime",
+        "category_ms": 129.9
+      }
+    ]
+  },
+  "5050_27b": {
+    "unique_words": 257,
+    "positive_words": 9,
+    "binary_avg_ms": 354.9,
+    "category_avg_ms": 467.8,
+    "category_counts": {
+      "anime": 7,
+      "eye_color": 2
+    },
+    "sample_positive": [
+      {
+        "word": "демоническую",
+        "is_relevant": "1",
+        "binary_ms": 348.6,
+        "category": "anime",
+        "category_ms": 449.8
+      },
+      {
+        "word": "сущность",
+        "is_relevant": "1",
+        "binary_ms": 345.2,
+        "category": "anime",
+        "category_ms": 457.5
+      },
+      {
+        "word": "Ярко-янтарный",
+        "is_relevant": "1",
+        "binary_ms": 333.0,
+        "category": "eye_color",
+        "category_ms": 504.5
+      },
+      {
+        "word": "поддерживая",
+        "is_relevant": "1",
+        "binary_ms": 342.8,
+        "category": "anime",
+        "category_ms": 467.6
+      },
+      {
+        "word": "Демонические",
+        "is_relevant": "1",
+        "binary_ms": 358.6,
+        "category": "anime",
+        "category_ms": 471.9
+      },
+      {
+        "word": "янтарный",
+        "is_relevant": "1",
+        "binary_ms": 348.4,
+        "category": "eye_color",
+        "category_ms": 496.0
+      },
+      {
+        "word": "дворянин",
+        "is_relevant": "1",
+        "binary_ms": 340.0,
+        "category": "anime",
+        "category_ms": 450.9
+      },
+      {
+        "word": "высокий",
+        "is_relevant": "1",
+        "binary_ms": 328.4,
+        "category": "anime",
+        "category_ms": 462.4
+      },
+      {
+        "word": "боевой",
+        "is_relevant": "1",
+        "binary_ms": 358.7,
+        "category": "anime",
+        "category_ms": 449.6
+      }
+    ]
+  }
+}

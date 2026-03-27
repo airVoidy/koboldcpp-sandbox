@@ -1,0 +1,7 @@
+card_template(slack_channel)
+  add_slot(@slack_channel, title, label:"Channel")
+  add_slot(@slack_channel, tags, label:"Pinned")
+  add_slot(@slack_channel, group, label:"Messages")
+  add_slot(@slack_channel, thread, label:"Chat", mode:"flat", parent:"s_3")
+  add_slot(@slack_channel, reactions, label:"reactions", parent:"s_3")
+  add_slot(@slack_channel, buttons, label:"actions", items:[reply,thread,react,pin])

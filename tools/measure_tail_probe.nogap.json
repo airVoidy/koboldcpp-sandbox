@@ -1,0 +1,711 @@
+{
+  "generator_url": "http://localhost:5001",
+  "analyzer_url": "http://192.168.1.15:5050",
+  "text": "Нужен промпт для портрета персонажа: женщина-демон с уникальным цветом глаз, длинными серебряными волосами, уверенной позой, именем Лиара, без повторов деталей. Стиль иллюстративный, фон минималистичный, выражение лица спокойное.",
+  "stream": {
+    "first_token_ms": 365,
+    "total_ms": 3634,
+    "chunk_count": 106,
+    "text": "<think>\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Task:** Extract candidate entities (ENTITIES) from the user's request text.\n    *   **Input Text:** \"Нужен промпт для портрета персонажа: женщина-демон с уникальным цветом глаз, длинными серебряными волосами, уверенной позой, именем Лиара, без повторов деталей. Стиль иллюстративный, фон минималистичный, выражение лица спокойное.\" (Need a prompt for a character portrait: female demon with unique eye color, long silver hair, confident pose, name Liara, without detail repetitions. Style illustrative, background minimalist, facial expression calm.)\n    *   **Output Format:** Short list, one element per line, no explanations.\n    *   **Language:** Russian (matching the input).\n\n2.  **Identify Potential Entities:**\n    *   Scan the text for nouns, names, specific attributes that represent entities in the context of an image generation prompt.\n    *   \"женщина-демон\" (female demon) - Character type.\n    *   \"уникальным цветом глаз\" (unique eye color)"
+  },
+  "ticks": [
+    {
+      "t_ms": 365,
+      "chunk_index": 1,
+      "delta": "<think>",
+      "total_chars": 7
+    },
+    {
+      "t_ms": 425,
+      "chunk_index": 2,
+      "delta": "\nThinking Process",
+      "total_chars": 24
+    },
+    {
+      "t_ms": 455,
+      "chunk_index": 3,
+      "delta": ":\n\n1",
+      "total_chars": 28
+    },
+    {
+      "t_ms": 485,
+      "chunk_index": 4,
+      "delta": ". ",
+      "total_chars": 30
+    },
+    {
+      "t_ms": 516,
+      "chunk_index": 5,
+      "delta": " **Analyze",
+      "total_chars": 40
+    },
+    {
+      "t_ms": 546,
+      "chunk_index": 6,
+      "delta": " the Request",
+      "total_chars": 52
+    },
+    {
+      "t_ms": 576,
+      "chunk_index": 7,
+      "delta": ":**\n",
+      "total_chars": 56
+    },
+    {
+      "t_ms": 606,
+      "chunk_index": 8,
+      "delta": "    *  ",
+      "total_chars": 63
+    },
+    {
+      "t_ms": 636,
+      "chunk_index": 9,
+      "delta": " **Task",
+      "total_chars": 70
+    },
+    {
+      "t_ms": 667,
+      "chunk_index": 10,
+      "delta": ":** Extract",
+      "total_chars": 81
+    },
+    {
+      "t_ms": 697,
+      "chunk_index": 11,
+      "delta": " candidate entities (",
+      "total_chars": 102
+    },
+    {
+      "t_ms": 727,
+      "chunk_index": 12,
+      "delta": "ENTITIES",
+      "total_chars": 110
+    },
+    {
+      "t_ms": 757,
+      "chunk_index": 13,
+      "delta": ") from the",
+      "total_chars": 120
+    },
+    {
+      "t_ms": 788,
+      "chunk_index": 14,
+      "delta": " user's",
+      "total_chars": 127
+    },
+    {
+      "t_ms": 818,
+      "chunk_index": 15,
+      "delta": " request text",
+      "total_chars": 140
+    },
+    {
+      "t_ms": 848,
+      "chunk_index": 16,
+      "delta": ".\n   ",
+      "total_chars": 145
+    },
+    {
+      "t_ms": 878,
+      "chunk_index": 17,
+      "delta": " *  ",
+      "total_chars": 149
+    },
+    {
+      "t_ms": 909,
+      "chunk_index": 18,
+      "delta": " **Input Text",
+      "total_chars": 162
+    },
+    {
+      "t_ms": 939,
+      "chunk_index": 19,
+      "delta": ":** \"",
+      "total_chars": 167
+    },
+    {
+      "t_ms": 969,
+      "chunk_index": 20,
+      "delta": "Нуж",
+      "total_chars": 170
+    },
+    {
+      "t_ms": 999,
+      "chunk_index": 21,
+      "delta": "ен промп",
+      "total_chars": 178
+    },
+    {
+      "t_ms": 1029,
+      "chunk_index": 22,
+      "delta": "т для",
+      "total_chars": 183
+    },
+    {
+      "t_ms": 1059,
+      "chunk_index": 23,
+      "delta": " портрета",
+      "total_chars": 192
+    },
+    {
+      "t_ms": 1090,
+      "chunk_index": 24,
+      "delta": " персонажа",
+      "total_chars": 202
+    },
+    {
+      "t_ms": 1121,
+      "chunk_index": 25,
+      "delta": ": женщина",
+      "total_chars": 211
+    },
+    {
+      "t_ms": 1151,
+      "chunk_index": 26,
+      "delta": "-демон",
+      "total_chars": 217
+    },
+    {
+      "t_ms": 1181,
+      "chunk_index": 27,
+      "delta": " с уника",
+      "total_chars": 225
+    },
+    {
+      "t_ms": 1211,
+      "chunk_index": 28,
+      "delta": "льным цветом глаз",
+      "total_chars": 242
+    },
+    {
+      "t_ms": 1242,
+      "chunk_index": 29,
+      "delta": ", дли",
+      "total_chars": 247
+    },
+    {
+      "t_ms": 1272,
+      "chunk_index": 30,
+      "delta": "нными серебряными",
+      "total_chars": 264
+    },
+    {
+      "t_ms": 1303,
+      "chunk_index": 31,
+      "delta": " волосами",
+      "total_chars": 273
+    },
+    {
+      "t_ms": 1333,
+      "chunk_index": 32,
+      "delta": ", уверен",
+      "total_chars": 281
+    },
+    {
+      "t_ms": 1363,
+      "chunk_index": 33,
+      "delta": "ной позой",
+      "total_chars": 290
+    },
+    {
+      "t_ms": 1393,
+      "chunk_index": 34,
+      "delta": ", именем",
+      "total_chars": 298
+    },
+    {
+      "t_ms": 1424,
+      "chunk_index": 35,
+      "delta": " Лиара,",
+      "total_chars": 305
+    },
+    {
+      "t_ms": 1456,
+      "chunk_index": 36,
+      "delta": " без пов",
+      "total_chars": 313
+    },
+    {
+      "t_ms": 1487,
+      "chunk_index": 37,
+      "delta": "торов деталей.",
+      "total_chars": 327
+    },
+    {
+      "t_ms": 1519,
+      "chunk_index": 38,
+      "delta": " Стиль",
+      "total_chars": 333
+    },
+    {
+      "t_ms": 1550,
+      "chunk_index": 39,
+      "delta": " иллюстрат",
+      "total_chars": 343
+    },
+    {
+      "t_ms": 1581,
+      "chunk_index": 40,
+      "delta": "ивный",
+      "total_chars": 348
+    },
+    {
+      "t_ms": 1613,
+      "chunk_index": 41,
+      "delta": ", фон",
+      "total_chars": 353
+    },
+    {
+      "t_ms": 1644,
+      "chunk_index": 42,
+      "delta": " минимали",
+      "total_chars": 362
+    },
+    {
+      "t_ms": 1674,
+      "chunk_index": 43,
+      "delta": "стич",
+      "total_chars": 366
+    },
+    {
+      "t_ms": 1705,
+      "chunk_index": 44,
+      "delta": "ный,",
+      "total_chars": 370
+    },
+    {
+      "t_ms": 1735,
+      "chunk_index": 45,
+      "delta": " выражение лица",
+      "total_chars": 385
+    },
+    {
+      "t_ms": 1765,
+      "chunk_index": 46,
+      "delta": " спокойное",
+      "total_chars": 395
+    },
+    {
+      "t_ms": 1797,
+      "chunk_index": 47,
+      "delta": ".\" (",
+      "total_chars": 399
+    },
+    {
+      "t_ms": 1827,
+      "chunk_index": 48,
+      "delta": "Need a",
+      "total_chars": 405
+    },
+    {
+      "t_ms": 1858,
+      "chunk_index": 49,
+      "delta": " prompt for",
+      "total_chars": 416
+    },
+    {
+      "t_ms": 1888,
+      "chunk_index": 50,
+      "delta": " a character portrait",
+      "total_chars": 437
+    },
+    {
+      "t_ms": 1919,
+      "chunk_index": 51,
+      "delta": ": female",
+      "total_chars": 445
+    },
+    {
+      "t_ms": 1950,
+      "chunk_index": 52,
+      "delta": " demon with",
+      "total_chars": 456
+    },
+    {
+      "t_ms": 1979,
+      "chunk_index": 53,
+      "delta": " unique eye",
+      "total_chars": 467
+    },
+    {
+      "t_ms": 2010,
+      "chunk_index": 54,
+      "delta": " color, long",
+      "total_chars": 479
+    },
+    {
+      "t_ms": 2040,
+      "chunk_index": 55,
+      "delta": " silver hair",
+      "total_chars": 491
+    },
+    {
+      "t_ms": 2072,
+      "chunk_index": 56,
+      "delta": ", confident pose",
+      "total_chars": 507
+    },
+    {
+      "t_ms": 2102,
+      "chunk_index": 57,
+      "delta": ", name",
+      "total_chars": 513
+    },
+    {
+      "t_ms": 2132,
+      "chunk_index": 58,
+      "delta": " Liara",
+      "total_chars": 519
+    },
+    {
+      "t_ms": 2162,
+      "chunk_index": 59,
+      "delta": ", without",
+      "total_chars": 528
+    },
+    {
+      "t_ms": 2192,
+      "chunk_index": 60,
+      "delta": " detail repetitions",
+      "total_chars": 547
+    },
+    {
+      "t_ms": 2223,
+      "chunk_index": 61,
+      "delta": ". Style illustr",
+      "total_chars": 562
+    },
+    {
+      "t_ms": 2253,
+      "chunk_index": 62,
+      "delta": "ative,",
+      "total_chars": 568
+    },
+    {
+      "t_ms": 2283,
+      "chunk_index": 63,
+      "delta": " background minimalist",
+      "total_chars": 590
+    },
+    {
+      "t_ms": 2313,
+      "chunk_index": 64,
+      "delta": ", facial expression",
+      "total_chars": 609
+    },
+    {
+      "t_ms": 2343,
+      "chunk_index": 65,
+      "delta": " calm.)",
+      "total_chars": 616
+    },
+    {
+      "t_ms": 2403,
+      "chunk_index": 66,
+      "delta": "\n    *   **",
+      "total_chars": 627
+    },
+    {
+      "t_ms": 2433,
+      "chunk_index": 67,
+      "delta": "Output Format",
+      "total_chars": 640
+    },
+    {
+      "t_ms": 2464,
+      "chunk_index": 68,
+      "delta": ":** Short list",
+      "total_chars": 654
+    },
+    {
+      "t_ms": 2494,
+      "chunk_index": 69,
+      "delta": ", one",
+      "total_chars": 659
+    },
+    {
+      "t_ms": 2524,
+      "chunk_index": 70,
+      "delta": " element per line",
+      "total_chars": 676
+    },
+    {
+      "t_ms": 2555,
+      "chunk_index": 71,
+      "delta": ", no",
+      "total_chars": 680
+    },
+    {
+      "t_ms": 2586,
+      "chunk_index": 72,
+      "delta": " explanations.",
+      "total_chars": 694
+    },
+    {
+      "t_ms": 2616,
+      "chunk_index": 73,
+      "delta": "\n    *",
+      "total_chars": 700
+    },
+    {
+      "t_ms": 2646,
+      "chunk_index": 74,
+      "delta": "   **",
+      "total_chars": 705
+    },
+    {
+      "t_ms": 2676,
+      "chunk_index": 75,
+      "delta": "Language:**",
+      "total_chars": 716
+    },
+    {
+      "t_ms": 2707,
+      "chunk_index": 76,
+      "delta": " Russian (matching",
+      "total_chars": 734
+    },
+    {
+      "t_ms": 2736,
+      "chunk_index": 77,
+      "delta": " the input",
+      "total_chars": 744
+    },
+    {
+      "t_ms": 2766,
+      "chunk_index": 78,
+      "delta": ").\n\n2",
+      "total_chars": 749
+    },
+    {
+      "t_ms": 2797,
+      "chunk_index": 79,
+      "delta": ". ",
+      "total_chars": 751
+    },
+    {
+      "t_ms": 2827,
+      "chunk_index": 80,
+      "delta": " **Ident",
+      "total_chars": 759
+    },
+    {
+      "t_ms": 2858,
+      "chunk_index": 81,
+      "delta": "ify Potential Entities",
+      "total_chars": 781
+    },
+    {
+      "t_ms": 2889,
+      "chunk_index": 82,
+      "delta": ":**\n",
+      "total_chars": 785
+    },
+    {
+      "t_ms": 2919,
+      "chunk_index": 83,
+      "delta": "    *  ",
+      "total_chars": 792
+    },
+    {
+      "t_ms": 2949,
+      "chunk_index": 84,
+      "delta": " Scan the",
+      "total_chars": 801
+    },
+    {
+      "t_ms": 2979,
+      "chunk_index": 85,
+      "delta": " text for nouns",
+      "total_chars": 816
+    },
+    {
+      "t_ms": 3009,
+      "chunk_index": 86,
+      "delta": ", names",
+      "total_chars": 823
+    },
+    {
+      "t_ms": 3039,
+      "chunk_index": 87,
+      "delta": ", specific",
+      "total_chars": 833
+    },
+    {
+      "t_ms": 3069,
+      "chunk_index": 88,
+      "delta": " attributes that represent",
+      "total_chars": 859
+    },
+    {
+      "t_ms": 3099,
+      "chunk_index": 89,
+      "delta": " entities in",
+      "total_chars": 871
+    },
+    {
+      "t_ms": 3129,
+      "chunk_index": 90,
+      "delta": " the context of",
+      "total_chars": 886
+    },
+    {
+      "t_ms": 3160,
+      "chunk_index": 91,
+      "delta": " an image",
+      "total_chars": 895
+    },
+    {
+      "t_ms": 3190,
+      "chunk_index": 92,
+      "delta": " generation prompt",
+      "total_chars": 913
+    },
+    {
+      "t_ms": 3221,
+      "chunk_index": 93,
+      "delta": ".\n   ",
+      "total_chars": 918
+    },
+    {
+      "t_ms": 3251,
+      "chunk_index": 94,
+      "delta": " *  ",
+      "total_chars": 922
+    },
+    {
+      "t_ms": 3281,
+      "chunk_index": 95,
+      "delta": " \"женщина",
+      "total_chars": 931
+    },
+    {
+      "t_ms": 3311,
+      "chunk_index": 96,
+      "delta": "-де",
+      "total_chars": 934
+    },
+    {
+      "t_ms": 3341,
+      "chunk_index": 97,
+      "delta": "мон\"",
+      "total_chars": 938
+    },
+    {
+      "t_ms": 3371,
+      "chunk_index": 98,
+      "delta": " (female demon",
+      "total_chars": 952
+    },
+    {
+      "t_ms": 3402,
+      "chunk_index": 99,
+      "delta": ") -",
+      "total_chars": 955
+    },
+    {
+      "t_ms": 3432,
+      "chunk_index": 100,
+      "delta": " Character type.",
+      "total_chars": 971
+    },
+    {
+      "t_ms": 3492,
+      "chunk_index": 101,
+      "delta": "\n    *   \"",
+      "total_chars": 981
+    },
+    {
+      "t_ms": 3522,
+      "chunk_index": 102,
+      "delta": "уника",
+      "total_chars": 986
+    },
+    {
+      "t_ms": 3552,
+      "chunk_index": 103,
+      "delta": "льным цветом",
+      "total_chars": 998
+    },
+    {
+      "t_ms": 3582,
+      "chunk_index": 104,
+      "delta": " глаз\" (",
+      "total_chars": 1006
+    },
+    {
+      "t_ms": 3612,
+      "chunk_index": 105,
+      "delta": "unique eye",
+      "total_chars": 1016
+    },
+    {
+      "t_ms": 3634,
+      "chunk_index": 106,
+      "delta": " color)",
+      "total_chars": 1023
+    },
+    {
+      "done": true,
+      "t_ms": 3634
+    }
+  ],
+  "probes": [
+    {
+      "word": "цвет глаз",
+      "latency_ms": 343,
+      "answer": "1",
+      "started_at_ms": 204,
+      "ended_at_ms": 548
+    },
+    {
+      "word": "Лиара",
+      "latency_ms": 329,
+      "answer": "1",
+      "started_at_ms": 548,
+      "ended_at_ms": 878
+    },
+    {
+      "word": "минималистичный фон",
+      "latency_ms": 347,
+      "answer": "1",
+      "started_at_ms": 878,
+      "ended_at_ms": 1225
+    },
+    {
+      "word": "уникальность",
+      "latency_ms": 504,
+      "answer": "0",
+      "started_at_ms": 1225,
+      "ended_at_ms": 1730
+    },
+    {
+      "word": "женщина-демон",
+      "latency_ms": 519,
+      "answer": "1",
+      "started_at_ms": 1730,
+      "ended_at_ms": 2249
+    },
+    {
+      "word": "спокойное выражение",
+      "latency_ms": 336,
+      "answer": "1",
+      "started_at_ms": 2249,
+      "ended_at_ms": 2585
+    },
+    {
+      "word": "иллюстративный стиль",
+      "latency_ms": 347,
+      "answer": "0",
+      "started_at_ms": 2585,
+      "ended_at_ms": 2932
+    },
+    {
+      "word": "повторы",
+      "latency_ms": 362,
+      "answer": "0",
+      "started_at_ms": 2932,
+      "ended_at_ms": 3294
+    }
+  ]
+}

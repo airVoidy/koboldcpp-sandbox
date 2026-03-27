@@ -1,0 +1,11 @@
+{
+  "mirc_chat": {
+    "name": "mirc_chat",
+    "slots": [
+      {"id": "s_1", "type": "title", "label": "Channel", "binding": null, "options": {}, "children": null},
+      {"id": "s_2", "type": "tags", "label": "Users Online", "binding": null, "options": {}, "children": null},
+      {"id": "s_3", "type": "thread", "label": "Messages", "binding": null, "options": {"mode": "flat"}, "children": null},
+      {"id": "s_4", "type": "buttons", "label": "actions", "binding": null, "options": {"items": ["send", "emote", "whisper"]}, "children": null}
+    ]
+  }
+}

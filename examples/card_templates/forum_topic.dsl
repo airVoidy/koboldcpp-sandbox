@@ -1,0 +1,7 @@
+card_template(forum_topic)
+  add_slot(@forum_topic, title, label:"Topic")
+  add_slot(@forum_topic, tags, label:"Category")
+  add_slot(@forum_topic, text_area, label:"Original Post")
+  add_slot(@forum_topic, reactions, label:"reactions")
+  add_slot(@forum_topic, buttons, label:"actions", items:[reply,quote,bookmark])
+  add_slot(@forum_topic, children, label:"Replies", template:"forum_reply")

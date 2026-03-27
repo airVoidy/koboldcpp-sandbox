@@ -1,0 +1,184 @@
+{
+  "timestamp": "20260325_194214",
+  "source_text": "'написать 4 описания внешности демониц в разных образах [проверить, что разные образы, разный цвет глаз, разный цвет волос, разные позы, в описании должны быть элементы, по которым даже без указания расы понятно, что перед тобой демоница, стиль: аниме, должен быть явно указан в описании]",
+  "prober": {
+    "name": "9B_prober",
+    "url": "http://192.168.1.14:5001"
+  },
+  "validator": {
+    "name": "27B_validator",
+    "url": "http://192.168.1.15:5050"
+  },
+  "entities": [
+    {
+      "word": "написать",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "описания",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "внешности",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "демониц",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "разных",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "образах",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "проверить",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "что",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "разные",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "образы",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "разный",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "цвет",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "глаз",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "волос",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "позы",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "описании",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "должны",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "быть",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "элементы",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "которым",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "даже",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "без",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "указания",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "расы",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "понятно",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "перед",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "тобой",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "демоница",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "стиль",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "аниме",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "должен",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "явно",
+      "answer": "<think>",
+      "is_entity": false
+    },
+    {
+      "word": "указан",
+      "answer": "<think>",
+      "is_entity": false
+    }
+  ],
+  "axioms": [],
+  "hypotheses": [],
+  "discovered": [],
+  "validation_27b": "<think>",
+  "elapsed_s": 5.4
+}

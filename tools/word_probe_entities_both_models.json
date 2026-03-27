@@ -1,0 +1,260 @@
+{
+  "5001_9b": {
+    "unique_words": 24,
+    "binary_avg_ms": 156.8,
+    "category_avg_ms": null,
+    "positive_words": 0,
+    "category_counts": {},
+    "rows": [
+      {
+        "word": "???",
+        "is_relevant": "0",
+        "binary_ms": 558.1
+      },
+      {
+        "word": "??????",
+        "is_relevant": "0",
+        "binary_ms": 134.3
+      },
+      {
+        "word": "????????",
+        "is_relevant": "0",
+        "binary_ms": 133.7
+      },
+      {
+        "word": "?????????",
+        "is_relevant": "0",
+        "binary_ms": 135.2
+      },
+      {
+        "word": "???????",
+        "is_relevant": "0",
+        "binary_ms": 156.0
+      },
+      {
+        "word": "?",
+        "is_relevant": "0",
+        "binary_ms": 131.2
+      },
+      {
+        "word": "???????????",
+        "is_relevant": "0",
+        "binary_ms": 155.1
+      },
+      {
+        "word": "?????",
+        "is_relevant": "0",
+        "binary_ms": 151.5
+      },
+      {
+        "word": "??????????",
+        "is_relevant": "0",
+        "binary_ms": 154.5
+      },
+      {
+        "word": "????",
+        "is_relevant": "0",
+        "binary_ms": 136.6
+      },
+      {
+        "word": "??",
+        "is_relevant": "0",
+        "binary_ms": 134.5
+      },
+      {
+        "word": "????????????",
+        "is_relevant": "0",
+        "binary_ms": 139.7
+      },
+      {
+        "word": "?????-????????",
+        "is_relevant": "0",
+        "binary_ms": 137.2
+      },
+      {
+        "word": "???????-??????????",
+        "is_relevant": "0",
+        "binary_ms": 139.1
+      },
+      {
+        "word": "????-????????",
+        "is_relevant": "0",
+        "binary_ms": 138.7
+      },
+      {
+        "word": "?????????????",
+        "is_relevant": "0",
+        "binary_ms": 137.1
+      },
+      {
+        "word": "?????-??????????",
+        "is_relevant": "0",
+        "binary_ms": 137.4
+      },
+      {
+        "word": "??-??",
+        "is_relevant": "0",
+        "binary_ms": 134.0
+      },
+      {
+        "word": "?????????-???????",
+        "is_relevant": "0",
+        "binary_ms": 137.7
+      },
+      {
+        "word": "?????????-?????",
+        "is_relevant": "0",
+        "binary_ms": 135.6
+      },
+      {
+        "word": "????????-???????",
+        "is_relevant": "0",
+        "binary_ms": 137.7
+      },
+      {
+        "word": "??????????????",
+        "is_relevant": "0",
+        "binary_ms": 138.5
+      },
+      {
+        "word": "???????????????",
+        "is_relevant": "0",
+        "binary_ms": 133.2
+      },
+      {
+        "word": "??????-???????",
+        "is_relevant": "0",
+        "binary_ms": 137.4
+      }
+    ]
+  },
+  "5050_27b": {
+    "unique_words": 24,
+    "binary_avg_ms": 356.2,
+    "category_avg_ms": null,
+    "positive_words": 0,
+    "category_counts": {},
+    "rows": [
+      {
+        "word": "???",
+        "is_relevant": "0",
+        "binary_ms": 443.7
+      },
+      {
+        "word": "??????",
+        "is_relevant": "0",
+        "binary_ms": 344.2
+      },
+      {
+        "word": "????????",
+        "is_relevant": "0",
+        "binary_ms": 357.7
+      },
+      {
+        "word": "?????????",
+        "is_relevant": "0",
+        "binary_ms": 367.2
+      },
+      {
+        "word": "???????",
+        "is_relevant": "0",
+        "binary_ms": 342.4
+      },
+      {
+        "word": "?",
+        "is_relevant": "0",
+        "binary_ms": 378.2
+      },
+      {
+        "word": "???????????",
+        "is_relevant": "0",
+        "binary_ms": 351.1
+      },
+      {
+        "word": "?????",
+        "is_relevant": "0",
+        "binary_ms": 352.3
+      },
+      {
+        "word": "??????????",
+        "is_relevant": "0",
+        "binary_ms": 354.7
+      },
+      {
+        "word": "????",
+        "is_relevant": "0",
+        "binary_ms": 353.0
+      },
+      {
+        "word": "??",
+        "is_relevant": "0",
+        "binary_ms": 358.7
+      },
+      {
+        "word": "????????????",
+        "is_relevant": "0",
+        "binary_ms": 339.7
+      },
+      {
+        "word": "?????-????????",
+        "is_relevant": "0",
+        "binary_ms": 342.4
+      },
+      {
+        "word": "???????-??????????",
+        "is_relevant": "0",
+        "binary_ms": 348.5
+      },
+      {
+        "word": "????-????????",
+        "is_relevant": "0",
+        "binary_ms": 366.9
+      },
+      {
+        "word": "?????????????",
+        "is_relevant": "0",
+        "binary_ms": 355.6
+      },
+      {
+        "word": "?????-??????????",
+        "is_relevant": "0",
+        "binary_ms": 356.9
+      },
+      {
+        "word": "??-??",
+        "is_relevant": "0",
+        "binary_ms": 358.4
+      },
+      {
+        "word": "?????????-???????",
+        "is_relevant": "0",
+        "binary_ms": 354.2
+      },
+      {
+        "word": "?????????-?????",
+        "is_relevant": "0",
+        "binary_ms": 356.6
+      },
+      {
+        "word": "????????-???????",
+        "is_relevant": "0",
+        "binary_ms": 332.4
+      },
+      {
+        "word": "??????????????",
+        "is_relevant": "0",
+        "binary_ms": 356.9
+      },
+      {
+        "word": "???????????????",
+        "is_relevant": "0",
+        "binary_ms": 339.9
+      },
+      {
+        "word": "??????-???????",
+        "is_relevant": "0",
+        "binary_ms": 336.3
+      }
+    ]
+  }
+}

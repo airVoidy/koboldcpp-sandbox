@@ -69,8 +69,10 @@ def test_workflow_run_returns_request_encoding_diagnostics(tmp_path) -> None:
 
 def test_workflow_trigger_uses_full_builtin_set(tmp_path, monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
+    import kobold_sandbox.llm_continue as llm_continue
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _PassHttpClient)
+    monkeypatch.setattr(llm_continue.httpx, "Client", _PassHttpClient)
 
     client = TestClient(create_app(str(tmp_path)))
     yaml_text = """
@@ -109,8 +111,10 @@ triggers:
 
 def test_workflow_run_async_progress_streams_thread_items(tmp_path, monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
+    import kobold_sandbox.llm_continue as llm_continue
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _PassHttpClient)
+    monkeypatch.setattr(llm_continue.httpx, "Client", _PassHttpClient)
     client = TestClient(create_app(str(tmp_path)))
     yaml_text = """
 dsl: workflow/v2

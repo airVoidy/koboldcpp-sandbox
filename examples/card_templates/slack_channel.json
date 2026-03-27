@@ -1,0 +1,17 @@
+{
+  "slack_channel": {
+    "name": "slack_channel",
+    "slots": [
+      {"id": "s_1", "type": "title", "label": "Channel", "binding": null, "options": {}, "children": null},
+      {"id": "s_2", "type": "tags", "label": "Pinned", "binding": null, "options": {}, "children": null},
+      {
+        "id": "s_3", "type": "group", "label": "Messages", "binding": null, "options": {},
+        "children": [
+          {"id": "s_4", "type": "thread", "label": "Chat", "binding": null, "options": {"mode": "flat"}, "children": null},
+          {"id": "s_5", "type": "reactions", "label": "reactions", "binding": null, "options": {}, "children": null}
+        ]
+      },
+      {"id": "s_6", "type": "buttons", "label": "actions", "binding": null, "options": {"items": ["reply", "thread", "react", "pin"]}, "children": null}
+    ]
+  }
+}

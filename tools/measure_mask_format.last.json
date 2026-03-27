@@ -1,0 +1,24 @@
+{
+  "5001_9b": {
+    "same_len": false,
+    "input_len": 900,
+    "output_len": 1156,
+    "space_matches": 0,
+    "nonspace_digit_matches": 789,
+    "bad_nonspace": 0,
+    "prefix": "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "latency_ms": 15532,
+    "label": "5001_9b"
+  },
+  "5050_27b": {
+    "same_len": false,
+    "input_len": 900,
+    "output_len": 2899,
+    "space_matches": 28,
+    "nonspace_digit_matches": 10,
+    "bad_nonspace": 779,
+    "prefix": "<think>\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: A text snippet (original).\n    *   Task: Create a mask of the same length as the original",
+    "latency_ms": 54040,
+    "label": "5050_27b"
+  }
+}

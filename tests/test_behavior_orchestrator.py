@@ -159,27 +159,46 @@ def test_llm_backend_uses_registered_client_chat_interface() -> None:
     seen: dict[str, object] = {}
 
     class FakeClient:
-        def chat(self, prompt, model=None, system_prompt=None, config=None):
-            seen["prompt"] = prompt
-            seen["system_prompt"] = system_prompt
-            seen["temperature"] = config.temperature
-            seen["max_tokens"] = config.max_tokens
-            return {"choices": [{"message": {"content": "ok"}}]}
+        base_url = "http://fake-worker"
+        timeout = 30.0
 
-        def extract_text(self, raw):
-            seen["raw"] = raw
-            return raw["choices"][0]["message"]["content"]
+    import httpx
+
+    class FakeTransport(httpx.BaseTransport):
+        def handle_request(self, request):
+            import json as _json
+            body = _json.loads(request.content)
+            seen["messages"] = body["messages"]
+            seen["temperature"] = body["temperature"]
+            seen["max_tokens"] = body["max_tokens"]
+            resp_body = _json.dumps({
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]
+            }).encode()
+            return httpx.Response(200, content=resp_body, headers={"content-type": "application/json"})
 
     backend = LLMBackend()
     backend.register("worker", FakeClient())
 
-    text = backend.call("worker", "hello", system_prompt="sys", temperature=0.7, max_tokens=123)
+    import kobold_sandbox.llm_continue as llm_mod
+    original_client = httpx.Client
+
+    def patched_client(**kwargs):
+        kwargs["transport"] = FakeTransport()
+        return original_client(**kwargs)
+
+    import unittest.mock
+    with unittest.mock.patch.object(llm_mod.httpx, "Client", patched_client):
+        text = backend.call("worker", "hello", system_prompt="sys", temperature=0.7, max_tokens=123)
 
     assert text == "ok"
-    assert seen["system_prompt"] == "sys"
     assert seen["temperature"] == 0.7
     assert seen["max_tokens"] == 123
-    assert "hello" in str(seen["prompt"])
+    # Check system prompt is in messages
+    sys_msgs = [m for m in seen["messages"] if m["role"] == "system"]
+    assert any("sys" in m["content"] for m in sys_msgs)
+    # Check user prompt is in messages
+    user_msgs = [m for m in seen["messages"] if m["role"] == "user"]
+    assert any("hello" in m["content"] for m in user_msgs)
 
 
 @pytest.mark.live

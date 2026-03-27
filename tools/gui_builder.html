@@ -653,12 +653,12 @@ body {
 <body>
 
 <div class="header">
-  <h1>Reactive Task Builder</h1>
+  <h1>GUI Builder</h1>
   <div class="header-tabs">
-    <button class="header-tab active" data-page="workflow">Workflow</button>
+    <button class="header-tab" data-page="workflow">Workflow</button>
     <button class="header-tab" data-page="atomic">Atomic Tasks</button>
     <button class="header-tab" data-page="params">Global Params</button>
-    <button class="header-tab" data-page="builder">Card Builder</button>
+    <button class="header-tab active" data-page="builder">Card Builder</button>
   </div>
   <div class="status"><span class="dot" id="dot"></span><span id="stxt">Ready</span></div>
   <div class="hdr-right">
@@ -3986,7 +3986,7 @@ onThreadMessage('(table)', (nodeId, msg) => {
 /* ================================================================
    ATOMIC TASKS — Creator Mode
    ================================================================ */
-let activePage = 'workflow';
+let activePage = 'builder';
 let atomicMessages = [];
 let atomicEntities = {};  // name -> Entity
 let atomicIdN = 0;
@@ -4100,6 +4100,7 @@ function switchPage(page) {
 document.querySelectorAll('.header-tab').forEach(tab => {
   tab.addEventListener('click', () => switchPage(tab.dataset.page));
 });
+switchPage('builder');
 
 /* --- Entity CRUD --- */
 /* Reactive triggers: "on @dep1, @dep2: action" — fires when ALL deps exist.
