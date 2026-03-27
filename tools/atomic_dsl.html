@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atomic DSL</title>
+<style>
+:root{--bg:#f4efe5;--paper:#fffaf1;--line:#d9cbb8;--ink:#221a14;--muted:#726559;--accent:#a14f25;--ok:#2e6647;--warn:#b36a18;--bad:#a12d2d;--code-bg:#201a17;--code-fg:#efe6d8;--hl:#fff3d6}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 Georgia,"Palatino Linotype",serif}
+
+/* ── top bar ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--paper);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.topbar h1{font-size:22px;white-space:nowrap}
+.topbar .spacer{flex:1}
+.topbar .info{font-size:12px;color:var(--muted)}
+
+/* ── pipeline strip ── */
+.pipeline{display:flex;gap:0;padding:10px 20px;background:#faf5ec;border-bottom:1px solid var(--line);align-items:center;flex-wrap:wrap}
+.pipe-node{padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--muted);position:relative;cursor:default;transition:all .2s}
+.pipe-node.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pipe-node.done{background:#eef7f1;color:var(--ok);border-color:#c5e0cf}
+.pipe-arrow{font-size:16px;color:var(--line);padding:0 6px}
+
+/* ── layout ── */
+.layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;max-width:1400px;margin:0 auto;padding:14px}
+
+/* ── sidebar ── */
+.side{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.card h3{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.card h3 .toggle{cursor:pointer;font-size:13px;user-select:none}
+textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fbf6ee;color:var(--ink);font:12px/1.5 "Cascadia Code",Consolas,monospace;resize:vertical}
+textarea.json-input{min-height:180px}
+textarea.json-output{min-height:120px}
+input[type=text]{width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:#fbf6ee;color:var(--ink);font:13px/1.4 inherit}
+select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fbf6ee}
+button{padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer;font:13px/1.4 inherit;transition:all .15s}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:hover{filter:brightness(.95)}
+button:disabled{opacity:.4;cursor:default}
+.btn-row{display:flex;gap:8px;margin-top:8px}
+
+/* ── main ── */
+.main{display:flex;flex-direction:column;gap:10px}
+
+/* ── table ── */
+.table-wrap{overflow-x:auto;border-radius:12px;border:1px solid var(--line);background:var(--paper)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:#f6f0e5}
+th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:6px 10px;border-bottom:1px solid #ece5d8;vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover{background:#fdf8ef}
+.type-chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-family:"Cascadia Code",Consolas,monospace;border:1px solid var(--line);background:#f6f0e5;color:var(--muted)}
+.path-cell{font-family:"Cascadia Code",Consolas,monospace;font-size:11px;color:var(--muted)}
+.value-cell{font-family:"Cascadia Code",Consolas,monospace;max-width:400px;word-break:break-all}
+.value-cell.edited{background:var(--hl);border-radius:4px}
+.value-display{cursor:pointer;padding:2px 4px;border-radius:4px;min-height:20px;border:1px solid transparent;transition:border-color .15s}
+.value-display:hover{border-color:var(--line)}
+.value-edit{width:100%;padding:4px 6px;border:1px solid var(--accent);border-radius:6px;font:12px/1.4 "Cascadia Code",Consolas,monospace;background:#fff;outline:none}
+.row-actions{display:flex;gap:4px}
+.row-actions button{padding:3px 8px;font-size:11px;border-radius:6px}
+
+/* ── patch log ── */
+.patch-log{max-height:200px;overflow-y:auto}
+.patch-item{padding:5px 8px;border-bottom:1px solid #ece5d8;font-size:12px;display:flex;gap:8px;align-items:baseline}
+.patch-item:last-child{border-bottom:none}
+.patch-target{font-family:"Cascadia Code",Consolas,monospace;color:var(--accent);font-weight:600}
+.patch-val{font-family:"Cascadia Code",Consolas,monospace;color:var(--ok)}
+.patch-reason{color:var(--muted);font-size:11px}
+
+/* ── empty state ── */
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty h2{font-size:18px;margin-bottom:6px;color:var(--ink)}
+.empty p{font-size:13px}
+
+/* ── json output ── */
+pre.json-out{background:var(--code-bg);color:var(--code-fg);padding:12px 14px;border-radius:10px;font:12px/1.5 "Cascadia Code",Consolas,monospace;overflow-x:auto;max-height:400px;white-space:pre-wrap;word-break:break-all}
+
+/* ── collapsible ── */
+.collapsed .card-body{display:none}
+
+/* ── status chip ── */
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line)}
+.chip.ok{background:#eef7f1;color:var(--ok);border-color:#c5e0cf}
+.chip.warn{background:#fbf2e6;color:var(--warn);border-color:#e8d5b5}
+
+/* ── scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Atomic DSL</h1>
+  <div class="spacer"></div>
+  <div class="info" id="statusInfo">No data loaded</div>
+</div>
+
+<div class="pipeline" id="pipeline">
+  <div class="pipe-node" data-step="input">input</div>
+  <span class="pipe-arrow">&rarr;</span>
+  <div class="pipe-node" data-step="raw_json">raw_json</div>
+  <span class="pipe-arrow">&rarr;</span>
+  <div class="pipe-node" data-step="table">table</div>
+  <span class="pipe-arrow">&rarr;</span>
+  <div class="pipe-node" data-step="patch">patch</div>
+  <span class="pipe-arrow">&rarr;</span>
+  <div class="pipe-node" data-step="resolved">resolved_json</div>
+</div>
+
+<div class="layout">
+  <!-- sidebar -->
+  <div class="side">
+    <div class="card">
+      <h3>JSON Input</h3>
+      <input type="text" id="objName" placeholder="Object name (e.g. generate.request)" value="object" style="margin-bottom:8px">
+      <textarea class="json-input" id="jsonInput" placeholder='Paste any JSON object here...
+{
+  "prompt": "Hello",
+  "temperature": 0.5,
+  "max_length": 256
+}'></textarea>
+      <div class="btn-row">
+        <button class="primary" id="btnIngest" onclick="doIngest()">Ingest</button>
+        <select id="presets" onchange="loadPreset()">
+          <option value="">Presets...</option>
+          <option value="generate">Generate request</option>
+          <option value="config">App config</option>
+          <option value="nested">Nested object</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card" id="rawCard">
+      <h3>Raw JSON <span class="toggle" onclick="toggleCard('rawCard')">&#9660;</span></h3>
+      <div class="card-body">
+        <pre class="json-out" id="rawJsonOut" style="max-height:200px;font-size:11px">-</pre>
+      </div>
+    </div>
+
+    <div class="card" id="patchCard">
+      <h3>Patch Log <span class="chip ok" id="patchCount">0</span> <span class="toggle" onclick="toggleCard('patchCard')">&#9660;</span></h3>
+      <div class="card-body">
+        <div class="patch-log" id="patchLog">
+          <div style="padding:10px;color:var(--muted);font-size:12px">No patches yet</div>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button onclick="clearPatches()" style="font-size:11px">Clear patches</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- main -->
+  <div class="main">
+    <div id="emptyState" class="card empty">
+      <h2>Paste JSON &rarr; Get Table</h2>
+      <p>Input any JSON object on the left, click Ingest to project it into an interactive table with metadata.</p>
+    </div>
+
+    <div id="tableCard" class="card" style="display:none">
+      <h3>Table <span class="chip ok" id="fieldCount">0 fields</span></h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Value</th>
+              <th>Path</th>
+              <th style="width:60px"></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="resolvedCard" class="card" style="display:none">
+      <h3>Resolved JSON <span class="toggle" onclick="toggleCard('resolvedCard')">&#9660;</span></h3>
+      <div class="card-body">
+        <div class="btn-row" style="margin-bottom:8px">
+          <button class="primary" onclick="doResolve()">Resolve</button>
+          <button onclick="copyResolved()">Copy</button>
+        </div>
+        <pre class="json-out" id="resolvedOut">Click Resolve to reconstruct JSON with patches applied</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── state ── */
+let S = {
+  rawJson: null,
+  name: 'object',
+  rows: [],
+  patches: [],
+  nodeTree: null,
+};
+
+const API = '';  // same origin
+
+/* ── presets ── */
+const PRESETS = {
+  generate: {
+    name: 'generate.request',
+    json: {
+      prompt: 'Write 4 demoness descriptions in different styles.',
+      temperature: 0.35,
+      max_length: 256,
+      model: 'local-model',
+      top_p: 0.9,
+      rep_pen: 1.1
+    }
+  },
+  config: {
+    name: 'app.config',
+    json: {
+      app_name: 'KoboldCPP Sandbox',
+      version: '0.4.2',
+      debug: false,
+      max_sessions: 8,
+      default_model: 'local-model',
+      auto_save: true
+    }
+  },
+  nested: {
+    name: 'user.profile',
+    json: {
+      name: 'Alice',
+      settings: {
+        theme: 'dark',
+        language: 'en',
+        notifications: {
+          email: true,
+          push: false,
+          frequency: 'daily'
+        }
+      },
+      scores: [95, 87, 92],
+      active: true
+    }
+  },
+};
+
+function loadPreset() {
+  const sel = document.getElementById('presets');
+  const key = sel.value;
+  if (!key) return;
+  const p = PRESETS[key];
+  document.getElementById('jsonInput').value = JSON.stringify(p.json, null, 2);
+  document.getElementById('objName').value = p.name;
+  sel.value = '';
+}
+
+/* ── ingest ── */
+async function doIngest() {
+  const raw = document.getElementById('jsonInput').value.trim();
+  if (!raw) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    alert('Invalid JSON: ' + e.message);
+    return;
+  }
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+    alert('Please provide a JSON object (not array or primitive)');
+    return;
+  }
+
+  const name = document.getElementById('objName').value.trim() || 'object';
+
+  try {
+    const resp = await fetch(API + '/api/dsl/ingest', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({json_data: parsed, name})
+    });
+    const data = await resp.json();
+    S.rawJson = parsed;
+    S.name = name;
+    S.nodeTree = data;
+    S.rows = data.children.find(c => c.node === 'table').value.rows;
+    S.patches = [];
+    renderAll();
+  } catch (e) {
+    alert('Ingest failed: ' + e.message);
+  }
+}
+
+/* ── patch ── */
+async function applyPatch(path, newValue, reason) {
+  try {
+    const resp = await fetch(API + '/api/dsl/patch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        rows: S.rows,
+        patch: {target: path, value: newValue, reason: reason || 'user_edit'}
+      })
+    });
+    const data = await resp.json();
+    S.rows = data.rows;
+    S.patches.push(data.patch_node);
+    renderAll();
+  } catch (e) {
+    alert('Patch failed: ' + e.message);
+  }
+}
+
+/* ── resolve ── */
+async function doResolve() {
+  try {
+    const resp = await fetch(API + '/api/dsl/resolve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({rows: S.rows, object_name: S.name})
+    });
+    const data = await resp.json();
+    document.getElementById('resolvedOut').textContent = JSON.stringify(data.value, null, 2);
+    setPipeStep('resolved');
+  } catch (e) {
+    alert('Resolve failed: ' + e.message);
+  }
+}
+
+function copyResolved() {
+  const text = document.getElementById('resolvedOut').textContent;
+  navigator.clipboard.writeText(text);
+}
+
+/* ── clear patches ── */
+async function clearPatches() {
+  if (!S.rawJson) return;
+  try {
+    const resp = await fetch(API + '/api/dsl/ingest', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({json_data: S.rawJson, name: S.name})
+    });
+    const data = await resp.json();
+    S.nodeTree = data;
+    S.rows = data.children.find(c => c.node === 'table').value.rows;
+    S.patches = [];
+    document.getElementById('resolvedOut').textContent = 'Click Resolve to reconstruct JSON with patches applied';
+    renderAll();
+  } catch (e) {
+    alert('Reset failed: ' + e.message);
+  }
+}
+
+/* ── render ── */
+function renderAll() {
+  renderPipeline();
+  renderRaw();
+  renderTable();
+  renderPatches();
+  renderStatus();
+
+  document.getElementById('emptyState').style.display = S.rows.length ? 'none' : '';
+  document.getElementById('tableCard').style.display = S.rows.length ? '' : 'none';
+  document.getElementById('resolvedCard').style.display = S.rows.length ? '' : 'none';
+}
+
+function renderPipeline() {
+  if (!S.rows.length) {
+    document.querySelectorAll('.pipe-node').forEach(n => n.classList.remove('active', 'done'));
+    return;
+  }
+  setPipeStep(S.patches.length ? 'patch' : 'table');
+}
+
+function setPipeStep(step) {
+  const steps = ['input', 'raw_json', 'table', 'patch', 'resolved'];
+  const idx = steps.indexOf(step);
+  document.querySelectorAll('.pipe-node').forEach(n => {
+    const si = steps.indexOf(n.dataset.step);
+    n.classList.remove('active', 'done');
+    if (si < idx) n.classList.add('done');
+    else if (si === idx) n.classList.add('active');
+  });
+}
+
+function renderRaw() {
+  document.getElementById('rawJsonOut').textContent = S.rawJson ? JSON.stringify(S.rawJson, null, 2) : '-';
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  if (!S.rows.length) { tbody.innerHTML = ''; return; }
+
+  const patchedPaths = new Set(S.patches.map(p => p.target));
+
+  tbody.innerHTML = S.rows.map((row, i) => {
+    const edited = patchedPaths.has(row.path);
+    const valStr = row.value === null ? 'null'
+      : typeof row.value === 'object' ? JSON.stringify(row.value)
+      : String(row.value);
+    return `<tr>
+      <td><strong>${esc(row.field)}</strong></td>
+      <td><span class="type-chip">${esc(row.type)}</span></td>
+      <td class="value-cell${edited ? ' edited' : ''}">
+        <div class="value-display" id="vd_${i}" onclick="startEdit(${i})">${esc(valStr)}</div>
+      </td>
+      <td class="path-cell">${esc(row.path)}</td>
+      <td class="row-actions">
+        <button title="${escAttr(row.group || 'root')}">${esc((row.group || 'root').slice(0, 1).toUpperCase())}</button>
+        <button onclick="startEdit(${i})" title="Edit">&#9998;</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('fieldCount').textContent = S.rows.length + ' fields';
+}
+
+function renderPatches() {
+  const log = document.getElementById('patchLog');
+  document.getElementById('patchCount').textContent = S.patches.length;
+  if (!S.patches.length) {
+    log.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:12px">No patches yet</div>';
+    return;
+  }
+  log.innerHTML = S.patches.map(p => {
+    const valStr = p.value === null ? 'null' : typeof p.value === 'object' ? JSON.stringify(p.value) : String(p.value);
+    return `<div class="patch-item">
+      <span class="patch-target">${esc(p.target)}</span>
+      <span>&larr;</span>
+      <span class="patch-val">${esc(valStr)}</span>
+      ${p.meta && p.meta.reason ? '<span class="patch-reason">(' + esc(p.meta.reason) + ')</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderStatus() {
+  const info = document.getElementById('statusInfo');
+  if (!S.rows.length) { info.textContent = 'No data loaded'; return; }
+  info.textContent = S.name + ' | ' + S.rows.length + ' fields | ' + S.patches.length + ' patches';
+}
+
+/* ── inline edit ── */
+let editingIdx = -1;
+
+function startEdit(idx) {
+  if (editingIdx === idx) return;
+  if (editingIdx >= 0) cancelEdit();
+  editingIdx = idx;
+  const row = S.rows[idx];
+  const vd = document.getElementById('vd_' + idx);
+  const valStr = row.value === null ? '' : typeof row.value === 'object' ? JSON.stringify(row.value) : String(row.value);
+  vd.innerHTML = `<input class="value-edit" id="ve_${idx}" value="${escAttr(valStr)}"
+    onkeydown="editKey(event, ${idx})" onblur="commitEdit(${idx})">`;
+  const input = document.getElementById('ve_' + idx);
+  input.focus();
+  input.select();
+}
+
+function editKey(e, idx) {
+  if (e.key === 'Enter') { e.preventDefault(); commitEdit(idx); }
+  if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+}
+
+function commitEdit(idx) {
+  if (editingIdx !== idx) return;
+  const input = document.getElementById('ve_' + idx);
+  if (!input) return;
+  const row = S.rows[idx];
+  const newVal = parseValue(input.value, row.type);
+  editingIdx = -1;
+  if (newVal !== row.value) {
+    applyPatch(row.path, newVal, 'user_edit');
+  } else {
+    renderTable();
+  }
+}
+
+function cancelEdit() {
+  editingIdx = -1;
+  renderTable();
+}
+
+function parseValue(str, type) {
+  if (str === '' || str === 'null') return null;
+  if (type === 'int') { const n = parseInt(str, 10); return isNaN(n) ? str : n; }
+  if (type === 'float') { const n = parseFloat(str); return isNaN(n) ? str : n; }
+  if (type === 'bool') return str.toLowerCase() === 'true' || str === '1';
+  if (type === 'list' || type === 'dict') { try { return JSON.parse(str); } catch { return str; } }
+  return str;
+}
+
+/* ── helpers ── */
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function escAttr(s) { return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function toggleCard(id) { document.getElementById(id).classList.toggle('collapsed'); }
+
+/* ── keyboard shortcut: Ctrl+Enter to ingest ── */
+document.getElementById('jsonInput').addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); doIngest(); }
+});
+</script>
+</body>
+</html>

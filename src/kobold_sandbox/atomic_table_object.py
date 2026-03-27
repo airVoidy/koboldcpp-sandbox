@@ -143,3 +143,28 @@ class KoboldGenerateSchema(TableObjectSchema):
         ObjectField("top_p", float, 0.9, ["sampler.top_p", "nucleus"], group="sampler"),
         ObjectField("typical", float, 1.0, ["sampler.typical", "typical_p"], group="sampler"),
     ]
+
+
+class NativeGenerateRequestSchema(TableObjectSchema):
+    """Table projection for the actual native generate request used by this repo."""
+
+    schema_name = "native_generate_request"
+    object_path = "generate.request"
+    _fields = [
+        ObjectField("prompt", str, "", ["generate.prompt", "request.prompt"], group="content", required=True),
+        ObjectField(
+            "temperature",
+            float,
+            0.2,
+            ["generate.temperature", "request.temperature", "gen.temp"],
+            group="sampling",
+        ),
+        ObjectField(
+            "max_length",
+            int,
+            None,
+            ["generate.max_length", "request.max_length"],
+            group="limits",
+        ),
+        ObjectField("model", str, None, ["generate.model", "request.model"], group="routing"),
+    ]

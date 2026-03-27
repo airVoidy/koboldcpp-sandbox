@@ -343,3 +343,7 @@ The Atomic table object model should be:
 - ready for later cell macros and tags
 
 It is meant to be a practical mid-layer between raw payloads and richer Atomic DSL flows.
+
+Cell-level macro wrapping and tagged cell conventions are described separately in:
+
+- `ATOMIC_TABLE_CELL_MACROS_V0_1.md`
