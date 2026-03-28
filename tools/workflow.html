@@ -945,9 +945,9 @@ const cardTemplates = {
         { label: 'check', event: 'worker_check', color: 'accent3' },
         { label: 'generate', event: 'comfyui_gen', color: 'accent2' },
       ]},
-      { type: 'list', bind: 'entities_list', label: 'Entities', color: 'accent3' },
-      { type: 'list', bind: 'axioms_list', label: 'Axioms', color: 'green' },
-      { type: 'list', bind: 'hypotheses_list', label: 'Hypotheses', color: 'yellow' },
+      { type: 'list', bind: 'entities_list', label: 'Entities', color: 'accent3', ds: 'entities.$id' },
+      { type: 'list', bind: 'axioms_list', label: 'Axioms', color: 'green', ds: 'axioms.$id' },
+      { type: 'list', bind: 'hypotheses_list', label: 'Hypotheses', color: 'yellow', ds: 'hypotheses.$id' },
       { type: 'reactions', bind: 'reactions' },
       { type: 'thread', bind: 'thread' },
       { type: 'actions', items: [
@@ -1026,6 +1026,7 @@ function createNode(opts) {
     if (!(k in nd)) nd[k] = v;
   }
   nodes[id] = nd;
+
   saveNodes();
   return id;
 }
@@ -1261,6 +1262,11 @@ function renderNode(nd) {
     <span class="node-icon">${tpl.icon || '#'}</span>
     <span class="node-title">${esc(nd.title)}</span>`;
   if (childCount) hdr += `<span class="node-count">${childCount} sub</span>`;
+  const pPatches = pendingPatchesForNode(nd.id);
+  if (pPatches.length) {
+    const pCount = pPatches.reduce((n, p) => n + Object.values(p.resolved).filter(s => s === 'pending' || s === 'unknown').length, 0);
+    if (pCount) hdr += `<span class="node-badge" style="background:var(--yellow);color:#000;font-size:9px;padding:0 4px;border-radius:3px;margin-left:2px;" title="${pCount} pending patch(es)">${pCount} patch</span>`;
+  }
   hdr += `<span class="node-badge ${nd.status}">${nd.status}</span>`;
   hdr += `<span class="node-time">${nd.time || ''}</span>`;
   hdr += '</div>';
@@ -1271,6 +1277,25 @@ function renderNode(nd) {
   // render slots from template
   for (const slot of tpl.slots) {
     body += renderSlot(slot, nd);
+  }
+
+  // pending patches
+  if (pPatches.length) {
+    body += `<div class="node-patches" style="margin-top:4px;padding:4px 6px;background:var(--surface2);border-radius:3px;font-size:10px;">`;
+    body += `<div style="color:var(--yellow);font-weight:600;margin-bottom:2px;">Pending patches:</div>`;
+    for (const p of pPatches) {
+      for (const [k, status] of Object.entries(p.resolved)) {
+        if (status !== 'pending' && status !== 'unknown') continue;
+        const preview = typeof p.data[k] === 'string' ? p.data[k].slice(0, 60) : JSON.stringify(p.data[k]).slice(0, 60);
+        body += `<div style="display:flex;align-items:center;gap:4px;margin:1px 0;">`;
+        body += `<span style="color:var(--accent3);">${esc(k)}</span>`;
+        body += `<span style="color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(preview)}</span>`;
+        body += `<button class="btn sm" data-patch-accept="${p.id}" data-patch-key="${esc(k)}" style="font-size:9px;padding:0 4px;color:var(--green);">&#10003;</button>`;
+        body += `<button class="btn sm" data-patch-reject="${p.id}" data-patch-key="${esc(k)}" style="font-size:9px;padding:0 4px;color:var(--red);">&#10007;</button>`;
+        body += `</div>`;
+      }
+    }
+    body += `</div>`;
   }
 
   body += '</div>';
@@ -1358,6 +1383,20 @@ function renderNode(nd) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       dispatchNodeEvent(nd.id, btn.dataset.event);
+    });
+  });
+
+  // wire patch accept/reject buttons
+  div.querySelectorAll('[data-patch-accept]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      acceptPatch(parseInt(btn.dataset.patchAccept), btn.dataset.patchKey);
+    });
+  });
+  div.querySelectorAll('[data-patch-reject]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rejectPatch(parseInt(btn.dataset.patchReject), btn.dataset.patchKey);
     });
   });
 
@@ -1790,20 +1829,20 @@ function workflowVarsToTree(vars) {
     rootId = createNode({ card: 'root', title: rootTitle, status: 'active' });
   }
   const root = nodes[rootId];
-  const tpl = cardTemplates[root.card] || cardTemplates.root;
+  const tpl = resolveTemplate(root.card);
 
-  // Match DS keys to template slots by name (exact or strip _list suffix)
+  // Build patch data: match vars to slot binds (exact or strip _list suffix)
+  const patchData = {};
   for (const slot of tpl.slots) {
     if (!slot.bind) continue;
-    // Find matching var: exact bind name, or bind without _list suffix
     const dsKey = vars[slot.bind] !== undefined ? slot.bind
       : vars[slot.bind.replace(/_list$/, '')] !== undefined ? slot.bind.replace(/_list$/, '')
       : null;
     if (!dsKey) continue;
     const val = vars[dsKey];
 
+    // Children: expand array into child nodes, then store child ids
     if (slot.type === 'children' && Array.isArray(val)) {
-      // Create child nodes from array of objects
       const childCardType = slot.card || 'entity';
       const childTpl = cardTemplates[childCardType] || cardTemplates.entity;
       val.forEach(item => {
@@ -1812,7 +1851,6 @@ function workflowVarsToTree(vars) {
         const existingChild = root.children.find(cid => nodes[cid] && nodes[cid].title === title);
         if (!existingChild) {
           const opts = { parentId: rootId, card: childCardType, title };
-          // Copy matching fields from item into child node
           for (const cs of childTpl.slots) {
             if (!cs.bind || cs.type === 'children' || cs.type === 'actions') continue;
             if (item[cs.bind] !== undefined) opts[cs.bind] = item[cs.bind];
@@ -1823,19 +1861,24 @@ function workflowVarsToTree(vars) {
           root.children.push(cid);
         }
       });
-    } else if (slot.type === 'text' || slot.type === 'display') {
-      if (typeof val === 'string') {
-        root[slot.bind] = val;
-        if (val && slot.type === 'text') root.status = 'done';
-      }
-    } else if (slot.type === 'list') {
-      root[slot.bind] = Array.isArray(val) ? val : [];
-    } else if (slot.type === 'tags' && typeof val === 'object' && !Array.isArray(val)) {
-      root[slot.bind] = val;
+      // children handled directly, skip proposePatch for this slot
+      continue;
     }
+    patchData[dsKey] = val;
   }
-  saveNodes();
-  renderTree();
+
+  // Scoped dsSet for each var
+  for (const [k, v] of Object.entries(vars)) {
+    dsSet(k + '.' + rootId, v);  // scoped to root node
+  }
+
+  // Propose patch — Schema rules decide auto/manual
+  if (Object.keys(patchData).length) {
+    proposePatch(rootId, patchData, { source: 'workflow' });
+  } else {
+    saveNodes();
+    renderTree();
+  }
 }
 
 // ── Add root button ────────────────────────────────────
@@ -2054,6 +2097,8 @@ function renderTypeBody(name, tpl) {
       <input class="slot-bind" data-sf="bind" placeholder="bind" value="${esc(s.bind || '')}" />
       <input class="slot-label" data-sf="label" placeholder="label" value="${esc(s.label || '')}" />
       <select class="slot-color" data-sf="color"><option value="">color</option>${COLORS.filter(Boolean).map(c => `<option${c === (s.color||'') ? ' selected' : ''}>${c}</option>`).join('')}</select>
+      <input class="slot-ds" data-sf="ds" placeholder="ds key" value="${esc(s.ds || '')}" style="width:80px;" title="DataStore key (e.g. entities.$id)" />
+      <select class="slot-accept" data-sf="accept"><option value="">accept</option><option${s.accept === 'auto' ? ' selected' : ''}>auto</option><option${s.accept === 'manual' ? ' selected' : ''}>manual</option></select>
       <button class="slot-move" data-slot-move="up" title="Move up">&#9650;</button>
       <button class="slot-move" data-slot-move="down" title="Move down">&#9660;</button>
       <button class="slot-rm" data-slot-remove title="Remove">&times;</button>
@@ -2288,13 +2333,26 @@ try {
 
 function _saveDataStore() { try { localStorage.setItem('wf_datastore', JSON.stringify(_dataStore)); } catch(_) {} }
 
+function _notifyListeners(key, value, old) {
+  // exact match
+  if (_dsListeners[key]) {
+    _dsListeners[key].forEach(fn => { try { fn(key, value, old); } catch(e) { log('ds listener error: ' + e.message); } });
+  }
+  // wildcard: 'entities.n_0' also fires 'entities.*'
+  const dot = key.lastIndexOf('.');
+  if (dot > 0) {
+    const wildcard = key.slice(0, dot) + '.*';
+    if (_dsListeners[wildcard]) {
+      _dsListeners[wildcard].forEach(fn => { try { fn(key, value, old); } catch(e) { log('ds listener error: ' + e.message); } });
+    }
+  }
+}
+
 function dsSet(key, value) {
   const old = _dataStore[key];
   _dataStore[key] = value;
   _saveDataStore();
-  if (old !== value && _dsListeners[key]) {
-    _dsListeners[key].forEach(fn => { try { fn(key, value, old); } catch(e) { log('ds listener error: ' + e.message); } });
-  }
+  if (old !== value) _notifyListeners(key, value, old);
 }
 function dsGet(key) { return _dataStore[key]; }
 function dsOn(key, fn) {
@@ -2304,6 +2362,18 @@ function dsOn(key, fn) {
 function dsOff(key, fn) {
   if (!_dsListeners[key]) return;
   _dsListeners[key] = _dsListeners[key].filter(f => f !== fn);
+}
+function dsOnce(key, fn) {
+  const wrapper = (k, v, o) => { dsOff(key, wrapper); fn(k, v, o); };
+  dsOn(key, wrapper);
+}
+function dsMatch(pattern) {
+  // 'entities.*' → all keys starting with 'entities.'
+  if (pattern.endsWith('.*')) {
+    const prefix = pattern.slice(0, -1); // 'entities.'
+    return Object.keys(_dataStore).filter(k => k.startsWith(prefix));
+  }
+  return Object.keys(_dataStore).filter(k => k === pattern);
 }
 function dsKeys() { return Object.keys(_dataStore); }
 
@@ -2342,6 +2412,141 @@ function applyBindings() {
 
 function findDsKeyForSlot(nodeId, field) {
   return _bindings.find(b => b.node_id === nodeId && b.field === field);
+}
+
+// ── Template resolution (inheritance via patches) ────────
+function resolveTemplate(name) {
+  const tpl = cardTemplates[name];
+  if (!tpl) return cardTemplates.entity || { slots: [] };
+  if (!tpl.extends) return tpl;
+  const parent = resolveTemplate(tpl.extends);
+  const slots = JSON.parse(JSON.stringify(parent.slots || []));
+  for (const p of (tpl.patch || [])) {
+    if (p.op === 'replace') {
+      const idx = slots.findIndex(s => s.bind === p.bind);
+      if (idx >= 0) Object.assign(slots[idx], p);
+    } else if (p.op === 'add' && p.slot) {
+      slots.push(p.slot);
+    } else if (p.op === 'remove') {
+      const idx = slots.findIndex(s => s.bind === p.bind);
+      if (idx >= 0) slots.splice(idx, 1);
+    }
+  }
+  return { ...tpl, slots, icon: tpl.icon || parent.icon };
+}
+
+// ── Patch proposals & provenance ─────────────────────────
+let _pendingPatches = [];
+let _provenance = [];
+let _patchIdN = 0;
+try { _pendingPatches = JSON.parse(localStorage.getItem('wf_pending_patches') || '[]'); } catch(_) {}
+try { _provenance = JSON.parse(localStorage.getItem('wf_provenance') || '[]'); } catch(_) {}
+try { _patchIdN = Math.max(0, ..._pendingPatches.map(p => p.id || 0), ..._provenance.map(p => p.patchId || 0)) + 1; } catch(_) {}
+
+function _savePatches() { try { localStorage.setItem('wf_pending_patches', JSON.stringify(_pendingPatches)); } catch(_) {} }
+function _saveProvenance() { try { localStorage.setItem('wf_provenance', JSON.stringify(_provenance)); } catch(_) {} }
+
+function proposePatch(nodeId, data, meta = {}) {
+  const nd = nodes[nodeId];
+  if (!nd) { log('proposePatch: node ' + nodeId + ' not found'); return null; }
+  const tpl = resolveTemplate(nd.card);
+  const patchId = _patchIdN++;
+  const patch = { id: patchId, nodeId, data, meta, time: ts(), resolved: {} };
+  let anyPending = false;
+
+  for (const [key, val] of Object.entries(data)) {
+    // match slot: exact bind or bind without _list suffix
+    const slot = tpl.slots.find(s => s.bind === key || s.bind === key + '_list');
+    if (!slot) {
+      patch.resolved[key] = 'unknown';
+      anyPending = true;
+      continue;
+    }
+
+    // First iteration: known slots = auto, unknown = pending
+    const rule = slot.accept || 'auto';
+    if (rule === 'auto') {
+      nd[slot.bind] = val;
+      patch.resolved[key] = 'accepted';
+      _provenance.push({
+        patchId, nodeId, field: slot.bind, dsKey: key,
+        status: 'done', time: ts(), source: meta.source || 'proposePatch'
+      });
+    } else {
+      patch.resolved[key] = 'pending';
+      anyPending = true;
+    }
+  }
+
+  if (anyPending) {
+    _pendingPatches.push(patch);
+    _savePatches();
+  }
+  _saveProvenance();
+  saveNodes();
+  renderTree();
+  return patch;
+}
+
+function acceptPatch(patchId, key) {
+  const idx = _pendingPatches.findIndex(p => p.id === patchId);
+  if (idx < 0) return;
+  const patch = _pendingPatches[idx];
+  const nd = nodes[patch.nodeId];
+  if (!nd) return;
+  const tpl = resolveTemplate(nd.card);
+
+  if (key) {
+    // accept single key
+    const val = patch.data[key];
+    const slot = tpl.slots.find(s => s.bind === key || s.bind === key + '_list');
+    if (slot) nd[slot.bind] = val;
+    patch.resolved[key] = 'accepted';
+    _provenance.push({ patchId, nodeId: patch.nodeId, field: slot ? slot.bind : key, dsKey: key, status: 'done', time: ts(), source: 'manual' });
+  } else {
+    // accept all pending keys
+    for (const [k, status] of Object.entries(patch.resolved)) {
+      if (status !== 'pending') continue;
+      const val = patch.data[k];
+      const slot = tpl.slots.find(s => s.bind === k || s.bind === k + '_list');
+      if (slot) nd[slot.bind] = val;
+      patch.resolved[k] = 'accepted';
+      _provenance.push({ patchId, nodeId: patch.nodeId, field: slot ? slot.bind : k, dsKey: k, status: 'done', time: ts(), source: 'manual' });
+    }
+  }
+
+  // remove patch if nothing pending left
+  const stillPending = Object.values(patch.resolved).some(s => s === 'pending' || s === 'unknown');
+  if (!stillPending) _pendingPatches.splice(idx, 1);
+  _savePatches();
+  _saveProvenance();
+  saveNodes();
+  renderTree();
+}
+
+function rejectPatch(patchId, key) {
+  const idx = _pendingPatches.findIndex(p => p.id === patchId);
+  if (idx < 0) return;
+  const patch = _pendingPatches[idx];
+  if (key) {
+    patch.resolved[key] = 'rejected';
+    _provenance.push({ patchId, nodeId: patch.nodeId, field: key, dsKey: key, status: 'rejected', time: ts(), source: 'manual' });
+  } else {
+    for (const [k, status] of Object.entries(patch.resolved)) {
+      if (status === 'pending' || status === 'unknown') {
+        patch.resolved[k] = 'rejected';
+        _provenance.push({ patchId, nodeId: patch.nodeId, field: k, dsKey: k, status: 'rejected', time: ts(), source: 'manual' });
+      }
+    }
+  }
+  const stillPending = Object.values(patch.resolved).some(s => s === 'pending' || s === 'unknown');
+  if (!stillPending) _pendingPatches.splice(idx, 1);
+  _savePatches();
+  _saveProvenance();
+}
+
+function pendingPatchesForNode(nodeId) {
+  return _pendingPatches.filter(p => p.nodeId === nodeId);
 }
 
 // ── Data Store page rendering ────────────────────────────

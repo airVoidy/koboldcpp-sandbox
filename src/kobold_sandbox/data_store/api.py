@@ -15,6 +15,10 @@ from pydantic import BaseModel
 
 from .schema import (
     ChecklistSchema,
+    Contract,
+    ContractInstance,
+    ContractSlot,
+    PatchProposal,
     RecordSchema,
     TableSchema,
     TargetSchema,
@@ -62,6 +66,29 @@ class CheckoutRequest(BaseModel):
 
 class TagRequest(BaseModel):
     name: str
+
+
+class SaveContractRequest(BaseModel):
+    name: str
+    icon: str = "#"
+    extends: str | None = None
+    slots: list[dict[str, Any]] = []
+    patch: list[dict[str, Any]] | None = None
+
+
+class InstantiateRequest(BaseModel):
+    contract: str          # contract name
+    node_id: str           # owner node id
+    slot_bind: str         # which slot to instantiate
+    value: Any = None      # initial value (or None = empty)
+    source: str | None = None
+
+
+class ProposePatchRequest(BaseModel):
+    node_id: str
+    contract: str          # contract name of the target node
+    data: dict[str, Any]
+    meta: dict[str, Any] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -264,5 +291,191 @@ def create_datastore_router(datastore_root: Path) -> APIRouter:
     @router.get("/git/current-branch")
     def git_current_branch():
         return {"branch": store.current_branch()}
+
+    # ------------------------------------------------------------------
+    # Contracts — semantic templates (Schema workscope)
+    # ------------------------------------------------------------------
+
+    _CONTRACTS_NS = "_contracts"
+    _INSTANCES_NS = "_contract_instances"
+    _PATCHES_NS = "_contract_patches"
+
+    def _ensure_contract_ns():
+        for ns in (_CONTRACTS_NS, _INSTANCES_NS, _PATCHES_NS):
+            if ns not in store.list_namespaces():
+                store.create_namespace(ns)
+
+    @router.get("/contracts")
+    def list_contracts():
+        """List all contract templates."""
+        _ensure_contract_ns()
+        entries = store.query(_CONTRACTS_NS)
+        return {
+            "contracts": {
+                k: e.value for k, e in entries.items()
+            }
+        }
+
+    @router.get("/contracts/{name}")
+    def get_contract(name: str):
+        """Get a single contract template."""
+        _ensure_contract_ns()
+        entry = store.get(_CONTRACTS_NS, name)
+        if entry is None:
+            raise HTTPException(404, f"Contract '{name}' not found")
+        return entry.value
+
+    @router.put("/contracts/{name}")
+    def save_contract(name: str, req: SaveContractRequest):
+        """Create or update a contract template."""
+        _ensure_contract_ns()
+        contract = Contract(
+            name=name,
+            icon=req.icon,
+            extends=req.extends,
+            slots=[ContractSlot.model_validate(s) for s in req.slots],
+            patch=req.patch,
+        )
+        store.set(_CONTRACTS_NS, name, contract.model_dump())
+        return {"saved": name}
+
+    @router.delete("/contracts/{name}")
+    def delete_contract(name: str):
+        """Delete a contract template."""
+        _ensure_contract_ns()
+        store.delete(_CONTRACTS_NS, name)
+        return {"deleted": name}
+
+    @router.post("/contracts/instantiate")
+    def instantiate_contract(req: InstantiateRequest):
+        """Instantiate a contract property — accept the contract for a node.
+
+        Creates a scoped DS key (e.g. axioms.n_0) and records the instance.
+        No data is created if value is None — just the binding record.
+        """
+        _ensure_contract_ns()
+        # Verify contract exists
+        entry = store.get(_CONTRACTS_NS, req.contract)
+        if entry is None:
+            raise HTTPException(404, f"Contract '{req.contract}' not found")
+        contract_data = entry.value
+
+        # Find the slot
+        slots = contract_data.get("slots", [])
+        slot = next((s for s in slots if s.get("bind") == req.slot_bind), None)
+        if slot is None:
+            raise HTTPException(400, f"Slot '{req.slot_bind}' not in contract '{req.contract}'")
+
+        ds_template = slot.get("ds")
+        if not ds_template:
+            raise HTTPException(400, f"Slot '{req.slot_bind}' has no ds template")
+
+        ds_key = ds_template.replace("$id", req.node_id)
+
+        # Record the instance
+        instance = ContractInstance(
+            contract=req.contract,
+            node_id=req.node_id,
+            ds_key=ds_key,
+            field=req.slot_bind,
+            source=req.source,
+        )
+        instance_key = f"{req.node_id}.{req.slot_bind}"
+        store.set(_INSTANCES_NS, instance_key, instance.model_dump())
+
+        # If value provided, write to the scoped data namespace
+        if req.value is not None:
+            data_ns = req.contract + "_data"
+            if data_ns not in store.list_namespaces():
+                store.create_namespace(data_ns)
+            store.set(data_ns, ds_key, req.value)
+
+        return {
+            "instance": instance.model_dump(),
+            "ds_key": ds_key,
+        }
+
+    @router.get("/contracts/instances/{node_id}")
+    def get_node_instances(node_id: str):
+        """Get all contract instances for a node."""
+        _ensure_contract_ns()
+        entries = store.query(_INSTANCES_NS, prefix=node_id + ".")
+        return {
+            "instances": {k: e.value for k, e in entries.items()}
+        }
+
+    @router.post("/contracts/propose")
+    def propose_patch(req: ProposePatchRequest):
+        """Propose data to a node — contract rules decide accept/pending.
+
+        Evaluates each key against the contract's slot accept rules.
+        Auto-accepted data is written immediately. Pending data waits.
+        """
+        _ensure_contract_ns()
+        # Load contract
+        entry = store.get(_CONTRACTS_NS, req.contract)
+        if entry is None:
+            raise HTTPException(404, f"Contract '{req.contract}' not found")
+        contract_data = entry.value
+        slots = contract_data.get("slots", [])
+
+        resolved = {}
+        accepted_data = {}
+
+        for key, val in req.data.items():
+            # Match slot: exact bind or bind without _list suffix
+            slot = next(
+                (s for s in slots if s.get("bind") == key or s.get("bind") == key + "_list"),
+                None
+            )
+            if slot is None:
+                resolved[key] = "unknown"
+                continue
+
+            rule = slot.get("accept", "auto")
+            if rule == "auto":
+                resolved[key] = "accepted"
+                accepted_data[slot["bind"]] = val
+            else:
+                resolved[key] = "pending"
+
+        # Write accepted data to instances
+        for field, val in accepted_data.items():
+            instance_key = f"{req.node_id}.{field}"
+            # Update instance value in data namespace
+            data_ns = req.contract + "_data"
+            if data_ns not in store.list_namespaces():
+                store.create_namespace(data_ns)
+            slot = next(s for s in slots if s.get("bind") == field)
+            ds_template = slot.get("ds", "")
+            ds_key = ds_template.replace("$id", req.node_id) if ds_template else f"{field}.{req.node_id}"
+            store.set(data_ns, ds_key, val)
+
+        # Store patch proposal if anything pending/unknown
+        proposal = PatchProposal(
+            node_id=req.node_id,
+            data=req.data,
+            meta=req.meta,
+            resolved=resolved,
+        )
+        has_pending = any(s in ("pending", "unknown") for s in resolved.values())
+        if has_pending:
+            patch_key = f"{req.node_id}.{proposal.created_at}"
+            store.set(_PATCHES_NS, patch_key, proposal.model_dump())
+
+        return {
+            "resolved": resolved,
+            "pending": has_pending,
+            "proposal": proposal.model_dump(),
+        }
+
+    @router.get("/contracts/patches/{node_id}")
+    def get_pending_patches(node_id: str):
+        """Get pending patch proposals for a node."""
+        _ensure_contract_ns()
+        entries = store.query(_PATCHES_NS, prefix=node_id + ".")
+        return {
+            "patches": {k: e.value for k, e in entries.items()}
+        }
 
     return router
