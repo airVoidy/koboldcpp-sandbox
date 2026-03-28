@@ -1000,26 +1000,32 @@ function saveNodes() { try { localStorage.setItem('wf_nodes', JSON.stringify(nod
 
 function createNode(opts) {
   const id = 'n_' + (_nodeIdN++);
-  nodes[id] = {
+  const cardType = opts.card || 'entity';
+  const tpl = cardTemplates[cardType] || cardTemplates.entity;
+  const nd = {
     id,
     parentId: opts.parentId || null,
-    card: opts.card || 'entity',
+    card: cardType,
     title: opts.title || 'Untitled',
     status: opts.status || 'pending',
-    tags: opts.tags || {},
-    answer: opts.answer || '',
-    answerThink: opts.answerThink || '',
-    entities_list: opts.entities_list || [],
-    axioms_list: opts.axioms_list || [],
-    hypotheses_list: opts.hypotheses_list || [],
-    reactions: opts.reactions || [],
-    thread: opts.thread || [],
-    children: opts.children || [],
     time: ts(),
     collapsed: false,
     threadOpen: false,
     _listOpen: {},
   };
+  // Initialize fields from template slots (no hardcoded field names)
+  for (const slot of tpl.slots) {
+    if (!slot.bind) continue;
+    const t = slot.type;
+    const def = t === 'tags' ? {} : t === 'text' || t === 'display' ? '' : [];
+    nd[slot.bind] = opts[slot.bind] ?? def;
+    if (t === 'text') nd[slot.bind + 'Think'] = opts[slot.bind + 'Think'] || '';
+  }
+  // Extra fields from opts (e.g. imageUrl)
+  for (const [k, v] of Object.entries(opts)) {
+    if (!(k in nd)) nd[k] = v;
+  }
+  nodes[id] = nd;
   saveNodes();
   return id;
 }
@@ -1196,15 +1202,35 @@ function renderVarsFull() {
   for (const k of keys) {
     let val = lastVars[k];
     const isObj = typeof val === 'object';
-    if (isObj) val = JSON.stringify(val, null, 2);
-    const display = String(val).length > 300 ? String(val).slice(0, 300) + '...' : String(val);
+    const full = isObj ? JSON.stringify(val, null, 2) : String(val);
+    const short = full.length > 120 ? full.slice(0, 120) + '...' : full;
+    const needsExpand = full.length > 120;
+    const uid = 'var_' + k.replace(/\W/g, '_');
     html += `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:4px 8px;color:var(--accent3);vertical-align:top;white-space:nowrap;font-size:11px;width:1%;">${esc(k)}</td>
-      <td style="padding:4px 8px;white-space:pre-wrap;word-break:break-word;font-size:11px;">${isObj ? '<pre style="margin:0;font-size:11px;">' + esc(display) + '</pre>' : esc(display)}</td>
-    </tr>`;
+      <td style="padding:4px 8px;white-space:pre-wrap;word-break:break-word;font-size:11px;">`;
+    if (needsExpand) {
+      html += `<span data-short="${uid}">${isObj ? '<pre style="margin:0;font-size:11px;">' + esc(short) + '</pre>' : esc(short)}</span>`;
+      html += `<span data-full="${uid}" style="display:none">${isObj ? '<pre style="margin:0;font-size:11px;">' + esc(full) + '</pre>' : esc(full)}</span>`;
+      html += ` <button class="btn-expand" data-toggle="${uid}" style="font-size:9px;color:var(--accent);background:none;border:none;cursor:pointer;text-decoration:underline;">show all</button>`;
+    } else {
+      html += isObj ? '<pre style="margin:0;font-size:11px;">' + esc(full) + '</pre>' : esc(full);
+    }
+    html += `</td></tr>`;
   }
   html += '</table>';
   el.innerHTML = html;
+  el.querySelectorAll('[data-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const uid = btn.dataset.toggle;
+      const s = el.querySelector(`[data-short="${uid}"]`);
+      const f = el.querySelector(`[data-full="${uid}"]`);
+      const showing = f.style.display !== 'none';
+      s.style.display = showing ? '' : 'none';
+      f.style.display = showing ? 'none' : '';
+      btn.textContent = showing ? 'show all' : 'collapse';
+    });
+  });
 }
 
 // ── Tree rendering ─────────────────────────────────────
@@ -1685,30 +1711,39 @@ document.getElementById('settings-overlay').addEventListener('click', (e) => {
 function serializeNode(nd, indent) {
   indent = indent || 0;
   const pad = '  '.repeat(indent);
+  const tpl = cardTemplates[nd.card] || cardTemplates.entity;
   let lines = [];
   lines.push(`${pad}- card: ${nd.card}`);
   lines.push(`${pad}  title: ${JSON.stringify(nd.title)}`);
   lines.push(`${pad}  status: ${nd.status}`);
-  if (nd.answer) lines.push(`${pad}  answer: ${JSON.stringify(nd.answer.slice(0, 200) + (nd.answer.length > 200 ? '...' : ''))}`);
-  const tags = nd.tags || {};
-  if (Object.keys(tags).length) lines.push(`${pad}  tags: ${JSON.stringify(tags)}`);
-  // lists
-  for (const key of ['entities_list', 'axioms_list', 'hypotheses_list']) {
-    const arr = nd[key] || [];
-    if (arr.length) {
-      lines.push(`${pad}  ${key}:`);
-      arr.forEach(item => {
-        const txt = typeof item === 'string' ? item : (item.title || item.name || JSON.stringify(item));
-        lines.push(`${pad}    - ${JSON.stringify(txt)}`);
-      });
+  // Serialize bound slots from template (no hardcoded field names)
+  for (const slot of tpl.slots) {
+    if (!slot.bind) continue;
+    const val = nd[slot.bind];
+    if (val === undefined || val === null) continue;
+    if (slot.type === 'text' || slot.type === 'display') {
+      if (val) lines.push(`${pad}  ${slot.bind}: ${JSON.stringify(String(val).slice(0, 200) + (String(val).length > 200 ? '...' : ''))}`);
+    } else if (slot.type === 'tags') {
+      if (typeof val === 'object' && Object.keys(val).length) lines.push(`${pad}  ${slot.bind}: ${JSON.stringify(val)}`);
+    } else if (slot.type === 'list') {
+      const arr = Array.isArray(val) ? val : [];
+      if (arr.length) {
+        lines.push(`${pad}  ${slot.bind}:`);
+        arr.forEach(item => {
+          const txt = typeof item === 'string' ? item : (item.title || item.name || item.text || JSON.stringify(item));
+          lines.push(`${pad}    - ${JSON.stringify(txt)}`);
+        });
+      }
+    } else if (slot.type === 'thread') {
+      const arr = Array.isArray(val) ? val : [];
+      if (arr.length) lines.push(`${pad}  ${slot.bind}: ${arr.length} messages`);
+    } else if (slot.type === 'children') {
+      const children = (Array.isArray(val) ? val : []).map(cid => nodes[cid]).filter(Boolean);
+      if (children.length) {
+        lines.push(`${pad}  children:`);
+        children.forEach(child => lines.push(serializeNode(child, indent + 2)));
+      }
     }
-  }
-  if (nd.thread && nd.thread.length) lines.push(`${pad}  thread: ${nd.thread.length} messages`);
-  // children
-  const children = (nd.children || []).map(cid => nodes[cid]).filter(Boolean);
-  if (children.length) {
-    lines.push(`${pad}  children:`);
-    children.forEach(child => lines.push(serializeNode(child, indent + 2)));
   }
   return lines.join('\n');
 }
@@ -1743,14 +1778,11 @@ function clearTree() {
   log('tree cleared');
 }
 
-// ── Wire workflow results to tree ──────────────────────
+// ── Wire workflow results to tree (template-driven) ────
 function workflowVarsToTree(vars) {
-  // If workflow produced structured output, create/update tree nodes
   if (!vars) return;
-  // Simple: create a root card from workflow results
   const rootTitle = vars.input ? String(vars.input).slice(0, 60) : 'Workflow result';
   const roots = Object.values(nodes).filter(n => !n.parentId);
-  // Find or create root for this run
   let rootId;
   if (roots.length && roots[roots.length - 1].status === 'active') {
     rootId = roots[roots.length - 1].id;
@@ -1758,25 +1790,49 @@ function workflowVarsToTree(vars) {
     rootId = createNode({ card: 'root', title: rootTitle, status: 'active' });
   }
   const root = nodes[rootId];
-  if (vars.answer) { root.answer = vars.answer; root.status = 'done'; }
-  if (vars.entities) root.entities_list = Array.isArray(vars.entities) ? vars.entities : [];
-  if (vars.axioms) root.axioms_list = Array.isArray(vars.axioms) ? vars.axioms : [];
-  if (vars.hypotheses) root.hypotheses_list = Array.isArray(vars.hypotheses) ? vars.hypotheses : [];
-  if (vars.entity_nodes && Array.isArray(vars.entity_nodes)) {
-    vars.entity_nodes.forEach(ent => {
-      const existingChild = root.children.find(cid => nodes[cid] && nodes[cid].title === (ent.title || ent.name));
-      if (!existingChild) {
-        const cid = createNode({
-          parentId: rootId,
-          card: 'entity',
-          title: ent.title || ent.name || 'Entity',
-          status: ent.answer ? 'done' : 'pending',
-          answer: ent.answer || '',
-          tags: ent.tags || {},
-        });
-        root.children.push(cid);
+  const tpl = cardTemplates[root.card] || cardTemplates.root;
+
+  // Match DS keys to template slots by name (exact or strip _list suffix)
+  for (const slot of tpl.slots) {
+    if (!slot.bind) continue;
+    // Find matching var: exact bind name, or bind without _list suffix
+    const dsKey = vars[slot.bind] !== undefined ? slot.bind
+      : vars[slot.bind.replace(/_list$/, '')] !== undefined ? slot.bind.replace(/_list$/, '')
+      : null;
+    if (!dsKey) continue;
+    const val = vars[dsKey];
+
+    if (slot.type === 'children' && Array.isArray(val)) {
+      // Create child nodes from array of objects
+      const childCardType = slot.card || 'entity';
+      const childTpl = cardTemplates[childCardType] || cardTemplates.entity;
+      val.forEach(item => {
+        if (typeof item !== 'object') return;
+        const title = item.title || item.name || Object.values(item)[0] || 'Entity';
+        const existingChild = root.children.find(cid => nodes[cid] && nodes[cid].title === title);
+        if (!existingChild) {
+          const opts = { parentId: rootId, card: childCardType, title };
+          // Copy matching fields from item into child node
+          for (const cs of childTpl.slots) {
+            if (!cs.bind || cs.type === 'children' || cs.type === 'actions') continue;
+            if (item[cs.bind] !== undefined) opts[cs.bind] = item[cs.bind];
+          }
+          const textSlot = childTpl.slots.find(s => s.type === 'text');
+          if (textSlot && opts[textSlot.bind]) opts.status = 'done';
+          const cid = createNode(opts);
+          root.children.push(cid);
+        }
+      });
+    } else if (slot.type === 'text' || slot.type === 'display') {
+      if (typeof val === 'string') {
+        root[slot.bind] = val;
+        if (val && slot.type === 'text') root.status = 'done';
       }
-    });
+    } else if (slot.type === 'list') {
+      root[slot.bind] = Array.isArray(val) ? val : [];
+    } else if (slot.type === 'tags' && typeof val === 'object' && !Array.isArray(val)) {
+      root[slot.bind] = val;
+    }
   }
   saveNodes();
   renderTree();
@@ -1827,7 +1883,78 @@ function saveChatFlow() {
 
 const SLOT_TYPES = ['tags','text','list','thread','reactions','actions','children'];
 const COLORS = ['','accent','accent2','accent3','green','red','orange','yellow'];
-const STEP_TYPES = ['input','generator','verifier','render','branch','transform'];
+// ── FieldMap DSL defaults ──
+const DEFAULT_FIELDMAP = `# Field Mapping DSL
+fieldmap title
+  title: title
+  name: name
+  status: status
+  type: type
+  time: time
+  children: children
+  tags: tags
+
+fieldmap tags
+  tags: tags
+
+fieldmap text_area
+  text: answer
+  fallback: question
+  think: answerThink
+  textStatus: answerStatus
+  open: answerOpen
+
+fieldmap image
+  url: imageUrl
+
+fieldmap buttons
+
+fieldmap thread
+  items: thread
+  open: threadOpen
+
+fieldmap data_table
+  areas: data_areas
+
+fieldmap reactions
+  items: reactions
+
+fieldmap list
+
+fieldmap form
+  fields: questionForm
+
+fieldmap group
+
+fieldmap children
+  items: children
+  cardTemplate: card_template`;
+
+let fieldMapDsl = '';
+try { fieldMapDsl = localStorage.getItem('wf_fieldmap_dsl') || DEFAULT_FIELDMAP; } catch(_) { fieldMapDsl = DEFAULT_FIELDMAP; }
+
+// Schema checkpoints: named snapshots of {cardTemplates, fieldMapDsl, treeDsl}
+let schemaCheckpoints = {};
+try { schemaCheckpoints = JSON.parse(localStorage.getItem('wf_schema_checkpoints') || '{}'); } catch(_) {}
+
+function saveFieldMap() { try { localStorage.setItem('wf_fieldmap_dsl', fieldMapDsl); } catch(_) {} }
+function saveCheckpoints() { try { localStorage.setItem('wf_schema_checkpoints', JSON.stringify(schemaCheckpoints)); } catch(_) {} }
+
+function parseFieldMapDsl(text) {
+  const maps = {};
+  let current = null;
+  for (const line of text.split('\n')) {
+    const trimmed = line.replace(/#.*$/, '').trimEnd();
+    if (!trimmed) continue;
+    const fm = trimmed.match(/^fieldmap\s+(\w+)/);
+    if (fm) { current = fm[1]; maps[current] = {}; continue; }
+    if (current && trimmed.match(/^\s+\w+:/)) {
+      const kv = trimmed.trim().match(/^(\w+):\s*(.+)/);
+      if (kv) maps[current][kv[1]] = kv[2].trim();
+    }
+  }
+  return maps;
+}
 
 // ── render schema page ──
 function renderSchemaPage() {
@@ -2036,147 +2163,105 @@ function wireSlotEditors(container) {
   });
 }
 
-// ── Chat Flow panel ──
+// ── FieldMap + Checkpoints panel ──
 function renderFlowPanel() {
   const el = document.getElementById('schema-flow');
-  let html = `<h3>Chat Flow <button class="btn sm" id="btnAddStep">+ Step</button> <button class="btn sm primary" id="btnFlowToYaml">Save as YAML</button></h3>`;
+  let html = `<h3>Field Map <button class="btn sm primary" id="btnApplyFieldMap">Apply</button> <button class="btn sm" id="btnResetFieldMap">Reset</button></h3>`;
 
-  if (!chatFlow.length) {
-    html += `<div style="color:var(--text-dim); font-size:11px; padding:8px;">No steps yet. Add steps to define the message processing pipeline.</div>`;
+  // FieldMap DSL editor
+  html += `<textarea id="fieldmap-editor" spellcheck="false" style="flex:1; resize:none; border:1px solid var(--border); padding:6px; font-size:11px; line-height:1.3; min-height:200px; background:var(--bg); color:var(--text); font-family:inherit; border-radius:3px;">${esc(fieldMapDsl)}</textarea>`;
+
+  // Parsed preview
+  const parsed = parseFieldMapDsl(fieldMapDsl);
+  html += `<div style="margin-top:6px; padding:4px 6px; background:var(--bg); border:1px solid var(--border); border-radius:3px; font-size:10px; color:var(--text-dim); max-height:80px; overflow-y:auto;">`;
+  html += Object.entries(parsed).map(([slot, fields]) => {
+    const flds = Object.entries(fields).map(([k, v]) => `${k}:${v}`).join(', ');
+    return `<span style="color:var(--green);">${esc(slot)}</span> ${esc(flds) || '(empty)'}`;
+  }).join('<br>');
+  html += `</div>`;
+
+  // Checkpoints section
+  html += `<h3 style="margin-top:10px;">Checkpoints <button class="btn sm" id="btnSaveCheckpoint">Save</button></h3>`;
+  const cpNames = Object.keys(schemaCheckpoints);
+  if (cpNames.length) {
+    html += cpNames.map(name =>
+      `<div class="flow-step" style="padding:4px 8px;">
+        <span style="flex:1; font-size:11px;">${esc(name)}</span>
+        <button class="btn sm" data-cp-load="${esc(name)}">Load</button>
+        <button class="step-rm" data-cp-del="${esc(name)}">&times;</button>
+      </div>`
+    ).join('');
+  } else {
+    html += `<div style="color:var(--text-dim); font-size:11px; padding:4px;">No checkpoints. Save current schema as a named checkpoint.</div>`;
   }
-
-  chatFlow.forEach((step, i) => {
-    html += `<div class="flow-step" data-step-idx="${i}">
-      <button class="step-move" data-step-move="up" title="Move up">&#9650;</button>
-      <button class="step-move" data-step-move="down" title="Move down">&#9660;</button>
-      <select class="step-type" data-stepf="type">${STEP_TYPES.map(t => `<option${t === step.type ? ' selected' : ''}>${t}</option>`).join('')}</select>
-      <input class="step-name" data-stepf="name" placeholder="name" value="${esc(step.name || '')}" />
-      <span class="step-arrow">&#9654;</span>
-      <input class="step-worker" data-stepf="worker" placeholder="worker" value="${esc(step.worker || '')}" />
-      <span style="color:var(--text-dim);">$</span>
-      <input class="step-var" data-stepf="output" placeholder="var" value="${esc(step.output || '')}" />
-      ${step.type === 'branch' ? `<input style="width:80px;" data-stepf="condition" placeholder="condition" value="${esc(step.condition || '')}" />` : ''}
-      ${step.type === 'render' ? `<select data-stepf="card" style="width:60px;">${Object.keys(cardTemplates).map(c => `<option${c === (step.card||'') ? ' selected' : ''}>${c}</option>`).join('')}</select>` : ''}
-      <button class="step-rm" data-step-remove title="Remove">&times;</button>
-    </div>`;
-  });
 
   el.innerHTML = html;
 
-  // wire add step
-  const btnAdd = document.getElementById('btnAddStep');
-  if (btnAdd) btnAdd.addEventListener('click', () => {
-    chatFlow.push({ type: 'generator', name: 'step_' + chatFlow.length, worker: 'generator', output: 'result' });
-    saveChatFlow();
+  // wire apply
+  document.getElementById('btnApplyFieldMap').addEventListener('click', () => {
+    fieldMapDsl = document.getElementById('fieldmap-editor').value;
+    saveFieldMap();
     renderFlowPanel();
-    log('added flow step');
+    log('fieldmap applied');
   });
 
-  // wire save as YAML
-  const btnYaml = document.getElementById('btnFlowToYaml');
-  if (btnYaml) btnYaml.addEventListener('click', () => {
-    const yaml = flowToYaml();
-    pushUndo('flow → YAML');
-    document.getElementById('rs-editor').value = yaml;
-    log('flow exported to YAML');
+  // wire reset
+  document.getElementById('btnResetFieldMap').addEventListener('click', () => {
+    fieldMapDsl = DEFAULT_FIELDMAP;
+    saveFieldMap();
+    renderFlowPanel();
+    log('fieldmap reset to default');
   });
 
-  // wire step fields
-  el.querySelectorAll('.flow-step').forEach(row => {
-    const idx = parseInt(row.dataset.stepIdx);
+  // wire save checkpoint
+  document.getElementById('btnSaveCheckpoint').addEventListener('click', () => {
+    const name = prompt('Checkpoint name:');
+    if (!name) return;
+    schemaCheckpoints[name] = {
+      cardTemplates: JSON.parse(JSON.stringify(cardTemplates)),
+      fieldMapDsl: document.getElementById('fieldmap-editor').value,
+      treeDsl: typeof exportTreeDSL === 'function' ? document.getElementById('tree-dsl-editor')?.value || '' : '',
+      time: ts(),
+    };
+    saveCheckpoints();
+    renderFlowPanel();
+    log(`checkpoint saved: ${name}`);
+  });
 
-    row.querySelectorAll('[data-stepf]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const field = inp.dataset.stepf;
-        chatFlow[idx][field] = inp.value;
-        saveChatFlow();
-        if (field === 'type') renderFlowPanel(); // re-render for conditional fields
-      });
+  // wire load/delete checkpoints
+  el.querySelectorAll('[data-cp-load]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.cpLoad;
+      const cp = schemaCheckpoints[name];
+      if (!cp) return;
+      // restore cardTemplates
+      if (cp.cardTemplates) {
+        for (const k of Object.keys(cardTemplates)) delete cardTemplates[k];
+        Object.assign(cardTemplates, cp.cardTemplates);
+        saveCardTemplates();
+      }
+      // restore fieldmap
+      if (cp.fieldMapDsl) { fieldMapDsl = cp.fieldMapDsl; saveFieldMap(); }
+      // restore tree DSL
+      if (cp.treeDsl) {
+        const treeEditor = document.getElementById('tree-dsl-editor');
+        if (treeEditor) treeEditor.value = cp.treeDsl;
+      }
+      renderSchemaPage();
+      log(`checkpoint loaded: ${name}`);
     });
+  });
 
-    // move
-    row.querySelectorAll('[data-step-move]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const dir = btn.dataset.stepMove === 'up' ? -1 : 1;
-        const newIdx = idx + dir;
-        if (newIdx < 0 || newIdx >= chatFlow.length) return;
-        [chatFlow[idx], chatFlow[newIdx]] = [chatFlow[newIdx], chatFlow[idx]];
-        saveChatFlow();
-        renderFlowPanel();
-      });
-    });
-
-    // remove
-    const rmBtn = row.querySelector('[data-step-remove]');
-    if (rmBtn) rmBtn.addEventListener('click', () => {
-      chatFlow.splice(idx, 1);
-      saveChatFlow();
+  el.querySelectorAll('[data-cp-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.cpDel;
+      if (!confirm(`Delete checkpoint "${name}"?`)) return;
+      delete schemaCheckpoints[name];
+      saveCheckpoints();
       renderFlowPanel();
-      log('removed flow step');
+      log(`checkpoint deleted: ${name}`);
     });
   });
-}
-
-// ── Flow ↔ YAML ──
-function flowToYaml() {
-  let lines = ['dsl: workflow/v2', 'flow:'];
-  for (const step of chatFlow) {
-    switch (step.type) {
-      case 'input':
-        lines.push(`  - input -> $${step.output || 'input'}:`);
-        lines.push(`      tag: ${step.name || 'input'}`);
-        break;
-      case 'generator':
-        lines.push(`  - ${step.worker || 'generator'} -> $${step.output || 'answer'}:`);
-        lines.push(`      prompt: $${step.name === 'step_0' ? 'input' : (step.name || 'input')}`);
-        lines.push(`      tag: ${step.name || 'generate'}`);
-        break;
-      case 'verifier':
-        lines.push(`  - ${step.worker || 'verifier'} -> $${step.output || 'verdict'}:`);
-        lines.push(`      prompt: "Verify: $${step.name || 'answer'}"`);
-        lines.push(`      tag: ${step.name || 'verify'}`);
-        break;
-      case 'render':
-        lines.push(`  - emit -> $${step.output || 'card'}:`);
-        lines.push(`      card: ${step.card || 'root'}`);
-        lines.push(`      tag: ${step.name || 'render'}`);
-        break;
-      case 'branch':
-        lines.push(`  - branch:`);
-        lines.push(`      if: ${step.condition || '$verdict == pass'}`);
-        lines.push(`      tag: ${step.name || 'branch'}`);
-        break;
-      case 'transform':
-        lines.push(`  - transform -> $${step.output || 'result'}:`);
-        lines.push(`      expr: ${step.name || 'identity'}`);
-        lines.push(`      tag: ${step.name || 'transform'}`);
-        break;
-    }
-  }
-  return lines.join('\n');
-}
-
-function yamlToFlow(yamlText) {
-  // best-effort parse: extract steps from flow array
-  const steps = [];
-  const flowMatch = yamlText.match(/flow:\s*\n([\s\S]*?)(?:\n\w|\n?$)/);
-  if (!flowMatch) return steps;
-  const lines = flowMatch[1].split('\n');
-  for (const line of lines) {
-    const m = line.match(/^\s+-\s+(\w+)\s*->\s*\$(\w+)/);
-    if (m) {
-      const role = m[1];
-      const output = m[2];
-      let type = 'generator';
-      if (role === 'input') type = 'input';
-      else if (role === 'emit') type = 'render';
-      else if (role.includes('verif')) type = 'verifier';
-      steps.push({ type, name: role, worker: role, output });
-    }
-    const bm = line.match(/^\s+-\s+branch:/);
-    if (bm) steps.push({ type: 'branch', name: 'branch', output: '' });
-  }
-  return steps;
 }
 
 // hook: when switchPage to schema, render
@@ -2193,10 +2278,20 @@ switchPage = function(page) {
 // Listeners fire when a key changes.
 const _dataStore = {};
 const _dsListeners = {};  // {key: [fn, ...]}
+// Load persisted DataStore (unwrap legacy {value,dtype,chain} format)
+try {
+  const s = JSON.parse(localStorage.getItem('wf_datastore') || '{}');
+  for (const [k, v] of Object.entries(s)) {
+    _dataStore[k] = (v && typeof v === 'object' && 'value' in v && !Array.isArray(v)) ? v.value : v;
+  }
+} catch(_) {}
+
+function _saveDataStore() { try { localStorage.setItem('wf_datastore', JSON.stringify(_dataStore)); } catch(_) {} }
 
 function dsSet(key, value) {
   const old = _dataStore[key];
   _dataStore[key] = value;
+  _saveDataStore();
   if (old !== value && _dsListeners[key]) {
     _dsListeners[key].forEach(fn => { try { fn(key, value, old); } catch(e) { log('ds listener error: ' + e.message); } });
   }
@@ -2260,16 +2355,38 @@ function renderDataTab() {
   for (const k of keys) {
     const v = dsGet(k);
     const dtype = Array.isArray(v) ? (v.length && typeof v[0] === 'object' ? 'array_of_objects' : 'array') : typeof v === 'object' && v !== null ? 'object' : 'scalar';
-    const display = typeof v === 'string' ? esc(v.slice(0, 120)) : esc(JSON.stringify(v).slice(0, 120));
+    const full = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+    const short = full.length > 120 ? full.slice(0, 120) + '...' : full;
+    const needsExpand = full.length > 120;
+    const uid = 'ds_' + k.replace(/\W/g, '_');
     const bound = _bindings.filter(b => b.ds_key === k).map(b => b.node_id + '.' + b.field).join(', ');
     h += `<tr style="border-bottom:1px solid var(--border);">`;
-    h += `<td style="padding:3px 6px;color:var(--accent3);font-weight:600;">${esc(k)}</td>`;
-    h += `<td style="padding:3px 6px;"><span style="background:var(--surface2);padding:1px 4px;border-radius:3px;font-size:9px;">${dtype}</span></td>`;
-    h += `<td style="padding:3px 6px;white-space:pre-wrap;max-width:300px;overflow:hidden;">${display}${bound ? '<br><span style="color:var(--green);font-size:9px;">→ ' + esc(bound) + '</span>' : ''}</td>`;
-    h += `</tr>`;
+    h += `<td style="padding:3px 6px;color:var(--accent3);font-weight:600;vertical-align:top;">${esc(k)}</td>`;
+    h += `<td style="padding:3px 6px;vertical-align:top;"><span style="background:var(--surface2);padding:1px 4px;border-radius:3px;font-size:9px;">${dtype}</span></td>`;
+    h += `<td style="padding:3px 6px;white-space:pre-wrap;word-break:break-word;">`;
+    if (needsExpand) {
+      h += `<span data-short="${uid}">${esc(short)}</span>`;
+      h += `<span data-full="${uid}" style="display:none"><pre style="margin:0;font-size:11px;">${esc(full)}</pre></span>`;
+      h += ` <button class="btn-expand" data-toggle="${uid}" style="font-size:9px;color:var(--accent);background:none;border:none;cursor:pointer;text-decoration:underline;">show all</button>`;
+    } else {
+      h += esc(full);
+    }
+    if (bound) h += `<br><span style="color:var(--green);font-size:9px;">→ ${esc(bound)}</span>`;
+    h += `</td></tr>`;
   }
   h += '</table>';
   el.innerHTML = h;
+  el.querySelectorAll('[data-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const uid = btn.dataset.toggle;
+      const s = el.querySelector(`[data-short="${uid}"]`);
+      const f = el.querySelector(`[data-full="${uid}"]`);
+      const showing = f.style.display !== 'none';
+      s.style.display = showing ? '' : 'none';
+      f.style.display = showing ? 'none' : '';
+      btn.textContent = showing ? 'show all' : 'collapse';
+    });
+  });
 }
 
 // ── Bindings tab rendering ──────────────────────────────
