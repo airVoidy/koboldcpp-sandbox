@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Workflow</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #1a1b26;
+  --surface: #24283b;
+  --surface2: #2f3349;
+  --border: #3b4261;
+  --text: #c0caf5;
+  --text-dim: #565f89;
+  --accent: #7aa2f7;
+  --accent2: #bb9af7;
+  --accent3: #7dcfff;
+  --green: #9ece6a;
+  --red: #f7768e;
+  --orange: #ff9e64;
+  --yellow: #e0af68;
+}
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:'Consolas','Monaco','Courier New',monospace; font-size:13px; overflow:hidden; }
+
+/* ── header ── */
+.header { display:flex; align-items:center; padding:0 12px; height:36px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; gap:8px; }
+.header h1 { font-size:14px; font-weight:600; color:var(--accent); white-space:nowrap; }
+.header-tabs { display:flex; gap:0; margin-left:16px; }
+.header-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--text-dim); padding:6px 14px; font-family:inherit; font-size:12px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:1px; }
+.header-tab:hover { color:var(--text); }
+.header-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.header-tab .tab-layer { font-size:9px; opacity:.6; }
+.hdr-status { display:flex; align-items:center; gap:5px; margin-left:12px; }
+.hdr-status .dot { width:7px; height:7px; border-radius:50%; }
+.hdr-status .dot.ok { background:var(--green); }
+.hdr-status .dot.busy { background:var(--orange); animation:pulse .8s infinite; }
+.hdr-status .dot.idle { background:var(--text-dim); }
+.hdr-status .dot.error { background:var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.hdr-status span { font-size:11px; color:var(--text-dim); }
+.hdr-right { margin-left:auto; display:flex; gap:4px; align-items:center; }
+
+/* ── layout ── */
+#app { display:flex; flex-direction:column; height:100%; }
+#main { display:flex; flex:1; min-height:0; }
+#sidebar { width:200px; min-width:140px; border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--surface); flex-shrink:0; }
+#center { flex:1; display:flex; flex-direction:column; min-width:0; }
+#right-sidebar { width:340px; min-width:200px; border-left:1px solid var(--border); display:flex; flex-direction:column; background:var(--surface); flex-shrink:0; transition:width .15s; overflow:hidden; }
+#right-sidebar.collapsed { width:0; min-width:0; border:none; padding:0; }
+
+/* ── sidebar ── */
+#sidebar h3 { padding:8px 10px 4px; font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; }
+.sidebar-section { padding:4px 8px; }
+#worker-list { flex:1; overflow-y:auto; padding:2px 8px; }
+.worker-card { background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:5px 7px; margin-bottom:3px; font-size:11px; display:flex; align-items:center; gap:5px; }
+.worker-card .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.worker-card .dot.ok { background:var(--green); }
+.worker-card .dot.fail { background:var(--red); }
+.worker-card .dot.unknown { background:var(--text-dim); }
+.worker-card .info { flex:1; min-width:0; }
+.worker-card .url { color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; font-size:10px; }
+.worker-card .role-input { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:1px 4px; width:72px; font-size:10px; font-family:inherit; border-radius:2px; margin-top:1px; }
+.worker-card .btn-x { background:none; border:none; color:var(--red); cursor:pointer; font-size:13px; padding:0 2px; }
+.add-row { display:flex; gap:3px; }
+.add-row input { flex:1; min-width:0; font-size:11px; padding:3px 5px; }
+.add-row button { font-size:11px; padding:3px 8px; }
+
+/* ── inputs & buttons ── */
+input, textarea, select { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 6px; font-family:inherit; font-size:12px; border-radius:3px; outline:none; }
+input:focus, textarea:focus { border-color:var(--accent); }
+button, .btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:4px 10px; font-family:inherit; font-size:12px; border-radius:3px; cursor:pointer; white-space:nowrap; }
+button:hover, .btn:hover { background:var(--border); }
+button.primary { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+button.primary:hover { opacity:0.85; }
+button.sm { font-size:10px; padding:2px 7px; }
+
+/* ── feed ── */
+#feed { flex:1; overflow-y:auto; padding:8px 10px; }
+.msg { margin-bottom:5px; padding:5px 7px; border-radius:4px; border-left:3px solid var(--border); background:var(--surface); }
+.msg.role-user { border-left-color:var(--accent); }
+.msg.role-assistant, .msg.role-worker { border-left-color:var(--green); }
+.msg.role-system { border-left-color:var(--orange); }
+.msg.role-verifier { border-left-color:var(--accent2); }
+.msg-header { display:flex; gap:5px; align-items:center; margin-bottom:2px; }
+.msg-role { font-size:10px; text-transform:uppercase; font-weight:bold; padding:1px 5px; border-radius:2px; }
+.role-user .msg-role { background:var(--accent); color:var(--bg); }
+.role-assistant .msg-role, .role-worker .msg-role { background:var(--green); color:var(--bg); }
+.role-system .msg-role { background:var(--orange); color:var(--bg); }
+.role-verifier .msg-role { background:var(--accent2); color:var(--bg); }
+.msg-name { color:var(--text-dim); font-size:11px; }
+.msg-tag { font-size:10px; color:var(--accent3); background:var(--bg); padding:0 4px; border-radius:2px; }
+.msg-content { white-space:pre-wrap; word-break:break-word; line-height:1.4; font-size:12px; }
+.msg-think { margin-top:3px; }
+.msg-think summary { color:var(--text-dim); font-size:11px; cursor:pointer; }
+.msg-think pre { background:var(--bg); padding:4px 6px; border-radius:3px; font-size:11px; white-space:pre-wrap; max-height:200px; overflow-y:auto; margin-top:2px; color:var(--text-dim); }
+
+/* ── input bar ── */
+#input-bar { padding:6px 10px; border-top:1px solid var(--border); display:flex; gap:5px; background:var(--surface); flex-shrink:0; }
+#input-bar textarea { flex:1; resize:none; min-height:28px; max-height:100px; font-size:12px; }
+#input-bar button { align-self:flex-end; }
+
+/* ── right sidebar internals ── */
+.rs-tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
+.rs-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--text-dim); padding:5px 10px; font-family:inherit; font-size:11px; cursor:pointer; }
+.rs-tab:hover { color:var(--text); }
+.rs-tab.active { color:var(--accent2); border-bottom-color:var(--accent2); }
+#rs-editor { flex:1; resize:none; border:none; padding:8px; font-size:12px; line-height:1.4; min-height:0; }
+#rs-nl-bar { padding:5px 8px; border-top:1px solid var(--border); display:flex; gap:4px; align-items:flex-end; flex-shrink:0; }
+#rs-nl-bar textarea { flex:1; resize:none; min-height:26px; max-height:80px; font-size:11px; padding:3px 6px; }
+#rs-ask-area { flex:0 0 30%; min-height:60px; display:flex; flex-direction:column; border-top:1px solid var(--border); }
+#rs-ask-bar { padding:4px 8px; display:flex; gap:4px; align-items:flex-end; flex-shrink:0; }
+#rs-ask-bar textarea { flex:1; resize:none; min-height:24px; max-height:60px; font-size:11px; padding:3px 6px; }
+#rs-ask-chat { flex:1; overflow-y:auto; padding:4px 8px; font-size:11px; }
+.ask-msg { margin-bottom:4px; padding:3px 6px; border-radius:3px; }
+.ask-msg.ask-user { background:var(--surface2); color:var(--accent); }
+.ask-msg.ask-assistant { background:var(--bg); color:var(--text); }
+.ask-msg .ask-ts { font-size:9px; color:var(--text-dim); margin-right:4px; }
+
+/* ── console ── */
+#console-panel { border-top:1px solid var(--border); background:var(--bg); max-height:130px; overflow-y:auto; flex-shrink:0; display:none; }
+#console-panel.open { display:block; }
+.console-hdr { display:flex; align-items:center; gap:6px; padding:4px 10px; font-size:10px; color:var(--text-dim); border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:1; }
+#console-entries { padding:2px 10px 4px; }
+.console-entry { font-size:11px; color:var(--text-dim); line-height:1.5; }
+.console-entry .ts { opacity:.5; margin-right:4px; }
+
+/* ── vars panel ── */
+#vars-panel { border-top:1px solid var(--border); background:var(--surface); max-height:180px; overflow-y:auto; display:none; flex-shrink:0; }
+#vars-panel.open { display:block; }
+#vars-panel h4 { padding:4px 10px 2px; font-size:10px; color:var(--text-dim); text-transform:uppercase; cursor:pointer; display:flex; justify-content:space-between; }
+#vars-content { padding:2px 10px 6px; font-size:11px; }
+.var-row { display:flex; gap:6px; margin-bottom:1px; }
+.var-key { color:var(--accent3); min-width:70px; flex-shrink:0; }
+.var-val { color:var(--text); white-space:pre-wrap; word-break:break-word; }
+
+/* ── settings overlay ── */
+#settings-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; justify-content:center; align-items:center; }
+#settings-overlay.open { display:flex; }
+#settings-popup { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; min-width:280px; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+#settings-popup h3 { margin-bottom:10px; color:var(--accent); font-size:14px; }
+#settings-popup label { display:block; margin-top:8px; font-size:11px; color:var(--text-dim); }
+#settings-popup input[type=number] { width:100%; margin-top:2px; }
+#settings-popup .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+
+/* ── scrollbar ── */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text-dim); }
+
+/* ── resize handle ── */
+.resize-h { width:4px; cursor:col-resize; background:transparent; flex-shrink:0; }
+.resize-h:hover { background:var(--accent); opacity:0.3; }
+
+/* ── card tree ── */
+#tree { flex:1; overflow-y:auto; padding:8px 10px; }
+.node { margin-bottom:4px; border:1px solid var(--border); border-radius:4px; background:var(--surface); }
+.node.status-done { border-left:3px solid var(--green); }
+.node.status-active { border-left:3px solid var(--orange); }
+.node.status-fail { border-left:3px solid var(--red); }
+.node.status-pending { border-left:3px solid var(--text-dim); }
+
+.node-hdr { display:flex; align-items:center; gap:5px; padding:5px 8px; cursor:pointer; user-select:none; }
+.node-hdr:hover { background:var(--surface2); }
+.node-arrow { font-size:9px; color:var(--text-dim); transition:transform .15s; display:inline-block; width:10px; }
+.node-arrow.open { transform:rotate(90deg); }
+.node-icon { font-size:11px; width:16px; text-align:center; }
+.node-title { font-size:12px; font-weight:600; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.node-badge { font-size:9px; padding:1px 5px; border-radius:2px; text-transform:uppercase; font-weight:bold; }
+.node-badge.done { background:var(--green); color:var(--bg); }
+.node-badge.active { background:var(--orange); color:var(--bg); }
+.node-badge.fail { background:var(--red); color:var(--bg); }
+.node-badge.pending { background:var(--surface2); color:var(--text-dim); }
+.node-count { font-size:9px; color:var(--text-dim); }
+.node-time { font-size:9px; color:var(--text-dim); }
+
+.node-body { display:none; padding:0 8px 6px 28px; }
+.node-body.open { display:block; }
+
+.node-tags { display:flex; flex-wrap:wrap; gap:3px; margin-bottom:4px; }
+.node-tag { font-size:10px; padding:2px 6px; border-radius:3px; background:var(--bg); border:1px solid var(--border); color:var(--accent3); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default; }
+.node-tag:hover { border-color:var(--accent3); }
+.node-tag.green { color:var(--green); border-color:rgba(158,206,106,.3); }
+
+.node-answer { margin:4px 0; }
+.node-answer-hdr { font-size:10px; color:var(--text-dim); margin-bottom:2px; display:flex; align-items:center; gap:4px; }
+.node-answer-hdr .label { text-transform:uppercase; letter-spacing:.5px; flex:1; }
+.node-answer-hdr button { font-size:10px; padding:1px 6px; }
+.node-answer-hdr .btn-verify { color:var(--green); border-color:var(--green); }
+.node-answer-hdr .btn-check { color:var(--accent3); border-color:var(--accent3); }
+.node-answer-hdr .btn-generate { color:var(--accent2); border-color:var(--accent2); }
+.node-answer-ta { background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:4px 6px; font-size:11px; width:100%; min-height:40px; max-height:250px; resize:vertical; font-family:inherit; line-height:1.4; color:var(--text); }
+.node-answer-ta.empty { color:var(--text-dim); font-style:italic; min-height:24px; }
+.node-answer-apply { display:none; margin-top:2px; font-size:10px; padding:1px 8px; }
+.node-answer-apply.show { display:inline-block; }
+.node-image { margin-top:4px; }
+.node-image img { max-width:100%; max-height:300px; border-radius:4px; border:1px solid var(--border); cursor:pointer; }
+.node-image img:hover { border-color:var(--accent); }
+
+.node-lists { margin:4px 0; }
+.node-list-hdr { font-size:10px; color:var(--text-dim); cursor:pointer; padding:2px 0; display:flex; align-items:center; gap:4px; }
+.node-list-hdr .arrow { font-size:8px; display:inline-block; transition:transform .15s; }
+.node-list-hdr .arrow.open { transform:rotate(90deg); }
+.node-list-body { display:none; padding-left:12px; }
+.node-list-body.open { display:block; }
+.node-list-item { font-size:11px; padding:1px 0; display:flex; gap:4px; }
+.node-list-item .bullet { color:var(--text-dim); }
+.node-list-item.entity { color:var(--accent3); }
+.node-list-item.axiom { color:var(--green); }
+.node-list-item.hypothesis { color:var(--yellow); }
+
+.node-thread-bar { font-size:10px; color:var(--text-dim); cursor:pointer; padding:3px 0; display:flex; align-items:center; gap:4px; border-top:1px solid var(--border); margin-top:4px; }
+.node-thread-bar .arrow { font-size:8px; display:inline-block; transition:transform .15s; }
+.node-thread-bar .arrow.open { transform:rotate(90deg); }
+.node-thread-wrap { display:none; }
+.node-thread-wrap.open { display:block; }
+.node-thread-msgs { max-height:300px; overflow-y:auto; }
+
+.node-tmsg { display:flex; gap:5px; padding:3px 0; border-bottom:1px solid rgba(59,66,97,.3); }
+.node-tmsg-ava { width:20px; height:20px; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; flex-shrink:0; color:var(--bg); }
+.node-tmsg-ava.user { background:var(--accent); }
+.node-tmsg-ava.assistant, .node-tmsg-ava.worker { background:var(--green); }
+.node-tmsg-ava.system { background:var(--orange); }
+.node-tmsg-body { flex:1; min-width:0; }
+.node-tmsg-nick { font-size:10px; font-weight:600; margin-bottom:1px; }
+.node-tmsg-text { font-size:11px; white-space:pre-wrap; word-break:break-word; line-height:1.4; }
+
+.node-thread-input { display:flex; gap:3px; margin-top:3px; }
+.node-thread-input textarea { flex:1; resize:none; min-height:24px; max-height:60px; font-size:11px; padding:3px 5px; }
+.node-thread-input button { font-size:10px; padding:2px 8px; align-self:flex-end; }
+
+.node-actions { display:flex; gap:3px; margin-top:4px; padding-top:4px; border-top:1px solid var(--border); }
+.node-actions button { font-size:10px; padding:2px 6px; }
+
+.node-children { padding-left:16px; margin-top:2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>Workflow</h1>
+    <div class="header-tabs">
+      <button class="header-tab active" data-page="tree"><span>Tree</span><span class="tab-layer">cards</span></button>
+      <button class="header-tab" data-page="feed"><span>Feed</span><span class="tab-layer">thread</span></button>
+      <button class="header-tab" data-page="vars"><span>Vars</span><span class="tab-layer">state</span></button>
+    </div>
+    <div class="hdr-status">
+      <span class="dot idle" id="hdrDot"></span>
+      <span id="hdrStatusText">idle</span>
+    </div>
+    <div class="hdr-right">
+      <button class="btn sm" id="btnAddRoot" title="Add root card">+</button>
+      <button class="btn sm" id="btnClear">Clear</button>
+      <button class="btn sm" id="btnSidebarToggle">YAML</button>
+      <button class="btn sm" id="btnSettings">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- LEFT SIDEBAR: Workers -->
+    <div id="sidebar">
+      <h3>Workers</h3>
+      <div class="sidebar-section">
+        <div class="add-row">
+          <input id="newWorkerUrl" placeholder="http://host:port" value="http://127.0.0.1:5001" />
+          <button id="btnAddWorker">+</button>
+        </div>
+      </div>
+      <div id="worker-list"></div>
+      <div class="sidebar-section" style="margin-top:auto; border-top:1px solid var(--border); padding-top:6px; font-size:10px; color:var(--text-dim);">
+        <span id="workerSummary">0/0</span>
+      </div>
+    </div>
+
+    <div class="resize-h" data-resize="sidebar"></div>
+
+    <!-- CENTER: feed/vars + input + console -->
+    <div id="center">
+      <!-- Tree page (default) -->
+      <div id="page-tree" class="page-area" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+        <div id="tree"></div>
+      </div>
+      <!-- Feed page -->
+      <div id="page-feed" class="page-area" style="flex:1; display:none; flex-direction:column; min-height:0;">
+        <div id="feed"></div>
+      </div>
+      <!-- Vars page -->
+      <div id="page-vars" class="page-area" style="flex:1; display:none; flex-direction:column; min-height:0; overflow-y:auto; padding:8px 10px;">
+        <div id="vars-full"></div>
+      </div>
+
+      <!-- Input bar -->
+      <div id="input-bar">
+        <textarea id="userInput" placeholder="Message..." rows="1"></textarea>
+        <button id="btnSend" class="primary">Send</button>
+      </div>
+
+      <!-- Console -->
+      <div id="console-panel">
+        <div class="console-hdr">
+          <span>Console</span>
+          <button class="btn sm" id="btnUndo">Undo</button>
+          <button class="btn sm" id="btnConsoleClear">clear</button>
+        </div>
+        <div id="console-entries"></div>
+      </div>
+    </div>
+
+    <div class="resize-h" data-resize="right-sidebar"></div>
+
+    <!-- RIGHT SIDEBAR: YAML + NL + Ask -->
+    <div id="right-sidebar">
+      <div class="rs-tabs">
+        <button class="rs-tab active" data-rs="yaml">YAML</button>
+        <button class="rs-tab" data-rs="tree-dsl">Tree DSL</button>
+        <button class="rs-tab" data-rs="ask">Ask</button>
+      </div>
+
+      <!-- YAML tab -->
+      <div id="rs-page-yaml" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+        <textarea id="rs-editor" spellcheck="false">dsl: workflow/v2
+flow:
+  - generator -> $answer:
+      prompt: $input
+      tag: answer</textarea>
+        <div id="rs-nl-bar">
+          <textarea id="nlInput" placeholder="Describe change..." rows="1"></textarea>
+          <button class="btn sm primary" id="btnApplyNL">Apply</button>
+        </div>
+        <div style="padding:4px 8px; display:flex; gap:4px; flex-shrink:0; border-top:1px solid var(--border);">
+          <button class="btn sm primary" id="btnRun">Run</button>
+          <button class="btn sm" id="btnLoadDefault">Load default</button>
+          <button class="btn sm" id="btnConsoleToggle" style="margin-left:auto;">Console</button>
+        </div>
+      </div>
+
+      <!-- Tree DSL tab -->
+      <div id="rs-page-tree-dsl" style="flex:1; display:none; flex-direction:column; min-height:0;">
+        <textarea id="tree-dsl-editor" spellcheck="false" style="flex:1; resize:none; border:none; padding:8px; font-size:11px; line-height:1.3; min-height:0;"></textarea>
+        <div style="padding:4px 8px; display:flex; gap:4px; flex-shrink:0; border-top:1px solid var(--border);">
+          <button class="btn sm" id="btnTreeExport">Export</button>
+          <button class="btn sm" id="btnTreeImport">Import</button>
+          <button class="btn sm" id="btnTreeClear" style="margin-left:auto; color:var(--red);">Clear tree</button>
+        </div>
+      </div>
+
+      <!-- Ask tab -->
+      <div id="rs-page-ask" style="flex:1; display:none; flex-direction:column; min-height:0;">
+        <div id="rs-ask-chat"></div>
+        <div id="rs-ask-bar">
+          <textarea id="askInput" placeholder="Ask about workflow..." rows="1"></textarea>
+          <button class="btn sm" id="btnAskSend">Ask</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings overlay -->
+<div id="settings-overlay">
+  <div id="settings-popup">
+    <h3>Settings</h3>
+    <label>Temperature</label>
+    <input id="settingTemp" type="number" value="0.6" step="0.1" min="0" max="2" />
+    <label>Max tokens</label>
+    <input id="settingMaxTokens" type="number" value="2048" step="256" min="64" max="8192" />
+    <label>Max continues</label>
+    <input id="settingMaxContinue" type="number" value="20" step="1" min="1" max="50" />
+    <div class="row">
+      <input id="settingNoThink" type="checkbox" />
+      <label style="margin:0;">No think (strip &lt;think&gt; blocks)</label>
+    </div>
+    <div style="margin-top:14px; text-align:right;">
+      <button id="btnSettingsClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let workers = [];
+try { workers = JSON.parse(localStorage.getItem('reactive_workers') || '[]'); } catch(_) {}
+
+let currentRunId = null;
+let pollTimer = null;
+let pollCursor = 0;
+let lastVars = {};
+let wfChatMessages = [];
+let _activePage = 'tree';
+let _activeRsTab = 'yaml';
+
+// undo
+let _undoStack = [];
+let _log = [];
+
+// ── Card templates (DSL-defined) ───────────────────────
+// Templates define what slots a card type renders.
+// Each slot: {type, bind, label, card (for children)}
+// Types: title, tags, answer, list, thread, children, actions
+// Card templates: fully config-driven. No hardcoded entity types.
+// Slot types: tags, text (any text field), list (any array), thread, actions, children
+// Lists are generic: bind to any array field, style via `color` key, no fixed "entity/axiom" types.
+// To add a new list type: just add { type:'list', bind:'my_field', label:'My Items', color:'accent3' }
+const cardTemplates = {
+  root: {
+    icon: 'T',
+    slots: [
+      { type: 'tags', bind: 'tags' },
+      { type: 'text', bind: 'answer', label: 'Result', actions: ['verify', 'check', 'generate'] },
+      { type: 'list', bind: 'entities_list', label: 'Entities', color: 'accent3' },
+      { type: 'list', bind: 'axioms_list', label: 'Axioms', color: 'green' },
+      { type: 'list', bind: 'hypotheses_list', label: 'Hypotheses', color: 'yellow' },
+      { type: 'thread', bind: 'thread' },
+      { type: 'actions', items: ['chat', 'add_child'] },
+      { type: 'children', bind: 'children', card: 'entity' },
+    ]
+  },
+  entity: {
+    icon: '#',
+    slots: [
+      { type: 'tags', bind: 'tags' },
+      { type: 'text', bind: 'answer', label: 'Result', actions: ['verify', 'check', 'generate'] },
+      { type: 'thread', bind: 'thread' },
+      { type: 'actions', items: ['chat', 'add_child'] },
+      { type: 'children', bind: 'children', card: 'entity' },
+    ]
+  }
+};
+
+// ── Node tree ──────────────────────────────────────────
+// nodes: {id: nodeData}
+let nodes = {};
+let _nodeIdN = 0;
+try { const saved = JSON.parse(localStorage.getItem('wf_nodes') || '{}'); if (Object.keys(saved).length) { nodes = saved; _nodeIdN = Math.max(0, ...Object.keys(saved).map(k => parseInt(k.replace(/\D/g,'')) || 0)) + 1; } } catch(_) {}
+
+function saveNodes() { try { localStorage.setItem('wf_nodes', JSON.stringify(nodes)); } catch(_) {} }
+
+function createNode(opts) {
+  const id = 'n_' + (_nodeIdN++);
+  nodes[id] = {
+    id,
+    parentId: opts.parentId || null,
+    card: opts.card || 'entity',
+    title: opts.title || 'Untitled',
+    status: opts.status || 'pending',
+    tags: opts.tags || {},
+    answer: opts.answer || '',
+    answerThink: opts.answerThink || '',
+    entities_list: opts.entities_list || [],
+    axioms_list: opts.axioms_list || [],
+    hypotheses_list: opts.hypotheses_list || [],
+    thread: opts.thread || [],
+    children: opts.children || [],
+    time: ts(),
+    collapsed: false,
+    threadOpen: false,
+    _listOpen: {},
+  };
+  saveNodes();
+  return id;
+}
+
+// ── Helpers ────────────────────────────────────────────
+async function post(path, body) {
+  const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  return r.json();
+}
+async function get(path) { return (await fetch(path)).json(); }
+
+function saveWorkers() { try { localStorage.setItem('reactive_workers', JSON.stringify(workers)); } catch(_) {} }
+
+function getSettings() {
+  return {
+    temperature: parseFloat(document.getElementById('settingTemp').value) || 0.6,
+    max_tokens: parseInt(document.getElementById('settingMaxTokens').value) || 2048,
+    max_continue: parseInt(document.getElementById('settingMaxContinue').value) || 20,
+    no_think: document.getElementById('settingNoThink').checked,
+  };
+}
+
+function buildWorkerMap() {
+  const m = {};
+  for (const w of workers) { if (w.role && w.url) m[w.role] = w.url; }
+  return m;
+}
+
+function getWorkerByRole(role) {
+  return workers.find(w => w.role === role && w.status === 'ok') || workers.find(w => w.role === role) || workers[0] || null;
+}
+
+function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function ts() { return new Date().toLocaleTimeString('en-GB',{hour12:false}); }
+
+// ── Status ─────────────────────────────────────────────
+function setStatus(text, state) {
+  document.getElementById('hdrStatusText').textContent = text;
+  const dot = document.getElementById('hdrDot');
+  dot.className = 'dot ' + (state || 'idle');
+}
+
+// ── Console (with undo) ────────────────────────────────
+function log(text) {
+  _log.push({ text, ts: ts() });
+  if (_log.length > 100) _log.shift();
+  renderConsole();
+}
+
+function pushUndo(cmd) {
+  _undoStack.push(document.getElementById('rs-editor').value);
+  if (_undoStack.length > 30) _undoStack.shift();
+  log(cmd);
+}
+
+function undo() {
+  if (!_undoStack.length) return;
+  document.getElementById('rs-editor').value = _undoStack.pop();
+  log('undo');
+}
+
+function renderConsole() {
+  const el = document.getElementById('console-entries');
+  el.innerHTML = _log.slice(-40).map(e =>
+    `<div class="console-entry"><span class="ts">${e.ts}</span>${esc(e.text)}</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Page switching ─────────────────────────────────────
+function switchPage(page) {
+  _activePage = page;
+  document.querySelectorAll('.header-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
+  document.querySelectorAll('.page-area').forEach(el => { el.style.display = 'none'; });
+  const target = document.getElementById('page-' + page);
+  if (target) target.style.display = 'flex';
+}
+
+// ── Right sidebar tab switching ────────────────────────
+function switchRsTab(tab) {
+  _activeRsTab = tab;
+  document.querySelectorAll('.rs-tab').forEach(t => t.classList.toggle('active', t.dataset.rs === tab));
+  ['yaml', 'tree-dsl', 'ask'].forEach(t => {
+    const el = document.getElementById('rs-page-' + t);
+    if (el) el.style.display = t === tab ? 'flex' : 'none';
+  });
+  if (tab === 'tree-dsl') exportTreeDSL();
+}
+
+// ── Workers ────────────────────────────────────────────
+function renderWorkers() {
+  const list = document.getElementById('worker-list');
+  list.innerHTML = '';
+  workers.forEach((w, i) => {
+    const card = document.createElement('div');
+    card.className = 'worker-card';
+    card.innerHTML = `
+      <span class="dot ${w.status || 'unknown'}"></span>
+      <div class="info">
+        <span class="url" title="${esc(w.url)}">${esc(w.url)}</span>
+        <input class="role-input" value="${esc(w.role || 'generator')}" placeholder="role" data-idx="${i}" />
+      </div>
+      <button class="btn-x" data-idx="${i}">&times;</button>`;
+    list.appendChild(card);
+  });
+  list.querySelectorAll('.role-input').forEach(inp => {
+    inp.addEventListener('change', () => { workers[+inp.dataset.idx].role = inp.value.trim(); saveWorkers(); });
+  });
+  list.querySelectorAll('.btn-x').forEach(btn => {
+    btn.addEventListener('click', () => { workers.splice(+btn.dataset.idx, 1); saveWorkers(); renderWorkers(); });
+  });
+  const ok = workers.filter(w => w.status === 'ok').length;
+  document.getElementById('workerSummary').textContent = `${ok}/${workers.length} online`;
+}
+
+async function probeWorker(w) {
+  try {
+    const r = await fetch(w.url + '/v1/models', { signal: AbortSignal.timeout(3000) });
+    w.status = r.ok ? 'ok' : 'fail';
+  } catch(_) { w.status = 'fail'; }
+  saveWorkers();
+  renderWorkers();
+}
+
+function addWorker(url) {
+  url = url.trim().replace(/\/+$/, '');
+  if (!url || workers.find(w => w.url === url)) return;
+  const w = { url, role: 'generator', status: 'unknown' };
+  workers.push(w);
+  saveWorkers();
+  renderWorkers();
+  probeWorker(w);
+}
+
+function probeAll() { workers.forEach(w => probeWorker(w)); }
+
+// ── Feed ───────────────────────────────────────────────
+function addMessage(role, name, content, extra) {
+  extra = extra || {};
+  const feed = document.getElementById('feed');
+  const div = document.createElement('div');
+  div.className = `msg role-${role}`;
+
+  let header = `<div class="msg-header"><span class="msg-role">${role}</span>`;
+  if (name) header += `<span class="msg-name">${esc(name)}</span>`;
+  if (extra.tag) header += `<span class="msg-tag">${esc(extra.tag)}</span>`;
+  header += '</div>';
+
+  let body = `<div class="msg-content">${esc(content || '')}</div>`;
+  if (extra.think) {
+    body += `<details class="msg-think"><summary>think</summary><pre>${esc(extra.think)}</pre></details>`;
+  }
+
+  div.innerHTML = header + body;
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function clearFeed() {
+  document.getElementById('feed').innerHTML = '';
+  lastVars = {};
+  renderVarsFull();
+}
+
+// ── Vars ───────────────────────────────────────────────
+function renderVarsFull() {
+  const el = document.getElementById('vars-full');
+  const keys = Object.keys(lastVars);
+  if (!keys.length) { el.innerHTML = '<div style="color:var(--text-dim);padding:8px;">No variables yet. Run a workflow to see state.</div>'; return; }
+  let html = '<table style="width:100%;border-collapse:collapse;">';
+  for (const k of keys) {
+    let val = lastVars[k];
+    const isObj = typeof val === 'object';
+    if (isObj) val = JSON.stringify(val, null, 2);
+    const display = String(val).length > 300 ? String(val).slice(0, 300) + '...' : String(val);
+    html += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:4px 8px;color:var(--accent3);vertical-align:top;white-space:nowrap;font-size:11px;width:1%;">${esc(k)}</td>
+      <td style="padding:4px 8px;white-space:pre-wrap;word-break:break-word;font-size:11px;">${isObj ? '<pre style="margin:0;font-size:11px;">' + esc(display) + '</pre>' : esc(display)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+// ── Tree rendering ─────────────────────────────────────
+function renderTree() {
+  const el = document.getElementById('tree');
+  el.innerHTML = '';
+  const roots = Object.values(nodes).filter(n => !n.parentId);
+  if (!roots.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);padding:16px;text-align:center;">No cards yet. Run a workflow or click + to create a root card.</div>';
+    return;
+  }
+  roots.forEach(nd => el.appendChild(renderNode(nd)));
+  saveNodes();
+}
+
+function renderNode(nd) {
+  const tpl = cardTemplates[nd.card] || cardTemplates.entity;
+  const div = document.createElement('div');
+  div.className = `node status-${nd.status}`;
+  div.dataset.nodeId = nd.id;
+
+  const bodyOpen = !nd.collapsed;
+  const childCount = nd.children ? nd.children.length : 0;
+
+  // header
+  let hdr = `<div class="node-hdr" data-hdr="${nd.id}">
+    <span class="node-arrow${bodyOpen?' open':''}">&#9654;</span>
+    <span class="node-icon">${tpl.icon || '#'}</span>
+    <span class="node-title">${esc(nd.title)}</span>`;
+  if (childCount) hdr += `<span class="node-count">${childCount} sub</span>`;
+  hdr += `<span class="node-badge ${nd.status}">${nd.status}</span>`;
+  hdr += `<span class="node-time">${nd.time || ''}</span>`;
+  hdr += '</div>';
+
+  // body
+  let body = `<div class="node-body${bodyOpen?' open':''}" data-body="${nd.id}">`;
+
+  // render slots from template
+  for (const slot of tpl.slots) {
+    body += renderSlot(slot, nd);
+  }
+
+  body += '</div>';
+  div.innerHTML = hdr + body;
+
+  // wire header toggle
+  div.querySelector(`[data-hdr="${nd.id}"]`).addEventListener('click', () => {
+    nd.collapsed = !nd.collapsed;
+    const b = div.querySelector(`[data-body="${nd.id}"]`);
+    const a = div.querySelector('.node-arrow');
+    b.classList.toggle('open');
+    a.classList.toggle('open');
+    saveNodes();
+  });
+
+  // wire list toggles
+  div.querySelectorAll(`[data-list-toggle]`).forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.listToggle;
+      nd._listOpen = nd._listOpen || {};
+      nd._listOpen[key] = !nd._listOpen[key];
+      const lb = div.querySelector(`[data-list-body="${key}"]`);
+      const ar = el.querySelector('.arrow');
+      if (lb) lb.classList.toggle('open');
+      if (ar) ar.classList.toggle('open');
+      saveNodes();
+    });
+  });
+
+  // wire thread toggle
+  const tbar = div.querySelector(`[data-thread-toggle="${nd.id}"]`);
+  if (tbar) {
+    tbar.addEventListener('click', () => {
+      nd.threadOpen = !nd.threadOpen;
+      const tw = div.querySelector(`[data-thread-wrap="${nd.id}"]`);
+      const ar = tbar.querySelector('.arrow');
+      if (tw) tw.classList.toggle('open');
+      if (ar) ar.classList.toggle('open');
+      saveNodes();
+    });
+  }
+
+  // wire thread send
+  const tsend = div.querySelector(`[data-tsend="${nd.id}"]`);
+  if (tsend) {
+    tsend.addEventListener('click', () => {
+      const inp = div.querySelector(`[data-tinp="${nd.id}"]`);
+      const text = inp.value.trim();
+      if (!text) return;
+      inp.value = '';
+      sendNodeChat(nd.id, text);
+    });
+    const tinp = div.querySelector(`[data-tinp="${nd.id}"]`);
+    if (tinp) tinp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tsend.click(); }
+    });
+  }
+
+  // wire answer textareas (edit + apply)
+  div.querySelectorAll('.node-answer-ta').forEach(ta => {
+    const [nid, field] = (ta.dataset.ans || '').split(':');
+    if (nid !== nd.id) return;
+    ta.addEventListener('input', () => {
+      ta.classList.remove('empty');
+      const applyBtn = div.querySelector(`[data-apply-ans="${nid}:${field}"]`);
+      if (applyBtn) applyBtn.classList.add('show');
+    });
+  });
+  div.querySelectorAll('[data-apply-ans]').forEach(btn => {
+    const [nid, field] = (btn.dataset.applyAns || '').split(':');
+    if (nid !== nd.id) return;
+    btn.addEventListener('click', () => {
+      const ta = div.querySelector(`[data-ans="${nid}:${field}"]`);
+      if (ta && nodes[nid]) {
+        nodes[nid][field] = ta.value;
+        saveNodes();
+        btn.classList.remove('show');
+        log(`applied ${field} edit on ${nodes[nid].title}`);
+      }
+    });
+  });
+
+  // wire actions
+  div.querySelectorAll(`[data-action]`).forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleNodeAction(nd.id, btn.dataset.action);
+    });
+  });
+
+  // render children recursively
+  const childContainer = div.querySelector(`[data-children="${nd.id}"]`);
+  if (childContainer && nd.children) {
+    nd.children.forEach(cid => {
+      if (nodes[cid]) childContainer.appendChild(renderNode(nodes[cid]));
+    });
+  }
+
+  return div;
+}
+
+function renderSlot(slot, nd) {
+  switch (slot.type) {
+    case 'tags': {
+      const tags = nd[slot.bind] || {};
+      const keys = Object.keys(tags);
+      if (!keys.length) return '';
+      return `<div class="node-tags">${keys.map(k => {
+        const val = tags[k];
+        const isGreen = k.startsWith('used_') || k.startsWith('reaction');
+        const cls = isGreen ? ' green' : '';
+        const display = String(val).length > 40 ? String(val).slice(0, 37) + '...' : String(val);
+        return `<span class="node-tag${cls}" title="${esc(k)}: ${esc(String(val))}">${esc(k)}: ${esc(display)}</span>`;
+      }).join('')}</div>`;
+    }
+    case 'text': {
+      const text = nd[slot.bind] || '';
+      const thinkKey = slot.bind + 'Think';
+      const emptyCls = text ? '' : ' empty';
+      const actions = slot.actions || [];
+      let hdr = `<div class="node-answer-hdr"><span class="label">${esc(slot.label || slot.bind)}</span>`;
+      actions.forEach(a => {
+        const cls = a === 'verify' ? 'btn-verify' : a === 'check' ? 'btn-check' : a === 'generate' ? 'btn-generate' : '';
+        hdr += `<button class="btn sm ${cls}" data-action="${a}" data-node="${nd.id}">${a}</button>`;
+      });
+      hdr += `</div>`;
+      let html = `<div class="node-answer">${hdr}
+        <textarea class="node-answer-ta${emptyCls}" data-ans="${nd.id}:${slot.bind}" placeholder="(pending...)">${esc(text)}</textarea>
+        <button class="btn sm node-answer-apply" data-apply-ans="${nd.id}:${slot.bind}">Apply changes</button>`;
+      if (nd[thinkKey]) {
+        html += `<details class="msg-think" style="margin-top:3px;"><summary>think</summary><pre>${esc(nd[thinkKey])}</pre></details>`;
+      }
+      if (nd.imageUrl) {
+        html += `<div class="node-image"><img src="${esc(nd.imageUrl)}" alt="Generated" loading="lazy" /></div>`;
+      }
+      html += '</div>';
+      return html;
+    }
+    case 'list': {
+      const items = nd[slot.bind] || [];
+      if (!items.length) return '';
+      const key = nd.id + ':' + slot.bind;
+      const isOpen = nd._listOpen && nd._listOpen[key];
+      const color = slot.color ? `color:var(--${slot.color})` : '';
+      return `<div class="node-lists">
+        <div class="node-list-hdr" data-list-toggle="${key}">
+          <span class="arrow${isOpen?' open':''}">&#9654;</span>
+          ${esc(slot.label || slot.bind)} <span style="opacity:.5">${items.length}</span>
+        </div>
+        <div class="node-list-body${isOpen?' open':''}" data-list-body="${key}">
+          ${items.map(item => `<div class="node-list-item" style="${color}"><span class="bullet">&#8226;</span>${esc(typeof item === 'string' ? item : item.title || item.name || JSON.stringify(item))}</div>`).join('')}
+        </div>
+      </div>`;
+    }
+    case 'thread': {
+      const msgs = nd[slot.bind] || [];
+      const cnt = msgs.length;
+      return `<div class="node-thread-bar" data-thread-toggle="${nd.id}">
+        <span class="arrow${nd.threadOpen?' open':''}">&#9654;</span>
+        Thread <span style="opacity:.5">${cnt}</span>
+      </div>
+      <div class="node-thread-wrap${nd.threadOpen?' open':''}" data-thread-wrap="${nd.id}">
+        <div class="node-thread-msgs">${msgs.map(m => renderThreadMsg(m)).join('')}</div>
+        <div class="node-thread-input">
+          <textarea placeholder="Reply..." data-tinp="${nd.id}" rows="1"></textarea>
+          <button class="btn sm" data-tsend="${nd.id}">Send</button>
+        </div>
+      </div>`;
+    }
+    case 'actions': {
+      const items = slot.items || [];
+      return `<div class="node-actions">${items.map(a => {
+        if (a === 'chat') return `<button class="btn sm" data-action="chat" data-node="${nd.id}">Chat</button>`;
+        if (a === 'add_child') return `<button class="btn sm" data-action="add_child" data-node="${nd.id}">+ Child</button>`;
+        return `<button class="btn sm" data-action="${a}" data-node="${nd.id}">${a}</button>`;
+      }).join('')}</div>`;
+    }
+    case 'children': {
+      return `<div class="node-children" data-children="${nd.id}"></div>`;
+    }
+    default: return '';
+  }
+}
+
+function renderThreadMsg(m) {
+  const role = m.role || 'system';
+  const initial = (m.name || role).charAt(0).toUpperCase();
+  let html = `<div class="node-tmsg">
+    <div class="node-tmsg-ava ${role}">${initial}</div>
+    <div class="node-tmsg-body">
+      <div class="node-tmsg-nick" style="color:var(--${role === 'user' ? 'accent' : role === 'system' ? 'orange' : 'green'})">${esc(m.name || role)}</div>
+      <div class="node-tmsg-text">${esc(m.content || '')}</div>`;
+  if (m.think) {
+    html += `<details class="msg-think"><summary>think</summary><pre>${esc(m.think)}</pre></details>`;
+  }
+  html += '</div></div>';
+  return html;
+}
+
+// ── Node actions ───────────────────────────────────────
+function handleNodeAction(nodeId, action) {
+  const nd = nodes[nodeId];
+  if (!nd) return;
+  if (action === 'add_child') {
+    const title = prompt('Child title:');
+    if (!title) return;
+    const childId = createNode({ parentId: nodeId, card: 'entity', title });
+    nd.children = nd.children || [];
+    nd.children.push(childId);
+    saveNodes();
+    renderTree();
+    log(`add child "${title}" to ${nd.title}`);
+  } else if (action === 'chat') {
+    nd.threadOpen = true;
+    renderTree();
+  }
+}
+
+async function sendNodeChat(nodeId, text) {
+  const nd = nodes[nodeId];
+  if (!nd) return;
+  const worker = getWorkerByRole('generator') || workers[0];
+  if (!worker) { log('ERROR: no worker'); return; }
+
+  nd.thread = nd.thread || [];
+  nd.thread.push({ role: 'user', name: 'user', content: text, time: ts() });
+  renderTree();
+  setStatus('chatting...', 'busy');
+
+  // build messages from thread history
+  const messages = nd.thread.map(m => ({ role: m.role === 'worker' ? 'assistant' : m.role, content: m.content }));
+
+  try {
+    const res = await post('/api/llm/generate', {
+      url: worker.url,
+      messages,
+      temperature: getSettings().temperature,
+      max_tokens: getSettings().max_tokens,
+      no_think: getSettings().no_think,
+      max_continue: getSettings().max_continue,
+    });
+    nd.thread.push({ role: 'worker', name: 'generator', content: res.answer || '', think: res.think || '', time: ts() });
+    saveNodes();
+    renderTree();
+    setStatus('idle', 'idle');
+  } catch (e) {
+    log('chat error: ' + e.message);
+    setStatus('error', 'error');
+  }
+}
+
+// ── Create root node ───────────────────────────────────
+function createRootNode(title, data) {
+  const id = createNode({
+    card: 'root',
+    title: title || 'Root',
+    status: 'active',
+    ...data
+  });
+  renderTree();
+  log(`created root "${title}"`);
+  return id;
+}
+
+// ── Workflow execution ─────────────────────────────────
+async function runWorkflow(input) {
+  const yaml = document.getElementById('rs-editor').value;
+  const workerMap = buildWorkerMap();
+  const settings = getSettings();
+
+  if (!Object.keys(workerMap).length) { log('ERROR: no workers with roles assigned'); return; }
+  if (input) addMessage('user', '', input);
+
+  setStatus('running...', 'busy');
+  log(`run: "${(input || '').slice(0, 60)}"`);
+
+  try {
+    const res = await post('/api/workflow/run', { yaml, input, workers: workerMap, settings, async_progress: true });
+    if (res.error) { log('ERROR: ' + res.error); setStatus('error', 'error'); addMessage('system', '', 'Error: ' + res.error); return; }
+    currentRunId = res.run_id;
+    pollCursor = 0;
+    startPolling();
+  } catch (e) { log('ERROR: ' + e.message); setStatus('error', 'error'); }
+}
+
+function startPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = setInterval(pollProgress, 250); }
+
+async function pollProgress() {
+  if (!currentRunId) return;
+  try {
+    const res = await get(`/api/workflow/progress?run_id=${currentRunId}&cursor=${pollCursor}`);
+    if (res.thread && res.thread.length) {
+      for (const msg of res.thread) {
+        addMessage(msg.role || 'worker', msg.name || '', msg.content || '', { think: msg.think, tag: msg.tag });
+      }
+    }
+    if (res.next_cursor !== undefined) pollCursor = res.next_cursor;
+    if (res.vars) { lastVars = res.vars; renderVarsFull(); }
+    if (res.status !== 'running') {
+      clearInterval(pollTimer); pollTimer = null; currentRunId = null;
+      setStatus(res.status || 'done', res.status === 'error' ? 'error' : 'idle');
+      log(`finished: ${res.status}`);
+      if (res.vars) workflowVarsToTree(res.vars);
+    }
+  } catch (e) { log('poll error: ' + e.message); }
+}
+
+// ── NL Apply ───────────────────────────────────────────
+async function applyNL() {
+  const instruction = document.getElementById('nlInput').value.trim();
+  if (!instruction) return;
+  const yaml = document.getElementById('rs-editor').value;
+  const worker = getWorkerByRole('generator') || getWorkerByRole('analyzer');
+  if (!worker) { log('ERROR: no worker'); return; }
+
+  pushUndo('applyNL: ' + instruction.slice(0, 60));
+  setStatus('applying...', 'busy');
+
+  try {
+    let spec = '';
+    try { const sr = await get('/api/workflow/spec'); spec = sr.spec || sr.content || ''; } catch(_) {}
+
+    const messages = [
+      { role: 'user', content: `DSL Spec:\n${spec}\n\nCurrent YAML:\n\`\`\`yaml\n${yaml}\n\`\`\`\n\nInstruction: ${instruction}\n\nReturn ONLY the modified YAML (no explanation, no markdown fences).` }
+    ];
+
+    const res = await post('/api/llm/generate', { url: worker.url, messages, temperature: 0.2, max_tokens: 4096, no_think: true, max_continue: 5 });
+    if (res.answer) {
+      let newYaml = res.answer.trim().replace(/^```ya?ml?\n?/, '').replace(/\n?```$/, '');
+      document.getElementById('rs-editor').value = newYaml;
+      log('YAML updated');
+    }
+    document.getElementById('nlInput').value = '';
+    setStatus('idle', 'idle');
+  } catch (e) { log('applyNL error: ' + e.message); setStatus('error', 'error'); }
+}
+
+// ── Ask ────────────────────────────────────────────────
+async function askWorkflow() {
+  const question = document.getElementById('askInput').value.trim();
+  if (!question) return;
+  const yaml = document.getElementById('rs-editor').value;
+  const worker = getWorkerByRole('generator') || workers[0];
+  if (!worker) { log('ERROR: no worker'); return; }
+
+  wfChatMessages.push({ role: 'user', content: question, ts: ts() });
+  document.getElementById('askInput').value = '';
+  renderAskChat();
+  setStatus('asking...', 'busy');
+
+  try {
+    const messages = [{ role: 'user', content: `Workflow YAML:\n\`\`\`yaml\n${yaml}\n\`\`\`\n\n${question}` }];
+    const res = await post('/api/llm/generate', { url: worker.url, messages, temperature: 0.4, max_tokens: 2048, no_think: true, max_continue: 5 });
+    wfChatMessages.push({ role: 'assistant', content: res.answer || '(no response)', ts: ts() });
+    renderAskChat();
+    setStatus('idle', 'idle');
+  } catch (e) { log('ask error: ' + e.message); setStatus('error', 'error'); }
+}
+
+function renderAskChat() {
+  const el = document.getElementById('rs-ask-chat');
+  el.innerHTML = wfChatMessages.map(m =>
+    `<div class="ask-msg ask-${m.role}"><span class="ask-ts">${m.ts}</span>${esc(m.content)}</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Load default ───────────────────────────────────────
+async function loadDefaultWorkflow() {
+  try {
+    const res = await get('/api/workflow/default');
+    if (res.yaml || res.content) {
+      pushUndo('load default');
+      document.getElementById('rs-editor').value = res.yaml || res.content;
+      log('loaded default workflow');
+    }
+  } catch (e) { log('load error: ' + e.message); }
+}
+
+// ── Resize handles ─────────────────────────────────────
+document.querySelectorAll('.resize-h').forEach(handle => {
+  const target = handle.dataset.resize;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const el = document.getElementById(target);
+    const startX = e.clientX;
+    const startW = el.offsetWidth;
+    const isLeft = target === 'sidebar';
+    function onMove(e2) { el.style.width = Math.max(120, startW + (isLeft ? (e2.clientX - startX) : (startX - e2.clientX))) + 'px'; }
+    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+});
+
+// ── Auto-resize textareas ──────────────────────────────
+function autoResize(el, max) {
+  el.addEventListener('input', () => { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, max || 100) + 'px'; });
+}
+autoResize(document.getElementById('userInput'), 100);
+autoResize(document.getElementById('nlInput'), 80);
+autoResize(document.getElementById('askInput'), 60);
+
+// ── Key bindings ───────────────────────────────────────
+document.getElementById('userInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnSend').click(); }
+});
+document.getElementById('nlInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnApplyNL').click(); }
+});
+document.getElementById('askInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnAskSend').click(); }
+});
+
+// ── Event wiring ───────────────────────────────────────
+document.getElementById('btnAddWorker').addEventListener('click', () => { addWorker(document.getElementById('newWorkerUrl').value); document.getElementById('newWorkerUrl').value = ''; });
+document.getElementById('newWorkerUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('btnAddWorker').click(); });
+
+document.getElementById('btnSend').addEventListener('click', () => {
+  const el = document.getElementById('userInput');
+  const text = el.value.trim();
+  if (!text) return;
+  el.value = ''; el.style.height = 'auto';
+  // ensure we're on feed page
+  switchPage('feed');
+  runWorkflow(text);
+});
+
+document.getElementById('btnRun').addEventListener('click', () => { switchPage('feed'); runWorkflow(''); });
+document.getElementById('btnClear').addEventListener('click', clearFeed);
+document.getElementById('btnApplyNL').addEventListener('click', applyNL);
+document.getElementById('btnAskSend').addEventListener('click', askWorkflow);
+document.getElementById('btnLoadDefault').addEventListener('click', loadDefaultWorkflow);
+document.getElementById('btnUndo').addEventListener('click', undo);
+document.getElementById('btnConsoleClear').addEventListener('click', () => { _log = []; renderConsole(); });
+
+document.getElementById('btnConsoleToggle').addEventListener('click', () => {
+  document.getElementById('console-panel').classList.toggle('open');
+});
+
+document.getElementById('btnSidebarToggle').addEventListener('click', () => {
+  document.getElementById('right-sidebar').classList.toggle('collapsed');
+});
+
+// header tabs
+document.querySelectorAll('.header-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchPage(tab.dataset.page));
+});
+
+// right sidebar tabs
+document.querySelectorAll('.rs-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchRsTab(tab.dataset.rs));
+});
+
+// settings
+document.getElementById('btnSettings').addEventListener('click', () => { document.getElementById('settings-overlay').classList.add('open'); });
+document.getElementById('btnSettingsClose').addEventListener('click', () => { document.getElementById('settings-overlay').classList.remove('open'); });
+document.getElementById('settings-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('settings-overlay')) document.getElementById('settings-overlay').classList.remove('open');
+});
+
+// ── Tree DSL serialization ─────────────────────────────
+function serializeNode(nd, indent) {
+  indent = indent || 0;
+  const pad = '  '.repeat(indent);
+  let lines = [];
+  lines.push(`${pad}- card: ${nd.card}`);
+  lines.push(`${pad}  title: ${JSON.stringify(nd.title)}`);
+  lines.push(`${pad}  status: ${nd.status}`);
+  if (nd.answer) lines.push(`${pad}  answer: ${JSON.stringify(nd.answer.slice(0, 200) + (nd.answer.length > 200 ? '...' : ''))}`);
+  const tags = nd.tags || {};
+  if (Object.keys(tags).length) lines.push(`${pad}  tags: ${JSON.stringify(tags)}`);
+  // lists
+  for (const key of ['entities_list', 'axioms_list', 'hypotheses_list']) {
+    const arr = nd[key] || [];
+    if (arr.length) {
+      lines.push(`${pad}  ${key}:`);
+      arr.forEach(item => {
+        const txt = typeof item === 'string' ? item : (item.title || item.name || JSON.stringify(item));
+        lines.push(`${pad}    - ${JSON.stringify(txt)}`);
+      });
+    }
+  }
+  if (nd.thread && nd.thread.length) lines.push(`${pad}  thread: ${nd.thread.length} messages`);
+  // children
+  const children = (nd.children || []).map(cid => nodes[cid]).filter(Boolean);
+  if (children.length) {
+    lines.push(`${pad}  children:`);
+    children.forEach(child => lines.push(serializeNode(child, indent + 2)));
+  }
+  return lines.join('\n');
+}
+
+function exportTreeDSL() {
+  const roots = Object.values(nodes).filter(n => !n.parentId);
+  let dsl = 'tree:\n';
+  if (!roots.length) { dsl += '  # empty - add root cards or run a workflow\n'; }
+  else { roots.forEach(r => { dsl += serializeNode(r, 1) + '\n'; }); }
+  dsl += '\ncards:\n';
+  for (const [name, tpl] of Object.entries(cardTemplates)) {
+    dsl += `  ${name}:\n    icon: ${tpl.icon}\n    slots:\n`;
+    tpl.slots.forEach(s => {
+      let line = `      - type: ${s.type}`;
+      if (s.bind) line += `, bind: ${s.bind}`;
+      if (s.label) line += `, label: ${s.label}`;
+      if (s.card) line += `, card: ${s.card}`;
+      if (s.color) line += `, color: ${s.color}`;
+      if (s.actions) line += `, actions: [${s.actions.join(', ')}]`;
+      if (s.items) line += `, items: [${s.items.join(', ')}]`;
+      dsl += line + '\n';
+    });
+  }
+  document.getElementById('tree-dsl-editor').value = dsl;
+}
+
+function clearTree() {
+  nodes = {};
+  _nodeIdN = 0;
+  saveNodes();
+  renderTree();
+  log('tree cleared');
+}
+
+// ── Wire workflow results to tree ──────────────────────
+function workflowVarsToTree(vars) {
+  // If workflow produced structured output, create/update tree nodes
+  if (!vars) return;
+  // Simple: create a root card from workflow results
+  const rootTitle = vars.input ? String(vars.input).slice(0, 60) : 'Workflow result';
+  const roots = Object.values(nodes).filter(n => !n.parentId);
+  // Find or create root for this run
+  let rootId;
+  if (roots.length && roots[roots.length - 1].status === 'active') {
+    rootId = roots[roots.length - 1].id;
+  } else {
+    rootId = createNode({ card: 'root', title: rootTitle, status: 'active' });
+  }
+  const root = nodes[rootId];
+  if (vars.answer) { root.answer = vars.answer; root.status = 'done'; }
+  if (vars.entities) root.entities_list = Array.isArray(vars.entities) ? vars.entities : [];
+  if (vars.axioms) root.axioms_list = Array.isArray(vars.axioms) ? vars.axioms : [];
+  if (vars.hypotheses) root.hypotheses_list = Array.isArray(vars.hypotheses) ? vars.hypotheses : [];
+  if (vars.entity_nodes && Array.isArray(vars.entity_nodes)) {
+    vars.entity_nodes.forEach(ent => {
+      const existingChild = root.children.find(cid => nodes[cid] && nodes[cid].title === (ent.title || ent.name));
+      if (!existingChild) {
+        const cid = createNode({
+          parentId: rootId,
+          card: 'entity',
+          title: ent.title || ent.name || 'Entity',
+          status: ent.answer ? 'done' : 'pending',
+          answer: ent.answer || '',
+          tags: ent.tags || {},
+        });
+        root.children.push(cid);
+      }
+    });
+  }
+  saveNodes();
+  renderTree();
+}
+
+// ── Add root button ────────────────────────────────────
+document.getElementById('btnAddRoot').addEventListener('click', () => {
+  const title = prompt('Root card title:');
+  if (title) createRootNode(title);
+});
+
+document.getElementById('btnTreeExport').addEventListener('click', exportTreeDSL);
+document.getElementById('btnTreeImport').addEventListener('click', () => {
+  // import JSON from tree-dsl-editor
+  try {
+    const text = document.getElementById('tree-dsl-editor').value;
+    const data = JSON.parse(text);
+    if (data.nodes) { nodes = data.nodes; _nodeIdN = Math.max(0, ...Object.keys(nodes).map(k => parseInt(k.replace(/\D/g,'')) || 0)) + 1; }
+    saveNodes();
+    renderTree();
+    log('tree imported');
+  } catch(e) { log('import error: ' + e.message); }
+});
+document.getElementById('btnTreeClear').addEventListener('click', () => {
+  if (confirm('Clear all cards?')) clearTree();
+});
+
+// ── Init ───────────────────────────────────────────────
+renderWorkers();
+renderVarsFull();
+renderConsole();
+renderTree();
+setTimeout(probeAll, 1000);
+setInterval(probeAll, 15000);
+log('workflow UI ready');
+</script>
+</body>
+</html>
