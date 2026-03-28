@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSL Pipeline Chat</title>
+<style>
+:root {
+  --bg: #1a1b26; --surface: #24283b; --surface2: #2f3349; --surface3: #3b4261;
+  --text: #c0caf5; --text-dim: #565f89; --text-bright: #e0e6ff;
+  --accent: #7aa2f7; --accent2: #bb9af7; --accent3: #7dcfff;
+  --green: #9ece6a; --red: #f7768e; --orange: #ff9e64; --yellow: #e0af68;
+  --border: #3b4261;
+  --mono: 'Cascadia Code','Fira Code','JetBrains Mono','Consolas',monospace;
+  --sans: 'Segoe UI',system-ui,-apple-system,sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--sans); background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+/* header */
+.hdr { display:flex; align-items:center; gap:12px; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+.hdr h1 { font-size:15px; font-weight:600; color:var(--text-bright); white-space:nowrap; }
+.hdr select, .hdr input[type=text] { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; font-family:var(--mono); }
+.hdr select { min-width:140px; }
+.hdr .spacer { flex:1; }
+.btn { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:5px 12px; font-size:12px; cursor:pointer; font-family:var(--sans); transition:background .15s; }
+.btn:hover { background:var(--surface3); }
+.btn.primary { background:var(--accent); color:#1a1b26; border-color:var(--accent); font-weight:600; }
+.btn.primary:hover { background:#8bb0ff; }
+.btn.danger { background:var(--red); color:#1a1b26; border-color:var(--red); }
+.badge { font-size:10px; padding:2px 6px; border-radius:8px; font-weight:600; }
+
+/* main layout */
+.main { flex:1; display:flex; overflow:hidden; }
+
+/* chat feed */
+.chat-col { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.feed { flex:1; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px; }
+.feed::-webkit-scrollbar { width:6px; }
+.feed::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:3px; }
+
+/* right sidebar */
+.sidebar { width:320px; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; }
+.sidebar .tab-bar { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
+.sidebar .tab-bar button { flex:1; background:none; border:none; color:var(--text-dim); padding:8px 4px; font-size:12px; cursor:pointer; border-bottom:2px solid transparent; }
+.sidebar .tab-bar button.active { color:var(--accent); border-bottom-color:var(--accent); }
+.sidebar .tab-content { flex:1; overflow-y:auto; padding:10px; font-size:12px; }
+.sidebar .tab-content::-webkit-scrollbar { width:5px; }
+.sidebar .tab-content::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:3px; }
+
+/* editor panel */
+.editor-panel { border-top:1px solid var(--border); flex-shrink:0; display:flex; flex-direction:column; }
+.editor-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--surface); }
+.editor-bar .label { font-size:11px; color:var(--text-dim); }
+.editor { width:100%; min-height:120px; max-height:280px; resize:vertical; background:var(--bg); color:var(--text); border:none; padding:10px 12px; font-family:var(--mono); font-size:12px; line-height:1.5; outline:none; }
+
+/* message cards */
+.msg { border-radius:6px; border-left:3px solid var(--border); background:var(--surface); padding:8px 12px; font-size:12px; }
+.msg .msg-hdr { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.msg .msg-hdr .icon { font-size:14px; }
+.msg .msg-hdr .op { font-weight:600; font-family:var(--mono); color:var(--text-bright); }
+.msg .msg-hdr .meta { color:var(--text-dim); font-size:11px; margin-left:auto; }
+.msg .msg-hdr .tag { font-size:10px; padding:1px 6px; border-radius:3px; background:var(--surface2); color:var(--text-dim); }
+.msg .io { margin-top:4px; }
+.msg .io-label { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin-bottom:2px; }
+.msg .io-val { font-family:var(--mono); font-size:11px; color:var(--text); background:var(--bg); padding:4px 8px; border-radius:3px; white-space:pre-wrap; word-break:break-all; max-height:80px; overflow:hidden; position:relative; cursor:pointer; transition:max-height .25s ease; }
+.msg .io-val.expanded { max-height:none; overflow-y:auto; }
+.msg .io-val.expandable::after { content:''; position:absolute; bottom:0; left:0; right:0; height:24px; background:linear-gradient(transparent, var(--bg)); pointer-events:none; }
+.msg .io-val.expanded::after { display:none; }
+.msg .io-val::-webkit-scrollbar { width:4px; }
+.msg .io-val::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:2px; }
+.msg .io-expand { font-size:10px; color:var(--accent); cursor:pointer; margin-top:2px; user-select:none; opacity:.7; }
+.msg .io-expand:hover { opacity:1; }
+.msg.collapsed .io { display:none; }
+.msg .toggle { cursor:pointer; user-select:none; }
+
+/* op-specific colors */
+.msg.op-MOV  { border-left-color:var(--text-dim); opacity:.7; }
+.msg.op-GEN  { border-left-color:var(--accent2); }
+.msg.op-CALL { border-left-color:var(--text-dim); }
+.msg.op-EACH { border-left-color:var(--orange); }
+.msg.op-PARSE{ border-left-color:var(--green); }
+.msg.op-CMP  { border-left-color:var(--yellow); }
+.msg.op-JIF  { border-left-color:var(--yellow); opacity:.8; }
+.msg.op-LOOP { border-left-color:var(--orange); }
+.msg.op-PUT  { border-left-color:var(--accent3); }
+.msg.op-INPUT{ border-left-color:var(--accent); }
+.msg.op-RESULT { border-left-color:var(--green); }
+.msg.op-ERROR{ border-left-color:var(--red); background:rgba(247,118,142,.08); }
+
+.msg.op-MOV .msg-hdr .op { color:var(--text-dim); }
+.msg.op-GEN .msg-hdr .op { color:var(--accent2); }
+.msg.op-EACH .msg-hdr .op { color:var(--orange); }
+.msg.op-PARSE .msg-hdr .op { color:var(--green); }
+
+/* state inspector */
+.state-item { margin-bottom:6px; }
+.state-key { font-family:var(--mono); font-size:11px; color:var(--accent); }
+.state-val { font-family:var(--mono); font-size:11px; color:var(--text); background:var(--bg); padding:3px 6px; border-radius:3px; display:block; margin-top:2px; white-space:pre-wrap; word-break:break-all; max-height:80px; overflow:hidden; cursor:pointer; position:relative; transition:max-height .2s; }
+.state-val.expanded { max-height:none; overflow-y:auto; }
+.state-val.expandable::after { content:''; position:absolute; bottom:0; left:0; right:0; height:18px; background:linear-gradient(transparent, var(--bg)); pointer-events:none; }
+.state-val.expanded::after { display:none; }
+
+/* config inputs */
+.cfg-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.cfg-row label { font-size:11px; color:var(--text-dim); min-width:60px; }
+.cfg-row input { flex:1; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:3px; padding:3px 6px; font-size:11px; font-family:var(--mono); }
+
+/* library */
+.lib-fn { margin-bottom:10px; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.lib-fn-hdr { display:flex; align-items:center; gap:6px; padding:6px 8px; background:var(--surface2); cursor:pointer; }
+.lib-fn-hdr .fn-name { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--accent); }
+.lib-fn-hdr .fn-sig { font-family:var(--mono); font-size:10px; color:var(--text-dim); }
+.lib-fn-hdr .fn-tags { margin-left:auto; display:flex; gap:3px; }
+.lib-fn-hdr .fn-tags span { font-size:9px; padding:1px 4px; border-radius:3px; background:var(--surface3); color:var(--text-dim); }
+.lib-fn-body { display:none; padding:6px 8px; }
+.lib-fn-body.open { display:block; }
+.lib-fn-body pre { font-family:var(--mono); font-size:11px; color:var(--text); background:var(--bg); padding:6px 8px; border-radius:3px; white-space:pre-wrap; word-break:break-all; margin:0 0 6px; }
+.lib-fn-body .btn { font-size:10px; padding:2px 8px; }
+
+/* empty state */
+.empty { color:var(--text-dim); text-align:center; padding:40px 20px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>DSL Pipeline Chat</h1>
+  <select id="preset">
+    <option value="">-- preset --</option>
+    <option value="basic_call">Basic CALL</option>
+    <option value="parse_claims">Parse Claims</option>
+    <option value="each_entities">EACH Entities</option>
+    <option value="debug_probe">Debug: Probe Building</option>
+    <option value="probe_trim">Probe: Trim + Confirm</option>
+    <option value="demoness_pipeline">Demoness Pipeline</option>
+  </select>
+  <div class="spacer"></div>
+  <label style="font-size:11px;color:var(--text-dim)">
+    <input type="checkbox" id="fixture-mode" checked> Fixture
+  </label>
+  <button class="btn primary" id="btn-run">Run</button>
+  <button class="btn" id="btn-clear">Clear</button>
+</div>
+
+<div class="main">
+  <div class="chat-col">
+    <div class="feed" id="feed">
+      <div class="empty">Paste Assembly code below and click <b>Run</b></div>
+    </div>
+    <div class="editor-panel">
+      <div class="editor-bar">
+        <span class="label">Assembly Code</span>
+        <div class="spacer"></div>
+        <button class="btn" id="btn-save-fn" style="font-size:10px;padding:2px 8px">Save as fn</button>
+        <span class="label" id="line-count">0 lines</span>
+      </div>
+      <textarea class="editor" id="code" spellcheck="false" placeholder="; Enter Assembly DSL code here&#10;MOV @input, &quot;your prompt&quot;&#10;CALL @result, numbered, @input"></textarea>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="tab-bar">
+      <button class="active" data-tab="state">State</button>
+      <button data-tab="library">Library</button>
+      <button data-tab="store">Store</button>
+      <button data-tab="config">Config</button>
+      <button data-tab="thread">Thread</button>
+    </div>
+    <div class="tab-content" id="tab-state">
+      <div class="empty" style="padding:20px">Run a pipeline to inspect state</div>
+    </div>
+    <div class="tab-content" id="tab-library" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--text-dim)">Wiki Function Pages</span>
+        <button class="btn" id="btn-refresh-lib" style="font-size:10px;padding:2px 8px">Refresh</button>
+      </div>
+      <div id="lib-list"><div class="empty" style="padding:20px">Click Refresh to load</div></div>
+    </div>
+    <div class="tab-content" id="tab-store" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--text-dim)">Pipeline Store</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn" id="btn-save-state" style="font-size:10px;padding:2px 8px">Save State</button>
+          <button class="btn" id="btn-refresh-store" style="font-size:10px;padding:2px 8px">Refresh</button>
+        </div>
+      </div>
+      <div id="store-list"><div class="empty" style="padding:20px">Click Refresh to load</div></div>
+    </div>
+    <div class="tab-content" id="tab-config" style="display:none">
+      <div class="cfg-row"><label>Analyzer</label><input id="cfg-analyzer" value="http://127.0.0.1:5001"></div>
+      <div class="cfg-row"><label>Generator</label><input id="cfg-generator" value="http://127.0.0.1:5001"></div>
+      <div style="margin:12px 0 6px;font-size:11px;color:var(--text-dim)">Initial State (JSON)</div>
+      <textarea id="cfg-state" style="width:100%;min-height:80px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px;font-family:var(--mono);font-size:11px;resize:vertical" placeholder='{"input": "your prompt"}'>{}</textarea>
+    </div>
+    <div class="tab-content" id="tab-thread" style="display:none">
+      <div class="empty" style="padding:20px">Thread log appears after GEN calls</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const SB = () => location.origin;
+
+// ── Presets ────────────────────────────────────────────
+const PRESETS = {
+  basic_call: `; Basic CALL example
+MOV @text, "Hello World from Assembly DSL"
+CALL @numbered, numbered, @text
+CALL @len, len, @text
+CALL @status, check_status, "PASS: all good"`,
+
+  parse_claims: `; Parse claims from fixture
+MOV @claims, "ENTITIES: [Alice, Bob, Charlie]\\nAXIOMS:\\n- Alice is tall\\n- Bob likes cats\\n- Charlie runs fast\\nHYPOTHESES:\\n- They are friends"
+CALL @parsed, parse_sections, @claims`,
+
+  each_entities: `; EACH loop over entities
+MOV @entities, @data
+EACH @entity, @entities, +2
+  CALL @entity.status, check_status, @entity.reaction
+  CALL @entity.name_len, len, @entity.name`,
+
+  debug_probe: `; Debug: step-by-step probe building
+; Tests: fmt template interpolation, entity field access, PUT chat assembly
+
+; 1. Setup answer text
+MOV @answer, @fixture_answer
+CALL @numbered_answer, numbered, @answer
+
+; 2. Enrich entities (adds _startNum, _firstLine)
+MOV @entity_nodes, @raw_entities
+CALL @entity_nodes, enrich_entities, @entity_nodes, @answer
+
+; 3. EACH: build probe prompt for each entity
+EACH @entity, @entity_nodes, +5
+  ; Build think-injection prompt
+  CALL @think_text, fmt, "<think>\\\\nОписание \\\\"{0}\\\\" начинается со строки {1} и длится до строки:", @entity._title, @entity._startNum
+  ; Show what we built
+  MOV @entity.think_built, @think_text
+  ; Build chat messages
+  PUT @chat, "user", @numbered_answer
+  PUT+ @chat, "assistant", @think_text
+  MOV @entity.chat_built, @chat`,
+
+  probe_trim: `; Probe: trim + confirm — no hardcoded entities
+; Splits answer into blocks by pattern, then probes each block
+
+; Setup
+MOV @answer, @fixture_answer
+CALL @numbered_answer, numbered, @answer
+
+; Split into blocks (auto-detects **N. ...** pattern)
+CALL @blocks, split_blocks, @answer
+
+; Grammars
+MOV @trim_grammar, "root ::= digits term\\ndigits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]\\nterm ::= \\" \\""
+MOV @confirm_grammar, "root ::= digit term\\ndigit ::= \\"0\\" | \\"1\\"\\nterm ::= \\" \\""
+
+; For each block: trim probe → slice → confirm
+EACH @block, @blocks, +11
+  ; --- Reset chats ---
+  MOV @trim_chat, ""
+  MOV @confirm_chat, ""
+  ; --- Trim probe: find endLineNumber ---
+  CALL @think_prefix, fmt, "<think>\\nРазделю текст на блоки.\\nБлок #{0} начинается со строки {1}\\nи длится до строки line number:", @block.local_id, @block._startNum
+  PUT @trim_chat, "user", @numbered_answer
+  PUT+ @trim_chat, "assistant", @think_prefix
+  GEN @endLine, @trim_chat, mode:probe, grammar:@trim_grammar, capture:"[0-9]+", coerce:int, worker:generator, temp:0, max:4, stop:" "
+  ; --- Slice answer ---
+  CALL @block.answer, slice_lines, @answer, @block._startNum, @endLine
+  ; --- Confirm probe ---
+  CALL @confirm_prefix, fmt, "<think>\\nБлок #{0}:\\n{1}\\n((answer generated) == true) ===", @block.local_id, @block.answer
+  PUT @confirm_chat, "user", @numbered_answer
+  PUT+ @confirm_chat, "assistant", @confirm_prefix
+  GEN @block.confirmed, @confirm_chat, mode:probe, grammar:@confirm_grammar, capture:"[01]", coerce:int, worker:generator, temp:0, max:2, stop:" "`,
+
+  demoness_pipeline: `; Demoness pipeline (fixture mode)
+MOV @answer, "**1. Lilith** Demoness with silver hair, amber eyes. Horns and wings. Anime style.\\n\\n**2. Morgana** Demoness with red hair, green eyes. Horns and tail. Anime style.\\n\\n**3. Velvetta** Demoness with black hair, violet eyes. Horns and wings. Anime style.\\n\\n**4. Azura** Demoness with teal hair, blue eyes. Spiral horns and scales. Anime style."
+
+; Parse into numbered
+CALL @numbered_text, numbered, @answer
+
+; Entities
+MOV @entities, @ent_data
+CALL @entities, enrich_entities, @entities, @answer
+
+; Check each entity
+EACH @entity, @entities, +1
+  CALL @entity.status, check_status, "PASS: anime style confirmed"
+
+; Build char-indexed for annotation
+CALL @indexed, char_indexed, @answer`,
+};
+
+const PRESET_STATES = {
+  debug_probe: {
+    fixture_answer: "**1. Лилит — Повелительница Теней**\nДемоница с серебристыми волосами. Глаза янтаря. Рога. Крылья. Стиль: аниме.\n\n**2. Моргана — Огненная Искусительница**\nДемоница с алыми волосами. Зелёные глаза. Хвост. Стиль: аниме.\n\n**3. Вельветта — Ночной Цветок**\nДемоница с чёрными волосами. Фиолетовые глаза. Рожки. Стиль: аниме.",
+    raw_entities: [
+      {_title: "Лилит — Повелительница Теней"},
+      {_title: "Моргана — Огненная Искусительница"},
+      {_title: "Вельветта — Ночной Цветок"},
+    ],
+  },
+  probe_trim: {
+    fixture_answer: "**1. Лилит — Повелительница Теней**\nДемоница с длинными серебристыми волосами. Глаза цвета расплавленного янтаря с вертикальными зрачками. Из висков растут изящные витые рога. За спиной полупрозрачные крылья. Стоит в анфас, скрестив руки. Стиль: аниме.\n\n**2. Моргана — Огненная Искусительница**\nДемоница с пылающими алыми волосами вокруг козлиных рогов. Изумрудно-зелёные глаза с кошачьими зрачками. Длинный чешуйчатый хвост. Полуоборот, пламя на ладони. Стиль: аниме.\n\n**3. Вельветта — Ночной Цветок**\nДемоница с иссиня-чёрными волосами до пояса. Фиолетовые глаза с мерцающими искрами. Маленькие рожки с золотой филигранью. Крылья сложены за спиной. Сидит на троне из костей. Стиль: аниме.\n\n**4. Азура — Морская Ведьма**\nДемоница с бирюзовыми волосами. Ледяные голубые глаза с тройными зрачками. Рога спиралью с ракушками. Чешуя на предплечьях. Стоит в профиль с посохом из коралла. Стиль: аниме.",
+  },
+  each_entities: {
+    data: [
+      {name: "Alice", reaction: "PASS: looks good"},
+      {name: "Bob", reaction: "FAIL: missing detail"},
+      {name: "Charlie", reaction: "PASS: confirmed"},
+    ]
+  },
+  demoness_pipeline: {
+    ent_data: [
+      {_title: "Lilith"},
+      {_title: "Morgana"},
+      {_title: "Velvetta"},
+      {_title: "Azura"},
+    ]
+  },
+};
+
+// ── Tab switching ──────────────────────────────────────
+$$('.tab-bar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('.tab-bar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    $$('.tab-content').forEach(tc => tc.style.display = 'none');
+    $(`#tab-${btn.dataset.tab}`).style.display = '';
+  });
+});
+
+// ── Preset loading ─────────────────────────────────────
+$('#preset').addEventListener('change', () => {
+  const key = $('#preset').value;
+  if (key && PRESETS[key]) {
+    $('#code').value = PRESETS[key];
+    updateLineCount();
+    if (PRESET_STATES[key]) {
+      $('#cfg-state').value = JSON.stringify(PRESET_STATES[key], null, 2);
+    }
+  }
+});
+
+// ── Editor line count ──────────────────────────────────
+function updateLineCount() {
+  const n = ($('#code').value.match(/\n/g) || []).length + 1;
+  $('#line-count').textContent = `${n} line${n !== 1 ? 's' : ''}`;
+}
+$('#code').addEventListener('input', updateLineCount);
+
+// ── Message rendering ──────────────────────────────────
+const OP_ICONS = {
+  MOV: '\u2192', GEN: '\uD83E\uDD16', CALL: '\u2699', EACH: '\uD83D\uDD04',
+  PARSE: '\uD83D\uDCCB', CMP: '\u2696', JIF: '\u2934', LOOP: '\u27F3',
+  PUT: '\uD83D\uDCAC', 'PUT+': '\uD83D\uDCAC', INPUT: '\uD83D\uDCE5',
+  RESULT: '\u2705', ERROR: '\u274C', NOP: '\u00B7',
+};
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function encAttr(s) {
+  // Encode for safe storage in data-* attributes (preserves newlines)
+  // Use double-quote-safe encoding: & < > " and newlines
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;').replace(/\r/g, '');
+}
+function decAttr(s) {
+  // Decode data-* attribute back to raw string
+  return String(s ?? '').replace(/&#10;/g, '\n').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+}
+
+function truncate(s, max = 300) {
+  s = String(s ?? '');
+  return s.length > max ? s.slice(0, max) + '\u2026' : s;
+}
+
+function addMsg(op, opts = {}) {
+  const feed = $('#feed');
+  // Remove empty state
+  const empty = feed.querySelector('.empty');
+  if (empty) empty.remove();
+
+  const collapsed = op === 'MOV' || op === 'NOP';
+  const div = document.createElement('div');
+  div.className = `msg op-${op}${collapsed ? ' collapsed' : ''}`;
+
+  const icon = OP_ICONS[op] || '\u2022';
+  let label = op;
+  if (opts.fn) label += ` ${opts.fn}`;
+  if (opts.dst) label += ` \u2192 ${opts.dst}`;
+
+  let metaHtml = '';
+  if (opts.each_item != null) metaHtml += `<span class="tag" style="background:var(--orange);color:#1a1b26">${esc(String(opts.each_item).slice(0,25))} [${opts.each_idx+1}/${opts.each_total}]</span>`;
+  if (opts.line) metaHtml += `<span class="tag">L${opts.line}</span>`;
+  if (opts.worker) metaHtml += `<span class="tag">${esc(opts.worker)}</span>`;
+  if (opts.mode) metaHtml += `<span class="tag">${esc(opts.mode)}</span>`;
+  if (opts.iterations != null) metaHtml += `<span class="tag">${opts.iterations}x</span>`;
+  if (opts.status === 'error') metaHtml += `<span class="badge" style="background:var(--red);color:#1a1b26">ERR</span>`;
+
+  function ioBlock(label, short, full) {
+    short = String(short ?? '');
+    full = String(full ?? short);
+    const needsExpand = full.length > short.length || full.length > 120;
+    return `<div class="io"><div class="io-label">${label}${needsExpand ? ' <span class="io-expand" data-role="expand">expand</span>' : ''}</div><div class="io-val${needsExpand ? ' expandable' : ''}" data-full="${encAttr(full)}" data-short="${encAttr(short)}">${esc(short)}</div></div>`;
+  }
+
+  let ioHtml = '';
+  if (opts.input_preview || opts.input_full) {
+    ioHtml += ioBlock('input', opts.input_preview, opts.input_full);
+  }
+  if (opts.output_preview || opts.output_full) {
+    ioHtml += ioBlock('output', opts.output_preview, opts.output_full);
+  }
+  if (opts.error) {
+    ioHtml += `<div class="io"><div class="io-label">error</div><div class="io-val" style="color:var(--red)">${esc(opts.error)}</div></div>`;
+  }
+
+  div.innerHTML = `
+    <div class="msg-hdr toggle">
+      <span class="icon">${icon}</span>
+      <span class="op">${esc(label)}</span>
+      ${metaHtml}
+      <span class="meta">${opts.status || ''}</span>
+    </div>
+    ${ioHtml}
+  `;
+
+  div.querySelector('.toggle').addEventListener('click', () => {
+    div.classList.toggle('collapsed');
+  });
+
+  // Expand/collapse for io-val blocks
+  function toggleExpand(ioVal, btn) {
+    if (ioVal.classList.toggle('expanded')) {
+      ioVal.textContent = decAttr(ioVal.dataset.full || '');
+      if (btn) btn.textContent = 'collapse';
+    } else {
+      ioVal.textContent = decAttr(ioVal.dataset.short || '');
+      if (btn) btn.textContent = 'expand';
+    }
+  }
+
+  div.querySelectorAll('.io-expand').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ioVal = btn.closest('.io').querySelector('.io-val');
+      toggleExpand(ioVal, btn);
+    });
+  });
+
+  div.querySelectorAll('.io-val.expandable').forEach(val => {
+    val.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const btn = val.closest('.io').querySelector('.io-expand');
+      toggleExpand(val, btn);
+    });
+  });
+
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+  return div;
+}
+
+function clearFeed() {
+  $('#feed').innerHTML = '<div class="empty">Paste Assembly code below and click <b>Run</b></div>';
+  $('#tab-state').innerHTML = '<div class="empty" style="padding:20px">Run a pipeline to inspect state</div>';
+  $('#tab-thread').innerHTML = '<div class="empty" style="padding:20px">Thread log appears after GEN calls</div>';
+}
+
+// ── State inspector ────────────────────────────────────
+function renderState(state) {
+  const el = $('#tab-state');
+  if (!state || !Object.keys(state).length) {
+    el.innerHTML = '<div class="empty" style="padding:20px">No state</div>';
+    return;
+  }
+  const keys = Object.keys(state).filter(k => !k.startsWith('_')).sort();
+  el.innerHTML = keys.map(k => {
+    let v = state[k];
+    let full;
+    if (typeof v === 'object' && v !== null) {
+      try { full = JSON.stringify(v, null, 2); } catch { full = String(v); }
+    } else {
+      full = String(v ?? 'null');
+    }
+    const needsExpand = full.length > 120;
+    const short = needsExpand ? full.slice(0, 120) + '\u2026' : full;
+    return `<div class="state-item"><span class="state-key">@${esc(k)}</span><span class="state-val${needsExpand ? ' expandable' : ''}" data-full="${encAttr(full)}" data-short="${encAttr(short)}">${esc(short)}</span></div>`;
+  }).join('');
+
+  // Click to expand/collapse state values
+  el.querySelectorAll('.state-val.expandable').forEach(val => {
+    val.addEventListener('click', () => {
+      if (val.classList.toggle('expanded')) {
+        val.textContent = decAttr(val.dataset.full || '');
+      } else {
+        val.textContent = decAttr(val.dataset.short || '');
+      }
+    });
+  });
+}
+
+// ── Thread inspector ───────────────────────────────────
+function renderThread(thread) {
+  const el = $('#tab-thread');
+  if (!thread || !thread.length) {
+    el.innerHTML = '<div class="empty" style="padding:20px">No thread entries</div>';
+    return;
+  }
+  el.innerHTML = thread.map(t => {
+    const role = t.role || 'system';
+    const content = truncate(t.content || '', 400);
+    return `<div style="margin-bottom:8px"><span style="color:var(--accent);font-weight:600;font-size:11px">${esc(role)}</span> <span style="color:var(--text-dim);font-size:10px">${esc(t.name || '')}</span><div class="io-val" style="margin-top:2px">${esc(content)}</div></div>`;
+  }).join('');
+}
+
+// ── Run pipeline ────��──────────────────────────────────
+async function runPipeline() {
+  const code = $('#code').value.trim();
+  if (!code) return;
+
+  clearFeed();
+
+  // Show input message
+  const stateInput = $('#cfg-state').value.trim();
+  let initialState = {};
+  try { initialState = JSON.parse(stateInput || '{}'); } catch { }
+
+  const isFixture = $('#fixture-mode').checked;
+  const config = { gen_mode: isFixture ? 'fixture' : 'live' };
+  if (isFixture) {
+    // Default fixture responses for probes — returns "7 1" so capture/coerce extracts a number
+    config.gen_fixtures = { "__default__": "7 1" };
+  }
+
+  addMsg('INPUT', {
+    input_preview: `Code: ${code.split('\n').length} lines`,
+    output_preview: Object.keys(initialState).length ? `State: ${Object.keys(initialState).join(', ')}` : 'No initial state',
+  });
+
+  const workers = {
+    generator: $('#cfg-generator').value || 'http://127.0.0.1:5001',
+    analyzer: $('#cfg-analyzer').value || 'http://127.0.0.1:5001',
+  };
+
+  try {
+    const resp = await fetch(SB() + '/api/dsl/asm', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ code, config, state: initialState, workers }),
+    });
+    const data = await resp.json();
+
+    // Render each log entry as a message
+    if (data.log && data.log.length) {
+      for (const entry of data.log) {
+        addMsg(entry.op || 'NOP', {
+          line: entry.line,
+          fn: entry.fn,
+          dst: entry.dst,
+          worker: entry.worker,
+          mode: entry.mode,
+          iterations: entry.iterations,
+          status: entry.status,
+          input_preview: entry.input_preview,
+          output_preview: entry.output_preview,
+          input_full: entry.input_full,
+          output_full: entry.output_full,
+          each_idx: entry.each_idx,
+          each_total: entry.each_total,
+          each_item: entry.each_item,
+          error: entry.error,
+        });
+      }
+    }
+
+    // Error message
+    if (data.error) {
+      addMsg('ERROR', { error: data.error });
+    }
+
+    // Result summary
+    const stateKeys = Object.keys(data.state || {}).filter(k => !k.startsWith('_'));
+    addMsg('RESULT', {
+      output_preview: data.error
+        ? `Failed: ${data.error}`
+        : `Done. ${data.log?.length || 0} steps, ${stateKeys.length} vars: ${stateKeys.slice(0, 8).map(k => '@' + k).join(', ')}${stateKeys.length > 8 ? '...' : ''}`,
+      status: data.error ? 'error' : 'done',
+    });
+
+    _lastRunState = data.state || {};
+    renderState(data.state);
+    renderThread(data.thread);
+
+  } catch (err) {
+    addMsg('ERROR', { error: `Network error: ${err.message}` });
+  }
+}
+
+$('#btn-run').addEventListener('click', runPipeline);
+$('#btn-clear').addEventListener('click', clearFeed);
+$('#btn-save-fn').addEventListener('click', saveAsFn);
+
+// Ctrl+Enter to run
+$('#code').addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runPipeline();
+  }
+});
+
+// ── Library ────────────────────────────────────────────
+async function loadLibrary() {
+  const el = $('#lib-list');
+  el.innerHTML = '<div class="empty" style="padding:10px">Loading...</div>';
+
+  try {
+    const resp = await fetch(SB() + '/api/atomic-wiki/pages?full=true');
+    if (!resp.ok) { el.innerHTML = '<div class="empty" style="padding:10px">Wiki API not available</div>'; return; }
+    const data = await resp.json();
+    const pages = (data.pages || data || []).filter(p => p.page_kind === 'function_page');
+
+    if (!pages.length) {
+      el.innerHTML = '<div class="empty" style="padding:10px">No function pages yet.<br><br>Use <b>Save as fn</b> or PUT /api/atomic-wiki/pages/{slug} with page_kind: "function_page"</div>';
+      return;
+    }
+
+    el.innerHTML = pages.map(p => {
+      const source = (p.blocks || []).map(b => b.text || '').filter(Boolean).join('\n');
+      const tags = (p.tags || []).map(t => `<span>${esc(t)}</span>`).join('');
+      // Parse fn signatures from source
+      const fnSigs = [];
+      for (const line of source.split('\n')) {
+        const m = line.match(/^fn\s+(\w+)\(([^)]*)\)(?:\s*->\s*([^:]+))?/);
+        if (m) fnSigs.push({ name: m[1], params: m[2] || '', outputs: m[3] || '' });
+      }
+      const sigHtml = fnSigs.map(f =>
+        `<div class="fn-sig">fn ${esc(f.name)}(${esc(f.params)})${f.outputs ? ' → ' + esc(f.outputs) : ''}</div>`
+      ).join('');
+
+      return `
+        <div class="lib-fn" data-slug="${esc(p.slug)}">
+          <div class="lib-fn-hdr">
+            <span class="fn-name">${esc(p.title || p.slug)}</span>
+            <div class="fn-tags">${tags}</div>
+          </div>
+          <div class="lib-fn-body">
+            ${sigHtml}
+            <pre>${esc(source)}</pre>
+            <div style="display:flex;gap:4px">
+              <button class="btn lib-insert">Insert CALL</button>
+              <button class="btn lib-copy">Copy source</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Toggle body on header click
+    el.querySelectorAll('.lib-fn-hdr').forEach(hdr => {
+      hdr.addEventListener('click', () => {
+        hdr.nextElementSibling.classList.toggle('open');
+      });
+    });
+
+    // Insert CALL into editor
+    el.querySelectorAll('.lib-insert').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fn = btn.closest('.lib-fn');
+        const source = fn.querySelector('pre').textContent;
+        const m = source.match(/^fn\s+(\w+)\(([^)]*)\)(?:\s*->\s*([^:]+))?/m);
+        if (m) {
+          const name = m[1];
+          const params = m[2] ? m[2].split(',').map(p => p.trim()).join(', ') : '';
+          const output = m[3] ? m[3].trim().split(',')[0].trim() : '@result';
+          const call = `CALL ${output}, ${name}${params ? ', ' + params : ''}`;
+          const editor = $('#code');
+          const pos = editor.selectionStart;
+          editor.value = editor.value.slice(0, pos) + call + '\n' + editor.value.slice(pos);
+          editor.focus();
+        }
+      });
+    });
+
+    // Copy source
+    el.querySelectorAll('.lib-copy').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const source = btn.closest('.lib-fn-body').querySelector('pre').textContent;
+        navigator.clipboard.writeText(source);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy source'; }, 1500);
+      });
+    });
+
+  } catch (err) {
+    el.innerHTML = `<div class="empty" style="padding:10px">Error: ${esc(err.message)}</div>`;
+  }
+}
+
+$('#btn-refresh-lib').addEventListener('click', loadLibrary);
+
+// ── Store ──────────────────────────────────────────────
+let _lastRunState = null;
+
+async function loadStore() {
+  const el = $('#store-list');
+  el.innerHTML = '<div class="empty" style="padding:10px">Loading...</div>';
+  try {
+    const resp = await fetch(SB() + '/api/pipeline-store/');
+    if (!resp.ok) { el.innerHTML = '<div class="empty" style="padding:10px">Store API not available</div>'; return; }
+    const data = await resp.json();
+    const slots = data.slots || {};
+    const snaps = data.snapshots || {};
+    let html = '';
+
+    const snapKeys = Object.keys(snaps);
+    if (snapKeys.length) {
+      html += '<div style="font-size:10px;color:var(--text-dim);margin:6px 0 4px">SNAPSHOTS</div>';
+      for (const name of snapKeys) {
+        html += `<div class="state-item" style="display:flex;align-items:center;gap:4px">
+          <span class="state-key" style="flex:1">${esc(name)}</span>
+          <button class="btn snap-load" data-name="${esc(name)}" style="font-size:9px;padding:1px 6px">Load</button>
+          <button class="btn snap-del" data-name="${esc(name)}" style="font-size:9px;padding:1px 6px;color:var(--red)">x</button>
+        </div>`;
+      }
+    }
+
+    const slotKeys = Object.keys(slots);
+    if (slotKeys.length) {
+      html += '<div style="font-size:10px;color:var(--text-dim);margin:6px 0 4px">SLOTS</div>';
+      for (const key of slotKeys) {
+        const val = slots[key];
+        const preview = truncate(JSON.stringify(val?.value ?? val), 80);
+        html += `<div class="state-item">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="state-key" style="flex:1">${esc(key)}</span>
+            <button class="btn slot-del" data-key="${esc(key)}" style="font-size:9px;padding:1px 6px;color:var(--red)">x</button>
+          </div>
+          <span class="state-val">${esc(preview)}</span>
+        </div>`;
+      }
+    }
+
+    if (!snapKeys.length && !slotKeys.length) {
+      html = '<div class="empty" style="padding:20px">Store is empty.<br>Use <b>store_set</b> in Assembly or <b>Save State</b> button.</div>';
+    }
+
+    el.innerHTML = html;
+
+    // Snap load
+    el.querySelectorAll('.snap-load').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = btn.dataset.name;
+        const resp = await fetch(SB() + '/api/pipeline-store/snapshot/' + encodeURIComponent(name));
+        const snap = await resp.json();
+        if (snap.state) {
+          $('#cfg-state').value = JSON.stringify(snap.state, null, 2);
+          addMsg('RESULT', { output_preview: `Loaded snapshot "${name}" into initial state` });
+        }
+      });
+    });
+    // Snap delete
+    el.querySelectorAll('.snap-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await fetch(SB() + '/api/pipeline-store/snapshot/' + encodeURIComponent(btn.dataset.name), {method:'DELETE'});
+        loadStore();
+      });
+    });
+    // Slot delete
+    el.querySelectorAll('.slot-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await fetch(SB() + '/api/pipeline-store/slot/' + encodeURIComponent(btn.dataset.key), {method:'DELETE'});
+        loadStore();
+      });
+    });
+  } catch (err) {
+    el.innerHTML = `<div class="empty" style="padding:10px">Error: ${esc(err.message)}</div>`;
+  }
+}
+
+async function saveCurrentState() {
+  if (!_lastRunState || !Object.keys(_lastRunState).length) {
+    addMsg('ERROR', { error: 'No pipeline state to save. Run a pipeline first.' });
+    return;
+  }
+  const name = prompt('Snapshot name:', 'snap_' + Date.now());
+  if (!name) return;
+  await fetch(SB() + '/api/pipeline-store/snapshot', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, state: _lastRunState }),
+  });
+  addMsg('RESULT', { output_preview: `Saved state snapshot "${name}"` });
+  loadStore();
+}
+
+$('#btn-refresh-store').addEventListener('click', loadStore);
+$('#btn-save-state').addEventListener('click', saveCurrentState);
+
+// ── Save as fn ─────────────────────────────────────────
+function saveAsFn() {
+  const editor = $('#code');
+  const selected = editor.value.substring(editor.selectionStart, editor.selectionEnd).trim();
+  const body = selected || editor.value.trim();
+  if (!body) return;
+
+  const name = prompt('Function name (e.g. trim_probe):');
+  if (!name) return;
+  const params = prompt('Params (e.g. @text, @entity):') || '';
+  const outputs = prompt('Outputs (e.g. @result):') || '';
+
+  const outputPart = outputs ? ` -> ${outputs}` : '';
+  const source = `fn ${name}(${params})${outputPart}:\n` + body.split('\n').map(l => '  ' + l).join('\n');
+
+  fetch(SB() + '/api/dsl/fn/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ slug: 'fn-' + name, title: name, source, tags: ['user-defined'] }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.saved) {
+      // Save to wiki as function_page
+      fetch(SB() + '/api/atomic-wiki/pages/fn-' + name, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          title: name,
+          page_kind: 'function_page',
+          item_kind: 'text',
+          text: source,
+          tags: ['function', 'user-defined'],
+        }),
+      }).then(() => {
+        addMsg('RESULT', { output_preview: `Saved fn ${name}(${params})${outputPart} to library` });
+        loadLibrary();
+      });
+    } else {
+      addMsg('ERROR', { error: `Failed to save: ${data.error}` });
+    }
+  })
+  .catch(err => {
+    addMsg('ERROR', { error: `Save error: ${err.message}` });
+  });
+}
+
+// ── Init ───────────────────────────────────────────────
+// Load saved state
+try {
+  const saved = localStorage.getItem('dsl_pipeline_chat');
+  if (saved) {
+    const s = JSON.parse(saved);
+    if (s.code) $('#code').value = s.code;
+    if (s.analyzer) $('#cfg-analyzer').value = s.analyzer;
+    if (s.generator) $('#cfg-generator').value = s.generator;
+    if (s.state) $('#cfg-state').value = s.state;
+    if (s.fixture != null) $('#fixture-mode').checked = s.fixture;
+  }
+} catch {}
+updateLineCount();
+
+// Save on change
+function saveLocal() {
+  try {
+    localStorage.setItem('dsl_pipeline_chat', JSON.stringify({
+      code: $('#code').value,
+      analyzer: $('#cfg-analyzer').value,
+      generator: $('#cfg-generator').value,
+      state: $('#cfg-state').value,
+      fixture: $('#fixture-mode').checked,
+    }));
+  } catch {}
+}
+$('#code').addEventListener('input', saveLocal);
+$('#cfg-analyzer').addEventListener('input', saveLocal);
+$('#cfg-generator').addEventListener('input', saveLocal);
+$('#cfg-state').addEventListener('input', saveLocal);
+$('#fixture-mode').addEventListener('change', saveLocal);
+</script>
+</body>
+</html>

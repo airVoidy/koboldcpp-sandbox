@@ -463,7 +463,7 @@ class WorkflowContext:
         continue_limit = int(max_continue if max_continue is not None else self.settings.get("max_continue", 20))
         normalized_grammar = _normalize_grammar(grammar)
 
-        is_probe = mode == "probe_continue"
+        is_probe = mode in ("probe_continue", "probe")
         res = llm_call_with_continue(
             base_url,
             messages,
@@ -478,7 +478,7 @@ class WorkflowContext:
             http=self._http,
         )
 
-        if mode == "probe_continue":
+        if mode in ("probe_continue", "probe"):
             probe_value = _clean_probe_result(res.raw, grammar, capture)
             self.on_thread(
                 "worker",

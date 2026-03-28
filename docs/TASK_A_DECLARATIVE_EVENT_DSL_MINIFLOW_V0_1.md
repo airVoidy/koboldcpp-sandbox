@@ -25,16 +25,18 @@ The goal is:
 
 ```js
 emit("task.input", {
+  target: "data.local.wiki.task.input",
   data: {
     text: "написать 4 описания внешности демониц в разных образах\n[проверить, что разные образы, разный цвет глаз,\nразный цвет волос, разные позы,\nв описании должны быть элементы, по которым даже без указания расы понятно, что перед тобой демоница,\nстиль: аниме, должен быть явно указан в описании]"
   }
 })
 
 emit("generate.request", {
+  target: "data.local.object.generate.request",
   schema: "native_generate_request",
   defaults: "native_generate_defaults",
   data: {
-    prompt: @task.input.text,
+    prompt: @data.local.wiki.task.input.text,
     model: "local-model",
     max_length: 512
   },
@@ -42,11 +44,11 @@ emit("generate.request", {
 })
 
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"],
-  emit: ["response.output_message"],
-  project: ["response.table"]
+  emit: ["data.local.message.response.output_message"],
+  project: ["data.local.table.response.table"]
 })
 ```
 

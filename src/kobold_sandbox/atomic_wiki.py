@@ -34,7 +34,7 @@ class WikiPage(BaseModel):
     page_id: str
     slug: str
     title: str
-    page_kind: Literal["config_page", "wiki_page", "grammar_page"] = "config_page"
+    page_kind: Literal["config_page", "wiki_page", "grammar_page", "function_page"] = "config_page"
     item_kind: Literal["text", "table", "alias", "param"] = "text"
     message: WikiMessageEnvelope
     blocks: list[WikiBlock] = Field(default_factory=list)
@@ -47,7 +47,7 @@ class WikiPage(BaseModel):
 
 class UpsertWikiPageRequest(BaseModel):
     title: str | None = None
-    page_kind: Literal["config_page", "wiki_page", "grammar_page"] = "config_page"
+    page_kind: Literal["config_page", "wiki_page", "grammar_page", "function_page"] = "config_page"
     item_kind: Literal["text", "table", "alias", "param"] = "text"
     text: str = ""
     headers: list[str] = Field(default_factory=list)

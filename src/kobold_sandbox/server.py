@@ -48,6 +48,7 @@ from .storage import Sandbox
 from .core import build_schema_backends_from_linear, linear_schema_to_puzzle_schema
 from .data_store.api import create_datastore_router
 from .data_store.store import DataStore
+from .atomic_data_revision import create_atomic_data_revision_router
 from .atomic_wiki import create_atomic_wiki_router
 from .atomic_dsl_api import create_atomic_dsl_router
 
@@ -355,7 +356,12 @@ def create_app(root: str) -> FastAPI:
     datastore_root = Path(root).resolve() / ".sandbox" / "datastore"
     app.include_router(create_datastore_router(datastore_root), prefix="/api/datastore")
     app.include_router(create_atomic_wiki_router(DataStore(datastore_root)), prefix="/api/atomic-wiki")
+    app.include_router(create_atomic_data_revision_router(DataStore(datastore_root)), prefix="/api/atomic-data")
     app.include_router(create_atomic_dsl_router(), prefix="/api/dsl")
+
+    from .pipeline_store import create_pipeline_store_router
+    pipeline_store_dir = Path(root).resolve() / ".sandbox" / "pipeline_store"
+    app.include_router(create_pipeline_store_router(pipeline_store_dir), prefix="/api/pipeline-store")
 
     sessions: dict[str, dict[str, Any]] = {
         "default": {
@@ -2845,6 +2851,11 @@ def create_app(root: str) -> FastAPI:
     @app.get("/atomic-dsl", response_class=HTMLResponse)
     def atomic_dsl_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "atomic_dsl.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/dsl-pipeline", response_class=HTMLResponse)
+    def dsl_pipeline_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "dsl_pipeline_chat.html"
         return html_path.read_text(encoding="utf-8")
 
     @app.get("/chat", response_class=HTMLResponse)

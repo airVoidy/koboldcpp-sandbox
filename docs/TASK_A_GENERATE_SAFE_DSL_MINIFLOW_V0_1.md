@@ -30,37 +30,37 @@ Task text:
 
 This miniflow uses:
 
-- `task.input`
-- `generate.request`
-- `generate.call`
-- `generate.response`
+- `data.local.wiki.task.input`
+- `data.local.object.generate.request`
+- `data.local.object.generate.call`
+- `data.local.object.generate.response`
 
 ## Minimal functional flow
 
 ```text
-object task.input
+object data.local.wiki.task.input
 
-fill task.input:
+fill data.local.wiki.task.input:
   text = "написать 4 описания внешности демониц в разных образах
 [проверить, что разные образы, разный цвет глаз,
 разный цвет волос, разные позы,
 в описании должны быть элементы, по которым даже без указания расы понятно, что перед тобой демоница,
 стиль: аниме, должен быть явно указан в описании]"
 
-object generate.request using native_generate_request
-apply_defaults generate.request from native_generate_defaults
+object data.local.object.generate.request using native_generate_request
+apply_defaults data.local.object.generate.request from native_generate_defaults
 
-fill generate.request:
-  prompt = @task.input.text
+fill data.local.object.generate.request:
+  prompt = @data.local.wiki.task.input.text
   model = "local-model"
   max_length = 512
 
-check_complete generate.request
-call generate with generate.request -> generate.call
+check_complete data.local.object.generate.request
+call generate with data.local.object.generate.request -> data.local.object.generate.call
 
-object generate.response using native_generate_response
-bind_response generate.call -> generate.response
-check_complete generate.response
+object data.local.object.generate.response using native_generate_response
+bind_response data.local.object.generate.call -> data.local.object.generate.response
+check_complete data.local.object.generate.response
 ```
 
 ## What this explicitly guarantees
@@ -79,9 +79,9 @@ This flow makes visible:
 ### 1. Input object
 
 ```text
-object task.input
+object data.local.wiki.task.input
 
-fill task.input:
+fill data.local.wiki.task.input:
   text = "...Task A text..."
 ```
 
@@ -90,11 +90,11 @@ This keeps the task itself explicit as a local object.
 ### 2. Request object
 
 ```text
-object generate.request using native_generate_request
-apply_defaults generate.request from native_generate_defaults
+object data.local.object.generate.request using native_generate_request
+apply_defaults data.local.object.generate.request from native_generate_defaults
 
-fill generate.request:
-  prompt = @task.input.text
+fill data.local.object.generate.request:
+  prompt = @data.local.wiki.task.input.text
   model = "local-model"
   max_length = 512
 ```
@@ -104,7 +104,7 @@ This avoids loose field mutation and keeps the request shape visible.
 ### 3. Request check
 
 ```text
-check_complete generate.request
+check_complete data.local.object.generate.request
 ```
 
 This should fail if:
@@ -116,17 +116,17 @@ This should fail if:
 ### 4. Endpoint call
 
 ```text
-call generate with generate.request -> generate.call
+call generate with data.local.object.generate.request -> data.local.object.generate.call
 ```
 
-`generate.call` should be treated as a call artifact, not just a temporary return value.
+`data.local.object.generate.call` should be treated as a call artifact, not just a temporary return value.
 
 ### 5. Response object
 
 ```text
-object generate.response using native_generate_response
-bind_response generate.call -> generate.response
-check_complete generate.response
+object data.local.object.generate.response using native_generate_response
+bind_response data.local.object.generate.call -> data.local.object.generate.response
+check_complete data.local.object.generate.response
 ```
 
 This keeps output explicit too.
@@ -157,7 +157,7 @@ That keeps it compatible with the message-based architecture.
 
 ## Immediate next step after this miniflow
 
-The natural next batch after `generate.response` is:
+The natural next batch after `data.local.object.generate.response` is:
 
 - extract `raw_text`
 - emit response message/container

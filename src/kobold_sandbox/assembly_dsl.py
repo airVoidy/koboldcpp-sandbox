@@ -1,7 +1,7 @@
-"""Assembly DSL Interpreter v0.1.
+"""Assembly DSL Interpreter v0.2.
 
-Minimal flat instruction set for Atomic pipelines.
-8 opcodes: MOV, GEN, PUT, PARSE, CALL, CMP, JIF, LOOP.
+Flat instruction set for Atomic pipelines.
+10 opcodes: MOV, GEN, PUT, PARSE, CALL, CMP, JIF, LOOP, EACH, NOP.
 
 Reuses WorkflowContext and existing transform functions from workflow_dsl.
 """
@@ -29,7 +29,7 @@ from .workflow_dsl import (
 
 @dataclass
 class Instruction:
-    opcode: str          # MOV, GEN, PUT, PUT+, PARSE, CALL, CMP, JIF, LOOP
+    opcode: str          # MOV, GEN, PUT, PUT+, PARSE, CALL, CMP, JIF, LOOP, EACH
     args: list[str]      # raw string tokens
     flags: dict[str, str] # key:value pairs
     line: int = 0        # source line number
@@ -97,13 +97,23 @@ def _tokenise_line(raw: str) -> Instruction | None:
 
 
 def _split_asm_args(text: str) -> list[str]:
-    """Split comma-separated args, respecting quotes."""
+    """Split comma-separated args, respecting quotes and backslash escapes."""
     args: list[str] = []
     current = ""
     depth = 0
     quote: str | None = None
+    escaped = False
 
     for ch in text:
+        if escaped:
+            current += ch
+            escaped = False
+            continue
+        if ch == "\\" and quote:
+            # Backslash inside quotes: escape next char
+            current += ch
+            escaped = True
+            continue
         if quote:
             current += ch
             if ch == quote:
@@ -133,6 +143,39 @@ def _split_asm_args(text: str) -> list[str]:
     return args
 
 
+def _resolve_labels(instructions: list[Instruction]) -> list[Instruction]:
+    """Resolve :label references in JIF/LOOP args to +N offsets."""
+    # First pass: collect label positions
+    labels: dict[str, int] = {}
+    real_instructions: list[Instruction] = []
+    for inst in instructions:
+        if inst.opcode == "LABEL":
+            # Label pseudo-instruction: store position
+            label_name = inst.args[0] if inst.args else ""
+            labels[label_name] = len(real_instructions)
+        else:
+            real_instructions.append(inst)
+
+    # Second pass: resolve :label refs in JIF/LOOP/EACH args
+    for ip, inst in enumerate(real_instructions):
+        if inst.opcode in ("JIF", "LOOP", "EACH"):
+            new_args = []
+            for arg in inst.args:
+                if arg.startswith(":"):
+                    label = arg[1:]  # strip ':'
+                    if label in labels:
+                        target_ip = labels[label]
+                        offset = target_ip - ip - 1  # relative jump (body length)
+                        new_args.append(f"{offset:+d}" if offset < 0 else f"+{offset}")
+                    else:
+                        new_args.append(arg)  # leave unresolved
+                else:
+                    new_args.append(arg)
+            inst.args = new_args
+
+    return real_instructions
+
+
 def parse_program(text: str) -> tuple[list[Instruction], dict[str, AsmFunction]]:
     """Parse assembly text into instruction list and function table."""
     lines = text.splitlines()
@@ -149,9 +192,19 @@ def parse_program(text: str) -> tuple[list[Instruction], dict[str, AsmFunction]]
             i += 1
             continue
 
+        # Label definition :name
+        if stripped.startswith(":") and not stripped.startswith("::"):
+            label_name = stripped[1:].strip()
+            inst = Instruction(opcode="LABEL", args=[label_name], flags={}, line=i + 1, raw=stripped)
+            instructions.append(inst)
+            i += 1
+            continue
+
         # fn declaration
         if stripped.startswith("fn "):
             fn_def, fn_instrs, consumed = _parse_fn_block(lines, i)
+            # Resolve labels within fn body
+            fn_def.instructions = _resolve_labels(fn_def.instructions)
             functions[fn_def.name] = fn_def
             i += consumed
             continue
@@ -161,6 +214,9 @@ def parse_program(text: str) -> tuple[list[Instruction], dict[str, AsmFunction]]
             inst.line = i + 1
             instructions.append(inst)
         i += 1
+
+    # Resolve labels in main program
+    instructions = _resolve_labels(instructions)
 
     return instructions, functions
 
@@ -187,12 +243,21 @@ def _parse_fn_block(lines: list[str], start: int) -> tuple[AsmFunction, list[Ins
             break
         stripped = raw.strip()
         if stripped and not stripped.startswith(";") and not stripped.startswith("#"):
-            inst = _tokenise_line(stripped)
-            if inst:
-                inst.line = i + 1
+            # Label in fn body
+            if stripped.startswith(":") and not stripped.startswith("::"):
+                label_name = stripped[1:].strip()
+                inst = Instruction(opcode="LABEL", args=[label_name], flags={}, line=i + 1, raw=stripped)
                 fn_instrs.append(inst)
+            else:
+                inst = _tokenise_line(stripped)
+                if inst:
+                    inst.line = i + 1
+                    fn_instrs.append(inst)
         consumed += 1
         i += 1
+
+    # Resolve labels within fn body
+    fn_instrs = _resolve_labels(fn_instrs)
 
     return AsmFunction(name=name, params=params, outputs=outputs, instructions=fn_instrs), fn_instrs, consumed
 
@@ -270,11 +335,17 @@ def _exec_mov(ctx: WorkflowContext, inst: Instruction) -> dict:
     src = inst.args[1] if len(inst.args) > 1 else ""
     value = _asm_resolve(ctx, src)
     _asm_store(ctx, dst, value)
-    return {"op": "MOV", "dst": dst, "value": _short_repr(value)}
+    return {"op": "MOV", "dst": dst, "src": src, "value": _short_repr(value),
+            "input_preview": _short_repr(value), "output_preview": _short_repr(value),
+            "input_full": _full_repr(value), "output_full": _full_repr(value)}
 
 
 def _exec_gen(ctx: WorkflowContext, inst: Instruction) -> dict:
-    """GEN dst, src [, flags]"""
+    """GEN dst, src [, flags]
+
+    Flags include mode, worker, temp, max, grammar, capture, coerce, stop, think, input.
+    When mode=probe and capture/coerce are set, the raw result is cleaned/extracted.
+    """
     dst = inst.args[0]
     src = inst.args[1] if len(inst.args) > 1 else ""
 
@@ -286,16 +357,50 @@ def _exec_gen(ctx: WorkflowContext, inst: Instruction) -> dict:
         "mode": "mode", "worker": "worker", "temp": "temperature",
         "temperature": "temperature", "max": "max_tokens", "max_tokens": "max_tokens",
         "think": "think", "stop": "stop", "cap": "capture", "capture": "capture",
-        "grammar": "grammar", "input": "input",
+        "grammar": "grammar", "input": "input", "coerce": "coerce",
     }
     for k, v in inst.flags.items():
         mapped = flag_map.get(k, k)
         resolved = _asm_resolve(ctx, v)
         kw[mapped] = resolved
 
+    # Extract coerce before passing to generate (it's not a generate kwarg)
+    coerce_type = kw.pop("coerce", None)
+
     result = _atomic_apply_function(ctx, "generate", [source], kw)
+
+    # Post-process probe results with capture/coerce
+    mode = kw.get("mode", "prompt")
+    if mode in ("probe", "probe_continue") and (kw.get("capture") or coerce_type):
+        from .workflow_dsl import _clean_probe_result
+        capture = kw.get("capture")
+        # Build capture dict for _clean_probe_result
+        if capture or coerce_type:
+            cap_dict: dict[str, Any] = {}
+            if isinstance(capture, str):
+                cap_dict["regex"] = capture
+            elif isinstance(capture, dict):
+                cap_dict = dict(capture)
+            if coerce_type:
+                cap_dict["coerce"] = str(coerce_type)
+            result = _clean_probe_result(str(result), kw.get("grammar"), cap_dict or None)
+            # Apply coerce to final result
+            if coerce_type == "int" or str(coerce_type) == "int":
+                try:
+                    result = int(result)
+                except (ValueError, TypeError):
+                    result = 0
+            elif coerce_type == "float" or str(coerce_type) == "float":
+                try:
+                    result = float(result)
+                except (ValueError, TypeError):
+                    result = 0.0
+
     _asm_store(ctx, dst, result)
-    return {"op": "GEN", "dst": dst, "worker": kw.get("worker", "generator")}
+    return {"op": "GEN", "dst": dst, "worker": kw.get("worker", "generator"),
+            "mode": kw.get("mode", "prompt"),
+            "input_preview": _short_repr(source), "output_preview": _short_repr(result),
+            "input_full": _full_repr(source), "output_full": _full_repr(result)}
 
 
 def _exec_put(ctx: WorkflowContext, inst: Instruction, append: bool = False) -> dict:
@@ -309,7 +414,9 @@ def _exec_put(ctx: WorkflowContext, inst: Instruction, append: bool = False) -> 
     updated = _atomic_chat_set(current, str(role), str(value), append=append)
     ctx.set("$" + name, updated)
     op_name = "PUT+" if append else "PUT"
-    return {"op": op_name, "target": target_ref, "role": str(role)}
+    return {"op": op_name, "target": target_ref, "role": str(role),
+            "input_preview": _short_repr(value), "output_preview": f"{role}: {_short_repr(value)}",
+            "input_full": _full_repr(value), "output_full": f"{role}: {_full_repr(value)}"}
 
 
 def _exec_parse(ctx: WorkflowContext, inst: Instruction) -> dict:
@@ -369,7 +476,9 @@ def _exec_parse(ctx: WorkflowContext, inst: Instruction) -> dict:
         result = text  # fallback
 
     _asm_store(ctx, dst, result)
-    return {"op": "PARSE", "dst": dst}
+    return {"op": "PARSE", "dst": dst,
+            "input_preview": _short_repr(text), "output_preview": _short_repr(result),
+            "input_full": _full_repr(text), "output_full": _full_repr(result)}
 
 
 def _exec_call(ctx: WorkflowContext, inst: Instruction, functions: dict[str, AsmFunction]) -> dict:
@@ -378,27 +487,35 @@ def _exec_call(ctx: WorkflowContext, inst: Instruction, functions: dict[str, Asm
     fn_name = inst.args[1] if len(inst.args) > 1 else ""
     raw_args = inst.args[2:]
 
+    resolved_args = [_asm_resolve(ctx, a) for a in raw_args]
+    args_preview = ", ".join(_short_repr(a) for a in resolved_args[:3])
+    args_full = ", ".join(_full_repr(a) for a in resolved_args[:3])
+
+    def _call_result(result):
+        return {"op": "CALL", "fn": fn_name, "dst": dst,
+                "input_preview": args_preview, "output_preview": _short_repr(result),
+                "input_full": args_full, "output_full": _full_repr(result)}
+
     # Check user-defined assembly functions first
     if fn_name in functions:
         fn_def = functions[fn_name]
         result = _exec_asm_function(ctx, fn_def, raw_args, inst.flags)
         _asm_store(ctx, dst, result)
-        return {"op": "CALL", "fn": fn_name, "dst": dst}
+        return _call_result(result)
 
     # Check Python-registered functions
     if fn_name in _PYTHON_FUNCTIONS:
         py_fn = _PYTHON_FUNCTIONS[fn_name]
-        result = py_fn.handler(ctx, [_asm_resolve(ctx, a) for a in raw_args], inst.flags)
+        result = py_fn.handler(ctx, resolved_args, inst.flags)
         _asm_store(ctx, dst, result)
-        return {"op": "CALL", "fn": fn_name, "dst": dst}
+        return _call_result(result)
 
     # Fall through to existing atomic transforms
-    pos_args = [_asm_resolve(ctx, a) for a in raw_args]
     kw_args = {k: _asm_resolve(ctx, v) for k, v in inst.flags.items()}
 
-    result = _atomic_apply_function(ctx, fn_name, pos_args, kw_args)
+    result = _atomic_apply_function(ctx, fn_name, resolved_args, kw_args)
     _asm_store(ctx, dst, result)
-    return {"op": "CALL", "fn": fn_name, "dst": dst}
+    return _call_result(result)
 
 
 def _exec_cmp(ctx: WorkflowContext, inst: Instruction) -> dict:
@@ -426,13 +543,23 @@ def _exec_cmp(ctx: WorkflowContext, inst: Instruction) -> dict:
         result = False
 
     _asm_store(ctx, dst, result)
-    return {"op": "CMP", "dst": dst, "cmp": op, "result": result}
+    return {"op": "CMP", "dst": dst, "cmp": op, "result": result,
+            "input_preview": f"{_short_repr(a)} {op} {_short_repr(b)}",
+            "output_preview": str(result),
+            "input_full": f"{_full_repr(a)} {op} {_full_repr(b)}",
+            "output_full": str(result)}
 
 
 def _short_repr(value: Any) -> str:
     """Short string repr for logging."""
     s = str(value)
     return s[:80] + "..." if len(s) > 80 else s
+
+
+def _full_repr(value: Any) -> str:
+    """Full string repr for UI expansion (capped at 4000)."""
+    s = str(value)
+    return s[:4000] + "..." if len(s) > 4000 else s
 
 
 # ---------------------------------------------------------------------------
@@ -578,6 +705,52 @@ def _run_instructions(ctx: WorkflowContext, instructions: list[Instruction], fun
                 entry.update({"op": "LOOP", "iterations": iterations, "body_len": body_len})
                 ip = body_end  # jump past body
 
+            elif inst.opcode == "EACH":
+                # EACH @item, @collection, +body_len
+                item_ref = inst.args[0] if inst.args else "@_item"
+                coll_ref = inst.args[1] if len(inst.args) > 1 else ""
+                body_len_str = inst.args[2] if len(inst.args) > 2 else "+1"
+                body_len = int(str(body_len_str).lstrip("+"))
+
+                collection = _asm_resolve(ctx, coll_ref)
+                if not isinstance(collection, list):
+                    collection = _atomic_to_list(collection)
+
+                body_start = ip + 1
+                body_end = min(body_start + body_len, len(instructions))
+                body = instructions[body_start:body_end]
+
+                # Store iteration index in a separate well-known ref
+                idx_ref = "$_each_idx"
+                for idx, item in enumerate(collection):
+                    _asm_store(ctx, item_ref, item)
+                    ctx.vars["_each_idx"] = idx
+                    # Set _index on dict items only (don't corrupt primitives)
+                    if isinstance(item, dict):
+                        item["_index"] = idx
+                    # Derive a human-readable label for this iteration
+                    if isinstance(item, dict):
+                        item_label = item.get("_title", item.get("name", item.get("title", f"#{idx}")))
+                    else:
+                        item_label = _short_repr(item)
+                    body_log = _run_instructions(ctx, body, functions)
+                    # Annotate each body entry with iteration context
+                    for bl_entry in body_log:
+                        bl_entry["each_idx"] = idx
+                        bl_entry["each_total"] = len(collection)
+                        bl_entry["each_item"] = str(item_label)
+                    log.extend(body_log)
+                    # Write back: if body modified @item fields, update collection
+                    updated = _asm_resolve(ctx, item_ref)
+                    if isinstance(updated, dict):
+                        collection[idx] = updated
+
+                entry.update({"op": "EACH", "iterations": len(collection), "body_len": body_len})
+                ip = body_end  # jump past body
+
+            elif inst.opcode == "NOP":
+                ip += 1
+
             else:
                 raise ValueError(f"Unknown opcode: {inst.opcode}")
 
@@ -591,12 +764,47 @@ def _run_instructions(ctx: WorkflowContext, instructions: list[Instruction], fun
     return log
 
 
+def load_library_functions(pages: list[dict[str, Any]] | None = None) -> dict[str, AsmFunction]:
+    """Load fn definitions from wiki function_page entries.
+
+    Each page should have a block with Assembly fn source code.
+    Returns dict of function name → AsmFunction ready for execute().
+    """
+    functions: dict[str, AsmFunction] = {}
+    if not pages:
+        return functions
+    for page in pages:
+        blocks = page.get("blocks", [])
+        for block in blocks:
+            text = block.get("text", "")
+            if not text or "fn " not in text:
+                continue
+            try:
+                _, fns = parse_program(text)
+                functions.update(fns)
+            except Exception:
+                pass  # skip malformed fn definitions
+    return functions
+
+
+_builtins_registered = False
+
+
+def _ensure_builtins() -> None:
+    global _builtins_registered
+    if not _builtins_registered:
+        from .dsl_builtins import register_dsl_builtins
+        register_dsl_builtins()
+        _builtins_registered = True
+
+
 def execute(
     code: str,
     ctx: WorkflowContext,
     extra_functions: dict[str, AsmFunction] | None = None,
 ) -> AsmResult:
     """Parse and execute assembly DSL code."""
+    _ensure_builtins()
     try:
         instructions, functions = parse_program(code)
         if extra_functions:

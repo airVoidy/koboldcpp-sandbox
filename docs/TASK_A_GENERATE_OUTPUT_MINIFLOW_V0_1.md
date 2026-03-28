@@ -17,7 +17,7 @@ This keeps `generate` from ending in a hidden runtime object.
 
 This miniflow starts from:
 
-- `generate.response`
+- `data.local.object.generate.response`
 
 which already exists after:
 
@@ -30,29 +30,29 @@ which already exists after:
 
 This miniflow uses:
 
-- `generate.response`
-- `response.output_message`
-- `response.table`
+- `data.local.object.generate.response`
+- `data.local.message.response.output_message`
+- `data.local.table.response.table`
 
 ## Minimal functional flow
 
 ```text
-check_complete generate.response
+check_complete data.local.object.generate.response
 
-object response.output_message
+object data.local.message.response.output_message
 
-fill response.output_message:
-  text = @generate.response.raw_text
+fill data.local.message.response.output_message:
+  text = @data.local.object.generate.response.raw_text
   kind = "generated_raw_text"
-  source_call_ref = @generate.call
-  source_request_ref = @generate.request
+  source_call_ref = @data.local.object.generate.call
+  source_request_ref = @data.local.object.generate.request
 
-check_complete response.output_message
-emit_message response.output_message
+check_complete data.local.message.response.output_message
+emit_message data.local.message.response.output_message
 
-object response.table
-build_table response.output_message.text -> response.table
-check_complete response.table
+object data.local.table.response.table
+build_table data.local.message.response.output_message.text -> data.local.table.response.table
+check_complete data.local.table.response.table
 ```
 
 ## Why this step matters
@@ -71,7 +71,7 @@ With this step, the result becomes:
 ### 1. Re-check response
 
 ```text
-check_complete generate.response
+check_complete data.local.object.generate.response
 ```
 
 This ensures the bound response is still valid before further use.
@@ -79,13 +79,13 @@ This ensures the bound response is still valid before further use.
 ### 2. Build output message object
 
 ```text
-object response.output_message
+object data.local.message.response.output_message
 
-fill response.output_message:
-  text = @generate.response.raw_text
+fill data.local.message.response.output_message:
+  text = @data.local.object.generate.response.raw_text
   kind = "generated_raw_text"
-  source_call_ref = @generate.call
-  source_request_ref = @generate.request
+  source_call_ref = @data.local.object.generate.call
+  source_request_ref = @data.local.object.generate.request
 ```
 
 This turns the extracted text into a visible message-level object.
@@ -93,8 +93,8 @@ This turns the extracted text into a visible message-level object.
 ### 3. Emit message
 
 ```text
-check_complete response.output_message
-emit_message response.output_message
+check_complete data.local.message.response.output_message
+emit_message data.local.message.response.output_message
 ```
 
 At this point, the generated text exists as a real visible carrier.
@@ -102,14 +102,14 @@ At this point, the generated text exists as a real visible carrier.
 ### 4. Build first response table
 
 ```text
-object response.table
-build_table response.output_message.text -> response.table
-check_complete response.table
+object data.local.table.response.table
+build_table data.local.message.response.output_message.text -> data.local.table.response.table
+check_complete data.local.table.response.table
 ```
 
 This creates the first operational checkpoint over the generated text.
 
-## What `response.table` should contain
+## What `data.local.table.response.table` should contain
 
 At minimum:
 

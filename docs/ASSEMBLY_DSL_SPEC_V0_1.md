@@ -1,4 +1,4 @@
-# Assembly DSL Spec v0.1
+# Assembly DSL Spec v0.2
 
 ## Purpose
 
@@ -8,18 +8,19 @@ It provides a minimal, flat instruction set for small chains (3-8 ops) that can 
 
 ## Design Principles
 
-1. Fixed small instruction set (8 opcodes)
-2. Flat execution — no nesting, no blocks
+1. Fixed small instruction set (10 opcodes)
+2. Flat execution — no nesting, no blocks (EACH body is specified by +N count)
 3. Positional + flag syntax: `OPCODE dst, src, flag:val`
 4. One line = one instruction
 5. Chains are short, wrapped by `fn` declarations
+6. DSL-level function library: prompt templates and compositions stored as wiki pages
 
 ## Relation to Multi-Layer Model
 
 From `ATOMIC_MULTI_LAYER_DSL_MODEL.md`:
 
 - **Semantic layer** — compact named functions (`staged_answer`, `verify_uniqueness`)
-- **Assembly layer** — this spec: MOV/GEN/PUT/PARSE/CALL/CMP/JIF/LOOP
+- **Assembly layer** — this spec: MOV/GEN/PUT/PARSE/CALL/CMP/JIF/LOOP/EACH/NOP
 - **Runtime layer** — worker call construction, endpoint requests, checkpoint hooks
 
 Assembly is the middle layer. It is explicit enough to inspect but compact enough to compose.
@@ -72,9 +73,15 @@ Flags:
 - `max:2048` — max tokens
 - `think:true|false` — enable think block
 - `stop:"\n"` — stop sequence
-- `cap:"regex"` — capture regex for probe results
+- `cap:"regex"` or `capture:"regex"` — capture regex for probe results
+- `coerce:int|float` — type coercion for probe results (use with capture)
 - `grammar:$ref` — GBNF grammar ref
 - `input:@ref` — additional input binding
+
+When `mode:probe` and `capture`/`coerce` are set, the raw LLM output is post-processed:
+1. Cleaned (strip whitespace, collapse to first line)
+2. Capture regex applied → extract match
+3. Coerce type applied → int or float
 
 Examples:
 ```asm
@@ -82,6 +89,7 @@ GEN  @draft, @chat
 GEN  @draft, @chat, mode:continue, temp:0.6, max:2048
 GEN  @claims, @input, worker:analyzer, think:true
 GEN  @probe, @chat, mode:probe, stop:"\n", cap:"yes|no"
+GEN  @line_num, @chat, mode:probe, grammar:$digit_grammar, capture:"[0-9]+", coerce:int, temp:0, max:4
 ```
 
 ### PUT / PUT+ — message mutation
@@ -195,6 +203,38 @@ PARSE @parsed, @table, table:true
 CALL @rows, row_count, @parsed
 CMP  @need_more, lt, @rows, $config.target_rows
 ```
+
+### EACH — iterate collection
+
+```asm
+EACH  @item, @collection, +N
+```
+
+Iterate over each element in `@collection`, binding it to `@item`, and execute the next N instructions as the loop body.
+
+For dict items: `@item._index` is set to the 0-based iteration index. Fields modified on `@item` (e.g., `@item.status`) are written back to the collection.
+
+```asm
+EACH @entity, @entity_nodes, +3
+  CALL @entity.answer, slice_lines, @answer, @entity._startNum, @entity._endNum
+  CALL @entity.status, check_status, @entity.reaction
+  MOV  @entity.processed, true
+```
+
+Nested EACH is supported:
+```asm
+EACH @entity, @entities, +2
+  EACH @constraint, @constraints, +1
+    CALL @ann, create_span_annotation, @entity, @constraint, @start, @end
+```
+
+### NOP — no operation
+
+```asm
+NOP
+```
+
+Does nothing. Useful as padding or placeholder.
 
 ## Function Declarations
 
@@ -321,6 +361,57 @@ CALL  @table, @parsed, continue_to_target, @chat, @table_head, $config.target_ro
 4. GEN is blocking (waits for LLM response)
 5. CALL to a function creates a child scope, executes, returns outputs
 6. All state is in the entity map (`@` refs) and config (`$` refs)
+
+## Function Library
+
+DSL-level functions can be stored as wiki pages with `page_kind: "function_page"` and loaded at runtime.
+
+### Saving a function
+
+```
+POST /api/dsl/fn/save
+{
+  "slug": "fn-claims",
+  "title": "claims",
+  "source": "fn claims(@text) -> @prompt:\n  MOV @prefix, \"Analyze: \"\n  CALL @prompt, concat, @prefix, @text",
+  "tags": ["prompt-template"]
+}
+```
+
+Or directly via wiki CRUD:
+```
+PUT /api/atomic-wiki/pages/fn-claims
+{
+  "title": "claims",
+  "page_kind": "function_page",
+  "blocks": [{"kind": "text", "label": "source", "text": "fn claims(@text) -> @prompt:\n  ..."}],
+  "tags": ["function", "prompt-template"]
+}
+```
+
+### Loading at execution time
+
+The `/api/dsl/asm` endpoint can load library functions from wiki `function_page` entries. These are passed as `extra_functions` to the interpreter, making them available via `CALL`.
+
+### Two levels of functions
+
+1. **DSL fn** — prompt templates, compositions. Stored in wiki, defined in Assembly syntax.
+2. **Python `@asm_function`** — low-level utilities (string ops, parsing). Registered via `dsl_builtins.py`:
+   - `slice_lines(text, start, end)`, `numbered(text)`, `char_indexed(text)`
+   - `check_status(text)`, `concat(*args)`, `parse_sections(text)`
+   - `enrich_entities(entities, answer)`, `create_span_annotation(entity, constraint, start, end)`
+
+## Probe-Based Annotation
+
+`POST /api/dsl/annotations/probe` finds char spans for constraints in message text.
+
+Input: message with text containers + constraint list + optional workers.
+
+Two modes:
+1. **With workers** — think-injection probes via Assembly GEN (two passes: start, end)
+2. **Without workers** — regex fallback (substring search)
+
+Output: message with annotations added (char_start/char_end/char_len).
 
 ## API Endpoint
 

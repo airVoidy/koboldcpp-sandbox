@@ -86,16 +86,18 @@ So:
 
 ```js
 emit("task.input", {
+  target: "data.local.wiki.task.input",
   data: {
     text: "написать 4 описания внешности демониц..."
   }
 })
 
 emit("generate.request", {
+  target: "data.local.object.generate.request",
   schema: "native_generate_request",
   defaults: "native_generate_defaults",
   data: {
-    prompt: @task.input.text,
+    prompt: @data.local.wiki.task.input.text,
     model: "local-model",
     max_length: 512
   },
@@ -103,7 +105,7 @@ emit("generate.request", {
 })
 
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"]
 })
@@ -112,21 +114,21 @@ on("generate.request", "response", {
 ### Assembly expansion
 
 ```asm
-MOV  @task.input.text, "написать 4 описания внешности демониц..."
+MOV  @data.local.wiki.task.input.text, "написать 4 описания внешности демониц..."
 
-MOV  @generate.request.prompt, ""
-MOV  @generate.request.temperature, 0.2
-MOV  @generate.request.max_length, null
-MOV  @generate.request.model, null
+MOV  @data.local.object.generate.request.prompt, ""
+MOV  @data.local.object.generate.request.temperature, 0.2
+MOV  @data.local.object.generate.request.max_length, null
+MOV  @data.local.object.generate.request.model, null
 
-MOV  @generate.request.prompt, @task.input.text
-MOV  @generate.request.model, "local-model"
-MOV  @generate.request.max_length, 512
+MOV  @data.local.object.generate.request.prompt, @data.local.wiki.task.input.text
+MOV  @data.local.object.generate.request.model, "local-model"
+MOV  @data.local.object.generate.request.max_length, 512
 
-CALL @generate.request.check, check_complete, @generate.request, schema:"native_generate_request"
-GEN  @generate.call.raw, @generate.request.prompt, worker:generator, temp:0.2, max:512
-CALL @generate.response, bind_native_generate_response, @generate.call.raw
-CALL @generate.response.check, check_complete, @generate.response, schema:"native_generate_response"
+CALL @data.local.object.generate.request.check, check_complete, @data.local.object.generate.request, schema:"native_generate_request"
+GEN  @data.local.object.generate.call.raw, @data.local.object.generate.request.prompt, worker:generator, temp:0.2, max:512
+CALL @data.local.object.generate.response, bind_native_generate_response, @data.local.object.generate.call.raw
+CALL @data.local.object.generate.response.check, check_complete, @data.local.object.generate.response, schema:"native_generate_response"
 ```
 
 ## Notes on the example
@@ -158,14 +160,14 @@ emit("task.input", {
 Assembly:
 
 ```asm
-MOV  @task.input.text, "..."
+MOV  @data.local.wiki.task.input.text, "..."
 ```
 
 If the runtime also wants a visible message artifact, this may expand further:
 
 ```asm
-MOV  @task.input.msg, "session"
-PUT  @task.input.msg, user, @task.input.text
+MOV  @data.local.message.task.input.msg, "session"
+PUT  @data.local.message.task.input.msg, user, @data.local.wiki.task.input.text
 ```
 
 ## `emit(generate.request)` mapping
@@ -179,16 +181,16 @@ This maps to three phases:
 Example:
 
 ```asm
-MOV  @generate.request.prompt, ""
-MOV  @generate.request.temperature, 0.2
-MOV  @generate.request.max_length, null
-MOV  @generate.request.model, null
+MOV  @data.local.object.generate.request.prompt, ""
+MOV  @data.local.object.generate.request.temperature, 0.2
+MOV  @data.local.object.generate.request.max_length, null
+MOV  @data.local.object.generate.request.model, null
 
-MOV  @generate.request.prompt, @task.input.text
-MOV  @generate.request.model, "local-model"
-MOV  @generate.request.max_length, 256
+MOV  @data.local.object.generate.request.prompt, @data.local.wiki.task.input.text
+MOV  @data.local.object.generate.request.model, "local-model"
+MOV  @data.local.object.generate.request.max_length, 256
 
-CALL @generate.request.check, check_complete, @generate.request, schema:"native_generate_request"
+CALL @data.local.object.generate.request.check, check_complete, @data.local.object.generate.request, schema:"native_generate_request"
 ```
 
 ## `on(..., "response", ...)` mapping
@@ -197,21 +199,21 @@ At MVP stage:
 
 ```js
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"],
-  emit: ["response.output_message"],
-  project: ["response.table"]
+  emit: ["data.local.message.response.output_message"],
+  project: ["data.local.table.response.table"]
 })
 ```
 
 may compile into a linear tail:
 
 ```asm
-CALL @generate.response, bind_native_generate_response, @generate.call.raw
-CALL @generate.response.check, check_complete, @generate.response, schema:"native_generate_response"
-CALL @response.output_message, emit_output_message, @generate.response
-CALL @response.table, build_table_from_text, @generate.response.raw_text
+CALL @data.local.object.generate.response, bind_native_generate_response, @data.local.object.generate.call.raw
+CALL @data.local.object.generate.response.check, check_complete, @data.local.object.generate.response, schema:"native_generate_response"
+CALL @data.local.message.response.output_message, emit_output_message, @data.local.object.generate.response
+CALL @data.local.table.response.table, build_table_from_text, @data.local.object.generate.response.raw_text
 ```
 
 This is enough for the first implementation.

@@ -99,9 +99,17 @@ body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var
 /* Name popup */
 /* Header tabs */
 .header-tabs { display:flex; gap:2px; margin-left:12px; }
-.header-tab { padding:4px 14px; border:none; border-radius:4px 4px 0 0; background:transparent; color:var(--text-dim); cursor:pointer; font-size:12px; font-family:inherit; font-weight:500; border-bottom:2px solid transparent; transition:color .15s,border-color .15s; }
+.header-tab { padding:4px 14px 6px; border:none; border-radius:4px 4px 0 0; background:transparent; color:var(--text-dim); cursor:pointer; font-size:12px; font-family:inherit; font-weight:500; border-bottom:2px solid transparent; transition:color .15s,border-color .15s; display:flex; flex-direction:column; align-items:center; gap:0; }
 .header-tab:hover { color:var(--text); }
 .header-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.header-tab .tab-layer { font-size:8px; letter-spacing:.5px; opacity:.5; font-weight:400; }
+.header-tab.active .tab-layer { opacity:.8; }
+.layer-bar { display:flex; align-items:center; padding:2px 16px; background:var(--surface); border-bottom:1px solid var(--border); font-size:10px; color:var(--text-dim); gap:6px; flex-shrink:0; min-height:20px; }
+.layer-bar .layer-desc { font-style:italic; }
+.layer-bar .layer-flow { display:flex; gap:4px; align-items:center; margin-left:auto; font-size:9px; opacity:.6; }
+.layer-bar .layer-flow span { padding:1px 5px; border-radius:3px; border:1px solid var(--border); }
+.layer-bar .layer-flow span.current { border-color:var(--accent); color:var(--accent); opacity:1; }
+.layer-bar .layer-flow .arrow { border:none; padding:0; font-size:8px; }
 
 /* Screen Layout tab */
 .screen-area { flex:1; display:none; overflow:hidden; }
@@ -144,9 +152,10 @@ body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var
 <div class="header">
   <h1>Card Builder</h1>
   <div class="header-tabs">
-    <button class="header-tab active" data-page="cards">Cards</button>
-    <button class="header-tab" data-page="screen">Screen</button>
-    <button class="header-tab" data-page="theme">Theme</button>
+    <button class="header-tab active" data-page="cards"><span>Slots</span><span class="tab-layer">L1</span></button>
+    <button class="header-tab" data-page="components"><span>Components</span><span class="tab-layer">L1.5</span></button>
+    <button class="header-tab" data-page="screen"><span>Screen</span><span class="tab-layer">L2a</span></button>
+    <button class="header-tab" data-page="theme"><span>Theme</span><span class="tab-layer">CSS</span></button>
   </div>
   <div class="status"><span class="dot" id="dot"></span><span id="stxt">Ready</span></div>
   <div class="hdr-right">
@@ -155,6 +164,16 @@ body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var
     <button class="btn" id="btnExport">Export JSON</button>
     <button class="btn" id="btnSidebar" title="Toggle sidebar">YAML</button>
     <button class="btn" id="btnSettings" style="font-size:15px;padding:4px 8px">&#9881;</button>
+  </div>
+</div>
+
+<div class="layer-bar" id="layerBar">
+  <span class="layer-desc" id="layerDesc">Card template slot structure</span>
+  <div class="layer-flow" id="layerFlow">
+    <span class="current">L1 Slots</span><span class="arrow">→</span>
+    <span>L1.5 HTML</span><span class="arrow">→</span>
+    <span>Theme CSS</span><span class="arrow">→</span>
+    <span>L2a Screen</span>
   </div>
 </div>
 
@@ -313,6 +332,33 @@ body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var
     </div>
   </div>
 
+  <!-- Components editor area (L1.5) -->
+  <div class="screen-area" id="componentsArea">
+    <div class="screen-yaml" style="max-width:50%">
+      <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="font-size:11px;font-weight:600;color:var(--accent2);margin-bottom:6px">Slot Type Templates</div>
+        <div id="compTypeButtons" style="display:flex;flex-wrap:wrap;gap:3px"></div>
+      </div>
+      <textarea id="compFullEditor" style="flex:1;background:var(--bg);border:none;color:var(--green);padding:8px;font-size:10px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.4;resize:none;overflow:auto;tab-size:2" placeholder="Select a slot type to edit its HTML template"></textarea>
+      <div style="display:flex;gap:4px;padding:6px 8px;border-top:1px solid var(--border);flex-shrink:0;align-items:center">
+        <button class="btn primary" id="btnCompFullApply" style="font-size:10px;padding:2px 8px">Apply</button>
+        <button class="btn" id="btnCompFullReset" style="font-size:10px;padding:2px 8px">Reset</button>
+        <span id="compEditStatus" style="font-size:9px;color:var(--text-dim);margin-left:auto"></span>
+      </div>
+    </div>
+    <div class="screen-preview" style="display:flex;flex-direction:column">
+      <div style="padding:4px 8px;font-size:10px;color:var(--text-dim);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:6px">
+        <span style="font-weight:600;color:var(--accent2)">Component Preview</span>
+        <span id="compPreviewType" style="margin-left:auto;font-family:monospace;color:var(--accent2)"></span>
+      </div>
+      <div class="screen-preview-canvas" id="compPreviewCanvas" style="padding:16px;overflow:auto;flex:1"></div>
+      <div style="border-top:1px solid var(--border);flex:1;display:flex;flex-direction:column;min-height:0">
+        <div style="padding:4px 8px;font-size:10px;color:var(--text-dim);border-bottom:1px solid var(--border);flex-shrink:0;font-weight:600;color:var(--accent3)">Generated HTML</div>
+        <pre id="compHTMLViewer" style="flex:1;margin:0;padding:6px 8px;font-size:10px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.6;color:var(--text);background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>
+  </div>
+
   <!-- Theme editor area -->
   <div class="screen-area" id="themeArea">
     <div class="screen-yaml">
@@ -334,40 +380,21 @@ body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var
   <div class="resize-handle" id="resizeHandle"></div>
 
   <!-- Right sidebar: DSL / HTML / Components + NL + Ask -->
+  <!-- Universal right sidebar — tabs + content driven by _sidebarConfig per page -->
   <div class="right-sidebar collapsed" id="rightSidebar">
-    <div class="right-sidebar-hdr">
-      <div style="display:flex;gap:4px;width:100%;margin-bottom:4px">
-        <button class="btn builder-sidebar-tab active" data-btab="dsl" style="font-size:10px;padding:2px 8px">DSL</button>
-        <button class="btn builder-sidebar-tab" data-btab="html" style="font-size:10px;padding:2px 8px">HTML</button>
-        <button class="btn builder-sidebar-tab" data-btab="components" style="font-size:10px;padding:2px 8px;color:var(--yellow)">Components</button>
-        <div style="display:flex;gap:4px;margin-left:auto">
-          <button class="btn" id="btnDSLCopy" style="font-size:10px;padding:1px 6px">Copy</button>
-          <button class="btn primary" id="btnDSLApply" style="font-size:10px;padding:1px 6px">Apply</button>
-        </div>
-      </div>
+    <div class="right-sidebar-hdr" id="sidebarHdr"></div>
+    <div id="sidebarContent" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+      <textarea id="sidebarEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2"></textarea>
+      <pre id="sidebarViewer" style="display:none;flex:1;margin:0;padding:6px 8px;font-size:10px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.6;color:var(--text);background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
     </div>
-    <!-- DSL tab -->
-    <div id="tabDSL" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-      <textarea id="dslEditor" style="flex:1;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--green);padding:8px;font-size:11px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.5;resize:none;white-space:pre;overflow:auto;tab-size:2" placeholder="card_template(name)&#10;  add_slot(@name, title)&#10;  add_slot(@name, tags)"></textarea>
-    </div>
-    <!-- HTML tab -->
-    <div id="tabHTML" style="display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0">
-      <pre id="builderHTMLViewer" style="flex:1;margin:0;padding:6px 8px;font-size:10px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.6;color:var(--text);background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
-    </div>
-    <!-- Components tab -->
-    <div id="tabComponents" style="display:none;flex:1;overflow-y:auto;padding:8px">
-      <div id="componentsList"></div>
-    </div>
-    <!-- NL Apply -->
+    <!-- NL Apply + Ask chat — shared across all pages -->
     <div style="display:flex;gap:4px;padding:4px 8px;border-top:1px solid var(--border);align-items:flex-end;flex-shrink:0">
-      <textarea id="nlInput" placeholder="Describe template change..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
+      <textarea id="nlInput" placeholder="Describe change..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
       <button class="btn primary" id="btnNLApply" style="font-size:10px;padding:2px 8px">Apply</button>
     </div>
-    <!-- Ask -->
-    <div style="flex:0 0 35%;min-height:80px;display:flex;flex-direction:column">
+    <div style="flex:0 0 30%;min-height:80px;display:flex;flex-direction:column">
       <div style="display:flex;gap:4px;padding:4px 8px;border-bottom:1px solid var(--border);align-items:flex-end;flex-shrink:0">
-        <textarea id="askInput" placeholder="Ask about this template..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
-        <button class="btn" id="btnScreenshot" title="Screenshot Live Preview" style="font-size:12px;padding:2px 6px">&#128247;</button>
+        <textarea id="askInput" placeholder="Ask about this..." rows="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;font-family:inherit;resize:none"></textarea>
         <button class="btn" id="btnAskSend" style="font-size:10px;padding:2px 8px">Ask</button>
       </div>
       <div id="askChat" style="flex:1;overflow-y:auto;padding:6px 8px;font-size:11px"></div>
@@ -736,7 +763,451 @@ function dslCloneTemplate(args) {
 }
 
 /* ================================================================
-   Slot Renderers
+   Component Registry — config, field mapping, defaults
+   All hardcoded values extracted here. Editable, exportable.
+   ================================================================ */
+var _componentConfig = {
+  // Icons per slot type (shown in palette and canvas)
+  icons: {title:'#', tags:'●', text_area:'T', image:'🖼', buttons:'▶', thread:'💬', data_table:'⊞', reactions:'😀', list:'≡', form:'☐', group:'📁', children:'⊟'},
+  // Status → CSS class for node-icon
+  statusIcon: {done:'ok', fail:'err', active:'entity', pending:'entity', root:'root'},
+  // Status → CSS class for node-badge (same as status name)
+  statusBadge: {done:'done', fail:'fail', active:'active', pending:'pending'},
+  // Default slot options
+  defaults: {
+    buttonItems: ['verify','check','generate'],
+    listGroups: ['entities','axioms','hypotheses'],
+    threadMode: 'tree',
+    threadLabel: 'Thread',
+    textAreaLabel: 'RESULT',
+    dataTableLabel: 'data',
+  },
+  // UI text literals
+  text: {
+    arrow: '▶', arrowUp: '▲', bullet: '•',
+    sendBtn: 'Send', submitBtn: 'Submit',
+    replyPlaceholder: 'Reply...',
+    pendingPlaceholder: '(pending...)',
+    defaultEmoji: '❓',
+    subSuffix: ' sub',
+    thinkPrefix: 'think',
+    tagSeparator: ': ',
+    tagTruncate: 30,
+    tagEllipsis: '…',
+    iconRoot: 'T', iconEntity: '#',
+  },
+};
+
+// Field mapping: how each slot type reads data.
+// Each key = data field name used by the renderer, value = path in entity data object.
+// Renderers use R(data, slotType, fieldName) to resolve.
+var _fieldMap = {
+  title:      {title:'title', name:'name', status:'status', type:'type', time:'time', children:'children', tags:'tags'},
+  tags:       {tags:'tags'},
+  text_area:  {text:'answer', fallback:'question', think:'answerThink', textStatus:'answerStatus', open:'answerOpen'},
+  image:      {url:'imageUrl'},
+  buttons:    {},
+  thread:     {items:'thread', open:'threadOpen'},
+  data_table: {areas:'data_areas'},
+  reactions:  {items:'reactions'},
+  list:       {}, // dynamic: data[groupName + '_list']
+  form:       {fields:'questionForm'},
+  group:      {},
+  children:   {items:'children', cardTemplate:'card_template'},
+};
+
+// Resolve a field from data via field map
+function R(data, slotType, fieldName, defaultVal) {
+  const map = _fieldMap[slotType];
+  if (!map) return data?.[fieldName] ?? defaultVal;
+  const path = map[fieldName];
+  if (!path) return data?.[fieldName] ?? defaultVal;
+  return data?.[path] ?? defaultVal;
+}
+
+// Load custom config from localStorage
+try {
+  const saved = localStorage.getItem('component_config');
+  if (saved) { const c = JSON.parse(saved); Object.assign(_componentConfig, c); }
+} catch(_) {}
+try {
+  const saved = localStorage.getItem('field_map');
+  if (saved) { const m = JSON.parse(saved); Object.assign(_fieldMap, m); }
+} catch(_) {}
+
+function saveComponentConfig() { try { localStorage.setItem('component_config', JSON.stringify(_componentConfig)); } catch(_) {} }
+function saveFieldMap() { try { localStorage.setItem('field_map', JSON.stringify(_fieldMap)); } catch(_) {} }
+
+/* ================================================================
+   L1.5: Component Templates — HTML structure per slot type
+   Each slot type = a tree of {tag, cls, text, if, loop, children}
+   Renderers walk this tree to generate HTML.
+   ================================================================ */
+var _componentTemplates = {
+  title: {tag:'div', cls:'node-hdr', attr:'data-slot', children:[
+    {tag:'span', cls:'node-arrow open', text:'{{C.arrow}}'},
+    {tag:'span', cls:'node-icon {{statusIcon}}', text:'{{iconChar}}'},
+    {tag:'span', cls:'node-title', text:'{{title}}'},
+    {tag:'span', cls:'node-collapse-hint', text:'{{childCount}}{{C.subSuffix}}', if:'childCount'},
+    {tag:'span', cls:'node-badge {{statusBadge}}', text:'{{STATUS}}'},
+    {tag:'span', cls:'node-time', text:'{{time}}'},
+    {tag:'button', cls:'tags-toggle-btn', text:'{{C.arrowUp}}', if:'hasTags'},
+  ]},
+  tags: {tag:'div', cls:'node-tags-wrap', attr:'data-slot', children:[
+    {tag:'div', cls:'node-tags', loop:'tagEntries', children:[
+      {tag:'span', cls:'tag accent', text:'{{item.key}}{{C.tagSeparator}}{{item.display}}', title:'{{item.key}}{{C.tagSeparator}}{{item.full}}'},
+    ]},
+  ]},
+  text_area: {tag:'fragment', children:[
+    {tag:'div', cls:'think-block', if:'think', children:[
+      {tag:'div', cls:'think-toggle', children:[
+        {tag:'span', cls:'arrow', text:'{{C.arrow}}'},
+        {tag:'_text', text:' {{C.thinkPrefix}} ({{thinkLen}} chars)'},
+      ]},
+      {tag:'div', cls:'think-body', text:'{{think}}'},
+    ]},
+    {tag:'div', cls:'node-answer', attr:'data-slot', children:[
+      {tag:'div', cls:'answer-block {{answerCls}}', children:[
+        {tag:'div', cls:'answer-lang', children:[
+          {tag:'span', cls:'slot-label', text:'{{labelLower}}'},
+          {tag:'span', style:'flex:1'},
+        ]},
+        {tag:'div', style:'position:relative', children:[
+          {tag:'textarea', cls:'answer-ta {{emptyCls}}', placeholder:'{{C.pendingPlaceholder}}', text:'{{text}}'},
+        ]},
+      ]},
+    ]},
+  ]},
+  image: {tag:'div', cls:'node-image', attr:'data-slot', style:'{{hideIfNoUrl}}', children:[
+    {tag:'img', src:'{{url}}', alt:'Image', loading:'lazy', if:'url'},
+  ]},
+  buttons: {tag:'div', cls:'answer-lang', attr:'data-slot', children:[
+    {tag:'span', style:'flex:1'},
+    {tag:'_loop', loop:'buttonItems', children:[
+      {tag:'button', cls:'btn-small', text:'{{item}}'},
+    ]},
+  ]},
+  thread: {tag:'fragment', children:[
+    {tag:'div', cls:'thread-bar', children:[
+      {tag:'span', cls:'arrow {{openCls}}', text:'{{C.arrow}}'},
+      {tag:'_text', text:' '},
+      {tag:'span', cls:'slot-label', text:'{{threadLabel}}'},
+      {tag:'_text', text:' '},
+      {tag:'span', cls:'thread-cnt', text:'{{threadCount}}'},
+    ]},
+    {tag:'div', cls:'thread-wrap {{openCls}}', attr:'data-slot', children:[
+      {tag:'div', cls:'thread-msgs', loop:'threadItems', children:[
+        {tag:'div', cls:'tmsg', children:[
+          {tag:'span', cls:'tmsg-avatar', text:'{{item.initial}}'},
+          {tag:'span', cls:'tmsg-who', text:'{{item.name}}'},
+          {tag:'span', cls:'tmsg-text', text:'{{item.content}}'},
+        ]},
+      ]},
+      {tag:'div', cls:'thread-input', children:[
+        {tag:'textarea', placeholder:'{{C.replyPlaceholder}}', rows:'1'},
+        {tag:'button', cls:'btn', text:'{{C.sendBtn}}'},
+      ]},
+    ]},
+  ]},
+  data_table: {tag:'div', attr:'data-slot', style:'{{hideIfNoData}}', children:[
+    {tag:'div', style:'font-size:10px;color:var(--text-dim);padding:4px 12px', text:'{{tableName}}'},
+    {tag:'table', style:'width:100%;border-collapse:collapse;font-size:12px;margin:0 12px 8px', children:[
+      {tag:'thead', children:[
+        {tag:'tr', loop:'tableHeaders', children:[
+          {tag:'th', style:'text-align:left;padding:2px 6px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px', text:'{{item}}'},
+        ]},
+      ]},
+      {tag:'tbody', loop:'tableRows', children:[
+        {tag:'tr', loop:'item', children:[
+          {tag:'td', style:'padding:2px 6px;border-bottom:1px solid var(--border)', text:'{{item}}'},
+        ]},
+      ]},
+    ]},
+  ]},
+  reactions: {tag:'div', cls:'reactions-bar', attr:'data-slot', children:[
+    {tag:'_loop', loop:'reactionItems', children:[
+      {tag:'span', cls:'reaction {{item.status}}', title:'{{item.detail}}', children:[
+        {tag:'span', cls:'reaction-emoji', text:'{{item.emoji}}'},
+        {tag:'span', cls:'reaction-who {{item.status}}', text:'{{item.worker}}'},
+      ]},
+    ]},
+    {tag:'span', cls:'reactions-summary', if:'hasReactions', children:[
+      {tag:'span', cls:'count {{passClass}}', text:'{{passCount}}/{{totalCount}}'},
+    ]},
+  ]},
+  list: {tag:'div', cls:'node-lists', attr:'data-slot', loop:'listGroups', children:[
+    {tag:'div', cls:'node-list-section', children:[
+      {tag:'div', cls:'node-list-header', children:[
+        {tag:'span', cls:'arrow', text:'{{C.arrow}}'},
+        {tag:'_text', text:' {{item.NAME}} '},
+        {tag:'span', cls:'list-count', text:'{{item.count}}'},
+      ]},
+      {tag:'div', cls:'node-list-body', loop:'item.items', children:[
+        {tag:'div', cls:'node-list-item {{item.groupCls}}', children:[
+          {tag:'span', cls:'li-bullet', text:'{{C.bullet}}'},
+          {tag:'_text', text:'{{item.text}}'},
+        ]},
+      ]},
+    ]},
+  ]},
+  form: {tag:'div', cls:'node-form', attr:'data-slot', children:[
+    {tag:'_loop', loop:'formFields', children:[
+      {tag:'div', cls:'qf-item', children:[
+        {tag:'label', text:'{{item.label}}'},
+        {tag:'div', cls:'qf-hint', text:'{{item.hint}}', if:'item.hint'},
+        {tag:'input', type:'text', placeholder:'{{item.placeholder}}'},
+      ]},
+    ]},
+    {tag:'button', cls:'btn primary', style:'margin-top:4px', text:'{{C.submitBtn}}', if:'formFields'},
+  ]},
+  group: {tag:'div', cls:'node-body open', attr:'data-slot', style:'border-left:2px solid var(--border);padding-left:8px;margin:4px 0', children:[
+    {tag:'div', cls:'slot-label', style:'font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600', text:'{{groupLabel}}', if:'groupLabel'},
+    {tag:'_slot_children'},
+  ]},
+  children: {tag:'div', cls:'node-children', attr:'data-slot', loop:'childItems', children:[
+    {tag:'_child_node'},
+  ]},
+};
+
+// Load custom templates from localStorage
+try { const s = localStorage.getItem('component_templates'); if (s) { const t = JSON.parse(s); Object.assign(_componentTemplates, t); } } catch(_) {}
+function saveComponentTemplates() { try { localStorage.setItem('component_templates', JSON.stringify(_componentTemplates)); } catch(_) {} }
+
+/* ================================================================
+   Universal Template Renderer
+   Walks _componentTemplates tree, resolves fields, generates HTML.
+   ================================================================ */
+function _resolveText(text, ctx) {
+  if (!text) return '';
+  return String(text).replace(/\{\{([^}]+)\}\}/g, (_, key) => {
+    key = key.trim();
+    if (key.startsWith('C.')) return esc(String(_componentConfig.text[key.slice(2)] ?? ''));
+    if (key.startsWith('item.')) return esc(String(ctx._item?.[key.slice(5)] ?? ''));
+    if (key === 'item') return esc(String(ctx._item ?? ''));
+    return esc(String(ctx[key] ?? ''));
+  });
+}
+
+function _resolveRaw(text, ctx) {
+  if (!text) return '';
+  return String(text).replace(/\{\{([^}]+)\}\}/g, (_, key) => {
+    key = key.trim();
+    if (key.startsWith('C.')) return String(_componentConfig.text[key.slice(2)] ?? '');
+    if (key.startsWith('item.')) return String(ctx._item?.[key.slice(5)] ?? '');
+    if (key === 'item') return String(ctx._item ?? '');
+    return String(ctx[key] ?? '');
+  });
+}
+
+function _checkIf(cond, ctx) {
+  if (!cond) return true;
+  if (cond.startsWith('item.')) return !!(ctx._item?.[cond.slice(5)]);
+  return !!ctx[cond];
+}
+
+function renderFromTemplate(node, ctx, slot, data) {
+  if (!node) return '';
+  if (!_checkIf(node.if, ctx)) return '';
+
+  // Special pseudo-tags
+  if (node.tag === '_text') return _resolveText(node.text, ctx);
+  if (node.tag === '_slot_children') {
+    if (!slot?.children?.length) return '';
+    return slot.children.map(child => renderSlotComponent(data, child)).join('');
+  }
+  if (node.tag === '_child_node') {
+    const ci = ctx._item;
+    if (!ci) return '';
+    const status = ci.status || 'pending';
+    const C = _componentConfig;
+    const tmplName = ctx._childTemplate || ci.card_template;
+    const tmpl = tmplName && cardTemplates[tmplName] ? cardTemplates[tmplName] : null;
+    let h = `<div class="node${status==='done'?' done':''}${status==='fail'?' fail':''}">`;
+    if (tmpl) {
+      h += `<div class="node-body open">`; tmpl.slots.forEach(s => { h += renderSlotComponent(ci, s); }); h += `</div>`;
+    } else {
+      const iconCls = C.statusIcon[status] || 'entity';
+      h += `<div class="node-hdr"><span class="node-arrow">${C.text.arrow}</span><span class="node-icon ${iconCls}">${C.text.iconEntity}</span><span class="node-title">${esc(ci.title||ci.name||'')}</span><span class="node-badge ${C.statusBadge[status]||'pending'}">${esc(status.toUpperCase())}</span><span class="node-time">${esc(ci.time||'')}</span></div>`;
+    }
+    h += `</div>`;
+    return h;
+  }
+  if (node.tag === 'fragment') {
+    return (node.children || []).map(c => renderFromTemplate(c, ctx, slot, data)).join('');
+  }
+
+  // Loop handling
+  if (node.loop && node.tag === '_loop') {
+    const items = ctx[node.loop] || [];
+    return items.map(item => {
+      const childCtx = {...ctx, _item: item};
+      return (node.children || []).map(c => renderFromTemplate(c, childCtx, slot, data)).join('');
+    }).join('');
+  }
+
+  // Build HTML tag
+  const tag = node.tag || 'div';
+  const cls = node.cls ? ` class="${_resolveRaw(node.cls, ctx)}"` : '';
+  const attrSlot = node.attr === 'data-slot' ? ` data-slot="${slot?.id || ''}"` : '';
+  const style = node.style ? ` style="${_resolveRaw(node.style, ctx)}"` : '';
+  const title = node.title ? ` title="${_resolveText(node.title, ctx)}"` : '';
+  const placeholder = node.placeholder ? ` placeholder="${_resolveText(node.placeholder, ctx)}"` : '';
+  const src = node.src ? ` src="${_resolveRaw(node.src, ctx)}"` : '';
+  const alt = node.alt ? ` alt="${esc(node.alt)}"` : '';
+  const loading = node.loading ? ` loading="${node.loading}"` : '';
+  const rows = node.rows ? ` rows="${node.rows}"` : '';
+  const type = node.type ? ` type="${node.type}"` : '';
+
+  const selfClosing = tag === 'img' || tag === 'input' || tag === 'br';
+
+  let inner = '';
+  // Loop on this element's children
+  if (node.loop && node.tag !== '_loop') {
+    const items = ctx[node.loop] || [];
+    inner = items.map(item => {
+      const childCtx = {...ctx, _item: item};
+      return (node.children || []).map(c => renderFromTemplate(c, childCtx, slot, data)).join('');
+    }).join('');
+  } else {
+    if (node.text) inner += _resolveText(node.text, ctx);
+    if (node.children) inner += node.children.map(c => renderFromTemplate(c, ctx, slot, data)).join('');
+  }
+
+  if (selfClosing) return `<${tag}${cls}${style}${src}${alt}${loading}${type}${placeholder}${attrSlot}${title}${rows}>`;
+  return `<${tag}${cls}${style}${attrSlot}${title}${placeholder}${src}${alt}${rows}${type}>${inner}</${tag}>`;
+}
+
+/* ================================================================
+   Slot context builders — prepare data for template rendering
+   ================================================================ */
+function _buildSlotCtx(data, slot, slotType) {
+  const C = _componentConfig, T = C.text;
+  const ctx = {};
+
+  switch (slotType) {
+    case 'title': {
+      const title = R(data,'title','title','') || R(data,'title','name','');
+      const status = R(data,'title','status','pending');
+      const type = R(data,'title','type','entity');
+      ctx.title = title; ctx.status = status; ctx.STATUS = status.toUpperCase();
+      ctx.statusIcon = C.statusIcon[type === 'root' ? 'root' : status] || 'entity';
+      ctx.iconChar = type === 'root' ? T.iconRoot : T.iconEntity;
+      ctx.childCount = R(data,'title','children',[])?.length || 0;
+      ctx.statusBadge = C.statusBadge[status] || 'pending';
+      ctx.time = R(data,'title','time','');
+      ctx.hasTags = Object.keys(R(data,'title','tags',{})).length > 0;
+      break;
+    }
+    case 'tags': {
+      const tags = R(data,'tags','tags',{});
+      ctx.tagEntries = Object.entries(tags).filter(([k]) => !k.startsWith('_')).map(([k,v]) => {
+        const full = Array.isArray(v) ? v.join(', ') : String(v);
+        const display = full.length > T.tagTruncate ? full.slice(0,T.tagTruncate)+T.tagEllipsis : full;
+        return {key:k, display, full};
+      });
+      break;
+    }
+    case 'text_area': {
+      const label = slot.label || C.defaults.textAreaLabel;
+      const text = R(data,'text_area','text','') || R(data,'text_area','fallback','');
+      const textStatus = R(data,'text_area','textStatus','');
+      ctx.think = R(data,'text_area','think','');
+      ctx.thinkLen = ctx.think.length;
+      ctx.labelLower = label.toLowerCase();
+      ctx.text = text;
+      ctx.answerCls = textStatus === 'pass' ? 'pass' : textStatus === 'fail' ? 'fail' : '';
+      ctx.emptyCls = text ? '' : 'empty';
+      break;
+    }
+    case 'image': {
+      ctx.url = R(data,'image','url','');
+      ctx.hideIfNoUrl = ctx.url ? '' : 'display:none';
+      break;
+    }
+    case 'buttons': {
+      ctx.buttonItems = slot.options?.items || C.defaults.buttonItems;
+      break;
+    }
+    case 'thread': {
+      const thread = R(data,'thread','items',[]);
+      const tOpen = R(data,'thread','open',false);
+      ctx.threadLabel = slot.label || C.defaults.threadLabel;
+      ctx.threadCount = thread.length;
+      ctx.openCls = tOpen ? 'open' : '';
+      ctx.threadItems = thread.map(t => ({
+        initial: (t.name || t.role || 'S')[0].toUpperCase(),
+        name: t.name || t.role || 'system',
+        content: t.content || '',
+      }));
+      break;
+    }
+    case 'data_table': {
+      const label = slot.label || C.defaults.dataTableLabel;
+      const areas = R(data,'data_table','areas',[]);
+      const da = areas.find(a => a.name === label) || areas[0];
+      ctx.hideIfNoData = da ? '' : 'display:none';
+      ctx.tableName = da?.name || '';
+      ctx.tableHeaders = da?.headers || [];
+      ctx.tableRows = da?.rows || [];
+      break;
+    }
+    case 'reactions': {
+      const reactions = R(data,'reactions','items',[]);
+      const passed = reactions.filter(r => r.status === 'pass').length;
+      ctx.reactionItems = reactions.map(r => ({
+        status: r.status || 'pending',
+        detail: r.detail || '',
+        emoji: r.emoji || T.defaultEmoji,
+        worker: r.worker || '',
+      }));
+      ctx.hasReactions = reactions.length > 0;
+      ctx.passCount = passed;
+      ctx.totalCount = reactions.length;
+      ctx.passClass = passed === reactions.length ? 'ok' : 'bad';
+      break;
+    }
+    case 'list': {
+      const groups = slot.options?.groups || C.defaults.listGroups;
+      ctx.listGroups = groups.map(gName => {
+        const items = data[gName + '_list'] || [];
+        return {
+          NAME: gName.toUpperCase(), name: gName, count: items.length,
+          items: items.map(item => ({
+            text: typeof item === 'string' ? item : (item.text || String(item)),
+            groupCls: gName,
+          })),
+        };
+      }).filter(g => g.items.length > 0);
+      break;
+    }
+    case 'form': {
+      const qf = R(data,'form','fields',[]) || slot.options?.fields || [];
+      ctx.formFields = qf.map(q => ({
+        label: q.question || q.label || '',
+        hint: q.hint || '',
+        placeholder: q.placeholder || '',
+        type: q.type || 'text',
+      }));
+      break;
+    }
+    case 'group': {
+      ctx.groupLabel = slot.label || '';
+      break;
+    }
+    case 'children': {
+      const children = R(data,'children','items',[]);
+      ctx._childTemplate = slot.options?.template;
+      ctx.childItems = children.map(child =>
+        typeof child === 'string' ? {name:child, title:child, status:'pending', tags:{}, children:[], thread:[], reactions:[], time:''} : child
+      );
+      break;
+    }
+  }
+  return ctx;
+}
+
+/* ================================================================
+   Slot Renderers — template-driven
    ================================================================ */
 var _slotIdxCounter = 0;
 
@@ -746,181 +1217,10 @@ function renderSlotComponent(data, slot) {
 }
 
 function renderSlotInner(data, slot) {
-  switch (slot.type) {
-    case 'title': return renderSlotTitle(data, slot);
-    case 'tags': return renderSlotTags(data, slot);
-    case 'text_area': return renderSlotTextArea(data, slot);
-    case 'image': return renderSlotImage(data, slot);
-    case 'buttons': return renderSlotButtons(data, slot);
-    case 'thread': return renderSlotThread(data, slot);
-    case 'data_table': return renderSlotDataTable(data, slot);
-    case 'reactions': return renderSlotReactions(data, slot);
-    case 'list': return renderSlotList(data, slot);
-    case 'form': return renderSlotForm(data, slot);
-    case 'group': return renderSlotGroup(data, slot);
-    case 'children': return renderSlotChildren(data, slot);
-    default: return `<div data-slot="${slot.id}" style="color:var(--text-dim);font-size:10px">Unknown: ${esc(slot.type)}</div>`;
-  }
-}
-
-function renderSlotTitle(data, slot) {
-  const title = data.title || data.name || '';
-  const status = data.status || 'pending';
-  const type = data.type || 'entity';
-  const iconCls = type === 'root' ? 'root' : status === 'done' ? 'ok' : status === 'fail' ? 'err' : 'entity';
-  const childCount = data.children?.length || 0;
-  let h = `<div class="node-hdr" data-slot="${slot.id}">`;
-  h += `<span class="node-arrow open">▶</span>`;
-  h += `<span class="node-icon ${iconCls}">${type === 'root' ? 'T' : '#'}</span>`;
-  h += `<span class="node-title">${esc(title)}</span>`;
-  if (childCount) h += `<span class="node-collapse-hint">${childCount} sub</span>`;
-  h += `<span class="node-badge ${status}">${esc(status.toUpperCase())}</span>`;
-  h += `<span class="node-time">${esc(data.time || '')}</span>`;
-  if (Object.keys(data.tags || {}).length) h += `<button class="tags-toggle-btn">▲</button>`;
-  h += `</div>`;
-  return h;
-}
-
-function renderSlotTags(data, slot) {
-  const entries = Object.entries(data.tags || {}).filter(([k]) => !k.startsWith('_'));
-  if (!entries.length) return `<div class="node-tags-wrap" data-slot="${slot.id}"></div>`;
-  let h = `<div class="node-tags-wrap" data-slot="${slot.id}"><div class="node-tags">`;
-  entries.forEach(([k, v]) => {
-    const display = Array.isArray(v) ? v.join(', ') : String(v);
-    h += `<span class="tag accent" title="${esc(k)}: ${esc(display)}">${esc(k)}: ${esc(display.length > 30 ? display.slice(0,30)+'…' : display)}</span>`;
-  });
-  h += `</div></div>`;
-  return h;
-}
-
-function renderSlotTextArea(data, slot) {
-  const label = slot.label || 'RESULT';
-  const text = data.answer || data.question || '';
-  const acls = data.answerStatus === 'pass' ? ' pass' : data.answerStatus === 'fail' ? ' fail' : '';
-  const emptyCls = text ? '' : ' empty';
-  let h = '';
-  if (data.answerThink) {
-    h += `<div class="think-block"><div class="think-toggle"><span class="arrow">▶</span> think (${data.answerThink.length} chars)</div><div class="think-body">${esc(data.answerThink)}</div></div>`;
-  }
-  h += `<div class="node-answer" data-slot="${slot.id}"><div class="answer-block${acls}">`;
-  h += `<div class="answer-lang"><span class="slot-label">${esc(label.toLowerCase())}</span><span style="flex:1"></span></div>`;
-  h += `<div style="position:relative"><textarea class="answer-ta${emptyCls}" placeholder="(pending...)">${esc(text)}</textarea></div>`;
-  h += `</div></div>`;
-  return h;
-}
-
-function renderSlotImage(data, slot) {
-  const url = data.imageUrl || '';
-  return `<div class="node-image" data-slot="${slot.id}"${url ? '' : ' style="display:none"'}>${url ? `<img src="${esc(url)}" alt="Image" loading="lazy">` : ''}</div>`;
-}
-
-function renderSlotButtons(data, slot) {
-  const items = slot.options?.items || ['verify','check','generate'];
-  let h = `<div class="answer-lang" data-slot="${slot.id}"><span style="flex:1"></span>`;
-  items.forEach(btn => { h += `<button class="btn-small">${esc(btn)}</button>`; });
-  h += `</div>`;
-  return h;
-}
-
-function renderSlotThread(data, slot) {
-  const thread = data.thread || [];
-  const tc = thread.length;
-  const tOpen = data.threadOpen || false;
-  let h = `<div class="thread-bar"><span class="arrow${tOpen?' open':''}">▶</span> <span class="slot-label">${esc(slot.label||'Thread')}</span> <span class="thread-cnt">${tc}</span></div>`;
-  h += `<div class="thread-wrap${tOpen?' open':''}" data-slot="${slot.id}"><div class="thread-msgs">`;
-  thread.forEach(t => {
-    const r = t.role || 'system';
-    const ini = (t.name || r)[0].toUpperCase();
-    h += `<div class="tmsg"><span class="tmsg-avatar">${ini}</span><span class="tmsg-who">${esc(t.name||r)}</span><span class="tmsg-text">${esc(t.content||'')}</span></div>`;
-  });
-  h += `</div><div class="thread-input"><textarea placeholder="Reply..." rows="1"></textarea><button class="btn">Send</button></div></div>`;
-  return h;
-}
-
-function renderSlotDataTable(data, slot) {
-  const label = slot.label || 'data';
-  const da = data.data_areas?.find(a => a.name === label) || data.data_areas?.[0];
-  if (!da) return `<div data-slot="${slot.id}" style="display:none"></div>`;
-  let h = `<div data-slot="${slot.id}"><div style="font-size:10px;color:var(--text-dim);padding:4px 12px">${esc(da.name)}</div>`;
-  h += `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:0 12px 8px"><thead><tr>`;
-  da.headers.forEach(hdr => { h += `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">${esc(hdr)}</th>`; });
-  h += `</tr></thead><tbody>`;
-  da.rows.forEach(row => { h += `<tr>`; row.forEach(cell => { h += `<td style="padding:2px 6px;border-bottom:1px solid var(--border)">${esc(String(cell))}</td>`; }); h += `</tr>`; });
-  h += `</tbody></table></div>`;
-  return h;
-}
-
-function renderSlotReactions(data, slot) {
-  const reactions = data.reactions || [];
-  if (!reactions.length) return `<div class="reactions-bar" data-slot="${slot.id}"></div>`;
-  const passed = reactions.filter(r => r.status === 'pass').length;
-  let h = `<div class="reactions-bar" data-slot="${slot.id}">`;
-  reactions.forEach(r => {
-    h += `<span class="reaction ${r.status||'pending'}" title="${esc(r.detail||'')}"><span class="reaction-emoji">${r.emoji||'❓'}</span><span class="reaction-who ${r.status||''}">${esc(r.worker||'')}</span></span>`;
-  });
-  h += `<span class="reactions-summary"><span class="count ${passed===reactions.length?'ok':'bad'}">${passed}/${reactions.length}</span></span></div>`;
-  return h;
-}
-
-function renderSlotList(data, slot) {
-  const groups = slot.options?.groups || ['entities','axioms','hypotheses'];
-  let h = '';
-  groups.forEach(gName => {
-    const items = data[gName + '_list'] || [];
-    if (!items.length) return;
-    const cls = gName === 'entities' ? 'entity' : gName === 'axioms' ? 'axiom' : 'hypothesis';
-    h += `<div class="node-list-section"><div class="node-list-header"><span class="arrow">▶</span> ${gName.toUpperCase()} <span class="list-count">${items.length}</span></div><div class="node-list-body">`;
-    items.forEach(item => {
-      const txt = typeof item === 'string' ? item : (item.text || String(item));
-      h += `<div class="node-list-item ${cls}"><span class="li-bullet">•</span>${esc(txt)}</div>`;
-    });
-    h += `</div></div>`;
-  });
-  return h ? `<div class="node-lists" data-slot="${slot.id}">${h}</div>` : `<div class="node-lists" data-slot="${slot.id}"></div>`;
-}
-
-function renderSlotForm(data, slot) {
-  const qf = data.questionForm || slot.options?.fields || [];
-  if (!qf.length) return `<div class="node-form" data-slot="${slot.id}"></div>`;
-  let h = `<div class="node-form" data-slot="${slot.id}">`;
-  qf.forEach(q => {
-    h += `<div class="qf-item"><label>${esc(q.question||q.label||'')}</label>`;
-    if (q.hint) h += `<div class="qf-hint">${esc(q.hint)}</div>`;
-    h += q.type === 'textarea' ? `<textarea placeholder="${esc(q.placeholder||'')}"></textarea>` : `<input type="text" placeholder="${esc(q.placeholder||'')}">`;
-    h += `</div>`;
-  });
-  h += `<button class="btn primary" style="margin-top:4px">Submit</button></div>`;
-  return h;
-}
-
-function renderSlotGroup(data, slot) {
-  const label = slot.label || '';
-  let h = `<div class="node-body open" data-slot="${slot.id}" style="border-left:2px solid var(--border);padding-left:8px;margin:4px 0">`;
-  if (label) h += `<div class="slot-label" style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">${esc(label)}</div>`;
-  if (slot.children?.length) { slot.children.forEach(child => { h += renderSlotComponent(data, child); }); }
-  h += `</div>`;
-  return h;
-}
-
-function renderSlotChildren(data, slot) {
-  const children = data.children || [];
-  const childTemplate = slot.options?.template;
-  let h = `<div class="node-children" data-slot="${slot.id}">`;
-  children.forEach(child => {
-    const cd = typeof child === 'string' ? {name:child, title:child, status:'pending', tags:{}, children:[], thread:[], reactions:[], time:''} : child;
-    const status = cd.status || 'pending';
-    const iconCls = status === 'done' ? 'ok' : status === 'fail' ? 'err' : 'entity';
-    const tmpl = (childTemplate || cd.card_template) && cardTemplates[childTemplate || cd.card_template] ? cardTemplates[childTemplate || cd.card_template] : null;
-    h += `<div class="node${status==='done'?' done':''}${status==='fail'?' fail':''}">`;
-    if (!tmpl) {
-      h += `<div class="node-hdr"><span class="node-arrow">▶</span><span class="node-icon ${iconCls}">#</span><span class="node-title">${esc(cd.title||cd.name||'')}</span><span class="node-badge ${status}">${esc(status.toUpperCase())}</span><span class="node-time">${esc(cd.time||'')}</span></div>`;
-    } else {
-      h += `<div class="node-body open">`; tmpl.slots.forEach(s => { h += renderSlotComponent(cd, s); }); h += `</div>`;
-    }
-    h += `</div>`;
-  });
-  h += `</div>`;
-  return h;
+  const tmpl = _componentTemplates[slot.type];
+  if (!tmpl) return `<div data-slot="${slot.id}" style="color:var(--text-dim);font-size:10px">Unknown: ${esc(slot.type)}</div>`;
+  const ctx = _buildSlotCtx(data, slot, slot.type);
+  return renderFromTemplate(tmpl, ctx, slot, data);
 }
 
 function renderTemplatedCard(data, template) {
@@ -990,7 +1290,7 @@ function getTemplateSampleData(tmplName) {
 /* ================================================================
    Builder UI
    ================================================================ */
-const SLOT_ICONS = {title:'#', tags:'●', text_area:'T', image:'🖼', buttons:'▶', thread:'💬', data_table:'⊞', reactions:'😀', list:'≡', form:'☐', group:'📁', children:'⊟'};
+const SLOT_ICONS = _componentConfig.icons;
 
 function renderSlotTree(slots, depth) {
   return slots.map((slot, idx) => {
@@ -1109,11 +1409,52 @@ function renderBuilderProps() {
     h += `<input class="builder-prop" data-prop="children_template" value="${esc(slot.options?.template||'')}" placeholder="template name" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;margin-bottom:8px">`;
   }
 
-  // Raw slot JSON
+  // --- Component Config: icon + defaults for this slot type ---
+  const sType = slot.type;
+  const curIcon = _componentConfig.icons[sType] || '';
+  h += `<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px">`;
+  h += `<div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:6px">Component Config</div>`;
+  h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Icon</label>`;
+  h += `<input class="cfg-prop" data-cfg="icon" value="${esc(curIcon)}" style="width:50px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:2px 6px;text-align:center;margin-bottom:6px">`;
+  // Type-specific defaults from config
+  if (sType === 'buttons') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Default buttons</label>`;
+    h += `<input class="cfg-prop" data-cfg="defaults.buttonItems" value="${esc(_componentConfig.defaults.buttonItems.join(', '))}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px;margin-bottom:6px">`;
+  }
+  if (sType === 'list') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Default groups</label>`;
+    h += `<input class="cfg-prop" data-cfg="defaults.listGroups" value="${esc(_componentConfig.defaults.listGroups.join(', '))}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px;margin-bottom:6px">`;
+  }
+  if (sType === 'thread') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Default label</label>`;
+    h += `<input class="cfg-prop" data-cfg="defaults.threadLabel" value="${esc(_componentConfig.defaults.threadLabel)}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px;margin-bottom:6px">`;
+  }
+  if (sType === 'text_area') {
+    h += `<label style="font-size:10px;color:var(--text-dim);display:block;margin-bottom:2px">Default label</label>`;
+    h += `<input class="cfg-prop" data-cfg="defaults.textAreaLabel" value="${esc(_componentConfig.defaults.textAreaLabel)}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px;margin-bottom:6px">`;
+  }
+  h += `</div>`;
+
+  // --- Field Mapping for this slot type ---
+  const fmap = _fieldMap[sType];
+  if (fmap && Object.keys(fmap).length) {
+    h += `<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px">`;
+    h += `<div style="font-size:10px;font-weight:600;color:var(--accent3);margin-bottom:6px">Field Mapping</div>`;
+    Object.entries(fmap).forEach(([key, path]) => {
+      h += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px">`;
+      h += `<span style="font-size:9px;color:var(--text-dim);min-width:60px;font-family:monospace">${esc(key)}</span>`;
+      h += `<span style="font-size:9px;color:var(--text-dim)">→</span>`;
+      h += `<input class="fmap-prop" data-fmap-key="${esc(key)}" value="${esc(String(path))}" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--accent3);font-size:9px;padding:2px 4px;font-family:monospace">`;
+      h += `</div>`;
+    });
+    h += `</div>`;
+  }
+
+  // Raw slot JSON (collapsed)
   const slotClean = {...slot};
   if (slotClean.children) slotClean.children = `[${slotClean.children.length} slots]`;
-  h += `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:8px"><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">Slot Object</div>`;
-  h += `<pre style="font-size:9px;color:var(--green);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;margin:0;white-space:pre-wrap;word-break:break-all;font-family:monospace;max-height:200px;overflow-y:auto">${esc(JSON.stringify(slotClean,null,2))}</pre></div>`;
+  h += `<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px"><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:600">Slot Object</div>`;
+  h += `<pre style="font-size:9px;color:var(--green);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;margin:0;white-space:pre-wrap;word-break:break-all;font-family:monospace;max-height:120px;overflow-y:auto">${esc(JSON.stringify(slotClean,null,2))}</pre></div>`;
 
   el.innerHTML = h;
 
@@ -1132,6 +1473,31 @@ function renderBuilderProps() {
   });
   el.querySelectorAll('.builder-opt').forEach(inp => {
     inp.addEventListener('change', () => { slot.options[inp.dataset.opt] = inp.checked; saveCardTemplates(); });
+  });
+
+  // Bind config changes
+  el.querySelectorAll('.cfg-prop').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      const key = inp.dataset.cfg;
+      const val = inp.value.trim();
+      if (key === 'icon') { _componentConfig.icons[sType] = val; }
+      else if (key === 'defaults.buttonItems') { _componentConfig.defaults.buttonItems = val.split(',').map(s=>s.trim()).filter(Boolean); }
+      else if (key === 'defaults.listGroups') { _componentConfig.defaults.listGroups = val.split(',').map(s=>s.trim()).filter(Boolean); }
+      else if (key === 'defaults.threadLabel') { _componentConfig.defaults.threadLabel = val; }
+      else if (key === 'defaults.textAreaLabel') { _componentConfig.defaults.textAreaLabel = val; }
+      saveComponentConfig();
+      renderBuilderPreview();
+      renderBuilderPage();
+    });
+  });
+
+  // Bind field map changes
+  el.querySelectorAll('.fmap-prop').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      const key = inp.dataset.fmapKey;
+      const val = inp.value.trim();
+      if (_fieldMap[sType]) { _fieldMap[sType][key] = val; saveFieldMap(); renderBuilderPreview(); }
+    });
   });
 }
 
@@ -1207,19 +1573,9 @@ function formatHTMLWithSlotIdx(html) {
 }
 
 function renderBuilderDSL() {
-  const editor = document.getElementById('dslEditor');
-  const viewer = document.getElementById('builderHTMLViewer');
-  if (!_activeCardTemplate) {
-    editor.value = '# No template selected';
-    if (viewer) viewer.innerHTML = '<span style="color:var(--text-dim)">Select a template</span>';
-    return;
-  }
-  editor.value = templateToDSL(_activeCardTemplate);
-  if (viewer) {
-    const rawHTML = document.getElementById('builderPreview')?.innerHTML || '';
-    viewer.innerHTML = rawHTML ? formatHTMLWithSlotIdx(rawHTML) : '<span style="color:var(--text-dim)">Add slots to see HTML</span>';
-    bindElementSelector();
-  }
+  // Update sidebar if visible and on cards page
+  const sb = document.getElementById('rightSidebar');
+  if (sb && !sb.classList.contains('collapsed') && _activePage === 'cards') renderSidebar();
 }
 
 /* ================================================================
@@ -1264,45 +1620,7 @@ function findSelectableEl(target) {
   return null;
 }
 
-function bindElementSelector() {
-  const preview = document.getElementById('builderPreview');
-  const viewer = document.getElementById('builderHTMLViewer');
-  if (!preview || !viewer) return;
-  let _last = null;
-  function clearHL() { if (_last) { _last.classList.remove('slot-highlight'); _last=null; } viewer.querySelectorAll('.html-highlight').forEach(e => e.classList.remove('html-highlight')); }
-  preview.onmouseover = (e) => {
-    const el = findSelectableEl(e.target); if (!el || el === _last) return;
-    clearHL(); el.classList.add('slot-highlight'); _last = el;
-    const slotIdx = el.closest('[data-slot-idx]');
-    if (slotIdx) { const htmlBlock = viewer.querySelector(`[data-html-idx="${slotIdx.dataset.slotIdx}"]`); if (htmlBlock) { htmlBlock.classList.add('html-highlight'); htmlBlock.scrollIntoView({block:'nearest',behavior:'smooth'}); } }
-  };
-  preview.onmouseout = (e) => { if (!preview.contains(e.relatedTarget)) clearHL(); };
-  viewer.onmouseover = (e) => {
-    const htmlBlock = e.target.closest('[data-html-idx]'); if (!htmlBlock) return;
-    clearHL(); htmlBlock.classList.add('html-highlight');
-    const slotEl = preview.querySelector(`[data-slot-idx="${htmlBlock.dataset.htmlIdx}"]`);
-    if (slotEl) { slotEl.classList.add('slot-highlight'); _last = slotEl; slotEl.scrollIntoView({block:'nearest',behavior:'smooth'}); }
-  };
-  viewer.onmouseout = (e) => { if (!viewer.contains(e.relatedTarget)) clearHL(); };
-  preview.onclick = (e) => {
-    const el = findSelectableEl(e.target); if (!el) return;
-    const selector = buildSelector(el, preview);
-    navigator.clipboard.writeText(selector).catch(()=>{});
-    const chatInp = document.getElementById('builderChatInp');
-    if (chatInp) { chatInp.value = selector; chatInp.focus(); }
-    addChatMsg('system', `→ ${selector}`);
-    e.stopPropagation();
-  };
-  viewer.onclick = (e) => {
-    const htmlBlock = e.target.closest('[data-html-idx]'); if (!htmlBlock) return;
-    const slotEl = preview.querySelector(`[data-slot-idx="${htmlBlock.dataset.htmlIdx}"]`); if (!slotEl) return;
-    const selector = `[data-slot="${slotEl.dataset.slotRef||''}"]`;
-    navigator.clipboard.writeText(selector).catch(()=>{});
-    const chatInp = document.getElementById('builderChatInp');
-    if (chatInp) { chatInp.value = selector; chatInp.focus(); }
-    addChatMsg('system', `slot → ${selector}`);
-  };
-}
+// Old bindElementSelector() removed — replaced by bindElementSelector(preview, viewer) in sidebar code
 
 /* ================================================================
    Builder Chat
@@ -1384,21 +1702,7 @@ function renderAskChat() {
   el.scrollTop = el.scrollHeight;
 }
 
-function builderContext() {
-  const dsl = document.getElementById('dslEditor')?.value || '';
-  const html = document.getElementById('builderPreview')?.innerHTML || '';
-  const tmpl = _activeCardTemplate || 'none';
-  let ctx = `Available slot types: title, tags, text_area, image, buttons, thread, data_table, reactions, list, form, group, children.\nDSL is layout only.\nTemplate: ${tmpl}\n`;
-  if (_activeSidebarTab === 'dsl') ctx += `Current DSL:\n\`\`\`\n${dsl}\n\`\`\`\n`;
-  else if (_activeSidebarTab === 'html') ctx += `Live Preview HTML:\n\`\`\`html\n${html.slice(0,4000)}\n\`\`\`\n`;
-  else if (_activeSidebarTab === 'components') {
-    const comps = getCheckedComponents();
-    ctx += `Active components (${comps.length}):\n`;
-    comps.forEach(c => { ctx += `  .${c.class}${c.note?' — '+c.note:''}\n`; });
-    ctx += `\nLive Preview HTML:\n\`\`\`html\n${html.slice(0,2000)}\n\`\`\`\n`;
-  }
-  return ctx;
-}
+// builderContext replaced by _sidebarConfig[page].context()
 
 /* ================================================================
    Components Tab
@@ -1411,36 +1715,435 @@ function getCheckedComponents() {
   return Object.entries(_clientComponents).filter(([,v]) => v.enabled !== false).map(([cls, v]) => ({class:cls, note:v.note||''}));
 }
 
+var _selectedComponentType = null;
+
 function renderComponentsList() {
   const el = document.getElementById('componentsList'); if (!el) return;
-  const preview = document.getElementById('builderPreview');
-  if (!preview) { el.innerHTML = '<div style="color:var(--text-dim);font-size:11px">No preview</div>'; return; }
-  // Collect classes from preview
-  const classCounts = {};
-  preview.querySelectorAll('*').forEach(node => {
-    [...node.classList].forEach(cls => {
-      if (_selectableClasses.has(cls)) classCounts[cls] = (classCounts[cls]||0) + 1;
-    });
+  const types = Object.keys(_componentTemplates);
+  let h = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px">';
+  types.forEach(t => {
+    const icon = _componentConfig.icons[t] || '?';
+    const sel = t === _selectedComponentType;
+    h += `<button class="btn" data-comp-type="${t}" style="font-size:10px;padding:2px 8px;${sel?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${icon} ${t}</button>`;
   });
-  const sorted = Object.entries(classCounts).sort((a,b) => b[1]-a[1]);
-  el.innerHTML = sorted.map(([cls, count]) => {
-    const comp = _clientComponents[cls] || {enabled:true, note:''};
-    if (!_clientComponents[cls]) _clientComponents[cls] = {enabled:true, note:''};
-    const dis = comp.enabled === false ? ' disabled' : '';
-    return `<div class="comp-item${dis}" data-comp="${cls}">
-      <input type="checkbox" ${comp.enabled!==false?'checked':''} data-comp-toggle="${cls}">
-      <span class="comp-name">.${cls}</span>
-      <span class="comp-count">${count}</span>
-      <input class="comp-note" placeholder="note..." value="${esc(comp.note||'')}" data-comp-note="${cls}">
-    </div>`;
-  }).join('');
-  el.querySelectorAll('[data-comp-toggle]').forEach(cb => {
-    cb.addEventListener('change', () => { _clientComponents[cb.dataset.compToggle].enabled = cb.checked; saveComponents(); renderComponentsList(); });
+  h += '</div>';
+  if (_selectedComponentType && _componentTemplates[_selectedComponentType]) {
+    h += `<div style="font-size:10px;color:var(--accent3);font-weight:600;margin-bottom:4px">${_selectedComponentType} template</div>`;
+    h += `<textarea id="compTemplateEditor" style="width:100%;box-sizing:border-box;min-height:200px;max-height:400px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--green);padding:6px;font-size:9px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;line-height:1.4;resize:vertical">${esc(JSON.stringify(_componentTemplates[_selectedComponentType], null, 2))}</textarea>`;
+    h += `<div style="display:flex;gap:4px;margin-top:4px">`;
+    h += `<button class="btn" id="btnCompApply" style="font-size:10px;padding:2px 8px">Apply</button>`;
+    h += `<button class="btn" id="btnCompReset" style="font-size:10px;padding:2px 8px;margin-left:auto">Reset</button>`;
+    h += `</div>`;
+    // Mini preview
+    h += `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:9px;color:var(--text-dim);margin-bottom:4px">Preview</div><div id="compPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:11px"></div></div>`;
+  } else {
+    h += '<div style="color:var(--text-dim);font-size:11px">Select a slot type above to edit its HTML template</div>';
+  }
+  el.innerHTML = h;
+
+  // Bind type buttons
+  el.querySelectorAll('[data-comp-type]').forEach(btn => {
+    btn.addEventListener('click', () => { _selectedComponentType = btn.dataset.compType; renderComponentsList(); });
   });
-  el.querySelectorAll('[data-comp-note]').forEach(inp => {
-    inp.addEventListener('blur', () => { _clientComponents[inp.dataset.compNote].note = inp.value; saveComponents(); });
+  // Bind Apply
+  const applyBtn = el.querySelector('#btnCompApply');
+  if (applyBtn) applyBtn.addEventListener('click', () => {
+    try {
+      const parsed = JSON.parse(document.getElementById('compTemplateEditor').value);
+      _componentTemplates[_selectedComponentType] = parsed;
+      saveComponentTemplates();
+      renderBuilderPreview();
+      renderComponentsList(); // refresh preview
+      logMsg(`Component template "${_selectedComponentType}" updated`);
+    } catch(e) { logMsg('Template JSON error: ' + e.message); }
   });
+  // Bind Reset
+  const resetBtn = el.querySelector('#btnCompReset');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    // Reset from default by re-evaluating the original _componentTemplates definition
+    // We store defaults separately
+    if (_defaultComponentTemplates[_selectedComponentType]) {
+      _componentTemplates[_selectedComponentType] = JSON.parse(JSON.stringify(_defaultComponentTemplates[_selectedComponentType]));
+      saveComponentTemplates();
+      renderBuilderPreview();
+      renderComponentsList();
+      logMsg(`Component template "${_selectedComponentType}" reset to default`);
+    }
+  });
+  // Render mini preview
+  const previewEl = el.querySelector('#compPreview');
+  if (previewEl && _selectedComponentType) {
+    const tmplName = _activeCardTemplate || Object.keys(cardTemplates)[0];
+    const tmpl = tmplName ? cardTemplates[tmplName] : null;
+    const sampleSlot = tmpl?.slots?.find(s => s.type === _selectedComponentType) || {id:'preview', type:_selectedComponentType, label:_selectedComponentType, options:{}};
+    const sample = tmplName ? getTemplateSampleData(tmplName) : defaultSampleData(null);
+    const ctx = _buildSlotCtx(sample, sampleSlot, _selectedComponentType);
+    previewEl.innerHTML = renderFromTemplate(_componentTemplates[_selectedComponentType], ctx, sampleSlot, sample);
+    injectThemeCSS(previewEl, tmplName);
+  }
 }
+
+// Store defaults for reset
+const _defaultComponentTemplates = JSON.parse(JSON.stringify(_componentTemplates));
+
+/* ================================================================
+   DSL Parsers & Serializers — Components, Config, FieldMap
+   ================================================================ */
+
+// --- Component Template DSL ---
+// Syntax: indent-based tree. Each line = tag.class.class [attr]: text  ?condition
+// Loops: @loop items   Children: @slot_children  @child_node
+// Fragment: @fragment
+
+function componentToDSL(tmpl, indent) {
+  indent = indent || '';
+  if (!tmpl) return '';
+  const lines = [];
+  const tag = tmpl.tag || 'div';
+
+  // Special pseudo-tags
+  if (tag === 'fragment') { lines.push(`${indent}@fragment`); }
+  else if (tag === '_text') { lines.push(`${indent}@text: ${tmpl.text || ''}`); }
+  else if (tag === '_loop') { lines.push(`${indent}@loop ${tmpl.loop}`); }
+  else if (tag === '_slot_children') { lines.push(`${indent}@slot_children`); return lines.join('\n'); }
+  else if (tag === '_child_node') { lines.push(`${indent}@child_node`); return lines.join('\n'); }
+  else {
+    let line = `${indent}${tag}`;
+    if (tmpl.cls) line += `.${tmpl.cls.split(' ').join('.')}`;
+    if (tmpl.attr === 'data-slot') line += ' [data-slot]';
+    if (tmpl.style) line += ` {${tmpl.style}}`;
+    if (tmpl.placeholder) line += ` placeholder="${tmpl.placeholder}"`;
+    if (tmpl.src) line += ` src="${tmpl.src}"`;
+    if (tmpl.rows) line += ` rows="${tmpl.rows}"`;
+    if (tmpl.type) line += ` type="${tmpl.type}"`;
+    if (tmpl.alt) line += ` alt="${tmpl.alt}"`;
+    if (tmpl.loading) line += ` loading="${tmpl.loading}"`;
+    if (tmpl.title) line += ` title="${tmpl.title}"`;
+    if (tmpl.text) line += `: ${tmpl.text}`;
+    if (tmpl.if) line += `  ?${tmpl.if}`;
+    if (tmpl.loop && tag !== '_loop') line += `  @loop ${tmpl.loop}`;
+    lines.push(line);
+  }
+
+  if (tmpl.children) {
+    tmpl.children.forEach(child => { lines.push(componentToDSL(child, indent + '  ')); });
+  }
+  return lines.join('\n');
+}
+
+function parseDSLComponent(text) {
+  const lines = text.split('\n');
+  const root = {children: []};
+  const stack = [{node: root, indent: -1}];
+
+  for (const raw of lines) {
+    if (!raw.trim() || raw.trim().startsWith('#') || raw.trim().startsWith('//')) continue;
+    const indent = raw.search(/\S/);
+    const line = raw.trim();
+
+    // Pop stack
+    while (stack.length > 1 && stack[stack.length-1].indent >= indent) stack.pop();
+    const parent = stack[stack.length-1].node;
+
+    let node = {};
+
+    // Special directives
+    if (line === '@fragment') { node = {tag:'fragment', children:[]}; }
+    else if (line === '@slot_children') { node = {tag:'_slot_children'}; }
+    else if (line === '@child_node') { node = {tag:'_child_node'}; }
+    else if (line.startsWith('@text:')) { node = {tag:'_text', text: line.slice(6).trim()}; }
+    else if (line.startsWith('@loop ')) { node = {tag:'_loop', loop: line.slice(6).trim(), children:[]}; }
+    else {
+      // Parse: tag.cls.cls [attr] {style} placeholder="..." src="...": text  ?condition  @loop items
+      let rest = line;
+
+      // Extract ?condition
+      const condMatch = rest.match(/\s+\?(\S+)\s*$/);
+      if (condMatch) { node.if = condMatch[1]; rest = rest.slice(0, condMatch.index); }
+
+      // Extract @loop
+      const loopMatch = rest.match(/\s+@loop\s+(\S+)\s*$/);
+      if (loopMatch) { node.loop = loopMatch[1]; rest = rest.slice(0, loopMatch.index); }
+
+      // Extract : text
+      const textMatch = rest.match(/:\s+(.+)$/);
+      if (textMatch) { node.text = textMatch[1].trim(); rest = rest.slice(0, textMatch.index); }
+
+      // Extract [data-slot]
+      if (rest.includes('[data-slot]')) { node.attr = 'data-slot'; rest = rest.replace(/\s*\[data-slot\]/, ''); }
+
+      // Extract {style}
+      const styleMatch = rest.match(/\s*\{([^}]+)\}/);
+      if (styleMatch) { node.style = styleMatch[1]; rest = rest.replace(styleMatch[0], ''); }
+
+      // Extract quoted attributes: placeholder="...", src="...", title="..."
+      const attrRe = /\s+(placeholder|src|alt|loading|rows|type|title)="([^"]*)"/g;
+      let attrMatch;
+      while ((attrMatch = attrRe.exec(rest)) !== null) { node[attrMatch[1]] = attrMatch[2]; }
+      rest = rest.replace(attrRe, '');
+
+      // Parse tag.cls.cls
+      const tagParts = rest.trim().split('.');
+      node.tag = tagParts[0] || 'div';
+      if (tagParts.length > 1) node.cls = tagParts.slice(1).join(' ');
+    }
+
+    if (!parent.children) parent.children = [];
+    parent.children.push(node);
+
+    // Push onto stack if could have children
+    if (node.tag === 'fragment' || node.tag === '_loop' || !node.text || node.loop) {
+      if (!node.children && node.tag !== '_slot_children' && node.tag !== '_child_node' && node.tag !== '_text') node.children = [];
+    }
+    stack.push({node, indent});
+  }
+
+  // Return the single root node or fragment
+  if (root.children.length === 1) return root.children[0];
+  return {tag:'fragment', children: root.children};
+}
+
+// --- Config DSL ---
+// Syntax: type key value
+// icon title #    |  default buttonItems verify,check,generate  |  text arrow ▶  |  status done ok
+
+function configToDSL() {
+  const C = _componentConfig;
+  const lines = ['# Component Config DSL', ''];
+  lines.push('# Icons per slot type');
+  Object.entries(C.icons).forEach(([k,v]) => lines.push(`icon ${k} ${v}`));
+  lines.push('', '# Status → icon class');
+  Object.entries(C.statusIcon).forEach(([k,v]) => lines.push(`statusIcon ${k} ${v}`));
+  lines.push('', '# Status → badge class');
+  Object.entries(C.statusBadge).forEach(([k,v]) => lines.push(`statusBadge ${k} ${v}`));
+  lines.push('', '# Default values');
+  Object.entries(C.defaults).forEach(([k,v]) => lines.push(`default ${k} ${Array.isArray(v)?v.join(','):v}`));
+  lines.push('', '# Text literals');
+  Object.entries(C.text).forEach(([k,v]) => lines.push(`text ${k} ${v}`));
+  return lines.join('\n');
+}
+
+function parseConfigDSL(text) {
+  const C = {icons:{}, statusIcon:{}, statusBadge:{}, defaults:{}, text:{}};
+  text.split('\n').forEach(raw => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) return;
+    const parts = line.match(/^(\S+)\s+(\S+)\s+(.+)$/);
+    if (!parts) return;
+    const [, type, key, val] = parts;
+    if (type === 'icon') C.icons[key] = val;
+    else if (type === 'statusIcon') C.statusIcon[key] = val;
+    else if (type === 'statusBadge') C.statusBadge[key] = val;
+    else if (type === 'default') {
+      const numVal = Number(val);
+      C.defaults[key] = val.includes(',') ? val.split(',').map(s=>s.trim()) : !isNaN(numVal) && val === String(numVal) ? numVal : val;
+    }
+    else if (type === 'text') {
+      const numVal = Number(val);
+      C.text[key] = !isNaN(numVal) && val === String(numVal) ? numVal : val;
+    }
+  });
+  return C;
+}
+
+// --- FieldMap DSL ---
+// Syntax:  fieldmap type\n  key: path
+
+function fieldMapToDSL() {
+  const lines = ['# Field Mapping DSL', ''];
+  Object.entries(_fieldMap).forEach(([type, map]) => {
+    if (!Object.keys(map).length) { lines.push(`fieldmap ${type}`); lines.push(''); return; }
+    lines.push(`fieldmap ${type}`);
+    Object.entries(map).forEach(([k,v]) => lines.push(`  ${k}: ${v}`));
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+function parseFieldMapDSL(text) {
+  const result = {};
+  let current = null;
+  text.split('\n').forEach(raw => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) return;
+    const fmMatch = line.match(/^fieldmap\s+(\S+)/);
+    if (fmMatch) { current = fmMatch[1]; result[current] = {}; return; }
+    if (current && line.includes(':')) {
+      const [k, ...rest] = line.split(':');
+      result[current][k.trim()] = rest.join(':').trim();
+    }
+  });
+  return result;
+}
+
+/* ================================================================
+   Components Page (L1.5 — full-page editor)
+   ================================================================ */
+var _compPageSelectedType = null;
+
+var _compEditorMode = 'component'; // 'component' | 'config' | 'fieldmap'
+
+function renderComponentsPage() {
+  const types = Object.keys(_componentTemplates);
+  const btns = document.getElementById('compTypeButtons');
+
+  // Mode buttons + type buttons
+  let modeHTML = `<div style="display:flex;gap:3px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:6px">`;
+  modeHTML += `<button class="btn" data-cmode="component" style="font-size:9px;padding:2px 8px;${_compEditorMode==='component'?'background:var(--accent2);color:#fff;border-color:var(--accent2)':''}">Components</button>`;
+  modeHTML += `<button class="btn" data-cmode="config" style="font-size:9px;padding:2px 8px;${_compEditorMode==='config'?'background:var(--accent2);color:#fff;border-color:var(--accent2)':''}">Config</button>`;
+  modeHTML += `<button class="btn" data-cmode="fieldmap" style="font-size:9px;padding:2px 8px;${_compEditorMode==='fieldmap'?'background:var(--accent2);color:#fff;border-color:var(--accent2)':''}">FieldMap</button>`;
+  modeHTML += `</div>`;
+
+  if (_compEditorMode === 'component') {
+    modeHTML += types.map(t => {
+      const icon = _componentConfig.icons[t] || '?';
+      const sel = t === _compPageSelectedType;
+      return `<button class="btn" data-ctype="${t}" style="font-size:10px;padding:3px 10px;${sel?'background:var(--accent2);color:#fff;border-color:var(--accent2)':''}">${icon} ${t}</button>`;
+    }).join(' ');
+  }
+  btns.innerHTML = modeHTML;
+
+  // Mode button bindings
+  btns.querySelectorAll('[data-cmode]').forEach(b => {
+    b.addEventListener('click', () => { _compEditorMode = b.dataset.cmode; renderComponentsPage(); });
+  });
+  btns.querySelectorAll('[data-ctype]').forEach(b => {
+    b.addEventListener('click', () => { _compPageSelectedType = b.dataset.ctype; renderComponentsPage(); });
+  });
+
+  const editor = document.getElementById('compFullEditor');
+  const previewType = document.getElementById('compPreviewType');
+
+  if (_compEditorMode === 'config') {
+    editor.value = configToDSL();
+    previewType.textContent = 'config';
+    document.getElementById('compPreviewCanvas').innerHTML = '<div style="color:var(--text-dim);font-size:11px;padding:16px;white-space:pre-wrap;font-family:monospace">' + esc(JSON.stringify(_componentConfig, null, 2)) + '</div>';
+    document.getElementById('compHTMLViewer').innerHTML = '<span style="color:var(--text-dim)">Config DSL — edit left, Apply to update</span>';
+    return;
+  }
+
+  if (_compEditorMode === 'fieldmap') {
+    editor.value = fieldMapToDSL();
+    previewType.textContent = 'fieldmap';
+    document.getElementById('compPreviewCanvas').innerHTML = '<div style="color:var(--text-dim);font-size:11px;padding:16px;white-space:pre-wrap;font-family:monospace">' + esc(JSON.stringify(_fieldMap, null, 2)) + '</div>';
+    document.getElementById('compHTMLViewer').innerHTML = '<span style="color:var(--text-dim)">FieldMap DSL — edit left, Apply to update</span>';
+    return;
+  }
+
+  // Component mode
+  if (!_compPageSelectedType) {
+    editor.value = '# Select a slot type to edit its HTML template\n# Syntax: tag.class [data-slot]: {{field}}  ?condition';
+    document.getElementById('compPreviewCanvas').innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:40px">Select a slot type</div>';
+    document.getElementById('compHTMLViewer').innerHTML = '';
+    previewType.textContent = '';
+    return;
+  }
+
+  previewType.textContent = _compPageSelectedType;
+  editor.value = componentToDSL(_componentTemplates[_compPageSelectedType]);
+  renderCompPreview();
+}
+
+function renderCompPreview() {
+  const canvas = document.getElementById('compPreviewCanvas');
+  const htmlViewer = document.getElementById('compHTMLViewer');
+  if (!_compPageSelectedType || !_componentTemplates[_compPageSelectedType]) {
+    canvas.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No template</div>';
+    if (htmlViewer) htmlViewer.innerHTML = '';
+    return;
+  }
+  const tmplName = _activeCardTemplate || Object.keys(cardTemplates)[0];
+  const cardTmpl = tmplName ? cardTemplates[tmplName] : null;
+  const sampleSlot = cardTmpl?.slots?.find(s => s.type === _compPageSelectedType) || {id:'preview', type:_compPageSelectedType, label:_compPageSelectedType, options:{}};
+  const sample = tmplName ? getTemplateSampleData(tmplName) : defaultSampleData(null);
+  const ctx = _buildSlotCtx(sample, sampleSlot, _compPageSelectedType);
+  _slotIdxCounter = 0;
+  const html = renderFromTemplate(_componentTemplates[_compPageSelectedType], ctx, sampleSlot, sample);
+  canvas.innerHTML = html;
+  injectThemeCSS(canvas, tmplName);
+  // HTML viewer with syntax highlighting
+  if (htmlViewer) {
+    htmlViewer.innerHTML = formatHTMLWithSlotIdx(html);
+    bindCompElementSelector(canvas, htmlViewer);
+  }
+}
+
+function bindCompElementSelector(preview, viewer) {
+  let _last = null;
+  function clearHL() { if (_last) { _last.classList.remove('slot-highlight'); _last = null; } viewer.querySelectorAll('.html-highlight').forEach(e => e.classList.remove('html-highlight')); }
+  preview.onmouseover = (e) => {
+    const el = findSelectableEl(e.target); if (!el || el === _last) return;
+    clearHL(); el.classList.add('slot-highlight'); _last = el;
+    const slotIdx = el.closest('[data-slot-idx]');
+    if (slotIdx) { const hb = viewer.querySelector(`[data-html-idx="${slotIdx.dataset.slotIdx}"]`); if (hb) { hb.classList.add('html-highlight'); hb.scrollIntoView({block:'nearest',behavior:'smooth'}); } }
+  };
+  preview.onmouseout = (e) => { if (!preview.contains(e.relatedTarget)) clearHL(); };
+  viewer.onmouseover = (e) => {
+    const hb = e.target.closest('[data-html-idx]'); if (!hb) return;
+    clearHL(); hb.classList.add('html-highlight');
+    const slotEl = preview.querySelector(`[data-slot-idx="${hb.dataset.htmlIdx}"]`);
+    if (slotEl) { slotEl.classList.add('slot-highlight'); _last = slotEl; slotEl.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+  };
+  viewer.onmouseout = (e) => { if (!viewer.contains(e.relatedTarget)) clearHL(); };
+  preview.onclick = (e) => {
+    const el = findSelectableEl(e.target); if (!el) return;
+    const selector = buildSelector(el, preview);
+    navigator.clipboard.writeText(selector).catch(()=>{});
+    e.stopPropagation();
+  };
+}
+
+// Apply button
+document.getElementById('btnCompFullApply').addEventListener('click', () => {
+  const text = document.getElementById('compFullEditor').value;
+  const status = document.getElementById('compEditStatus');
+  try {
+    if (_compEditorMode === 'config') {
+      const parsed = parseConfigDSL(text);
+      Object.assign(_componentConfig, parsed);
+      saveComponentConfig();
+      renderComponentsPage();
+      status.textContent = 'Config applied';
+    } else if (_compEditorMode === 'fieldmap') {
+      const parsed = parseFieldMapDSL(text);
+      Object.assign(_fieldMap, parsed);
+      saveFieldMap();
+      renderComponentsPage();
+      status.textContent = 'FieldMap applied';
+    } else {
+      if (!_compPageSelectedType) return;
+      const parsed = parseDSLComponent(text);
+      _componentTemplates[_compPageSelectedType] = parsed;
+      saveComponentTemplates();
+      renderCompPreview();
+      status.textContent = 'Component applied';
+    }
+    if (_activePage === 'cards') renderBuilderPreview();
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  } catch(e) { status.textContent = 'Error: ' + e.message; }
+});
+
+// Reset button
+document.getElementById('btnCompFullReset').addEventListener('click', () => {
+  const status = document.getElementById('compEditStatus');
+  if (_compEditorMode === 'config') {
+    // Reset config to defaults from _defaultThemeCSS era — just reload page defaults
+    location.reload();
+    return;
+  }
+  if (_compEditorMode === 'fieldmap') {
+    localStorage.removeItem('field_map');
+    location.reload();
+    return;
+  }
+  if (!_compPageSelectedType || !_defaultComponentTemplates[_compPageSelectedType]) return;
+  _componentTemplates[_compPageSelectedType] = JSON.parse(JSON.stringify(_defaultComponentTemplates[_compPageSelectedType]));
+  saveComponentTemplates();
+  renderComponentsPage();
+  if (_activePage === 'cards') renderBuilderPreview();
+  status.textContent = 'Reset to default';
+  setTimeout(() => { status.textContent = ''; }, 2000);
+});
 
 /* ================================================================
    Name Popup & Context Menu
@@ -1509,7 +2212,7 @@ document.getElementById('settingsOverlay').addEventListener('click', (e) => { if
 document.getElementById('btnSidebar').addEventListener('click', () => {
   const sb = document.getElementById('rightSidebar');
   sb.classList.toggle('collapsed');
-  if (!sb.classList.contains('collapsed')) renderBuilderDSL();
+  if (!sb.classList.contains('collapsed')) renderSidebar();
 });
 
 // Resize handle
@@ -1615,48 +2318,165 @@ document.getElementById('btnChatSend').addEventListener('click', () => {
 });
 document.getElementById('builderChatInp').addEventListener('keydown', (e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnChatSend').click(); } });
 
-// Sidebar tabs
-function setSidebarTab(tab) {
-  _activeSidebarTab = tab;
-  document.querySelectorAll('.builder-sidebar-tab').forEach(b => b.classList.toggle('active', b.dataset.btab === tab));
-  document.getElementById('tabDSL').style.display = tab === 'dsl' ? 'flex' : 'none';
-  document.getElementById('tabHTML').style.display = tab === 'html' ? 'flex' : 'none';
-  document.getElementById('tabComponents').style.display = tab === 'components' ? 'flex' : 'none';
-  if (tab === 'components') renderComponentsList();
+/* ================================================================
+   Universal Sidebar — config-driven per page
+   ================================================================ */
+var _sidebarTab = 'dsl';
+
+// Sidebar config per page: tabs, context builder, apply handler
+const _sidebarConfig = {
+  cards: {
+    tabs: [
+      {id:'dsl', label:'DSL', getContent: () => _activeCardTemplate ? templateToDSL(_activeCardTemplate) : '# No template', placeholder:'card_template(name)\n  add_slot(@name, title)'},
+      {id:'html', label:'HTML', viewer: true, getContent: () => { const p = document.getElementById('builderPreview'); return p ? formatHTMLWithSlotIdx(p.innerHTML) : ''; }},
+    ],
+    context: () => {
+      const dsl = _activeCardTemplate ? templateToDSL(_activeCardTemplate) : '';
+      const html = document.getElementById('builderPreview')?.innerHTML || '';
+      let ctx = `Layer: L1 Slots. Template: ${_activeCardTemplate||'none'}.\nSlot types: title, tags, text_area, image, buttons, thread, data_table, reactions, list, form, group, children.\n`;
+      if (_sidebarTab === 'html') ctx += `Live Preview HTML:\n\`\`\`html\n${html.slice(0,4000)}\n\`\`\`\n`;
+      else ctx += `Current DSL:\n\`\`\`\n${dsl}\n\`\`\`\n`;
+      return ctx;
+    },
+    applyInstruction: (text, ctx) => _sidebarTab === 'html'
+      ? `${ctx}\nInstruction: ${text}\n\nRespond as CSS/DOM patches JSON or HTML. No prose.`
+      : `${ctx}\nInstruction: ${text}\n\nRespond with modified DSL only. No prose. Keep card_template() header.`,
+    onApplyResult: (result) => {
+      if (_sidebarTab === 'dsl' && result.includes('card_template(')) {
+        const lines = result.split('\n').map(l=>l.trim()).filter(l=>l && !l.startsWith('#'));
+        const tmplMatch = lines[0]?.match(/card_template\((\w+)\)/);
+        const name = tmplMatch ? tmplMatch[1] : _activeCardTemplate;
+        if (name && cardTemplates[name]) { cardTemplates[name].slots = []; _cardSlotIdN = 0; saveCardTemplates(); }
+        lines.forEach(l => execDSL(l));
+        renderBuilderPage();
+      }
+    },
+  },
+  components: {
+    tabs: [
+      {id:'dsl', label:'Template DSL', getContent: () => _compPageSelectedType ? componentToDSL(_componentTemplates[_compPageSelectedType]) : '# Select a slot type in the Components page', placeholder:'div.node-hdr [data-slot]\n  span.node-title: {{title}}'},
+      {id:'config', label:'Config', getContent: () => configToDSL(), placeholder:'icon title #\ntext arrow ▶'},
+      {id:'fieldmap', label:'FieldMap', getContent: () => fieldMapToDSL(), placeholder:'fieldmap title\n  title: title'},
+    ],
+    context: () => {
+      let ctx = `Layer: L1.5 Components. Selected: ${_compPageSelectedType||'none'}.\n`;
+      if (_compPageSelectedType) ctx += `Component DSL:\n\`\`\`\n${componentToDSL(_componentTemplates[_compPageSelectedType])}\n\`\`\`\n`;
+      ctx += `Config summary: ${Object.keys(_componentConfig.icons).length} icons, ${Object.keys(_componentConfig.text).length} text literals.\n`;
+      ctx += `FieldMap types: ${Object.keys(_fieldMap).join(', ')}.\n`;
+      return ctx;
+    },
+    applyInstruction: (text, ctx) => `${ctx}\nInstruction: ${text}\n\nRespond with modified DSL. No prose.`,
+    onApplyResult: (result) => {
+      if (_sidebarTab === 'config' && result.includes('icon ')) {
+        const parsed = parseConfigDSL(result);
+        Object.assign(_componentConfig, parsed); saveComponentConfig();
+      } else if (_sidebarTab === 'fieldmap' && result.includes('fieldmap ')) {
+        const parsed = parseFieldMapDSL(result);
+        Object.assign(_fieldMap, parsed); saveFieldMap();
+      } else if (_compPageSelectedType) {
+        try { _componentTemplates[_compPageSelectedType] = parseDSLComponent(result); saveComponentTemplates(); } catch(_) {}
+      }
+      renderComponentsPage();
+    },
+  },
+  screen: {
+    tabs: [
+      {id:'dsl', label:'Zone YAML', getContent: () => document.getElementById('screenYamlEditor')?.value || '', placeholder:'screen: layout\n  zone: sidebar\n    width: 240px'},
+    ],
+    context: () => {
+      const yaml = document.getElementById('screenYamlEditor')?.value || '';
+      return `Layer: L2a Screen Layout. Zone DSL:\n\`\`\`yaml\n${yaml}\n\`\`\`\nZone properties: width, height, layout, scroll, tag, card_type, visible.\n`;
+    },
+    applyInstruction: (text, ctx) => `${ctx}\nInstruction: ${text}\n\nRespond with modified zone YAML. No prose.`,
+    onApplyResult: (result) => {
+      if (result.includes('zone:') || result.includes('screen:')) {
+        document.getElementById('screenYamlEditor').value = result;
+        renderScreenPreview();
+      }
+    },
+  },
+  theme: {
+    tabs: [
+      {id:'dsl', label:'Theme CSS', getContent: () => _projectThemeCSS, placeholder:'/* Card component styles */\n.node { border: 1px solid var(--border); }'},
+    ],
+    context: () => `Layer: Theme CSS. Current theme: ${_projectThemeCSS.length} chars.\nAvailable presets: dark, light, minimal.\nCSS variables: --bg, --surface, --border, --text, --accent, --green, --red, --orange.\n`,
+    applyInstruction: (text, ctx) => `${ctx}\nInstruction: ${text}\n\nRespond with modified CSS. No prose.`,
+    onApplyResult: (result) => {
+      _projectThemeCSS = result; saveProjectTheme();
+      document.getElementById('themeCSSEditor').value = _projectThemeCSS;
+      renderThemePreview();
+    },
+  },
+};
+
+function renderSidebar() {
+  const config = _sidebarConfig[_activePage];
+  if (!config) return;
+  const hdr = document.getElementById('sidebarHdr');
+  const editor = document.getElementById('sidebarEditor');
+  const viewer = document.getElementById('sidebarViewer');
+
+  // Render tabs
+  let h = `<div style="display:flex;gap:4px;width:100%;margin-bottom:4px">`;
+  config.tabs.forEach(t => {
+    const active = t.id === _sidebarTab;
+    h += `<button class="btn sidebar-tab${active?' active':''}" data-stab="${t.id}" style="font-size:10px;padding:2px 8px;${active?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${t.label}</button>`;
+  });
+  h += `<div style="display:flex;gap:4px;margin-left:auto">`;
+  h += `<button class="btn" id="btnSidebarCopy" style="font-size:10px;padding:1px 6px">Copy</button>`;
+  h += `<button class="btn primary" id="btnSidebarApply" style="font-size:10px;padding:1px 6px">Apply</button>`;
+  h += `</div></div>`;
+  hdr.innerHTML = h;
+
+  // Show content
+  const tab = config.tabs.find(t => t.id === _sidebarTab) || config.tabs[0];
+  if (!tab) return;
+  _sidebarTab = tab.id;
+
+  if (tab.viewer) {
+    editor.style.display = 'none'; viewer.style.display = '';
+    viewer.innerHTML = tab.getContent();
+    // Bind element selector if HTML viewer
+    if (_activePage === 'cards' && _sidebarTab === 'html') {
+      const preview = document.getElementById('builderPreview');
+      if (preview) bindElementSelector(preview, viewer);
+    }
+  } else {
+    viewer.style.display = 'none'; editor.style.display = '';
+    editor.value = tab.getContent();
+    editor.placeholder = tab.placeholder || '';
+  }
+
+  // Bind tab clicks
+  hdr.querySelectorAll('.sidebar-tab').forEach(b => {
+    b.addEventListener('click', () => { _sidebarTab = b.dataset.stab; renderSidebar(); });
+  });
+
+  // Bind Copy
+  hdr.querySelector('#btnSidebarCopy')?.addEventListener('click', () => {
+    const text = tab.viewer ? viewer.textContent : editor.value;
+    navigator.clipboard.writeText(text).catch(()=>{});
+  });
+
+  // Bind Apply
+  hdr.querySelector('#btnSidebarApply')?.addEventListener('click', () => {
+    const text = editor.value;
+    if (config.onApplyResult) config.onApplyResult(text);
+  });
 }
-document.querySelectorAll('.builder-sidebar-tab').forEach(btn => { btn.addEventListener('click', () => setSidebarTab(btn.dataset.btab)); });
 
-// DSL Copy
-document.getElementById('btnDSLCopy').addEventListener('click', () => {
-  const editor = document.getElementById('dslEditor');
-  if (editor) navigator.clipboard.writeText(editor.value).catch(()=>{});
-});
-
-// DSL Apply (replay)
-document.getElementById('btnDSLApply').addEventListener('click', () => {
-  const editor = document.getElementById('dslEditor'); if (!editor) return;
-  const lines = editor.value.split('\n').map(l=>l.trim()).filter(l=>l && !l.startsWith('#'));
-  if (!lines.length) return;
-  const tmplMatch = lines[0].match(/card_template\((\w+)\)/);
-  const tmplName = tmplMatch ? tmplMatch[1] : _activeCardTemplate;
-  if (tmplName && cardTemplates[tmplName]) { cardTemplates[tmplName].slots = []; _cardSlotIdN = 0; saveCardTemplates(); }
-  lines.forEach(l => execDSL(l));
-  renderBuilderPage();
-});
-
-// NL Apply
+// NL Apply — uses page context
 document.getElementById('btnNLApply').addEventListener('click', async () => {
   const inp = document.getElementById('nlInput');
   const text = inp.value.trim(); if (!text) return;
   const worker = getWorkerByRole('analyzer');
   if (!worker?.url) { addAskMsg('system', 'No analyzer worker connected'); return; }
-  addAskMsg('user', `[Apply] ${text}`);
+  const config = _sidebarConfig[_activePage];
+  if (!config) return;
+  addAskMsg('user', `[${_activePage}] ${text}`);
   inp.value = ''; inp.disabled = true;
-  const ctx = builderContext();
-  let instruction = '';
-  if (_activeSidebarTab === 'dsl') instruction = `${ctx}\nInstruction: ${text}\n\nRespond with modified DSL only. No prose. Keep the card_template() header.`;
-  else if (_activeSidebarTab === 'html') instruction = `You are editing an HTML template.\n\n${ctx}\nInstruction: ${text}\n\nRespond in ONE format:\n1. CSS patches: [{"selector":".class","property":"color","value":"red"}]\n2. DOM patches: [{"selector":"...","action":"setText","value":"..."}]\n3. Full HTML fragment\nNo prose.`;
-  else instruction = `${ctx}\nInstruction: ${text}\n\nRespond with the most appropriate format. No prose.`;
+  const ctx = config.context();
+  const instruction = config.applyInstruction(text, ctx);
   try {
     const {answer} = await fetchLLM(worker.url, [{role:'user', content:instruction}], {temperature:0.3, max_tokens:4096, noThink:true});
     let result = answer.trim();
@@ -1667,14 +2487,16 @@ document.getElementById('btnNLApply').addEventListener('click', async () => {
 });
 document.getElementById('nlInput').addEventListener('keydown', (e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnNLApply').click(); } });
 
-// Ask
+// Ask — uses page context
 document.getElementById('btnAskSend').addEventListener('click', async () => {
   const inp = document.getElementById('askInput');
   const text = inp.value.trim(); if (!text) return;
   const worker = getWorkerByRole('analyzer');
   if (!worker?.url) { addAskMsg('system', 'No analyzer worker connected'); return; }
+  const config = _sidebarConfig[_activePage];
+  if (!config) return;
   addAskMsg('user', text); inp.value = ''; inp.disabled = true;
-  const ctx = builderContext();
+  const ctx = config.context();
   const messages = [{role:'system', content:ctx}];
   _askMsgs.forEach(m => { if (m.role==='user' || m.role==='assistant') messages.push({role:m.role, content:m.content}); });
   try {
@@ -1685,24 +2507,16 @@ document.getElementById('btnAskSend').addEventListener('click', async () => {
 });
 document.getElementById('askInput').addEventListener('keydown', (e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnAskSend').click(); } });
 
-// Screenshot
-document.getElementById('btnScreenshot').addEventListener('click', () => {
-  const preview = document.getElementById('builderPreview'); if (!preview) return;
-  const rect = preview.getBoundingClientRect();
-  const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${preview.innerHTML}</div></foreignObject></svg>`;
-  const img = new Image();
-  const blob = new Blob([svgData], {type:'image/svg+xml;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = rect.width*2; canvas.height = rect.height*2;
-    const ctx = canvas.getContext('2d'); ctx.scale(2,2); ctx.drawImage(img,0,0);
-    URL.revokeObjectURL(url);
-    addAskMsg('system', 'Screenshot captured', canvas.toDataURL('image/png'));
-  };
-  img.onerror = () => { URL.revokeObjectURL(url); addAskMsg('system', `Screenshot failed. HTML: ${preview.innerHTML.length} chars`); };
-  img.src = url;
-});
+// Bind element selector for HTML viewer (reused from old code)
+function bindElementSelector(preview, viewer) {
+  let _last = null;
+  function clearHL() { if (_last) { _last.classList.remove('slot-highlight'); _last = null; } viewer.querySelectorAll('.html-highlight').forEach(e => e.classList.remove('html-highlight')); }
+  preview.onmouseover = (e) => { const el = findSelectableEl(e.target); if (!el || el === _last) return; clearHL(); el.classList.add('slot-highlight'); _last = el; const si = el.closest('[data-slot-idx]'); if (si) { const hb = viewer.querySelector(`[data-html-idx="${si.dataset.slotIdx}"]`); if (hb) { hb.classList.add('html-highlight'); hb.scrollIntoView({block:'nearest',behavior:'smooth'}); } } };
+  preview.onmouseout = (e) => { if (!preview.contains(e.relatedTarget)) clearHL(); };
+  viewer.onmouseover = (e) => { const hb = e.target.closest('[data-html-idx]'); if (!hb) return; clearHL(); hb.classList.add('html-highlight'); const se = preview.querySelector(`[data-slot-idx="${hb.dataset.htmlIdx}"]`); if (se) { se.classList.add('slot-highlight'); _last = se; se.scrollIntoView({block:'nearest',behavior:'smooth'}); } };
+  viewer.onmouseout = (e) => { if (!viewer.contains(e.relatedTarget)) clearHL(); };
+  preview.onclick = (e) => { const el = findSelectableEl(e.target); if (!el) return; navigator.clipboard.writeText(buildSelector(el, preview)).catch(()=>{}); e.stopPropagation(); };
+}
 
 // Import JSON — supports both formats: {templates, screen_yaml} (unified) or flat {name: {slots}} (card-only)
 document.getElementById('btnImport').addEventListener('click', () => document.getElementById('importFile').click());
@@ -1725,6 +2539,21 @@ document.getElementById('importFile').addEventListener('change', (e) => {
         saveProjectTheme();
         document.getElementById('themeCSSEditor').value = _projectThemeCSS;
         parts.push('theme');
+      }
+      if (data.component_config) {
+        Object.assign(_componentConfig, data.component_config);
+        saveComponentConfig();
+        parts.push('component config');
+      }
+      if (data.field_map) {
+        Object.assign(_fieldMap, data.field_map);
+        saveFieldMap();
+        parts.push('field map');
+      }
+      if (data.component_templates) {
+        Object.assign(_componentTemplates, data.component_templates);
+        saveComponentTemplates();
+        parts.push('component templates');
       }
       // Merge card templates
       const names = [];
@@ -1751,6 +2580,9 @@ document.getElementById('btnExport').addEventListener('click', () => {
   const payload = {templates: cardTemplates};
   if (screenYaml.trim()) payload.screen_yaml = screenYaml;
   if (_projectThemeCSS !== _defaultThemeCSS) payload.theme_css = _projectThemeCSS;
+  payload.component_config = _componentConfig;
+  payload.field_map = _fieldMap;
+  payload.component_templates = _componentTemplates;
   const data = JSON.stringify(payload, null, 2);
   const blob = new Blob([data], {type:'application/json'});
   const a = document.createElement('a');
@@ -1983,17 +2815,32 @@ var _activePage = 'cards';
 var _selectedZone = null;
 
 // --- Page switching ---
+const _layerInfo = {
+  cards:      {desc:'Card template slot structure — what slots a card has', flow:'L1 Slots'},
+  components: {desc:'Component HTML templates — what HTML each slot type generates', flow:'L1.5 HTML'},
+  screen:     {desc:'Screen skeleton — zones, panels, layout before data arrives', flow:'L2a Screen'},
+  theme:      {desc:'Visual styling — CSS for card components', flow:'Theme CSS'},
+};
+
 function switchPage(page) {
   _activePage = page;
   document.querySelectorAll('.header-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
   document.querySelector('.builder-area').style.display = page === 'cards' ? '' : 'none';
+  document.getElementById('componentsArea').style.display = page === 'components' ? 'flex' : 'none';
   document.getElementById('screenArea').style.display = page === 'screen' ? 'flex' : 'none';
   document.getElementById('themeArea').style.display = page === 'theme' ? 'flex' : 'none';
-  // Hide right sidebar on non-cards pages
-  const rs = document.getElementById('rightSidebar');
-  if (page !== 'cards') rs.classList.add('collapsed');
+  // Reset sidebar tab to first for new page and render
+  _sidebarTab = (_sidebarConfig[page]?.tabs[0]?.id) || 'dsl';
+  renderSidebar();
   if (page === 'screen') renderScreenPreview();
   if (page === 'theme') renderThemeTab();
+  if (page === 'components') renderComponentsPage();
+  // Update layer bar
+  const info = _layerInfo[page] || _layerInfo.cards;
+  document.getElementById('layerDesc').textContent = info.desc;
+  document.getElementById('layerFlow').querySelectorAll('span:not(.arrow)').forEach(s => {
+    s.classList.toggle('current', s.textContent === info.flow);
+  });
 }
 document.querySelectorAll('.header-tab').forEach(tab => {
   tab.addEventListener('click', () => switchPage(tab.dataset.page));

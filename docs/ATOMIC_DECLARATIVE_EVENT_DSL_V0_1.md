@@ -31,7 +31,7 @@ emit("generate.request", {
   schema: "native_generate_request",
   defaults: "native_generate_defaults",
   data: {
-    prompt: @task.input.text,
+    prompt: @data.local.wiki.task.input.text,
     model: "local-model",
     max_length: 256
   },
@@ -39,7 +39,7 @@ emit("generate.request", {
 })
 
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"]
 })
@@ -75,7 +75,7 @@ emit("generate.request", {
   schema: "native_generate_request",
   defaults: "native_generate_defaults",
   data: {
-    prompt: @task.input.text,
+    prompt: @data.local.wiki.task.input.text,
     model: "local-model",
     max_length: 256
   },
@@ -137,8 +137,8 @@ Good:
 
 ```js
 on("generate.request", "response", {
-  bind: "generate.response",
-  emit: ["response.output_message"]
+  bind: "data.local.object.generate.response",
+  emit: ["data.local.message.response.output_message"]
 })
 ```
 
@@ -177,16 +177,18 @@ may compile into:
 
 ```js
 emit("task.input", {
+  target: "data.local.wiki.task.input",
   data: {
     text: "написать 4 описания внешности демониц..."
   }
 })
 
 emit("generate.request", {
+  target: "data.local.object.generate.request",
   schema: "native_generate_request",
   defaults: "native_generate_defaults",
   data: {
-    prompt: @task.input.text,
+    prompt: @data.local.wiki.task.input.text,
     model: "local-model",
     max_length: 512
   },
@@ -194,7 +196,7 @@ emit("generate.request", {
 })
 
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"]
 })
@@ -204,10 +206,10 @@ on("generate.request", "response", {
 
 ```js
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"],
-  emit: ["response.output_message"]
+  emit: ["data.local.message.response.output_message"]
 })
 ```
 
@@ -217,11 +219,11 @@ This keeps response handling compact while still explicit.
 
 ```js
 on("generate.request", "response", {
-  bind: "generate.response",
+  bind: "data.local.object.generate.response",
   schema: "native_generate_response",
   checks: ["complete"],
-  emit: ["response.output_message"],
-  project: ["response.table"]
+  emit: ["data.local.message.response.output_message"],
+  project: ["data.local.table.response.table"]
 })
 ```
 
@@ -234,7 +236,7 @@ This DSL can later use local refs naturally:
 ```js
 emit("generate.request", {
   data: {
-    prompt: @task.input.text
+    prompt: @data.local.wiki.task.input.text
   }
 })
 ```
@@ -242,8 +244,8 @@ emit("generate.request", {
 and:
 
 ```js
-on("response.output_message", "edit", {
-  project: ["response.table"]
+on("data.local.message.response.output_message", "edit", {
+  project: ["data.local.table.response.table"]
 })
 ```
 
