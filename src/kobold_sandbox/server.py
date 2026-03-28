@@ -2848,6 +2848,11 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/aabb", response_class=HTMLResponse)
+    def aabb_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb.html"
+        return html_path.read_text(encoding="utf-8")
+
     @app.get("/think-lab", response_class=HTMLResponse)
     def think_lab_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "think_lab.html"
