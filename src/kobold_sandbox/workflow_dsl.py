@@ -293,9 +293,32 @@ class WorkflowContext:
         self.on_thread = on_thread or (lambda *a, **kw: None)
         self._http = httpx.Client(timeout=180.0, trust_env=False)
         self.macro_registry_path = self.settings.get("macro_registry_path")
+        # Async GEN support: thread pool + per-endpoint locks
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        self._executor = ThreadPoolExecutor(max_workers=8)
+        self._endpoint_locks: dict[str, threading.Lock] = {}
+        self._lock_mu = threading.Lock()  # protects _endpoint_locks dict
+
+    def _get_endpoint_lock(self, url: str) -> "threading.Lock":
+        """Get or create a lock for an LLM endpoint URL."""
+        import threading
+        with self._lock_mu:
+            if url not in self._endpoint_locks:
+                self._endpoint_locks[url] = threading.Lock()
+            return self._endpoint_locks[url]
+
+    def submit_gen(self, url: str, fn: Callable, *args: Any, **kwargs: Any) -> "Future":
+        """Submit an async GEN call with endpoint locking."""
+        lock = self._get_endpoint_lock(url)
+        def work():
+            with lock:
+                return fn(*args, **kwargs)
+        return self._executor.submit(work)
 
     def close(self):
         self._http.close()
+        self._executor.shutdown(wait=False)
 
     def child(self) -> "WorkflowContext":
         """Create an isolated child context that shares workers/settings/builtins."""
@@ -306,6 +329,10 @@ class WorkflowContext:
             on_thread=self.on_thread,
         )
         child.macro_registry_path = self.macro_registry_path
+        # Share executor and endpoint locks with parent
+        child._executor = self._executor
+        child._endpoint_locks = self._endpoint_locks
+        child._lock_mu = self._lock_mu
         return child
 
     def get(self, ref: str) -> Any:

@@ -163,8 +163,9 @@ class TestGenCaptureCoerce:
         assert ctx.get("$val") == "hello"
 
     def test_gen_normal_mode_no_capture(self):
-        """Non-probe mode should not apply capture/coerce."""
-        from kobold_sandbox.assembly_dsl import _exec_gen, Instruction
+        """Non-probe mode is async — result is a Future, resolves to raw text."""
+        from concurrent.futures import Future
+        from kobold_sandbox.assembly_dsl import _exec_gen, _asm_resolve, Instruction
 
         inst = Instruction(
             opcode="GEN",
@@ -175,7 +176,12 @@ class TestGenCaptureCoerce:
         with patch("kobold_sandbox.assembly_dsl._atomic_apply_function", return_value="result 42"):
             _exec_gen(ctx, inst)
 
-        assert ctx.get("$val") == "result 42"
+        # Non-probe stores a Future
+        raw = ctx.get("$val")
+        assert isinstance(raw, Future)
+        # Implicit await via _asm_resolve
+        resolved = _asm_resolve(ctx, "@val")
+        assert resolved == "result 42"
 
 
 # ---------------------------------------------------------------------------

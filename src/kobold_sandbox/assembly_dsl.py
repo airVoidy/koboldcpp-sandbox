@@ -285,7 +285,14 @@ def _asm_resolve(ctx: WorkflowContext, token: str) -> Any:
 
     # Ref
     if token.startswith("@") or token.startswith("$"):
-        return _atomic_eval_value(ctx, token)
+        value = _atomic_eval_value(ctx, token)
+        # Implicit await: if value is a Future, block until ready and cache
+        from concurrent.futures import Future
+        if isinstance(value, Future):
+            resolved = value.result()
+            _asm_store(ctx, token, resolved)
+            return resolved
+        return value
 
     # Numeric
     try:
@@ -319,9 +326,15 @@ def _asm_store(ctx: WorkflowContext, ref: str, value: Any) -> None:
 
 def _asm_get(ctx: WorkflowContext, ref: str) -> Any:
     """Get a value from a register ref."""
+    from concurrent.futures import Future
     ref = ref.strip()
     if ref.startswith("@"):
-        return ctx.get("$" + ref[1:])
+        value = ctx.get("$" + ref[1:])
+        if isinstance(value, Future):
+            resolved = value.result()
+            _asm_store(ctx, ref, resolved)
+            return resolved
+        return value
     return _atomic_eval_value(ctx, ref)
 
 
@@ -367,15 +380,18 @@ def _exec_gen(ctx: WorkflowContext, inst: Instruction) -> dict:
     # Extract coerce before passing to generate (it's not a generate kwarg)
     coerce_type = kw.pop("coerce", None)
 
-    result = _atomic_apply_function(ctx, "generate", [source], kw)
-
-    # Post-process probe results with capture/coerce
     mode = kw.get("mode", "prompt")
-    if mode in ("probe", "probe_continue") and (kw.get("capture") or coerce_type):
-        from .workflow_dsl import _clean_probe_result
-        capture = kw.get("capture")
-        # Build capture dict for _clean_probe_result
-        if capture or coerce_type:
+    is_probe = mode in ("probe", "probe_continue")
+    worker_role = kw.get("worker", "generator")
+
+    if is_probe:
+        # Probe: synchronous (single-shot, need result immediately)
+        result = _atomic_apply_function(ctx, "generate", [source], kw)
+
+        # Post-process probe results with capture/coerce
+        if kw.get("capture") or coerce_type:
+            from .workflow_dsl import _clean_probe_result
+            capture = kw.get("capture")
             cap_dict: dict[str, Any] = {}
             if isinstance(capture, str):
                 cap_dict["regex"] = capture
@@ -384,7 +400,6 @@ def _exec_gen(ctx: WorkflowContext, inst: Instruction) -> dict:
             if coerce_type:
                 cap_dict["coerce"] = str(coerce_type)
             result = _clean_probe_result(str(result), kw.get("grammar"), cap_dict or None)
-            # Apply coerce to final result
             if coerce_type == "int" or str(coerce_type) == "int":
                 try:
                     result = int(result)
@@ -396,11 +411,25 @@ def _exec_gen(ctx: WorkflowContext, inst: Instruction) -> dict:
                 except (ValueError, TypeError):
                     result = 0.0
 
-    _asm_store(ctx, dst, result)
-    return {"op": "GEN", "dst": dst, "worker": kw.get("worker", "generator"),
-            "mode": kw.get("mode", "prompt"),
-            "input_preview": _short_repr(source), "output_preview": _short_repr(result),
-            "input_full": _full_repr(source), "output_full": _full_repr(result)}
+        _asm_store(ctx, dst, result)
+        return {"op": "GEN", "dst": dst, "worker": worker_role, "mode": mode,
+                "input_preview": _short_repr(source), "output_preview": _short_repr(result),
+                "input_full": _full_repr(source), "output_full": _full_repr(result)}
+
+    # Non-probe: async — submit to worker thread pool and continue
+    url = ctx.workers.get(worker_role, "").rstrip("/")
+
+    # Capture kw snapshot for the thread (avoid mutation issues)
+    kw_snapshot = dict(kw)
+    source_snapshot = source
+
+    future = ctx.submit_gen(url, _atomic_apply_function, ctx, "generate", [source_snapshot], kw_snapshot)
+    _asm_store(ctx, dst, future)  # store Future — implicit await on first read
+
+    return {"op": "GEN", "dst": dst, "worker": worker_role, "mode": mode,
+            "async": True,
+            "input_preview": _short_repr(source), "output_preview": "(async pending)",
+            "input_full": _full_repr(source), "output_full": "(async pending)"}
 
 
 def _exec_put(ctx: WorkflowContext, inst: Instruction, append: bool = False) -> dict:
@@ -812,9 +841,15 @@ def execute(
 
         log = _run_instructions(ctx, instructions, functions)
 
-        # Export state (@ registers → flat dict)
+        # Export state (@ registers → flat dict), resolving any pending Futures
+        from concurrent.futures import Future
         state = {}
         for key, value in ctx.vars.items():
+            if isinstance(value, Future):
+                try:
+                    value = value.result(timeout=60)
+                except Exception:
+                    value = None
             state[key] = value
 
         return AsmResult(state=state, log=log, error=None)
