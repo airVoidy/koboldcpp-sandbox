@@ -232,6 +232,14 @@ button.sm { font-size:10px; padding:2px 7px; }
 .node-actions { display:flex; gap:3px; margin-top:4px; padding-top:4px; border-top:1px solid var(--border); }
 .node-actions button { font-size:10px; padding:2px 6px; }
 
+.node-reactions { display:flex; flex-wrap:wrap; gap:3px; margin:4px 0; padding:3px 0; border-top:1px solid var(--border); }
+.node-reaction { font-size:12px; padding:2px 6px; border-radius:3px; background:var(--bg); border:1px solid var(--border); cursor:default; display:inline-flex; align-items:center; gap:2px; }
+.node-reaction.pass { border-color:rgba(158,206,106,.4); background:rgba(158,206,106,.1); }
+.node-reaction.fail { border-color:rgba(247,118,142,.4); background:rgba(247,118,142,.1); }
+.node-reaction .reaction-count { font-size:10px; color:var(--text-dim); }
+.node-reaction.add-reaction { cursor:pointer; color:var(--text-dim); font-size:11px; border-style:dashed; }
+.node-reaction.add-reaction:hover { border-color:var(--accent); color:var(--accent); }
+
 .node-children { padding-left:16px; margin-top:2px; }
 </style>
 </head>
@@ -405,17 +413,29 @@ let _log = [];
 // Slot types: tags, text (any text field), list (any array), thread, actions, children
 // Lists are generic: bind to any array field, style via `color` key, no fixed "entity/axiom" types.
 // To add a new list type: just add { type:'list', bind:'my_field', label:'My Items', color:'accent3' }
+// Card templates: fully config-driven.
+// Buttons are event bindings: {label, event, color?, icon?}
+// When clicked → dispatches event to node's event bus (or runs a trigger/macro)
+// Reactions: {bind, on_add?, on_remove?} — subscribable via DSL
 const cardTemplates = {
   root: {
     icon: 'T',
     slots: [
       { type: 'tags', bind: 'tags' },
-      { type: 'text', bind: 'answer', label: 'Result', actions: ['verify', 'check', 'generate'] },
+      { type: 'text', bind: 'answer', label: 'Result', buttons: [
+        { label: 'verify', event: 'verify_axioms', color: 'green' },
+        { label: 'check', event: 'worker_check', color: 'accent3' },
+        { label: 'generate', event: 'comfyui_gen', color: 'accent2' },
+      ]},
       { type: 'list', bind: 'entities_list', label: 'Entities', color: 'accent3' },
       { type: 'list', bind: 'axioms_list', label: 'Axioms', color: 'green' },
       { type: 'list', bind: 'hypotheses_list', label: 'Hypotheses', color: 'yellow' },
+      { type: 'reactions', bind: 'reactions' },
       { type: 'thread', bind: 'thread' },
-      { type: 'actions', items: ['chat', 'add_child'] },
+      { type: 'actions', items: [
+        { label: 'Chat', event: 'open_thread' },
+        { label: '+ Child', event: 'add_child' },
+      ]},
       { type: 'children', bind: 'children', card: 'entity' },
     ]
   },
@@ -423,9 +443,17 @@ const cardTemplates = {
     icon: '#',
     slots: [
       { type: 'tags', bind: 'tags' },
-      { type: 'text', bind: 'answer', label: 'Result', actions: ['verify', 'check', 'generate'] },
+      { type: 'text', bind: 'answer', label: 'Result', buttons: [
+        { label: 'verify', event: 'verify_axioms', color: 'green' },
+        { label: 'check', event: 'worker_check', color: 'accent3' },
+        { label: 'generate', event: 'comfyui_gen', color: 'accent2' },
+      ]},
+      { type: 'reactions', bind: 'reactions' },
       { type: 'thread', bind: 'thread' },
-      { type: 'actions', items: ['chat', 'add_child'] },
+      { type: 'actions', items: [
+        { label: 'Chat', event: 'open_thread' },
+        { label: '+ Child', event: 'add_child' },
+      ]},
       { type: 'children', bind: 'children', card: 'entity' },
     ]
   }
@@ -453,6 +481,7 @@ function createNode(opts) {
     entities_list: opts.entities_list || [],
     axioms_list: opts.axioms_list || [],
     hypotheses_list: opts.hypotheses_list || [],
+    reactions: opts.reactions || [],
     thread: opts.thread || [],
     children: opts.children || [],
     time: ts(),
@@ -765,11 +794,11 @@ function renderNode(nd) {
     });
   });
 
-  // wire actions
-  div.querySelectorAll(`[data-action]`).forEach(btn => {
+  // wire all event buttons (actions, text buttons, reactions)
+  div.querySelectorAll(`[data-event]`).forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      handleNodeAction(nd.id, btn.dataset.action);
+      dispatchNodeEvent(nd.id, btn.dataset.event);
     });
   });
 
@@ -802,11 +831,11 @@ function renderSlot(slot, nd) {
       const text = nd[slot.bind] || '';
       const thinkKey = slot.bind + 'Think';
       const emptyCls = text ? '' : ' empty';
-      const actions = slot.actions || [];
+      const buttons = slot.buttons || [];
       let hdr = `<div class="node-answer-hdr"><span class="label">${esc(slot.label || slot.bind)}</span>`;
-      actions.forEach(a => {
-        const cls = a === 'verify' ? 'btn-verify' : a === 'check' ? 'btn-check' : a === 'generate' ? 'btn-generate' : '';
-        hdr += `<button class="btn sm ${cls}" data-action="${a}" data-node="${nd.id}">${a}</button>`;
+      buttons.forEach(b => {
+        const colorStyle = b.color ? `color:var(--${b.color});border-color:var(--${b.color})` : '';
+        hdr += `<button class="btn sm" style="${colorStyle}" data-event="${esc(b.event)}" data-node="${nd.id}">${esc(b.label)}</button>`;
       });
       hdr += `</div>`;
       let html = `<div class="node-answer">${hdr}
@@ -852,12 +881,34 @@ function renderSlot(slot, nd) {
         </div>
       </div>`;
     }
+    case 'reactions': {
+      const reactions = nd[slot.bind] || [];
+      if (!reactions.length) return '';
+      // group by emoji: {emoji: [author1, author2]}
+      const groups = {};
+      reactions.forEach(r => {
+        const key = r.emoji || '?';
+        if (!groups[key]) groups[key] = { emoji: key, authors: [], status: r.status };
+        groups[key].authors.push(r.author || 'anon');
+        if (r.status) groups[key].status = r.status;
+      });
+      let html = '<div class="node-reactions">';
+      for (const g of Object.values(groups)) {
+        const statusCls = g.status === 'pass' ? 'pass' : g.status === 'fail' ? 'fail' : '';
+        const tooltip = g.authors.join(', ');
+        html += `<span class="node-reaction ${statusCls}" title="${esc(tooltip)}">${g.emoji}<span class="reaction-count">${g.authors.length > 1 ? ' ' + g.authors.length : ''}</span></span>`;
+      }
+      // add reaction button
+      html += `<button class="node-reaction add-reaction" data-event="add_reaction" data-node="${nd.id}" title="Add reaction">+</button>`;
+      html += '</div>';
+      return html;
+    }
     case 'actions': {
       const items = slot.items || [];
       return `<div class="node-actions">${items.map(a => {
-        if (a === 'chat') return `<button class="btn sm" data-action="chat" data-node="${nd.id}">Chat</button>`;
-        if (a === 'add_child') return `<button class="btn sm" data-action="add_child" data-node="${nd.id}">+ Child</button>`;
-        return `<button class="btn sm" data-action="${a}" data-node="${nd.id}">${a}</button>`;
+        if (typeof a === 'string') return `<button class="btn sm" data-event="${a}" data-node="${nd.id}">${a}</button>`;
+        const colorStyle = a.color ? `color:var(--${a.color});border-color:var(--${a.color})` : '';
+        return `<button class="btn sm" style="${colorStyle}" data-event="${esc(a.event)}" data-node="${nd.id}">${esc(a.label)}</button>`;
       }).join('')}</div>`;
     }
     case 'children': {
@@ -882,22 +933,40 @@ function renderThreadMsg(m) {
   return html;
 }
 
-// ── Node actions ───────────────────────────────────────
-function handleNodeAction(nodeId, action) {
-  const nd = nodes[nodeId];
-  if (!nd) return;
-  if (action === 'add_child') {
+// ── Node event dispatch ────────────────────────────────
+// All button clicks route here. Built-in events have default handlers.
+// Custom events log to console — hook into workflow triggers/macros later.
+const _eventHandlers = {
+  open_thread: (nd) => { nd.threadOpen = true; renderTree(); },
+  add_child: (nd) => {
     const title = prompt('Child title:');
     if (!title) return;
-    const childId = createNode({ parentId: nodeId, card: 'entity', title });
+    const childId = createNode({ parentId: nd.id, card: 'entity', title });
     nd.children = nd.children || [];
     nd.children.push(childId);
-    saveNodes();
-    renderTree();
-    log(`add child "${title}" to ${nd.title}`);
-  } else if (action === 'chat') {
-    nd.threadOpen = true;
-    renderTree();
+    saveNodes(); renderTree();
+    log(`+ child "${title}" → ${nd.title}`);
+  },
+  add_reaction: (nd) => {
+    const emoji = prompt('Reaction emoji:', '👍');
+    if (!emoji) return;
+    nd.reactions = nd.reactions || [];
+    nd.reactions.push({ emoji, author: 'user', time: ts() });
+    saveNodes(); renderTree();
+    log(`reaction ${emoji} on ${nd.title}`);
+  },
+};
+
+function dispatchNodeEvent(nodeId, event) {
+  const nd = nodes[nodeId];
+  if (!nd) return;
+  log(`event: ${event} @ ${nd.title}`);
+  const handler = _eventHandlers[event];
+  if (handler) {
+    handler(nd);
+  } else {
+    // no built-in handler → future: dispatch to workflow trigger/macro
+    log(`  (no handler for "${event}" — wire via DSL)`);
   }
 }
 
@@ -1190,8 +1259,8 @@ function exportTreeDSL() {
       if (s.label) line += `, label: ${s.label}`;
       if (s.card) line += `, card: ${s.card}`;
       if (s.color) line += `, color: ${s.color}`;
-      if (s.actions) line += `, actions: [${s.actions.join(', ')}]`;
-      if (s.items) line += `, items: [${s.items.join(', ')}]`;
+      if (s.buttons) line += `, buttons: [${s.buttons.map(b => b.label + ':' + b.event).join(', ')}]`;
+      if (s.items) line += `, items: [${(s.items || []).map(i => typeof i === 'string' ? i : i.label + ':' + i.event).join(', ')}]`;
       dsl += line + '\n';
     });
   }
