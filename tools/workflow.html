@@ -241,6 +241,96 @@ button.sm { font-size:10px; padding:2px 7px; }
 .node-reaction.add-reaction:hover { border-color:var(--accent); color:var(--accent); }
 
 .node-children { padding-left:16px; margin-top:2px; }
+
+/* ── Schema page ── */
+#page-schema { display:none; flex-direction:row; gap:0; min-height:0; overflow:hidden; }
+#page-schema.show { display:flex; }
+.schema-panel { flex:1; display:flex; flex-direction:column; min-height:0; overflow-y:auto; padding:8px; border-right:1px solid var(--border); }
+.schema-panel:last-child { border-right:none; }
+.schema-panel h3 { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+.schema-panel h3 button { font-size:10px; padding:1px 6px; }
+
+/* type list */
+.stype-item { background:var(--surface); border:1px solid var(--border); border-radius:4px; margin-bottom:4px; }
+.stype-hdr { display:flex; align-items:center; gap:5px; padding:4px 7px; cursor:pointer; font-size:12px; }
+.stype-hdr:hover { background:var(--surface2); }
+.stype-hdr .arrow { font-size:9px; color:var(--text-dim); transition:transform .15s; }
+.stype-hdr .arrow.open { transform:rotate(90deg); }
+.stype-hdr .stype-icon { width:18px; text-align:center; }
+.stype-hdr .stype-name { flex:1; font-weight:600; }
+.stype-hdr .stype-count { font-size:10px; color:var(--text-dim); }
+.stype-hdr .stype-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; padding:0 2px; opacity:.5; }
+.stype-hdr .stype-del:hover { opacity:1; }
+.stype-body { display:none; padding:4px 7px 6px 24px; border-top:1px solid var(--border); }
+.stype-body.open { display:block; }
+
+/* slot rows */
+.slot-row { display:flex; align-items:center; gap:4px; padding:2px 0; font-size:11px; border-bottom:1px solid rgba(59,66,97,.3); }
+.slot-row:last-child { border-bottom:none; }
+.slot-row select, .slot-row input { font-size:10px; padding:1px 3px; height:20px; }
+.slot-row select { width:70px; }
+.slot-row .slot-bind { width:70px; }
+.slot-row .slot-label { width:60px; }
+.slot-row .slot-color { width:55px; }
+.slot-row .slot-move { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:11px; padding:0 1px; }
+.slot-row .slot-move:hover { color:var(--accent); }
+.slot-row .slot-rm { background:none; border:none; color:var(--red); cursor:pointer; font-size:11px; padding:0 2px; opacity:.5; }
+.slot-row .slot-rm:hover { opacity:1; }
+.slot-add-row { margin-top:4px; }
+
+/* icon editor inline */
+.stype-icon-edit { width:24px; text-align:center; font-size:12px; padding:1px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:2px; }
+
+/* type preview */
+.stype-preview { margin-top:6px; padding:6px; background:var(--bg); border:1px solid var(--border); border-radius:4px; max-height:180px; overflow-y:auto; }
+.stype-preview .node { border:none; margin:0; padding:0; }
+
+/* flow steps */
+.flow-step { background:var(--surface); border:1px solid var(--border); border-radius:4px; margin-bottom:4px; padding:6px 8px; display:flex; align-items:center; gap:5px; font-size:11px; position:relative; }
+.flow-step::before { content:''; position:absolute; left:50%; top:-5px; width:1px; height:5px; background:var(--border); }
+.flow-step:first-child::before { display:none; }
+.flow-step select, .flow-step input { font-size:10px; padding:1px 3px; height:20px; }
+.flow-step .step-type { width:80px; }
+.flow-step .step-name { width:70px; }
+.flow-step .step-worker { width:70px; }
+.flow-step .step-var { width:60px; }
+.flow-step .step-arrow { color:var(--green); margin:0 2px; }
+.flow-step .step-rm { background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; padding:0 2px; opacity:.5; }
+.flow-step .step-rm:hover { opacity:1; }
+.flow-step .step-move { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:11px; padding:0 1px; }
+.flow-step .step-move:hover { color:var(--accent); }
+
+/* new type dialog */
+.schema-inline-form { display:flex; gap:3px; margin-bottom:6px; }
+.schema-inline-form input { font-size:11px; padding:2px 4px; }
+
+/* ── Component rendering DSL ── */
+.node-display { padding:4px 8px; }
+.node-display .display-label { font-size:10px; text-transform:uppercase; color:var(--text-dim); margin-bottom:2px; }
+.node-display .display-text { white-space:pre-wrap; font-size:12px; color:var(--text); }
+.node-form { padding:4px 8px; }
+.node-form .qf-item { margin-bottom:6px; }
+.node-form .qf-item label { display:block; font-size:11px; color:var(--accent); margin-bottom:2px; }
+.node-form .qf-hint { font-size:10px; color:var(--text-dim); margin-bottom:2px; }
+.node-form .qf-item input, .node-form .qf-item textarea { width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border); padding:4px 6px; font-size:12px; font-family:inherit; border-radius:3px; resize:vertical; }
+.node-form .qf-item input:focus, .node-form .qf-item textarea:focus { border-color:var(--accent); outline:none; }
+.node-data-table { padding:4px 8px; }
+.node-data-table .data-table-label { font-size:10px; text-transform:uppercase; color:var(--text-dim); margin-bottom:2px; }
+.node-data-table table { width:100%; border-collapse:collapse; font-size:11px; }
+.node-data-table th { text-align:left; padding:2px 6px; border-bottom:1px solid var(--border); color:var(--accent); font-weight:600; }
+.node-data-table td { padding:2px 6px; border-bottom:1px solid var(--border); color:var(--text); }
+.tab-chat-feed { flex:0 0 30%; min-height:60px; overflow-y:auto; padding:4px 8px; border-top:1px solid var(--border); font-size:11px; }
+.tab-chat-feed:empty::before { content:'Chat history appears here'; color:var(--text-dim); font-size:10px; }
+.tab-chat-feed .chat-msg { margin-bottom:6px; }
+.tab-chat-feed .chat-label { font-weight:600; font-size:10px; }
+.tab-chat-feed .chat-label.user { color:var(--accent); }
+.tab-chat-feed .chat-label.assistant { color:var(--green); }
+.tab-chat-feed .chat-label.system { color:var(--orange); }
+.tab-chat-feed .chat-text { white-space:pre-wrap; margin-top:1px; color:var(--text); font-size:11px; }
+.tab-chat-bar { padding:4px 8px; display:flex; gap:4px; align-items:flex-end; flex-shrink:0; border-top:1px solid var(--border); }
+.tab-chat-bar textarea { flex:1; resize:none; min-height:24px; max-height:60px; font-size:11px; padding:3px 6px; }
+.rs-nl-bar { padding:5px 8px; border-top:1px solid var(--border); display:flex; gap:4px; align-items:flex-end; flex-shrink:0; }
+.rs-nl-bar textarea { flex:1; resize:none; min-height:26px; max-height:80px; font-size:11px; padding:3px 6px; }
 </style>
 </head>
 <body>
@@ -253,6 +343,8 @@ button.sm { font-size:10px; padding:2px 7px; }
       <button class="header-tab active" data-page="tree"><span>Tree</span><span class="tab-layer">cards</span></button>
       <button class="header-tab" data-page="feed"><span>Feed</span><span class="tab-layer">thread</span></button>
       <button class="header-tab" data-page="vars"><span>Vars</span><span class="tab-layer">state</span></button>
+      <button class="header-tab" data-page="data"><span>Data</span><span class="tab-layer">store</span></button>
+      <button class="header-tab" data-page="schema"><span>Schema</span><span class="tab-layer">msg types</span></button>
     </div>
     <div class="hdr-status">
       <span class="dot idle" id="hdrDot"></span>
@@ -300,6 +392,15 @@ button.sm { font-size:10px; padding:2px 7px; }
       <div id="page-vars" class="page-area" style="flex:1; display:none; flex-direction:column; min-height:0; overflow-y:auto; padding:8px 10px;">
         <div id="vars-full"></div>
       </div>
+      <!-- Data Store page -->
+      <div id="page-data" class="page-area" style="flex:1; display:none; flex-direction:column; min-height:0; overflow-y:auto; padding:8px 10px;">
+        <div id="data-store-view"></div>
+      </div>
+      <!-- Schema page -->
+      <div id="page-schema" class="page-area" style="flex:1; display:none; flex-direction:row; min-height:0;">
+        <div class="schema-panel" id="schema-types"></div>
+        <div class="schema-panel" id="schema-flow"></div>
+      </div>
 
       <!-- Input bar -->
       <div id="input-bar">
@@ -325,24 +426,30 @@ button.sm { font-size:10px; padding:2px 7px; }
       <div class="rs-tabs">
         <button class="rs-tab active" data-rs="yaml">YAML</button>
         <button class="rs-tab" data-rs="tree-dsl">Tree DSL</button>
-        <button class="rs-tab" data-rs="ask">Ask</button>
+        <button class="rs-tab" data-rs="bindings">Bindings</button>
+        <button class="rs-tab" data-rs="components">Comp</button>
       </div>
 
       <!-- YAML tab -->
       <div id="rs-page-yaml" style="flex:1; display:flex; flex-direction:column; min-height:0;">
-        <textarea id="rs-editor" spellcheck="false">dsl: workflow/v2
+        <textarea id="rs-editor" spellcheck="false" style="flex:1; resize:none; border:none; padding:8px; font-size:11px; line-height:1.3; min-height:0;">dsl: workflow/v2
 flow:
   - generator -> $answer:
       prompt: $input
       tag: answer</textarea>
-        <div id="rs-nl-bar">
-          <textarea id="nlInput" placeholder="Describe change..." rows="1"></textarea>
-          <button class="btn sm primary" id="btnApplyNL">Apply</button>
-        </div>
         <div style="padding:4px 8px; display:flex; gap:4px; flex-shrink:0; border-top:1px solid var(--border);">
           <button class="btn sm primary" id="btnRun">Run</button>
           <button class="btn sm" id="btnLoadDefault">Load default</button>
           <button class="btn sm" id="btnConsoleToggle" style="margin-left:auto;">Console</button>
+        </div>
+        <div class="rs-nl-bar" data-tab-chat="yaml">
+          <textarea id="nlInput" placeholder="Describe YAML change..." rows="1"></textarea>
+          <button class="btn sm primary" data-tab-apply>Apply</button>
+        </div>
+        <div class="tab-chat-feed" data-tab-feed="yaml"></div>
+        <div class="tab-chat-bar" data-tab-ask="yaml">
+          <textarea placeholder="Ask about workflow..." rows="1"></textarea>
+          <button class="btn sm">Ask</button>
         </div>
       </div>
 
@@ -354,14 +461,59 @@ flow:
           <button class="btn sm" id="btnTreeImport">Import</button>
           <button class="btn sm" id="btnTreeClear" style="margin-left:auto; color:var(--red);">Clear tree</button>
         </div>
+        <div class="rs-nl-bar" data-tab-chat="tree-dsl">
+          <textarea placeholder="Edit tree DSL..." rows="1"></textarea>
+          <button class="btn sm primary" data-tab-apply>Apply</button>
+        </div>
+        <div class="tab-chat-feed" data-tab-feed="tree-dsl"></div>
+        <div class="tab-chat-bar" data-tab-ask="tree-dsl">
+          <textarea placeholder="Ask about tree..." rows="1"></textarea>
+          <button class="btn sm">Ask</button>
+        </div>
       </div>
 
-      <!-- Ask tab -->
-      <div id="rs-page-ask" style="flex:1; display:none; flex-direction:column; min-height:0;">
-        <div id="rs-ask-chat"></div>
-        <div id="rs-ask-bar">
-          <textarea id="askInput" placeholder="Ask about workflow..." rows="1"></textarea>
-          <button class="btn sm" id="btnAskSend">Ask</button>
+      <!-- Bindings tab -->
+      <div id="rs-page-bindings" style="flex:1; display:none; flex-direction:column; min-height:0;">
+        <textarea id="bindings-editor" spellcheck="false" style="flex:1; resize:none; border:none; padding:8px; font-size:11px; line-height:1.3; min-height:0;" placeholder="# Run a workflow to see bindings here"></textarea>
+        <div style="padding:4px 8px; display:flex; gap:4px; flex-shrink:0; border-top:1px solid var(--border);">
+          <button class="btn sm" id="btnBindingsExport">Export</button>
+          <button class="btn sm" id="btnBindingsImport">Import</button>
+          <button class="btn sm" id="btnBindingsClear" style="margin-left:auto; color:var(--red);">Clear</button>
+        </div>
+        <div class="rs-nl-bar" data-tab-chat="bindings">
+          <textarea placeholder="Edit bindings..." rows="1"></textarea>
+          <button class="btn sm primary" data-tab-apply>Apply</button>
+        </div>
+        <div class="tab-chat-feed" data-tab-feed="bindings"></div>
+        <div class="tab-chat-bar" data-tab-ask="bindings">
+          <textarea placeholder="Ask about bindings..." rows="1"></textarea>
+          <button class="btn sm">Ask</button>
+        </div>
+      </div>
+
+      <!-- Components tab -->
+      <div id="rs-page-components" style="flex:1; display:none; flex-direction:column; min-height:0;">
+        <div style="padding:4px 8px; display:flex; gap:3px; flex-wrap:wrap; border-bottom:1px solid var(--border); flex-shrink:0;">
+          <select id="compModeSelect" style="font-size:10px; padding:2px 4px; background:var(--surface2); color:var(--text); border:1px solid var(--border);">
+            <option value="template">Template DSL</option>
+            <option value="fieldmap">FieldMap DSL</option>
+          </select>
+          <select id="compTypeSelect" style="font-size:10px; padding:2px 4px; background:var(--surface2); color:var(--text); border:1px solid var(--border);"></select>
+          <span id="compEditStatus" style="font-size:10px; color:var(--green); margin-left:auto;"></span>
+        </div>
+        <textarea id="comp-editor" spellcheck="false" style="flex:1; resize:none; border:none; padding:8px; font-size:11px; line-height:1.3; min-height:0;"></textarea>
+        <div style="padding:4px 8px; display:flex; gap:4px; flex-shrink:0; border-top:1px solid var(--border);">
+          <button class="btn sm primary" id="btnCompApply">Apply</button>
+          <button class="btn sm" id="btnCompReset">Reset</button>
+        </div>
+        <div class="rs-nl-bar" data-tab-chat="components">
+          <textarea placeholder="Edit component..." rows="1"></textarea>
+          <button class="btn sm primary" data-tab-apply>Apply</button>
+        </div>
+        <div class="tab-chat-feed" data-tab-feed="components"></div>
+        <div class="tab-chat-bar" data-tab-ask="components">
+          <textarea placeholder="Ask about component..." rows="1"></textarea>
+          <button class="btn sm">Ask</button>
         </div>
       </div>
     </div>
@@ -404,6 +556,372 @@ let _activeRsTab = 'yaml';
 // undo
 let _undoStack = [];
 let _log = [];
+
+// ── Component Rendering DSL ────────────────────────────
+// _componentConfig: per-slot-type rendering config
+// _fieldMap: maps data keys to display names + formatting
+// _componentTemplates: DSL template strings per slot type
+// renderFromTemplate / renderSlotFromTemplate: template-driven rendering
+// componentToDSL / parseDSLComponent: round-trip DSL <-> object
+// fieldMapToDSL / parseFieldMapDSL: round-trip FieldMap <-> object
+
+const _componentConfig = {
+  tags:       { renderer: 'tags',       label: 'Tags',       icon: '#' },
+  text:       { renderer: 'text',       label: 'Text',       icon: 'T' },
+  list:       { renderer: 'list',       label: 'List',       icon: 'L' },
+  thread:     { renderer: 'thread',     label: 'Thread',     icon: 'C' },
+  reactions:  { renderer: 'reactions',  label: 'Reactions',  icon: 'R' },
+  actions:    { renderer: 'actions',    label: 'Actions',    icon: 'A' },
+  children:   { renderer: 'children',   label: 'Children',   icon: '+' },
+  display:    { renderer: 'display',    label: 'Display',    icon: 'D' },
+  form:       { renderer: 'form',       label: 'Form',       icon: 'F' },
+  image:      { renderer: 'image',      label: 'Image',      icon: 'I' },
+  data_table: { renderer: 'data_table', label: 'Data Table', icon: 'T' },
+  chat:       { renderer: 'chat',       label: 'Chat',       icon: 'C' },
+};
+
+// FieldMap: maps raw data keys to display names + formatting hints
+// { dataKey: { label, format?, color?, hide? } }
+let _fieldMap = {};
+try { _fieldMap = JSON.parse(localStorage.getItem('wf_fieldmap') || '{}'); } catch(_) {}
+
+function R(key, ctx) {
+  // Resolve a key through fieldMap: returns {label, value, color, hide}
+  const fm = _fieldMap[key] || {};
+  const label = fm.label || key;
+  const color = fm.color || '';
+  const hide = fm.hide || false;
+  let value = ctx && ctx[key] !== undefined ? ctx[key] : '';
+  if (fm.format === 'json' && typeof value === 'object') value = JSON.stringify(value, null, 2);
+  if (fm.format === 'truncate' && typeof value === 'string' && value.length > 200) value = value.slice(0, 197) + '...';
+  return { label, value, color, hide, key };
+}
+
+// ── Component Templates (DSL strings per slot type) ────
+// Each template is a multi-line string that renderFromTemplate() evaluates.
+// Supports: {{bind}}, {{label}}, {{#if bind}}...{{/if}}, {{#each items}}...{{/each}}, {{#loop arr}}...{{/loop}}
+const _componentTemplates = {
+  tags: `<div class="node-tags">{{#each tags}}<span class="node-tag{{#if green}} green{{/if}}" title="{{key}}: {{value}}">{{key}}: {{display}}</span>{{/each}}</div>`,
+  text: `<div class="node-answer">
+  <div class="node-answer-hdr"><span class="label">{{label}}</span>{{#each buttons}}<button class="btn sm" style="{{colorStyle}}" data-event="{{event}}" data-node="{{nodeId}}">{{label}}</button>{{/each}}</div>
+  <textarea class="node-answer-ta{{emptyCls}}" data-ans="{{nodeId}}:{{bind}}" placeholder="(pending...)">{{text}}</textarea>
+  <button class="btn sm node-answer-apply" data-apply-ans="{{nodeId}}:{{bind}}">Apply changes</button>
+  {{#if think}}<details class="msg-think" style="margin-top:3px;"><summary>think</summary><pre>{{think}}</pre></details>{{/if}}
+  {{#if imageUrl}}<div class="node-image"><img src="{{imageUrl}}" alt="Generated" loading="lazy" /></div>{{/if}}
+</div>`,
+  list: `{{#if hasItems}}<div class="node-lists">
+  <div class="node-list-hdr" data-list-toggle="{{key}}"><span class="arrow{{#if isOpen}} open{{/if}}">&#9654;</span> {{label}} <span style="opacity:.5">{{count}}</span></div>
+  <div class="node-list-body{{#if isOpen}} open{{/if}}" data-list-body="{{key}}">{{#loop items}}<div class="node-list-item" style="{{color}}"><span class="bullet">&#8226;</span>{{text}}</div>{{/loop}}</div>
+</div>{{/if}}`,
+  thread: `<div class="node-thread-bar" data-thread-toggle="{{nodeId}}">
+  <span class="arrow{{#if threadOpen}} open{{/if}}">&#9654;</span> Thread <span style="opacity:.5">{{count}}</span>
+</div>
+<div class="node-thread-wrap{{#if threadOpen}} open{{/if}}" data-thread-wrap="{{nodeId}}">
+  <div class="node-thread-msgs">{{#loop msgs}}{{msgHtml}}{{/loop}}</div>
+  <div class="node-thread-input"><textarea placeholder="Reply..." data-tinp="{{nodeId}}" rows="1"></textarea><button class="btn sm" data-tsend="{{nodeId}}">Send</button></div>
+</div>`,
+  reactions: `{{#if hasReactions}}<div class="node-reactions">{{#loop groups}}<span class="node-reaction {{statusCls}}" title="{{tooltip}}">{{emoji}}<span class="reaction-count">{{countDisplay}}</span></span>{{/loop}}<button class="node-reaction add-reaction" data-event="add_reaction" data-node="{{nodeId}}" title="Add reaction">+</button></div>{{/if}}`,
+  actions: `<div class="node-actions">{{#each items}}<button class="btn sm" style="{{colorStyle}}" data-event="{{event}}" data-node="{{nodeId}}">{{label}}</button>{{/each}}</div>`,
+  children: `<div class="node-children" data-children="{{nodeId}}"></div>`,
+  display: `<div class="node-display"><div class="display-label">{{label}}</div><div class="display-text">{{text}}</div></div>`,
+  form: `<div class="node-form">{{#each fields}}<div class="qf-item"><label>{{label}}</label>{{#if hint}}<div class="qf-hint">{{hint}}</div>{{/if}}<{{element}} data-form-field="{{nodeId}}:{{bind}}" {{attrs}}>{{innerText}}</{{element}}></div>{{/each}}</div>`,
+  image: `{{#if src}}<div class="node-image"><img src="{{src}}" alt="{{alt}}" loading="lazy" style="max-width:100%;max-height:300px;border-radius:4px;border:1px solid var(--border);" /></div>{{/if}}`,
+  data_table: `{{#if hasRows}}<div class="node-data-table"><div class="data-table-label">{{label}}</div><table><thead><tr>{{#each cols}}<th>{{.}}</th>{{/each}}</tr></thead><tbody>{{#loop rows}}<tr>{{#each cells}}<td>{{.}}</td>{{/each}}</tr>{{/loop}}</tbody></table></div>{{/if}}`,
+  chat: `<div class="tab-chat-feed" data-chat-feed="{{nodeId}}:{{bind}}"></div><div class="tab-chat-bar" data-chat-bar="{{nodeId}}:{{bind}}"><textarea placeholder="Chat..." rows="1"></textarea><button class="btn sm primary" data-chat-send="{{nodeId}}:{{bind}}">Send</button></div>`,
+};
+
+// Save defaults for reset
+const _defaultComponentTemplates = {};
+for (const [k, v] of Object.entries(_componentTemplates)) _defaultComponentTemplates[k] = v;
+
+// Load saved component templates
+try {
+  const saved = JSON.parse(localStorage.getItem('wf_comp_templates') || 'null');
+  if (saved) for (const [k, v] of Object.entries(saved)) _componentTemplates[k] = v;
+} catch(_) {}
+
+function _saveComponentTemplates() {
+  try { localStorage.setItem('wf_comp_templates', JSON.stringify(_componentTemplates)); } catch(_) {}
+}
+
+// ── Template resolution helpers ────────────────────────
+function _resolveText(tpl, ctx) {
+  // Simple mustache-like: replace {{key}} with ctx[key]
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => {
+    const v = ctx[k];
+    return v == null ? '' : esc(String(v));
+  });
+}
+
+function _resolveRaw(tpl, ctx) {
+  // Like _resolveText but no escaping (for pre-built HTML)
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => {
+    const v = ctx[k];
+    return v == null ? '' : String(v);
+  });
+}
+
+function _checkIf(tpl, ctx) {
+  // Handle {{#if key}}...{{/if}}
+  return tpl.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, k, body) => {
+    return ctx[k] ? body : '';
+  });
+}
+
+// ── renderFromTemplate: full template engine ───────────
+function renderFromTemplate(type, ctx) {
+  let tpl = _componentTemplates[type];
+  if (!tpl) return '';
+  // Process conditionals
+  tpl = _checkIf(tpl, ctx);
+  // Process {{#each arr}}...{{/each}} — arr must be pre-built array of ctx objects
+  tpl = tpl.replace(/\{\{#each (\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_, arrKey, body) => {
+    const arr = ctx[arrKey];
+    if (!Array.isArray(arr)) return '';
+    return arr.map(item => {
+      if (typeof item === 'object') return _resolveRaw(_checkIf(body, item), item);
+      return body.replace(/\{\{\.\}\}/g, esc(String(item)));
+    }).join('');
+  });
+  // Process {{#loop arr}}...{{/loop}} — same as each but for raw HTML items
+  tpl = tpl.replace(/\{\{#loop (\w+)\}\}([\s\S]*?)\{\{\/loop\}\}/g, (_, arrKey, body) => {
+    const arr = ctx[arrKey];
+    if (!Array.isArray(arr)) return '';
+    return arr.map(item => {
+      if (typeof item === 'object') return _resolveRaw(_checkIf(body, item), item);
+      return body.replace(/\{\{\.\}\}/g, String(item));
+    }).join('');
+  });
+  // Resolve remaining placeholders (raw — HTML already built by slot builders)
+  tpl = _resolveRaw(tpl, ctx);
+  return tpl;
+}
+
+// ── _buildSlotCtx: build template context for each slot type ──
+function _buildSlotCtx(slot, nd) {
+  const type = slot.type;
+  const bind = slot.bind || '';
+  const base = { nodeId: nd.id, bind, label: esc(slot.label || bind) };
+
+  switch (type) {
+    case 'tags': {
+      const tags = nd[bind] || {};
+      const keys = Object.keys(tags);
+      if (!keys.length) return null;
+      base.tags = keys.map(k => {
+        const val = tags[k];
+        const isGreen = k.startsWith('used_') || k.startsWith('reaction');
+        const display = String(val).length > 40 ? String(val).slice(0, 37) + '...' : String(val);
+        return { key: esc(k), value: esc(String(val)), display: esc(display), green: isGreen };
+      });
+      return base;
+    }
+    case 'text': {
+      const text = nd[bind] || '';
+      const thinkKey = bind + 'Think';
+      base.text = esc(text);
+      base.emptyCls = text ? '' : ' empty';
+      base.think = nd[thinkKey] ? esc(nd[thinkKey]) : '';
+      base.imageUrl = nd.imageUrl ? esc(nd.imageUrl) : '';
+      base.buttons = (slot.buttons || []).map(b => ({
+        label: esc(b.label),
+        event: esc(b.event),
+        colorStyle: b.color ? `color:var(--${b.color});border-color:var(--${b.color})` : '',
+        nodeId: nd.id,
+      }));
+      return base;
+    }
+    case 'list': {
+      const items = nd[bind] || [];
+      if (!items.length) return null;
+      const key = nd.id + ':' + bind;
+      const isOpen = nd._listOpen && nd._listOpen[key];
+      base.hasItems = true;
+      base.key = key;
+      base.isOpen = isOpen;
+      base.count = items.length;
+      base.color = slot.color ? `color:var(--${slot.color})` : '';
+      base.items = items.map(item => ({
+        text: esc(typeof item === 'string' ? item : item.title || item.name || JSON.stringify(item)),
+        color: slot.color ? `color:var(--${slot.color})` : '',
+      }));
+      return base;
+    }
+    case 'thread': {
+      const msgs = nd[bind] || [];
+      base.count = msgs.length;
+      base.threadOpen = nd.threadOpen;
+      base.msgs = msgs.map(m => ({ msgHtml: renderThreadMsg(m) }));
+      return base;
+    }
+    case 'reactions': {
+      const reactions = nd[bind] || [];
+      if (!reactions.length) return null;
+      const groups = {};
+      reactions.forEach(r => {
+        const key = r.emoji || '?';
+        if (!groups[key]) groups[key] = { emoji: key, authors: [], status: r.status };
+        groups[key].authors.push(r.author || 'anon');
+        if (r.status) groups[key].status = r.status;
+      });
+      base.hasReactions = true;
+      base.groups = Object.values(groups).map(g => ({
+        emoji: g.emoji,
+        statusCls: g.status === 'pass' ? 'pass' : g.status === 'fail' ? 'fail' : '',
+        tooltip: esc(g.authors.join(', ')),
+        countDisplay: g.authors.length > 1 ? ' ' + g.authors.length : '',
+      }));
+      return base;
+    }
+    case 'actions': {
+      base.items = (slot.items || []).map(a => {
+        if (typeof a === 'string') return { label: a, event: a, colorStyle: '', nodeId: nd.id };
+        return {
+          label: esc(a.label),
+          event: esc(a.event),
+          colorStyle: a.color ? `color:var(--${a.color});border-color:var(--${a.color})` : '',
+          nodeId: nd.id,
+        };
+      });
+      return base;
+    }
+    case 'children': {
+      return base;
+    }
+    case 'display': {
+      const text = nd[bind] || '';
+      if (!text) return null;
+      const r = R(bind, nd);
+      base.label = esc(r.label);
+      base.text = esc(String(r.value));
+      return base;
+    }
+    case 'form': {
+      const fields = slot.fields || [];
+      base.fields = fields.map(f => {
+        const val = nd[f.bind] || '';
+        const isTextarea = f.multiline || String(val).length > 80;
+        return {
+          label: esc(f.label || f.bind),
+          hint: f.hint ? esc(f.hint) : '',
+          bind: esc(f.bind),
+          nodeId: nd.id,
+          element: isTextarea ? 'textarea' : 'input',
+          attrs: isTextarea ? `rows="3"` : `type="text" value="${esc(String(val))}"`,
+          innerText: isTextarea ? esc(String(val)) : '',
+        };
+      });
+      return base;
+    }
+    case 'image': {
+      const src = nd[bind] || nd.imageUrl || '';
+      if (!src) return null;
+      base.src = esc(src);
+      base.alt = esc(slot.label || 'Image');
+      return base;
+    }
+    case 'data_table': {
+      const data = nd[bind] || [];
+      if (!Array.isArray(data) || !data.length) return null;
+      const cols = Object.keys(data[0]);
+      base.hasRows = true;
+      base.cols = cols;
+      base.rows = data.map(row => ({
+        cells: cols.map(c => esc(String(row[c] != null ? row[c] : ''))),
+      }));
+      return base;
+    }
+    case 'chat': {
+      return base;
+    }
+    default: return null;
+  }
+}
+
+// ── renderSlotFromTemplate: render a slot using template engine ──
+function renderSlotFromTemplate(slot, nd) {
+  const ctx = _buildSlotCtx(slot, nd);
+  if (!ctx) return '';
+  return renderFromTemplate(slot.type, ctx);
+}
+
+// ── DSL round-trip: component template <-> DSL string ──
+function componentToDSL(type) {
+  const tpl = _componentTemplates[type];
+  if (!tpl) return '';
+  // Compact: type header + template body
+  let lines = [`@component ${type}`];
+  // Include data-* attributes from config
+  const cfg = _componentConfig[type];
+  if (cfg) {
+    lines.push(`  renderer: ${cfg.renderer}`);
+    lines.push(`  label: ${cfg.label}`);
+    lines.push(`  icon: ${cfg.icon}`);
+  }
+  lines.push(`  template: |`);
+  tpl.split('\n').forEach(l => lines.push('    ' + l));
+  return lines.join('\n');
+}
+
+function parseDSLComponent(dsl) {
+  // Parse @component block back into {type, template, config}
+  const m = dsl.match(/@component\s+(\w+)/);
+  if (!m) return null;
+  const type = m[1];
+  const tplMatch = dsl.match(/template:\s*\|\s*\n([\s\S]*?)(?:\n@|\n\s*$|$)/);
+  let template = '';
+  if (tplMatch) {
+    template = tplMatch[1].split('\n').map(l => l.replace(/^    /, '')).join('\n').trimEnd();
+  }
+  // Parse data-* attributes
+  const result = { type, template };
+  const rendererM = dsl.match(/renderer:\s*(\S+)/);
+  if (rendererM) result.renderer = rendererM[1];
+  const labelM = dsl.match(/label:\s*(.+)/);
+  if (labelM) result.label = labelM[1].trim();
+  const iconM = dsl.match(/icon:\s*(\S+)/);
+  if (iconM) result.icon = iconM[1];
+  return result;
+}
+
+// ── FieldMap DSL round-trip ────────────────────────────
+function fieldMapToDSL() {
+  let lines = ['@fieldmap'];
+  for (const [k, v] of Object.entries(_fieldMap)) {
+    let parts = [k];
+    if (v.label) parts.push(`label:${v.label}`);
+    if (v.format) parts.push(`format:${v.format}`);
+    if (v.color) parts.push(`color:${v.color}`);
+    if (v.hide) parts.push('hide');
+    lines.push('  ' + parts.join(' '));
+  }
+  return lines.join('\n');
+}
+
+function parseFieldMapDSL(dsl) {
+  const result = {};
+  const lines = dsl.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('@') || trimmed.startsWith('#')) continue;
+    const parts = trimmed.split(/\s+/);
+    const key = parts[0];
+    const entry = {};
+    for (let i = 1; i < parts.length; i++) {
+      const p = parts[i];
+      if (p === 'hide') { entry.hide = true; continue; }
+      const [k, ...v] = p.split(':');
+      if (k && v.length) entry[k] = v.join(':');
+    }
+    result[key] = entry;
+  }
+  return result;
+}
+
+// ── Persistence helpers ────────────────────────────────
+function _saveFieldMap() {
+  try { localStorage.setItem('wf_fieldmap', JSON.stringify(_fieldMap)); } catch(_) {}
+}
 
 // ── Card templates (DSL-defined) ───────────────────────
 // Templates define what slots a card type renders.
@@ -455,6 +973,19 @@ const cardTemplates = {
         { label: '+ Child', event: 'add_child' },
       ]},
       { type: 'children', bind: 'children', card: 'entity' },
+    ]
+  },
+  rchat: {
+    icon: 'C',
+    fieldMap: { answer: { label: 'Response' }, prompt: { label: 'Prompt' } },
+    slots: [
+      { type: 'display', bind: 'prompt', label: 'Prompt' },
+      { type: 'text', bind: 'answer', label: 'Response' },
+      { type: 'chat', bind: 'chatHistory' },
+      { type: 'actions', items: [
+        { label: 'Retry', event: 'retry_gen', color: 'accent' },
+        { label: 'Edit', event: 'edit_prompt', color: 'accent3' },
+      ]},
     ]
   }
 };
@@ -521,7 +1052,7 @@ function getWorkerByRole(role) {
   return workers.find(w => w.role === role && w.status === 'ok') || workers.find(w => w.role === role) || workers[0] || null;
 }
 
-function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function ts() { return new Date().toLocaleTimeString('en-GB',{hour12:false}); }
 
@@ -572,11 +1103,13 @@ function switchPage(page) {
 function switchRsTab(tab) {
   _activeRsTab = tab;
   document.querySelectorAll('.rs-tab').forEach(t => t.classList.toggle('active', t.dataset.rs === tab));
-  ['yaml', 'tree-dsl', 'ask'].forEach(t => {
+  ['yaml', 'tree-dsl', 'bindings', 'components'].forEach(t => {
     const el = document.getElementById('rs-page-' + t);
     if (el) el.style.display = t === tab ? 'flex' : 'none';
   });
   if (tab === 'tree-dsl') exportTreeDSL();
+  if (tab === 'bindings') exportBindingsDSL();
+  if (tab === 'components') renderComponentsTab();
 }
 
 // ── Workers ────────────────────────────────────────────
@@ -1049,7 +1582,7 @@ async function pollProgress() {
       }
     }
     if (res.next_cursor !== undefined) pollCursor = res.next_cursor;
-    if (res.vars) { lastVars = res.vars; renderVarsFull(); }
+    if (res.vars) { lastVars = res.vars; renderVarsFull(); ingestWorkflowVars(res.vars); }
     if (res.status !== 'running') {
       clearInterval(pollTimer); pollTimer = null; currentRunId = null;
       setStatus(res.status || 'done', res.status === 'error' ? 'error' : 'idle');
@@ -1059,65 +1592,7 @@ async function pollProgress() {
   } catch (e) { log('poll error: ' + e.message); }
 }
 
-// ── NL Apply ───────────────────────────────────────────
-async function applyNL() {
-  const instruction = document.getElementById('nlInput').value.trim();
-  if (!instruction) return;
-  const yaml = document.getElementById('rs-editor').value;
-  const worker = getWorkerByRole('generator') || getWorkerByRole('analyzer');
-  if (!worker) { log('ERROR: no worker'); return; }
-
-  pushUndo('applyNL: ' + instruction.slice(0, 60));
-  setStatus('applying...', 'busy');
-
-  try {
-    let spec = '';
-    try { const sr = await get('/api/workflow/spec'); spec = sr.spec || sr.content || ''; } catch(_) {}
-
-    const messages = [
-      { role: 'user', content: `DSL Spec:\n${spec}\n\nCurrent YAML:\n\`\`\`yaml\n${yaml}\n\`\`\`\n\nInstruction: ${instruction}\n\nReturn ONLY the modified YAML (no explanation, no markdown fences).` }
-    ];
-
-    const res = await post('/api/llm/generate', { url: worker.url, messages, temperature: 0.2, max_tokens: 4096, no_think: true, max_continue: 5 });
-    if (res.answer) {
-      let newYaml = res.answer.trim().replace(/^```ya?ml?\n?/, '').replace(/\n?```$/, '');
-      document.getElementById('rs-editor').value = newYaml;
-      log('YAML updated');
-    }
-    document.getElementById('nlInput').value = '';
-    setStatus('idle', 'idle');
-  } catch (e) { log('applyNL error: ' + e.message); setStatus('error', 'error'); }
-}
-
-// ── Ask ────────────────────────────────────────────────
-async function askWorkflow() {
-  const question = document.getElementById('askInput').value.trim();
-  if (!question) return;
-  const yaml = document.getElementById('rs-editor').value;
-  const worker = getWorkerByRole('generator') || workers[0];
-  if (!worker) { log('ERROR: no worker'); return; }
-
-  wfChatMessages.push({ role: 'user', content: question, ts: ts() });
-  document.getElementById('askInput').value = '';
-  renderAskChat();
-  setStatus('asking...', 'busy');
-
-  try {
-    const messages = [{ role: 'user', content: `Workflow YAML:\n\`\`\`yaml\n${yaml}\n\`\`\`\n\n${question}` }];
-    const res = await post('/api/llm/generate', { url: worker.url, messages, temperature: 0.4, max_tokens: 2048, no_think: true, max_continue: 5 });
-    wfChatMessages.push({ role: 'assistant', content: res.answer || '(no response)', ts: ts() });
-    renderAskChat();
-    setStatus('idle', 'idle');
-  } catch (e) { log('ask error: ' + e.message); setStatus('error', 'error'); }
-}
-
-function renderAskChat() {
-  const el = document.getElementById('rs-ask-chat');
-  el.innerHTML = wfChatMessages.map(m =>
-    `<div class="ask-msg ask-${m.role}"><span class="ask-ts">${m.ts}</span>${esc(m.content)}</div>`
-  ).join('');
-  el.scrollTop = el.scrollHeight;
-}
+// (applyNL, askWorkflow, renderAskChat removed — replaced by tab dual chat system)
 
 // ── Load default ───────────────────────────────────────
 async function loadDefaultWorkflow() {
@@ -1152,19 +1627,13 @@ function autoResize(el, max) {
   el.addEventListener('input', () => { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, max || 100) + 'px'; });
 }
 autoResize(document.getElementById('userInput'), 100);
-autoResize(document.getElementById('nlInput'), 80);
-autoResize(document.getElementById('askInput'), 60);
+// (nlInput/askInput autoResize handled by tab chat wiring)
 
 // ── Key bindings ───────────────────────────────────────
 document.getElementById('userInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnSend').click(); }
 });
-document.getElementById('nlInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnApplyNL').click(); }
-});
-document.getElementById('askInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnAskSend').click(); }
-});
+// (nlInput and askInput key bindings removed — handled by tab chat wiring)
 
 // ── Event wiring ───────────────────────────────────────
 document.getElementById('btnAddWorker').addEventListener('click', () => { addWorker(document.getElementById('newWorkerUrl').value); document.getElementById('newWorkerUrl').value = ''; });
@@ -1182,8 +1651,7 @@ document.getElementById('btnSend').addEventListener('click', () => {
 
 document.getElementById('btnRun').addEventListener('click', () => { switchPage('feed'); runWorkflow(''); });
 document.getElementById('btnClear').addEventListener('click', clearFeed);
-document.getElementById('btnApplyNL').addEventListener('click', applyNL);
-document.getElementById('btnAskSend').addEventListener('click', askWorkflow);
+// (btnApplyNL/btnAskSend removed — handled by tab chat system)
 document.getElementById('btnLoadDefault').addEventListener('click', loadDefaultWorkflow);
 document.getElementById('btnUndo').addEventListener('click', undo);
 document.getElementById('btnConsoleClear').addEventListener('click', () => { _log = []; renderConsole(); });
@@ -1334,6 +1802,829 @@ document.getElementById('btnTreeImport').addEventListener('click', () => {
 });
 document.getElementById('btnTreeClear').addEventListener('click', () => {
   if (confirm('Clear all cards?')) clearTree();
+});
+
+// ── Schema: Message Types + Chat Flow ──────────────────
+// State
+let _schemaExpanded = {}; // {typeName: bool}
+let chatFlow = [];
+try { chatFlow = JSON.parse(localStorage.getItem('wf_chat_flow') || '[]'); } catch(_) {}
+
+// Load saved card templates from localStorage (merge with defaults)
+try {
+  const saved = JSON.parse(localStorage.getItem('wf_card_templates') || 'null');
+  if (saved && typeof saved === 'object') {
+    for (const [k, v] of Object.entries(saved)) { cardTemplates[k] = v; }
+  }
+} catch(_) {}
+
+function saveCardTemplates() {
+  try { localStorage.setItem('wf_card_templates', JSON.stringify(cardTemplates)); } catch(_) {}
+}
+function saveChatFlow() {
+  try { localStorage.setItem('wf_chat_flow', JSON.stringify(chatFlow)); } catch(_) {}
+}
+
+const SLOT_TYPES = ['tags','text','list','thread','reactions','actions','children'];
+const COLORS = ['','accent','accent2','accent3','green','red','orange','yellow'];
+const STEP_TYPES = ['input','generator','verifier','render','branch','transform'];
+
+// ── render schema page ──
+function renderSchemaPage() {
+  renderTypesPanel();
+  renderFlowPanel();
+}
+
+// ── Message Types panel ──
+function renderTypesPanel() {
+  const el = document.getElementById('schema-types');
+  let html = `<h3>Message Types <button class="btn sm" id="btnAddType">+ New</button></h3>`;
+  html += `<div id="schema-new-type-form" class="schema-inline-form" style="display:none;">
+    <input id="newTypeName" placeholder="name" style="width:80px;" />
+    <input id="newTypeIcon" placeholder="icon" style="width:30px;" value="#" />
+    <button class="btn sm primary" id="btnNewTypeOk">Add</button>
+    <button class="btn sm" id="btnNewTypeCancel">x</button>
+  </div>`;
+
+  for (const [name, tpl] of Object.entries(cardTemplates)) {
+    const isOpen = _schemaExpanded[name];
+    const slotCount = (tpl.slots || []).length;
+    html += `<div class="stype-item">
+      <div class="stype-hdr" data-stype-toggle="${esc(name)}">
+        <span class="arrow${isOpen ? ' open' : ''}">&#9654;</span>
+        <span class="stype-icon">${esc(tpl.icon || '#')}</span>
+        <span class="stype-name">${esc(name)}</span>
+        <span class="stype-count">${slotCount} slots</span>
+        <button class="stype-del" data-stype-del="${esc(name)}" title="Delete type">&times;</button>
+      </div>
+      <div class="stype-body${isOpen ? ' open' : ''}" data-stype-body="${esc(name)}">
+        ${isOpen ? renderTypeBody(name, tpl) : ''}
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
+
+  // wire type toggles
+  el.querySelectorAll('[data-stype-toggle]').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.closest('.stype-del')) return;
+      const n = hdr.dataset.stypeToggle;
+      _schemaExpanded[n] = !_schemaExpanded[n];
+      renderTypesPanel();
+    });
+  });
+
+  // wire delete type
+  el.querySelectorAll('[data-stype-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const n = btn.dataset.stypeDel;
+      if (!confirm(`Delete message type "${n}"?`)) return;
+      delete cardTemplates[n];
+      saveCardTemplates();
+      renderTypesPanel();
+      log(`deleted type: ${n}`);
+    });
+  });
+
+  // wire add type
+  const btnAdd = document.getElementById('btnAddType');
+  const formAdd = document.getElementById('schema-new-type-form');
+  if (btnAdd) btnAdd.addEventListener('click', () => { formAdd.style.display = 'flex'; });
+  const btnCancel = document.getElementById('btnNewTypeCancel');
+  if (btnCancel) btnCancel.addEventListener('click', () => { formAdd.style.display = 'none'; });
+  const btnOk = document.getElementById('btnNewTypeOk');
+  if (btnOk) btnOk.addEventListener('click', () => {
+    const name = document.getElementById('newTypeName').value.trim().replace(/\s+/g, '_');
+    const icon = document.getElementById('newTypeIcon').value.trim() || '#';
+    if (!name) return;
+    if (cardTemplates[name]) { log(`type "${name}" already exists`); return; }
+    cardTemplates[name] = { icon, slots: [] };
+    saveCardTemplates();
+    _schemaExpanded[name] = true;
+    formAdd.style.display = 'none';
+    renderTypesPanel();
+    log(`created type: ${name}`);
+  });
+
+  // wire slot editors (only for expanded types)
+  wireSlotEditors(el);
+}
+
+function renderTypeBody(name, tpl) {
+  let html = '';
+  // icon editor
+  html += `<div style="margin-bottom:4px; display:flex; align-items:center; gap:4px;">
+    <span style="font-size:10px; color:var(--text-dim);">Icon:</span>
+    <input class="stype-icon-edit" data-icon-edit="${esc(name)}" value="${esc(tpl.icon || '#')}" />
+  </div>`;
+
+  // slots
+  const slots = tpl.slots || [];
+  slots.forEach((s, i) => {
+    html += `<div class="slot-row" data-slot-type="${esc(name)}" data-slot-idx="${i}">
+      <select class="slot-type-sel" data-sf="type">${SLOT_TYPES.map(t => `<option${t === s.type ? ' selected' : ''}>${t}</option>`).join('')}</select>
+      <input class="slot-bind" data-sf="bind" placeholder="bind" value="${esc(s.bind || '')}" />
+      <input class="slot-label" data-sf="label" placeholder="label" value="${esc(s.label || '')}" />
+      <select class="slot-color" data-sf="color"><option value="">color</option>${COLORS.filter(Boolean).map(c => `<option${c === (s.color||'') ? ' selected' : ''}>${c}</option>`).join('')}</select>
+      <button class="slot-move" data-slot-move="up" title="Move up">&#9650;</button>
+      <button class="slot-move" data-slot-move="down" title="Move down">&#9660;</button>
+      <button class="slot-rm" data-slot-remove title="Remove">&times;</button>
+    </div>`;
+  });
+
+  html += `<div class="slot-add-row">
+    <button class="btn sm" data-slot-add="${esc(name)}">+ Add slot</button>
+  </div>`;
+
+  // live preview
+  html += `<div class="stype-preview">${renderTypePreview(name, tpl)}</div>`;
+
+  return html;
+}
+
+function renderTypePreview(name, tpl) {
+  // create a sample node and render its slots
+  const sample = {
+    id: '_preview', card: name, title: 'Sample ' + name, status: 'active',
+    tags: { role: 'example', mode: 'preview' },
+    answer: 'Sample text content for this message type.',
+    thread: [{ role: 'user', name: 'user', content: 'Hello', time: '12:00' }],
+    reactions: [{ emoji: '👍', author: 'user', status: 'pass' }],
+    children: [], _listOpen: {},
+  };
+  let html = '<div style="font-size:10px; color:var(--text-dim); margin-bottom:3px;">Preview:</div>';
+  html += `<div class="node status-active" style="border:none; margin:0; padding:0;">`;
+  for (const slot of (tpl.slots || [])) {
+    html += renderSlot(slot, sample);
+  }
+  html += '</div>';
+  return html;
+}
+
+function wireSlotEditors(container) {
+  // slot field changes
+  container.querySelectorAll('.slot-row').forEach(row => {
+    const typeName = row.dataset.slotType;
+    const idx = parseInt(row.dataset.slotIdx);
+    row.querySelectorAll('[data-sf]').forEach(el => {
+      el.addEventListener('change', () => {
+        const field = el.dataset.sf;
+        const tpl = cardTemplates[typeName];
+        if (!tpl || !tpl.slots[idx]) return;
+        tpl.slots[idx][field] = el.value || undefined;
+        if (field === 'color' && !el.value) delete tpl.slots[idx].color;
+        saveCardTemplates();
+        // re-render preview only
+        const body = container.querySelector(`[data-stype-body="${typeName}"]`);
+        if (body) {
+          const prev = body.querySelector('.stype-preview');
+          if (prev) prev.innerHTML = renderTypePreview(typeName, tpl);
+        }
+      });
+    });
+
+    // move up/down
+    row.querySelectorAll('[data-slot-move]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dir = btn.dataset.slotMove === 'up' ? -1 : 1;
+        const tpl = cardTemplates[typeName];
+        if (!tpl) return;
+        const newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= tpl.slots.length) return;
+        [tpl.slots[idx], tpl.slots[newIdx]] = [tpl.slots[newIdx], tpl.slots[idx]];
+        saveCardTemplates();
+        renderTypesPanel();
+      });
+    });
+
+    // remove
+    const rmBtn = row.querySelector('[data-slot-remove]');
+    if (rmBtn) rmBtn.addEventListener('click', () => {
+      const tpl = cardTemplates[typeName];
+      if (!tpl) return;
+      tpl.slots.splice(idx, 1);
+      saveCardTemplates();
+      renderTypesPanel();
+      log(`removed slot ${idx} from ${typeName}`);
+    });
+  });
+
+  // add slot
+  container.querySelectorAll('[data-slot-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const typeName = btn.dataset.slotAdd;
+      const tpl = cardTemplates[typeName];
+      if (!tpl) return;
+      tpl.slots.push({ type: 'text', bind: 'field_' + tpl.slots.length });
+      saveCardTemplates();
+      renderTypesPanel();
+      log(`added slot to ${typeName}`);
+    });
+  });
+
+  // icon edit
+  container.querySelectorAll('[data-icon-edit]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const typeName = inp.dataset.iconEdit;
+      const tpl = cardTemplates[typeName];
+      if (!tpl) return;
+      tpl.icon = inp.value || '#';
+      saveCardTemplates();
+      log(`icon changed for ${typeName}: ${tpl.icon}`);
+    });
+  });
+}
+
+// ── Chat Flow panel ──
+function renderFlowPanel() {
+  const el = document.getElementById('schema-flow');
+  let html = `<h3>Chat Flow <button class="btn sm" id="btnAddStep">+ Step</button> <button class="btn sm primary" id="btnFlowToYaml">Save as YAML</button></h3>`;
+
+  if (!chatFlow.length) {
+    html += `<div style="color:var(--text-dim); font-size:11px; padding:8px;">No steps yet. Add steps to define the message processing pipeline.</div>`;
+  }
+
+  chatFlow.forEach((step, i) => {
+    html += `<div class="flow-step" data-step-idx="${i}">
+      <button class="step-move" data-step-move="up" title="Move up">&#9650;</button>
+      <button class="step-move" data-step-move="down" title="Move down">&#9660;</button>
+      <select class="step-type" data-stepf="type">${STEP_TYPES.map(t => `<option${t === step.type ? ' selected' : ''}>${t}</option>`).join('')}</select>
+      <input class="step-name" data-stepf="name" placeholder="name" value="${esc(step.name || '')}" />
+      <span class="step-arrow">&#9654;</span>
+      <input class="step-worker" data-stepf="worker" placeholder="worker" value="${esc(step.worker || '')}" />
+      <span style="color:var(--text-dim);">$</span>
+      <input class="step-var" data-stepf="output" placeholder="var" value="${esc(step.output || '')}" />
+      ${step.type === 'branch' ? `<input style="width:80px;" data-stepf="condition" placeholder="condition" value="${esc(step.condition || '')}" />` : ''}
+      ${step.type === 'render' ? `<select data-stepf="card" style="width:60px;">${Object.keys(cardTemplates).map(c => `<option${c === (step.card||'') ? ' selected' : ''}>${c}</option>`).join('')}</select>` : ''}
+      <button class="step-rm" data-step-remove title="Remove">&times;</button>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+
+  // wire add step
+  const btnAdd = document.getElementById('btnAddStep');
+  if (btnAdd) btnAdd.addEventListener('click', () => {
+    chatFlow.push({ type: 'generator', name: 'step_' + chatFlow.length, worker: 'generator', output: 'result' });
+    saveChatFlow();
+    renderFlowPanel();
+    log('added flow step');
+  });
+
+  // wire save as YAML
+  const btnYaml = document.getElementById('btnFlowToYaml');
+  if (btnYaml) btnYaml.addEventListener('click', () => {
+    const yaml = flowToYaml();
+    pushUndo('flow → YAML');
+    document.getElementById('rs-editor').value = yaml;
+    log('flow exported to YAML');
+  });
+
+  // wire step fields
+  el.querySelectorAll('.flow-step').forEach(row => {
+    const idx = parseInt(row.dataset.stepIdx);
+
+    row.querySelectorAll('[data-stepf]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const field = inp.dataset.stepf;
+        chatFlow[idx][field] = inp.value;
+        saveChatFlow();
+        if (field === 'type') renderFlowPanel(); // re-render for conditional fields
+      });
+    });
+
+    // move
+    row.querySelectorAll('[data-step-move]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dir = btn.dataset.stepMove === 'up' ? -1 : 1;
+        const newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= chatFlow.length) return;
+        [chatFlow[idx], chatFlow[newIdx]] = [chatFlow[newIdx], chatFlow[idx]];
+        saveChatFlow();
+        renderFlowPanel();
+      });
+    });
+
+    // remove
+    const rmBtn = row.querySelector('[data-step-remove]');
+    if (rmBtn) rmBtn.addEventListener('click', () => {
+      chatFlow.splice(idx, 1);
+      saveChatFlow();
+      renderFlowPanel();
+      log('removed flow step');
+    });
+  });
+}
+
+// ── Flow ↔ YAML ──
+function flowToYaml() {
+  let lines = ['dsl: workflow/v2', 'flow:'];
+  for (const step of chatFlow) {
+    switch (step.type) {
+      case 'input':
+        lines.push(`  - input -> $${step.output || 'input'}:`);
+        lines.push(`      tag: ${step.name || 'input'}`);
+        break;
+      case 'generator':
+        lines.push(`  - ${step.worker || 'generator'} -> $${step.output || 'answer'}:`);
+        lines.push(`      prompt: $${step.name === 'step_0' ? 'input' : (step.name || 'input')}`);
+        lines.push(`      tag: ${step.name || 'generate'}`);
+        break;
+      case 'verifier':
+        lines.push(`  - ${step.worker || 'verifier'} -> $${step.output || 'verdict'}:`);
+        lines.push(`      prompt: "Verify: $${step.name || 'answer'}"`);
+        lines.push(`      tag: ${step.name || 'verify'}`);
+        break;
+      case 'render':
+        lines.push(`  - emit -> $${step.output || 'card'}:`);
+        lines.push(`      card: ${step.card || 'root'}`);
+        lines.push(`      tag: ${step.name || 'render'}`);
+        break;
+      case 'branch':
+        lines.push(`  - branch:`);
+        lines.push(`      if: ${step.condition || '$verdict == pass'}`);
+        lines.push(`      tag: ${step.name || 'branch'}`);
+        break;
+      case 'transform':
+        lines.push(`  - transform -> $${step.output || 'result'}:`);
+        lines.push(`      expr: ${step.name || 'identity'}`);
+        lines.push(`      tag: ${step.name || 'transform'}`);
+        break;
+    }
+  }
+  return lines.join('\n');
+}
+
+function yamlToFlow(yamlText) {
+  // best-effort parse: extract steps from flow array
+  const steps = [];
+  const flowMatch = yamlText.match(/flow:\s*\n([\s\S]*?)(?:\n\w|\n?$)/);
+  if (!flowMatch) return steps;
+  const lines = flowMatch[1].split('\n');
+  for (const line of lines) {
+    const m = line.match(/^\s+-\s+(\w+)\s*->\s*\$(\w+)/);
+    if (m) {
+      const role = m[1];
+      const output = m[2];
+      let type = 'generator';
+      if (role === 'input') type = 'input';
+      else if (role === 'emit') type = 'render';
+      else if (role.includes('verif')) type = 'verifier';
+      steps.push({ type, name: role, worker: role, output });
+    }
+    const bm = line.match(/^\s+-\s+branch:/);
+    if (bm) steps.push({ type: 'branch', name: 'branch', output: '' });
+  }
+  return steps;
+}
+
+// hook: when switchPage to schema, render
+const _origSwitchPage = switchPage;
+switchPage = function(page) {
+  _origSwitchPage(page);
+  if (page === 'data') renderDataTab();
+  if (page === 'schema') renderSchemaPage();
+};
+
+// ── Init ───────────────────────────────────────────────
+// ── DataStore (observable KV) ───────────────────────────
+// Simple observable key-value store for workflow data bindings.
+// Listeners fire when a key changes.
+const _dataStore = {};
+const _dsListeners = {};  // {key: [fn, ...]}
+
+function dsSet(key, value) {
+  const old = _dataStore[key];
+  _dataStore[key] = value;
+  if (old !== value && _dsListeners[key]) {
+    _dsListeners[key].forEach(fn => { try { fn(key, value, old); } catch(e) { log('ds listener error: ' + e.message); } });
+  }
+}
+function dsGet(key) { return _dataStore[key]; }
+function dsOn(key, fn) {
+  if (!_dsListeners[key]) _dsListeners[key] = [];
+  _dsListeners[key].push(fn);
+}
+function dsOff(key, fn) {
+  if (!_dsListeners[key]) return;
+  _dsListeners[key] = _dsListeners[key].filter(f => f !== fn);
+}
+function dsKeys() { return Object.keys(_dataStore); }
+
+// ── Ingest workflow vars into DataStore ─────────────────
+function ingestWorkflowVars(vars) {
+  if (!vars || typeof vars !== 'object') return;
+  for (const [k, v] of Object.entries(vars)) {
+    dsSet(k, v);
+  }
+}
+
+// ── Bindings: map DataStore keys to node fields ─────────
+// bindings: [{ds_key, node_id, field, transform?}]
+let _bindings = [];
+try { _bindings = JSON.parse(localStorage.getItem('wf_bindings') || '[]'); } catch(_) {}
+
+function _saveBindings() {
+  try { localStorage.setItem('wf_bindings', JSON.stringify(_bindings)); } catch(_) {}
+}
+
+function applyBindings() {
+  for (const b of _bindings) {
+    const val = dsGet(b.ds_key);
+    if (val === undefined) continue;
+    const nd = nodes[b.node_id];
+    if (!nd) continue;
+    let resolved = val;
+    if (b.transform === 'json' && typeof val === 'string') {
+      try { resolved = JSON.parse(val); } catch(_) {}
+    }
+    nd[b.field] = resolved;
+  }
+  saveNodes();
+  renderTree();
+}
+
+function findDsKeyForSlot(nodeId, field) {
+  return _bindings.find(b => b.node_id === nodeId && b.field === field);
+}
+
+// ── Data Store page rendering ────────────────────────────
+function renderDataTab() {
+  const el = document.getElementById('data-store-view');
+  if (!el) return;
+  const keys = dsKeys();
+  if (!keys.length) { el.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">No data yet. Run a workflow to populate.</div>'; return; }
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  h += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:3px 6px;color:var(--accent);">Key</th><th style="text-align:left;padding:3px 6px;color:var(--accent);">Type</th><th style="text-align:left;padding:3px 6px;color:var(--accent);">Value</th></tr>';
+  for (const k of keys) {
+    const v = dsGet(k);
+    const dtype = Array.isArray(v) ? (v.length && typeof v[0] === 'object' ? 'array_of_objects' : 'array') : typeof v === 'object' && v !== null ? 'object' : 'scalar';
+    const display = typeof v === 'string' ? esc(v.slice(0, 120)) : esc(JSON.stringify(v).slice(0, 120));
+    const bound = _bindings.filter(b => b.ds_key === k).map(b => b.node_id + '.' + b.field).join(', ');
+    h += `<tr style="border-bottom:1px solid var(--border);">`;
+    h += `<td style="padding:3px 6px;color:var(--accent3);font-weight:600;">${esc(k)}</td>`;
+    h += `<td style="padding:3px 6px;"><span style="background:var(--surface2);padding:1px 4px;border-radius:3px;font-size:9px;">${dtype}</span></td>`;
+    h += `<td style="padding:3px 6px;white-space:pre-wrap;max-width:300px;overflow:hidden;">${display}${bound ? '<br><span style="color:var(--green);font-size:9px;">→ ' + esc(bound) + '</span>' : ''}</td>`;
+    h += `</tr>`;
+  }
+  h += '</table>';
+  el.innerHTML = h;
+}
+
+// ── Bindings tab rendering ──────────────────────────────
+function exportBindingsDSL() {
+  const ed = document.getElementById('bindings-editor');
+  if (!ed) return;
+  let lines = ['# Bindings: DataStore key -> node field'];
+  lines.push(`# ${dsKeys().length} keys in DataStore, ${_bindings.length} bindings\n`);
+  // DataStore dump
+  lines.push('# DataStore:');
+  for (const k of dsKeys()) {
+    const v = dsGet(k);
+    const display = typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80);
+    lines.push(`#   ${k} = ${display}`);
+  }
+  lines.push('');
+  // Bindings
+  lines.push('bindings:');
+  if (!_bindings.length) {
+    lines.push('  # No bindings yet');
+    lines.push('  # Format: ds_key -> node_id.field [transform]');
+  }
+  for (const b of _bindings) {
+    let line = `  ${b.ds_key} -> ${b.node_id}.${b.field}`;
+    if (b.transform) line += ` [${b.transform}]`;
+    lines.push(line);
+  }
+  ed.value = lines.join('\n');
+}
+
+function importBindingsDSL() {
+  const ed = document.getElementById('bindings-editor');
+  if (!ed) return;
+  const text = ed.value;
+  const newBindings = [];
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('bindings:')) continue;
+    // Parse: ds_key -> node_id.field [transform]
+    const m = trimmed.match(/^(\S+)\s*->\s*(\S+)\.(\S+)\s*(?:\[(\w+)\])?/);
+    if (m) {
+      newBindings.push({ ds_key: m[1], node_id: m[2], field: m[3], transform: m[4] || null });
+    }
+  }
+  _bindings = newBindings;
+  _saveBindings();
+  applyBindings();
+  log(`imported ${_bindings.length} bindings`);
+}
+
+// ── Components tab JS ───────────────────────────────────
+function renderComponentsTab() {
+  const modeSelect = document.getElementById('compModeSelect');
+  const typeSelect = document.getElementById('compTypeSelect');
+  const editor = document.getElementById('comp-editor');
+  const status = document.getElementById('compEditStatus');
+  if (!modeSelect || !typeSelect || !editor) return;
+
+  const mode = modeSelect.value;
+
+  if (mode === 'template') {
+    // Populate type selector with component types
+    const types = Object.keys(_componentTemplates);
+    const current = typeSelect.value || types[0] || '';
+    typeSelect.innerHTML = types.map(t => `<option value="${t}"${t === current ? ' selected' : ''}>${t}</option>`).join('');
+    const selected = typeSelect.value || types[0];
+    if (selected) {
+      editor.value = componentToDSL(selected);
+    }
+  } else {
+    // FieldMap mode
+    typeSelect.innerHTML = '<option value="_fieldmap">FieldMap</option>';
+    editor.value = fieldMapToDSL();
+  }
+  if (status) status.textContent = '';
+}
+
+function applyComponentEditor() {
+  const modeSelect = document.getElementById('compModeSelect');
+  const typeSelect = document.getElementById('compTypeSelect');
+  const editor = document.getElementById('comp-editor');
+  const status = document.getElementById('compEditStatus');
+  if (!editor) return;
+
+  const mode = modeSelect ? modeSelect.value : 'template';
+  const text = editor.value;
+
+  if (mode === 'template') {
+    const parsed = parseDSLComponent(text);
+    if (!parsed) {
+      if (status) status.textContent = 'Parse error';
+      if (status) status.style.color = 'var(--red)';
+      return;
+    }
+    _componentTemplates[parsed.type] = parsed.template;
+    if (parsed.renderer) _componentConfig[parsed.type] = {
+      renderer: parsed.renderer,
+      label: parsed.label || parsed.type,
+      icon: parsed.icon || '?',
+    };
+    _saveComponentTemplates();
+    if (status) { status.textContent = 'Applied'; status.style.color = 'var(--green)'; }
+    log(`component "${parsed.type}" updated`);
+  } else {
+    // FieldMap
+    _fieldMap = parseFieldMapDSL(text);
+    _saveFieldMap();
+    if (status) { status.textContent = 'FieldMap applied'; status.style.color = 'var(--green)'; }
+    log('fieldmap updated');
+  }
+  renderTree();
+}
+
+function resetComponentEditor() {
+  const typeSelect = document.getElementById('compTypeSelect');
+  const modeSelect = document.getElementById('compModeSelect');
+  const editor = document.getElementById('comp-editor');
+  const status = document.getElementById('compEditStatus');
+
+  if (modeSelect && modeSelect.value === 'fieldmap') {
+    _fieldMap = {};
+    _saveFieldMap();
+    editor.value = fieldMapToDSL();
+    if (status) { status.textContent = 'FieldMap cleared'; status.style.color = 'var(--orange)'; }
+    return;
+  }
+  const type = typeSelect ? typeSelect.value : '';
+  if (type && _defaultComponentTemplates[type]) {
+    _componentTemplates[type] = _defaultComponentTemplates[type];
+    _saveComponentTemplates();
+    editor.value = componentToDSL(type);
+    if (status) { status.textContent = 'Reset to default'; status.style.color = 'var(--orange)'; }
+    log(`component "${type}" reset`);
+  }
+}
+
+// ── Tab dual chat system ────────────────────────────────
+// Every right sidebar tab has: Apply bar (modify content) + chat feed + Ask bar (read-only Q&A)
+let _chatAbort = null;
+let _dslSpec = '';
+
+async function getDslSpec() {
+  if (_dslSpec) return _dslSpec;
+  try { const sr = await get('/api/workflow/spec'); _dslSpec = sr.spec || sr.content || ''; } catch(_) {}
+  return _dslSpec;
+}
+
+function stopChat() {
+  if (_chatAbort) {
+    try { _chatAbort.abort(); } catch(_) {}
+    _chatAbort = null;
+    setStatus('cancelled', 'idle');
+    log('chat cancelled');
+  }
+}
+
+function addTabChatMsg(tab, role, content) {
+  const feed = document.querySelector(`[data-tab-feed="${tab}"]`);
+  if (!feed) return;
+  const label = role === 'user' ? 'You' : role === 'system' ? 'System' : 'Worker';
+  const msg = document.createElement('div');
+  msg.className = 'chat-msg';
+  msg.innerHTML = `<span class="chat-label ${role}">${label}</span> <span style="font-size:9px;color:var(--text-dim)">${ts()}</span><div class="chat-text">${esc(content)}</div>`;
+  feed.insertAdjacentElement('afterbegin', msg);
+}
+
+// Build context as separate ChatML system blocks per tab
+function buildTabContext(tab) {
+  const messages = [];
+  // DSL spec as system block
+  if (_dslSpec) messages.push({ role: 'system', content: _dslSpec });
+  // Tab-specific context
+  switch (tab) {
+    case 'yaml':
+      messages.push({ role: 'system', content: 'Current Workflow YAML:\n' + (document.getElementById('rs-editor')?.value || '') });
+      break;
+    case 'tree-dsl': {
+      const cards = Object.entries(cardTemplates).map(([n,t]) =>
+        `${n} (icon:${t.icon}): [${t.slots.map(s => s.type + (s.bind ? ':' + s.bind : '')).join(', ')}]`
+      ).join('\n');
+      messages.push({ role: 'system', content: 'Tree DSL:\n' + (document.getElementById('tree-dsl-editor')?.value || '') + '\n\nCard templates:\n' + cards });
+      break;
+    }
+    case 'bindings':
+      messages.push({ role: 'system', content: 'Bindings:\n' + (document.getElementById('bindings-editor')?.value || '') + '\n\nDataStore keys: ' + dsKeys().join(', ') });
+      break;
+    case 'components': {
+      const modeSelect = document.getElementById('compModeSelect');
+      const mode = modeSelect ? modeSelect.value : 'template';
+      const content = document.getElementById('comp-editor')?.value || '';
+      if (mode === 'fieldmap') {
+        messages.push({ role: 'system', content: 'FieldMap DSL:\n' + content + '\n\nSlot types: ' + Object.keys(_componentTemplates).join(', ') });
+      } else {
+        const typeSelect = document.getElementById('compTypeSelect');
+        const type = typeSelect ? typeSelect.value : '';
+        const syntax = 'Syntax: tag.class [data-attr="val"] {style}: text  ?condition  @loop items\nPseudo-tags: @text, @loop, @fragment\nInterpolation: {{field}}, {{item.field}}, {{C.configKey}}';
+        messages.push({ role: 'system', content: 'Component Template "' + type + '":\n' + content + '\n\n' + syntax });
+      }
+      break;
+    }
+  }
+  return messages;
+}
+
+function getTabEditor(tab) {
+  switch (tab) {
+    case 'yaml': return document.getElementById('rs-editor');
+    case 'tree-dsl': return document.getElementById('tree-dsl-editor');
+    case 'bindings': return document.getElementById('bindings-editor');
+    case 'components': return document.getElementById('comp-editor');
+  }
+  return null;
+}
+
+function onTabApplied(tab) {
+  if (tab === 'bindings') importBindingsDSL();
+  else if (tab === 'components') applyComponentEditor();
+  else if (tab === 'tree-dsl') renderTree();
+}
+
+// ── Apply: LLM modifies content ──
+async function tabChatApply(tab) {
+  const bar = document.querySelector(`[data-tab-chat="${tab}"]`);
+  const inp = bar?.querySelector('textarea');
+  if (!inp) return;
+  const instruction = inp.value.trim();
+  if (!instruction) return;
+  inp.value = '';
+
+  const worker = getWorkerByRole('generator') || getWorkerByRole('analyzer') || workers[0];
+  if (!worker) { log('ERROR: no worker'); return; }
+
+  addTabChatMsg(tab, 'system', 'Apply: ' + instruction);
+  setStatus('applying...', 'busy');
+
+  try {
+    await getDslSpec();
+    const ctxMsgs = buildTabContext(tab);
+    const patchHint = (tab === 'yaml' || tab === 'bindings' || tab === 'tree-dsl')
+      ? '\n\nRespond as:\n1. Full modified content (large changes)\n2. JSON set_path patches: [{"set_path":"key","value":"..."}]\nChoose efficient format. No prose.'
+      : '\n\nReturn ONLY the modified content. No prose, no fences.';
+    const messages = [...ctxMsgs, { role: 'user', content: instruction + patchHint }];
+
+    _chatAbort = new AbortController();
+    const res = await post('/api/llm/generate', {
+      url: worker.url, messages, temperature: 0.2, max_tokens: 4096, no_think: true, max_continue: 5,
+    }, { signal: _chatAbort.signal });
+    _chatAbort = null;
+
+    if (res.answer) {
+      let text = res.answer.trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
+      const editor = getTabEditor(tab);
+      // Try patches
+      let patched = false;
+      if (tab === 'yaml' || tab === 'bindings' || tab === 'tree-dsl') {
+        try {
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed) && parsed.length && parsed[0].set_path) {
+            const patchRes = await post('/api/workflow/patch', { yaml: editor?.value || '', patches: parsed });
+            if (patchRes.yaml) { if (editor) editor.value = patchRes.yaml; patched = true; addTabChatMsg(tab, 'system', parsed.length + ' patch(es) applied'); }
+          }
+        } catch(_) {}
+      }
+      if (!patched) {
+        if (editor) editor.value = text;
+        addTabChatMsg(tab, 'system', 'Content updated');
+      }
+      onTabApplied(tab);
+    }
+    setStatus('idle', 'idle');
+  } catch (e) {
+    _chatAbort = null;
+    if (e.name === 'AbortError') { addTabChatMsg(tab, 'system', 'Cancelled'); setStatus('idle', 'idle'); }
+    else { addTabChatMsg(tab, 'system', 'Error: ' + e.message); setStatus('error', 'error'); }
+  }
+}
+
+// ── Ask: read-only Q&A, no modification ──
+async function tabChatAsk(tab) {
+  const bar = document.querySelector(`[data-tab-ask="${tab}"]`);
+  const inp = bar?.querySelector('textarea');
+  if (!inp) return;
+  const question = inp.value.trim();
+  if (!question) return;
+  inp.value = '';
+
+  const worker = getWorkerByRole('generator') || workers[0];
+  if (!worker) { log('ERROR: no worker'); return; }
+
+  addTabChatMsg(tab, 'user', question);
+  setStatus('asking...', 'busy');
+
+  try {
+    await getDslSpec();
+    const ctxMsgs = buildTabContext(tab);
+    const messages = [...ctxMsgs, { role: 'user', content: question + '\n\nAnswer concisely.' }];
+
+    _chatAbort = new AbortController();
+    const res = await post('/api/llm/generate', {
+      url: worker.url, messages, temperature: 0.4, max_tokens: 2048, no_think: true, max_continue: 5,
+    }, { signal: _chatAbort.signal });
+    _chatAbort = null;
+
+    addTabChatMsg(tab, 'assistant', res.answer || '(no response)');
+    setStatus('idle', 'idle');
+  } catch (e) {
+    _chatAbort = null;
+    if (e.name !== 'AbortError') { addTabChatMsg(tab, 'system', 'Error: ' + e.message); setStatus('error', 'error'); }
+    else setStatus('idle', 'idle');
+  }
+}
+
+// ── Wire bindings tab buttons ───────────────────────────
+document.getElementById('btnBindingsExport').addEventListener('click', exportBindingsDSL);
+document.getElementById('btnBindingsImport').addEventListener('click', importBindingsDSL);
+document.getElementById('btnBindingsClear').addEventListener('click', () => {
+  if (confirm('Clear all bindings?')) {
+    _bindings = [];
+    _saveBindings();
+    exportBindingsDSL();
+    log('bindings cleared');
+  }
+});
+
+// ── Wire components tab buttons ─────────────────────────
+document.getElementById('btnCompApply').addEventListener('click', applyComponentEditor);
+document.getElementById('btnCompReset').addEventListener('click', resetComponentEditor);
+document.getElementById('compModeSelect').addEventListener('change', renderComponentsTab);
+document.getElementById('compTypeSelect').addEventListener('change', renderComponentsTab);
+
+// ── Wire tab Apply bars ─────────────────────────────────
+document.querySelectorAll('[data-tab-chat]').forEach(bar => {
+  const tab = bar.dataset.tabChat;
+  const applyBtn = bar.querySelector('[data-tab-apply]');
+  const textarea = bar.querySelector('textarea');
+  if (applyBtn) applyBtn.addEventListener('click', () => tabChatApply(tab));
+  if (textarea) {
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tabChatApply(tab); }
+    });
+    autoResize(textarea, 80);
+  }
+});
+// ── Wire tab Ask bars ───────────────────────────────────
+document.querySelectorAll('[data-tab-ask]').forEach(bar => {
+  const tab = bar.dataset.tabAsk;
+  const askBtn = bar.querySelector('button');
+  const textarea = bar.querySelector('textarea');
+  if (askBtn) askBtn.addEventListener('click', () => tabChatAsk(tab));
+  if (textarea) {
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tabChatAsk(tab); }
+    });
+    autoResize(textarea, 60);
+  }
 });
 
 // ── Init ───────────────────────────────────────────────
