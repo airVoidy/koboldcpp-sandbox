@@ -5,353 +5,699 @@
 <title>AABB</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { height:100%; background:#0a0a0a; color:#b0b0b0; overflow:hidden; font:12px/1 'Consolas','Courier New',monospace; }
-#app { display:flex; height:100%; }
+html, body { height:100%; background:#0a0a0a; color:#b0b0b0; font-family:'Consolas','Courier New',monospace; overflow:hidden; }
 
-/* ── Tree (left) ────────────────────────────────── */
-#tree {
-  width:200px; min-width:200px;
-  background:#0d0d0d; border-right:1px solid #222;
-  overflow-y:auto; padding:6px; font-size:11px;
+#shell { display:flex; height:100%; flex-direction:column; }
+#main { display:flex; flex:1; min-height:0; }
+
+/* ── Left: renderer ── */
+#scr {
+  flex:1; min-width:0;
+  font: 13px/15px 'Consolas','Courier New',monospace;
+  white-space:pre; cursor:default; user-select:none; overflow:auto;
+  padding:2px; outline:none;
 }
-.th { color:#58a6ff; font-size:10px; margin-bottom:4px; }
-.tn { padding:1px 2px; cursor:pointer; white-space:nowrap; overflow:hidden; }
-.tn:hover { background:#1a1a1a; }
-.tn.sel { color:#58a6ff; background:#111828; }
-.tn .nm { }
-.tn .al { color:#555; font-size:9px; }
-.tn .rc { color:#333; font-size:9px; }
 
-/* ── Canvas (center) ────────────────────────────── */
-#canvas { flex:1; display:flex; flex-direction:column; overflow:hidden; }
-#toolbar { height:28px; display:flex; align-items:center; gap:8px; padding:0 8px; border-bottom:1px solid #222; background:#0d0d0d; font-size:10px; color:#555; }
-#toolbar .lbl { color:#58a6ff; }
-#toolbar button { background:#161b22; border:1px solid #222; color:#b0b0b0; font:inherit; padding:2px 8px; cursor:pointer; }
-#toolbar button:hover { border-color:#58a6ff; }
-#toolbar button.active { border-color:#58a6ff; color:#58a6ff; }
-#screen-wrap { flex:1; overflow:auto; padding:8px; background:#050508; position:relative; }
-#screen { white-space:pre; line-height:15px; user-select:none; cursor:crosshair; display:inline-block; }
-#overlay { position:absolute; top:8px; left:8px; pointer-events:none; }
-.aabb-ov { position:absolute; border:1px solid rgba(88,166,255,0.3); background:rgba(88,166,255,0.02); pointer-events:none; }
-.aabb-ov.sel { border-color:#58a6ff; background:rgba(88,166,255,0.08); }
-#command-bar { display:flex; gap:6px; padding:6px 8px; border-top:1px solid #222; background:#0d0d0d; }
-#command { flex:1; background:#0a0a0a; border:1px solid #222; color:#b0b0b0; font:inherit; padding:4px 6px; }
-#command:focus { border-color:#58a6ff; outline:none; }
-#cmd-run { background:#161b22; border:1px solid #222; color:#b0b0b0; font:inherit; padding:4px 10px; cursor:pointer; }
-#status { height:20px; padding:2px 8px; font-size:10px; color:#555; border-top:1px solid #1a1a1a; }
-.ok { color:#3fb950; }
-.err { color:#f85149; }
-
-/* ── Props (right) ──────────────────────────────── */
-#props {
-  width:280px; min-width:280px;
-  background:#0d0d0d; border-left:1px solid #222;
-  overflow-y:auto; padding:6px; font-size:10px;
+/* ── Right: DSL editor ── */
+#editor {
+  width:420px; min-width:200px; border-left:1px solid #222;
+  display:flex; flex-direction:column; background:#0d0d0d;
 }
-.ph { color:#58a6ff; font-size:10px; margin:6px 0 3px; }
-.pr { display:flex; gap:4px; padding:1px 0; }
-.pr .pk { color:#555; width:50px; text-align:right; flex-shrink:0; }
-.pr .pv { color:#b0b0b0; word-break:break-all; }
-.tabs { display:flex; gap:4px; margin:6px 0 4px; flex-wrap:wrap; }
-.tab { background:#161b22; border:1px solid #222; color:#b0b0b0; padding:2px 6px; cursor:pointer; font:inherit; font-size:9px; }
-.tab:hover { border-color:#58a6ff; }
-.tab.active { border-color:#58a6ff; color:#58a6ff; }
-#editor { width:100%; min-height:200px; background:#0a0a0a; border:1px solid #222; color:#b0b0b0; font:inherit; font-size:10px; padding:4px; resize:vertical; }
-#editor:focus { border-color:#58a6ff; outline:none; }
-#save-btn { background:#161b22; border:1px solid #222; color:#b0b0b0; font:inherit; padding:3px 10px; cursor:pointer; margin-top:4px; }
+#editor header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 8px; border-bottom:1px solid #222; font-size:11px; color:#666;
+}
+#editor header button {
+  background:none; border:1px solid #333; color:#888; font:11px/14px monospace;
+  padding:2px 8px; cursor:pointer;
+}
+#editor header button:hover { color:#ccc; border-color:#555; }
+#dsl-src {
+  flex:1; resize:none; border:none; outline:none;
+  background:#0a0a0a; color:#b0b0b0;
+  font:12px/16px 'Consolas','Courier New',monospace;
+  padding:8px; tab-size:2;
+}
+#dsl-err { color:#f85149; font-size:11px; padding:4px 8px; min-height:18px; }
+
+/* ── Status bar ── */
+#status {
+  height:18px; border-top:1px solid #222; padding:0 8px;
+  font:11px/18px monospace; color:#555; display:flex; gap:16px;
+}
+#status .sep { color:#333; }
+
+/* ── Colors ── */
+span.h { color:#58a6ff; } span.d { color:#333; } span.b { color:#383838; }
+span.g { color:#3fb950; } span.r { color:#f85149; } span.y { color:#d29922; }
+span.w { color:#b0b0b0; } span.i { background:#58a6ff; color:#000; }
+span.sel { background:#1a3a5c; }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="tree"></div>
-  <div id="canvas">
-    <div id="toolbar">
-      <span class="lbl">AABB</span>
-      <span id="screen-info"></span>
-      <span id="sel-info"></span>
-      <span style="flex:1"></span>
-      <button id="mode-move" class="active">Move</button>
-      <button id="mode-resize">Resize</button>
-      <button id="mode-create">Create</button>
+<div id="shell">
+  <div id="main">
+    <div id="scr" tabindex="0"></div>
+    <div id="editor">
+      <header>
+        <span>DSL</span>
+        <div>
+          <button id="btn-apply">Apply</button>
+          <button id="btn-reset">Reset</button>
+        </div>
+      </header>
+      <textarea id="dsl-src" spellcheck="false"></textarea>
+      <div id="dsl-err"></div>
     </div>
-    <div id="screen-wrap">
-      <pre id="screen"></pre>
-      <div id="overlay"></div>
-    </div>
-    <div id="command-bar">
-      <input id="command" type="text" placeholder="add label: [1,1,10,1] | delete subtree | undo">
-      <button id="cmd-run">Run</button>
-    </div>
-    <div id="status"></div>
   </div>
-  <div id="props"></div>
+  <div id="status">
+    <span id="st-pos">-</span>
+    <span class="sep">|</span>
+    <span id="st-inst">-</span>
+    <span class="sep">|</span>
+    <span id="st-edit">-</span>
+  </div>
 </div>
 
 <script>
 // ══════════════════════════════════════════════════════
-// AABB client — loads everything from /api/ui-proto2/
+// AABB Engine — Step 2: Data + Binds + Interactivity
 // ══════════════════════════════════════════════════════
 
-const API = '/api/ui-proto2';
-let S = null; // current state from server
-let selectedId = null;
-let focusId = null;
-let mode = 'move';
-let currentTab = 'yaml';
-let CW = 8, CH = 15; // char cell px
+let CW = 8, CH = 15;
+let BW = 120, BH = 50;
+let G = [];
 
-// ── Fetch ───────────────────────────────────────────
-async function load() {
-  const params = new URLSearchParams();
-  if (selectedId) params.set('selected_id', selectedId);
-  if (focusId) params.set('focus_id', focusId);
-  const res = await fetch(`${API}/state?${params}`);
-  S = await res.json();
-  if (!selectedId && S.selected_id) selectedId = S.selected_id;
-  if (!focusId && S.focus_id) focusId = S.focus_id;
-  render();
+// Measure real character cell size from the font
+function measureCell() {
+  const scr = document.getElementById('scr');
+  const span = document.createElement('span');
+  span.textContent = 'X';
+  span.style.font = getComputedStyle(scr).font;
+  span.style.whiteSpace = 'pre';
+  scr.appendChild(span);
+  const r = span.getBoundingClientRect();
+  CW = r.width;
+  CH = r.height;
+  span.remove();
 }
 
-async function serverAction(endpoint, body) {
-  const res = await fetch(`${API}/${endpoint}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  S = await res.json();
-  if (S.selected_id) selectedId = S.selected_id;
-  setStatus(S.message || (S.ok ? 'ok' : 'error'), !S.ok);
-  render();
+// ── Grid primitives ─────────────────────────────────
+function clear() {
+  G = [];
+  for (let r = 0; r < BH; r++) { G[r] = []; for (let c = 0; c < BW; c++) G[r][c] = { ch:' ', cl:'' }; }
 }
-
-async function runCommand(cmd) {
-  await serverAction('command', { command: cmd, selected_id: selectedId, focus_id: focusId });
+function put(r, c, ch, cl) { if (r >= 0 && r < BH && c >= 0 && c < BW) G[r][c] = { ch, cl:cl||'' }; }
+function str(r, c, s, cl, max) {
+  s = String(s || '');
+  const n = max != null ? Math.min(s.length, max) : s.length;
+  for (let i = 0; i < n; i++) put(r, c+i, s[i], cl);
 }
-
-// ── Render ──────────────────────────────────────────
-function render() {
-  if (!S) return;
-  renderScreen();
-  renderOverlay();
-  renderTree();
-  renderProps();
-  document.getElementById('screen-info').textContent = `${S.screen.cols}×${S.screen.rows}`;
-  document.getElementById('sel-info').textContent = selectedId ? `sel: ${selectedId}` : '';
+function box(y, x, w, h, cl) {
+  if (h < 2 || w < 2) return;
+  put(y,x,'┌',cl); put(y,x+w-1,'┐',cl); put(y+h-1,x,'└',cl); put(y+h-1,x+w-1,'┘',cl);
+  for (let i=1;i<w-1;i++){put(y,x+i,'─',cl);put(y+h-1,x+i,'─',cl);}
+  for (let i=1;i<h-1;i++){put(y+i,x,'│',cl);put(y+i,x+w-1,'│',cl);}
 }
-
-function renderScreen() {
-  const el = document.getElementById('screen');
-  el.textContent = (S.render.lines || []).join('\n');
-}
-
-function renderOverlay() {
-  const ov = document.getElementById('overlay');
-  ov.innerHTML = '';
-  if (!S.tree) return;
-  for (const n of S.tree) {
-    const [x, y, w, h] = n.rect;
-    const div = document.createElement('div');
-    div.className = 'aabb-ov' + (n.id === selectedId ? ' sel' : '');
-    div.style.left = (x * CW) + 'px';
-    div.style.top = (y * CH) + 'px';
-    div.style.width = (w * CW) + 'px';
-    div.style.height = (h * CH) + 'px';
-    div.dataset.id = n.id;
-    ov.appendChild(div);
+function flush() {
+  let o = '';
+  for (let r = 0; r < BH; r++) {
+    for (let c = 0; c < BW; c++) {
+      const {ch,cl} = G[r][c];
+      const e = ch==='<'?'&lt;':ch==='>'?'&gt;':ch==='&'?'&amp;':ch;
+      o += cl ? `<span class="${cl}">${e}</span>` : e;
+    }
+    o += '\n';
   }
+  document.getElementById('scr').innerHTML = o;
 }
 
-function renderTree() {
-  const el = document.getElementById('tree');
-  let h = '<div class="th">AABB Tree</div>';
-  if (S.tree) {
-    for (const n of S.tree) {
-      const indent = '\u00a0'.repeat(n.depth * 2);
-      const isSel = n.id === selectedId;
-      h += `<div class="tn${isSel ? ' sel' : ''}" data-id="${n.id}">`;
-      h += `${indent}<span class="nm">${n.name || n.id}</span>`;
-      if (n.alias) h += `<span class="al">.${n.alias}</span>`;
-      h += `<span class="rc"> [${n.rect.join(',')}]</span>`;
-      h += `</div>`;
+// ── DSL Parser ──────────────────────────────────────
+function parseDSL(text) {
+  const s = { layout:[], data:{}, bind:{}, events:[] };
+  let cur = null, curEv = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    if (t === 'layout:')  { cur='layout'; curEv=null; continue; }
+    if (t === 'data:')    { cur='data';   curEv=null; continue; }
+    if (t === 'bind:')    { cur='bind';   curEv=null; continue; }
+    if (t.startsWith('on ')) { cur='events'; curEv={trigger:t.slice(3).trim().replace(/:$/,''),actions:[]}; s.events.push(curEv); continue; }
+    const indent = line.length - line.trimStart().length;
+    if (cur==='layout') s.layout.push({indent,line:t});
+    else if (cur==='data') { const m=t.match(/^(\w+)(?:\(([^)]*)\))?:\s*(.+)$/); if(m) s.data[m[1]]={args:m[2]||null,def:m[3]}; }
+    else if (cur==='bind') { const m=t.match(/^([\w.]+)\s*<-\s*(.+)$/); if(m) s.bind[m[1]]=m[2].trim(); }
+    else if (cur==='events'&&curEv) curEv.actions.push(t);
+  }
+  return s;
+}
+
+function parseLayoutLine(line) {
+  const m = line.match(/^(\w+)\s+(\w+)\s+\[([^\]]+)\]:?$/);
+  if (!m) return null;
+  return { type:m[1], name:m[2], rect: m[3].split(',').map(s => { s=s.trim(); return s==='auto'?'auto':parseInt(s); }) };
+}
+
+function buildLayoutTree(lines) {
+  const root = { children:[] };
+  const stack = [{ node:root, indent:-1 }];
+  for (const {indent,line} of lines) {
+    const p = parseLayoutLine(line);
+    if (!p) continue;
+    const node = { ...p, children:[] };
+    while (stack.length>1 && stack[stack.length-1].indent>=indent) stack.pop();
+    stack[stack.length-1].node.children.push(node);
+    stack.push({ node, indent });
+  }
+  return root.children;
+}
+
+// ── Data Layer ──────────────────────────────────────
+let DS = {};       // dataStore
+let DF = {};       // data functions
+let storageKeys = {};
+
+function initData(dataDefs) {
+  DS = {}; DF = {}; storageKeys = {};
+  for (const [name, def] of Object.entries(dataDefs)) {
+    if (def.args !== null) {
+      DF[name] = def;
+    } else {
+      // "local <storage_key>" — load from localStorage
+      const localM = def.def.match(/^local\s+(\S+)$/);
+      if (localM) {
+        storageKeys[name] = localM[1];
+        try { DS[name] = JSON.parse(localStorage.getItem(localM[1]) || '[]'); } catch(_) { DS[name] = []; }
+        continue;
+      }
+      // "GET <url> -> <storage_key>" — fetch + persist
+      const getM = def.def.match(/^GET\s+(\S+)(?:\s*->\s*(\S+))?$/);
+      if (getM) {
+        const skey = getM[2] || null;
+        storageKeys[name] = skey;
+        if (skey) {
+          try { DS[name] = JSON.parse(localStorage.getItem(skey) || '[]'); } catch(_) { DS[name] = []; }
+        } else {
+          DS[name] = [];
+        }
+      }
     }
   }
-  el.innerHTML = h;
-  el.querySelectorAll('.tn').forEach(tn => {
-    tn.addEventListener('click', () => {
-      selectedId = tn.dataset.id;
-      load();
-    });
-  });
 }
 
-function renderProps() {
-  const el = document.getElementById('props');
-  if (!S.selected) { el.innerHTML = '<div class="ph">Properties</div><div style="color:#333">No selection</div>'; return; }
-  const s = S.selected;
+function saveDS(name) {
+  if (storageKeys[name]) localStorage.setItem(storageKeys[name], JSON.stringify(DS[name] || []));
+}
 
-  let h = '<div class="ph">Selected</div>';
-  h += `<div class="pr"><span class="pk">id:</span><span class="pv">${s.id}</span></div>`;
-  h += `<div class="pr"><span class="pk">name:</span><span class="pv">${s.name || ''}</span></div>`;
-  h += `<div class="pr"><span class="pk">alias:</span><span class="pv">${s.alias || ''}</span></div>`;
-  h += `<div class="pr"><span class="pk">rect:</span><span class="pv">[${(s.rect||[]).join(', ')}]</span></div>`;
+async function probe(url) {
+  try {
+    const r = await fetch(url + '/v1/models', { signal: AbortSignal.timeout(3000) });
+    return r.ok ? 'ok' : 'fail';
+  } catch(_) { return 'fail'; }
+}
 
-  // Tabs
-  h += '<div class="tabs">';
-  for (const [key, label] of [['yaml','Node YAML'],['json','Node JSON'],['base','Base.txt'],['base_json','Base.json'],['events','events.dsl']]) {
-    h += `<div class="tab${currentTab === key ? ' active' : ''}" data-tab="${key}">${label}</div>`;
+// ── Bind resolver ───────────────────────────────────
+function parseColorMap(mapStr) {
+  // "ok=g fail=r ?=y" → { ok:'g', fail:'r', '?':'y' }
+  const map = {};
+  for (const pair of mapStr.trim().split(/\s+/)) {
+    const [k, v] = pair.split('=');
+    if (k && v) map[k] = v;
   }
-  h += '</div>';
+  return map;
+}
 
-  // Editor content
-  let content = '';
-  if (currentTab === 'yaml') content = s.yaml || '';
-  else if (currentTab === 'json') content = typeof s.json === 'string' ? s.json : JSON.stringify(s.json, null, 2);
-  else if (currentTab === 'base') content = S.layers?.base || '';
-  else if (currentTab === 'base_json') content = typeof S.layers?.base_json === 'string' ? S.layers.base_json : JSON.stringify(S.layers?.base_json, null, 2);
-  else if (currentTab === 'events') content = S.layers?.events_dsl || '';
-
-  h += `<textarea id="editor">${esc(content)}</textarea>`;
-  h += '<button id="save-btn">Save</button>';
-
-  // Diff
-  if (S.latest_diff && S.latest_diff.length) {
-    h += '<div class="ph">Latest Diff</div>';
-    h += `<div style="font-size:9px;color:#444;white-space:pre-wrap;">${esc(JSON.stringify(S.latest_diff, null, 2))}</div>`;
+function resolveBind(expr, item) {
+  // split off color map: "... :: ok=g fail=r ?=y"
+  let colorMap = null;
+  const ccIdx = expr.indexOf('::');
+  if (ccIdx !== -1) {
+    colorMap = parseColorMap(expr.slice(ccIdx + 2));
+    expr = expr.slice(0, ccIdx).trim();
   }
 
-  el.innerHTML = h;
+  if (expr.startsWith('"') && expr.endsWith('"')) return { value: expr.slice(1,-1), colorMap };
+  const eM = expr.match(/^each\s+data\.(\w+)\s+as\s+(\w+)$/);
+  if (eM) return { each: eM[1], as: eM[2], colorMap };
+  if (expr.includes('|')) {
+    const [field, fn] = expr.split('|').map(s=>s.trim());
+    return { field, transform: fn, item, colorMap };
+  }
+  if (expr.startsWith('item.') && item) return { value: item[expr.slice(5)], colorMap };
+  return { value: expr, colorMap };
+}
 
-  // Wire tabs
-  el.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      currentTab = tab.dataset.tab;
-      renderProps();
-    });
-  });
+function getBound(binds, path, item) {
+  // exact match first
+  if (binds[path] !== undefined) return resolveBind(binds[path], item);
+  // suffix match: bind key matches end of instance path
+  for (const [k, v] of Object.entries(binds)) {
+    if (path.endsWith('.'+k) || path.endsWith('.'+k.split('.').pop())) {
+      return resolveBind(v, item);
+    }
+  }
+  return null;
+}
 
-  // Wire save
-  const saveBtn = document.getElementById('save-btn');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
-      const text = document.getElementById('editor').value;
-      if (currentTab === 'yaml') {
-        await serverAction('node/save', { node_id: selectedId, yaml_text: text, focus_id: focusId });
-      } else if (currentTab === 'base' || currentTab === 'events' || currentTab === 'base_json') {
-        const files = {};
-        if (currentTab === 'base') files.base = text;
-        else if (currentTab === 'events') files.events_dsl = text;
-        else if (currentTab === 'base_json') files.base_json = text;
-        await serverAction('files/save', { files, focus_id: focusId, selected_id: selectedId });
+// find which data field an input is bound to (from DSL bind like "item.role")
+function findBoundField(inst) {
+  if (!_dsl) return null;
+  // search binds for one that targets this instance's name
+  for (const [k, v] of Object.entries(_dsl.bind)) {
+    if (k.endsWith('.'+inst.name) || k === inst.id) {
+      // v should be like "item.role"
+      if (v.startsWith('item.')) return v.slice(5);
+    }
+  }
+  return inst.name; // fallback: use the element name as field name
+}
+
+// ── Instance Resolution ─────────────────────────────
+let instances = []; // { id, type, name, x, y, w, h, value, parentId, item, idx }
+let editState = { id:null, buf:'', cur:0 };
+let selId = null;
+
+function resolveInstances(tree, binds) {
+  instances = [];
+
+  function walk(nodes, px, py, parentPath, item) {
+    let autoY = 0;
+    for (const node of nodes) {
+      let [rx, ry, rw, rh] = node.rect;
+      if (ry === 'auto') ry = autoY;
+      const ax = px + (rx === 'auto' ? 0 : rx);
+      const ay = py + ry;
+      const path = parentPath ? parentPath+'.'+node.name : node.name;
+
+      if (node.type === 'template') {
+        // check for "each" bind
+        const b = getBound(binds, path, null);
+        if (b && b.each) {
+          const list = DS[b.each] || [];
+          list.forEach((dataItem, i) => {
+            const iPath = path+'_'+i;
+            const iy = ay + i * rh;
+            instances.push({ id:iPath, type:'card', name:node.name, x:ax, y:iy, w:rw, h:rh, value:'', parentId:parentPath, item:dataItem, idx:i });
+            walk(node.children, ax, iy, iPath, dataItem);
+          });
+          autoY = ry + list.length * rh;
+        } else {
+          // static template — single ghost
+          if (rh === 'auto') rh = 4;
+          instances.push({ id:path, type:'template', name:node.name, x:ax, y:ay, w:rw, h:rh, value:'', parentId:parentPath, item:null });
+          walk(node.children, ax, ay, path, null);
+          autoY = ry + rh;
+        }
+        continue;
       }
-    });
+
+      if (rh === 'auto') rh = 3;
+
+      // resolve value from binds
+      let value = '';
+      const b = getBound(binds, path, item);
+      if (b) {
+        if (b.value !== undefined) value = String(b.value ?? '');
+        if (b.transform) value = '?'; // async, resolved later
+      }
+
+      instances.push({ id:path, type:node.type, name:node.name, x:ax, y:ay, w:rw, h:rh, value, parentId:parentPath, item, transform:b?.transform, transformField:b?.field });
+
+      if (node.type === 'panel') {
+        // panel: render children, measure auto height
+        const childAutoY = walk(node.children, ax, ay, path, item);
+        // fix panel height if auto
+        const inst = instances.find(i => i.id === path);
+        if (node.rect[3] === 'auto' && inst) {
+          inst.h = Math.max(rh, childAutoY + 1);
+        }
+        autoY = ry + inst.h;
+        continue;
+      }
+
+      if (node.children.length) walk(node.children, ax, ay, path, item);
+      autoY = ry + rh;
+    }
+    return autoY;
+  }
+
+  walk(tree, 0, 0, '', null);
+
+  // resolve async transforms (probe)
+  for (const inst of instances) {
+    if (inst.transform && inst.item) {
+      const field = inst.transformField;
+      let val = '';
+      if (field.startsWith('item.') && inst.item) val = inst.item[field.slice(5)] || '';
+      probe(val).then(r => { inst.value = r; draw(); });
+    }
   }
 }
 
-function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// ── Draw ────────────────────────────────────────────
+let _dsl = null;
+let _tree = [];
 
-function setStatus(msg, isErr) {
-  const el = document.getElementById('status');
-  el.textContent = msg;
-  el.className = isErr ? 'err' : 'ok';
+function draw() {
+  clear();
+  // bg dots
+  for (let r = 0; r < BH; r += 4) for (let c = 0; c < BW; c += 4) put(r, c, '·', 'd');
+
+  for (const inst of instances) {
+    const { id, type, x, y, w, h, value, name } = inst;
+    const isSel = selId === id;
+    const bc = isSel ? 'h' : 'b';
+
+    if (type === 'panel' || type === 'card') {
+      box(y, x, w, h, bc);
+    } else if (type === 'template') {
+      box(y, x, w, h, 'd');
+      str(y, x+1, ' tpl:'+name+' ', 'd');
+    } else if (type === 'label') {
+      str(y, x, value || name, 'h', w);
+    } else if (type === 'input') {
+      const isEditing = editState.id === id;
+      if (h >= 3) {
+        // boxed input
+        box(y, x, w, h, isEditing ? 'h' : bc);
+        const ty = y + 1;
+        if (isEditing) {
+          str(ty, x+1, editState.buf, '', w-2);
+          const cc = x + 1 + editState.cur;
+          if (cc < x+w-1) put(ty, cc, G[ty]?.[cc]?.ch || ' ', 'i');
+        } else {
+          str(ty, x+1, value, value ? '' : 'd', w-2);
+        }
+      } else {
+        // inline input (h:1) — no box, just text on the line
+        if (isEditing) {
+          str(y, x, editState.buf, '', w);
+          const cc = x + editState.cur;
+          if (cc < x+w) put(y, cc, G[y]?.[cc]?.ch || ' ', 'i');
+        } else {
+          str(y, x, value, value ? '' : 'd', w);
+        }
+      }
+    } else if (type === 'button') {
+      if (h >= 3) {
+        box(y, x, w, h, bc);
+        str(y+1, x+1, value || name, 'h', w-2);
+      } else {
+        // inline button (h:1) — just colored text
+        str(y, x, value || name, 'h', w);
+      }
+    } else if (type === 'dot') {
+      const cl = value === 'ok' ? 'g' : value === 'fail' ? 'r' : 'y';
+      str(y, x, '●', cl);
+    } else if (type === 'text') {
+      const display = String(value || '').replace(/^https?:\/\//, '');
+      str(y, x, display || name, display ? '' : 'd', w);
+    }
+  }
+  flush();
 }
 
-// ── Mouse: click on canvas → select ─────────────────
-function cellFromEvent(e) {
-  const wrap = document.getElementById('screen-wrap');
-  const scr = document.getElementById('screen');
-  const rect = scr.getBoundingClientRect();
-  // Measure actual cell size from rendered pre
-  const actualCW = rect.width / Math.max(1, S.screen.cols);
-  const actualCH = rect.height / Math.max(1, S.screen.rows);
-  CW = actualCW; CH = actualCH;
+// ── Click handling ──────────────────────────────────
+const $scr = document.getElementById('scr');
+
+function cell(e) {
+  const rect = $scr.getBoundingClientRect();
+  const pad = parseFloat(getComputedStyle($scr).paddingLeft) || 0;
   return {
-    x: Math.floor((e.clientX - rect.left) / actualCW),
-    y: Math.floor((e.clientY - rect.top) / actualCH)
+    c: Math.floor((e.clientX - rect.left - pad + $scr.scrollLeft) / CW),
+    r: Math.floor((e.clientY - rect.top - pad + $scr.scrollTop) / CH)
   };
 }
 
-let dragStart = null;
-
-document.getElementById('screen-wrap').addEventListener('mousedown', async (e) => {
-  const cell = cellFromEvent(e);
-  if (mode === 'move' || mode === 'resize') {
-    // select via server (picks deepest AABB at cell)
-    await serverAction('select', { x: cell.x, y: cell.y, selected_id: selectedId, focus_id: focusId });
-    if (mode === 'move' && selectedId) {
-      dragStart = { x: cell.x, y: cell.y, origRect: S.selected?.rect?.slice() };
-    }
-  } else if (mode === 'create') {
-    dragStart = { x: cell.x, y: cell.y };
+function instAt(r, c) {
+  let found = null;
+  for (const inst of instances) {
+    const h = Math.max(1, inst.h);
+    if (c >= inst.x && c < inst.x + inst.w && r >= inst.y && r < inst.y + h) found = inst;
   }
-});
-
-document.addEventListener('mousemove', (e) => {
-  if (!dragStart) return;
-  // visual feedback only — actual move on mouseup
-});
-
-document.addEventListener('mouseup', async (e) => {
-  if (!dragStart) return;
-  const cell = cellFromEvent(e);
-  const dx = cell.x - dragStart.x;
-  const dy = cell.y - dragStart.y;
-
-  if (mode === 'move' && selectedId && dragStart.origRect && (dx !== 0 || dy !== 0)) {
-    const [ox, oy, ow, oh] = dragStart.origRect;
-    await serverAction('gui-action', {
-      action: 'move',
-      selected_id: selectedId,
-      focus_id: focusId,
-      rect: [ox + dx, oy + dy, ow, oh]
-    });
-  } else if (mode === 'resize' && selectedId && dragStart.origRect && (dx !== 0 || dy !== 0)) {
-    const [ox, oy, ow, oh] = dragStart.origRect;
-    await serverAction('gui-action', {
-      action: 'resize',
-      selected_id: selectedId,
-      focus_id: focusId,
-      rect: [ox, oy, ow + dx, oh + dy]
-    });
-  } else if (mode === 'create' && (dx !== 0 || dy !== 0)) {
-    const x1 = Math.min(dragStart.x, cell.x);
-    const y1 = Math.min(dragStart.y, cell.y);
-    const x2 = Math.max(dragStart.x, cell.x);
-    const y2 = Math.max(dragStart.y, cell.y);
-    await serverAction('gui-action', {
-      action: 'create',
-      selected_id: selectedId,
-      focus_id: focusId,
-      rect: [x1, y1, x2 - x1 + 1, y2 - y1 + 1],
-      parent_id: selectedId
-    });
-  }
-  dragStart = null;
-});
-
-// ── Command bar ─────────────────────────────────────
-document.getElementById('cmd-run').addEventListener('click', () => {
-  const cmd = document.getElementById('command').value.trim();
-  if (cmd) runCommand(cmd);
-});
-document.getElementById('command').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const cmd = e.target.value.trim();
-    if (cmd) runCommand(cmd);
-  }
-});
-
-// ── Mode buttons ────────────────────────────────────
-for (const m of ['move', 'resize', 'create']) {
-  document.getElementById(`mode-${m}`).addEventListener('click', () => {
-    mode = m;
-    document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
-    document.getElementById(`mode-${m}`).classList.add('active');
-  });
+  return found;
 }
 
-// ── Init ────────────────────────────────────────────
-load();
+// click item context for event actions
+let _clickItem = null;
+
+$scr.addEventListener('mousedown', (e) => {
+  $scr.focus();
+  const {r,c} = cell(e);
+  const inst = instAt(r, c);
+
+  // commit any active edit — flush buf into inst.value so read() can pick it up
+  if (editState.id) {
+    const prev = instances.find(i => i.id === editState.id);
+    if (prev) prev.value = editState.buf;
+    editState.id = null;
+  }
+
+  if (!inst) { selId = null; draw(); return; }
+
+  selId = inst.id;
+  _clickItem = inst.item || null;
+
+  if (inst.type === 'button') {
+    fireButton(inst);
+    draw();
+    return;
+  }
+
+  if (inst.type === 'input') {
+    const curVal = inst.value || (inst.item ? (inst.item.role||'') : '');
+    editState = { id: inst.id, buf: curVal, cur: curVal.length };
+    draw();
+    return;
+  }
+
+  draw();
+});
+
+// ── Cursor tracking for status bar ──────────────────
+$scr.addEventListener('mousemove', (e) => {
+  const {r,c} = cell(e);
+  document.getElementById('st-pos').textContent = `r:${r} c:${c}`;
+  const inst = instAt(r, c);
+  document.getElementById('st-inst').textContent = inst ? `${inst.type}:${inst.id} [${inst.x},${inst.y},${inst.w},${inst.h}]` : '-';
+});
+
+// ── Keyboard ────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  // only capture when canvas is focused
+  if (document.activeElement !== $scr) return;
+
+  if (!editState.id) return;
+  if (e.key === 'Escape') { editState.id = null; draw(); return; }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const inst = instances.find(i => i.id === editState.id);
+    if (inst) {
+      // store typed value into instance for read() to pick up
+      inst.value = editState.buf;
+      // if item-bound input, write back to the bound field
+      if (inst.item && inst.transformField) {
+        const field = inst.transformField.startsWith('item.') ? inst.transformField.slice(5) : inst.name;
+        inst.item[field] = editState.buf;
+        for (const [n, v] of Object.entries(DS)) { if (Array.isArray(v) && v.includes(inst.item)) { saveDS(n); break; } }
+      } else if (inst.item) {
+        // find which field this input is bound to via DSL bind
+        const bindField = findBoundField(inst);
+        if (bindField) { inst.item[bindField] = editState.buf; }
+        for (const [n, v] of Object.entries(DS)) { if (Array.isArray(v) && v.includes(inst.item)) { saveDS(n); break; } }
+      }
+      // fire on input_name.enter if defined
+      const enterTriggers = [inst.id+'.enter', inst.name+'.enter'];
+      if (inst.parentId) {
+        const parent = instances.find(p => p.id === inst.parentId);
+        if (parent) enterTriggers.push(parent.name+'.'+inst.name+'.enter');
+      }
+      for (const t of enterTriggers) {
+        const ev = _dsl?.events.find(e => e.trigger === t);
+        if (ev) { for (const a of ev.actions) execAction(a); break; }
+      }
+    }
+    editState.id = null;
+    draw();
+    return;
+  }
+  if (e.key === 'Backspace') { e.preventDefault(); if (editState.cur>0) { editState.buf=editState.buf.slice(0,editState.cur-1)+editState.buf.slice(editState.cur); editState.cur--; } draw(); return; }
+  if (e.key === 'Delete') { e.preventDefault(); if (editState.cur<editState.buf.length) { editState.buf=editState.buf.slice(0,editState.cur)+editState.buf.slice(editState.cur+1); } draw(); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); if (editState.cur>0) editState.cur--; draw(); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); if (editState.cur<editState.buf.length) editState.cur++; draw(); return; }
+  if (e.key === 'Home') { e.preventDefault(); editState.cur=0; draw(); return; }
+  if (e.key === 'End') { e.preventDefault(); editState.cur=editState.buf.length; draw(); return; }
+  if (e.key.length===1 && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    editState.buf = editState.buf.slice(0,editState.cur)+e.key+editState.buf.slice(editState.cur);
+    editState.cur++;
+    draw();
+    return;
+  }
+});
+
+// ── Events ──────────────────────────────────────────
+function fireTrigger(trigger) {
+  if (!_dsl) return;
+  const ev = _dsl.events.find(e => e.trigger === trigger);
+  if (!ev) return;
+  for (const action of ev.actions) execAction(action);
+}
+
+function fireButton(inst) {
+  if (!_dsl) return;
+  // build candidate triggers
+  const triggers = [
+    inst.id + '.click',
+    inst.name + '.click',
+  ];
+  // with parent prefix
+  const parent = instances.find(p => p.id === inst.parentId);
+  if (parent) {
+    triggers.push(parent.name + '.' + inst.name + '.click');
+    const gp = instances.find(p => p.id === parent.parentId);
+    if (gp) triggers.push(gp.name + '.' + parent.name + '.' + inst.name + '.click');
+  }
+  // strip index suffixes for template children: workers.card_0.del_btn -> workers.card.del_btn
+  const cleaned = triggers.map(t => t.replace(/_\d+\./g, '.'));
+  const all = [...new Set([...triggers, ...cleaned])];
+
+  for (const t of all) {
+    const ev = _dsl.events.find(e => e.trigger === t);
+    if (ev) {
+      _clickItem = inst.item || null;
+      for (const action of ev.actions) execAction(action);
+      return;
+    }
+  }
+}
+
+function execAction(action) {
+  // data.X.push { ... }
+  const pushM = action.match(/^data\.(\w+)\.push\s*\{(.+)\}$/);
+  if (pushM) {
+    const list = DS[pushM[1]];
+    if (!Array.isArray(list)) return;
+    const obj = {};
+    pushM[2].split(',').forEach(pair => {
+      const [k, ...rest] = pair.split(':');
+      const v = rest.join(':').trim();
+      if (v.startsWith('read(') && v.endsWith(')')) {
+        const ref = v.slice(5,-1);
+        // find instance by name suffix
+        const inst = instances.find(i => i.id.endsWith(ref) || i.id.endsWith('.'+ref.split('.').pop()));
+        // read from active edit buf if still editing, otherwise from committed inst.value
+        obj[k.trim()] = inst ? (editState.id === inst.id ? editState.buf : (inst.value || '')) : '';
+      } else {
+        obj[k.trim()] = v.replace(/"/g, '');
+      }
+    });
+    // don't push if all read() fields are empty
+    const hasValue = Object.values(obj).some(v => v !== '');
+    if (!hasValue) return;
+    list.push(obj);
+    saveDS(pushM[1]);
+    editState = { id:null, buf:'', cur:0 };
+    rebuildAndDraw();
+    return;
+  }
+
+  // data.X.remove item
+  const rmM = action.match(/^data\.(\w+)\.remove\s+item$/);
+  if (rmM && _clickItem) {
+    const list = DS[rmM[1]];
+    if (Array.isArray(list)) {
+      const idx = list.indexOf(_clickItem);
+      if (idx >= 0) list.splice(idx, 1);
+      saveDS(rmM[1]);
+      rebuildAndDraw();
+    }
+    return;
+  }
+
+  // clear X
+  const clrM = action.match(/^clear\s+([\w.]+)$/);
+  if (clrM) {
+    editState = { id:null, buf:'', cur:0 };
+    return;
+  }
+}
+
+// ── Rebuild + draw ──────────────────────────────────
+function rebuildAndDraw() {
+  if (!_dsl || !_tree.length) return;
+  resolveInstances(_tree, _dsl.bind);
+  draw();
+}
+
+// ── Default DSL ─────────────────────────────────────
+const DEFAULT_DSL = `# Workers panel
+layout:
+  panel workers [0,0,32,auto]:
+    label title [2,1,10,1]
+    input url_input [1,2,25,3]
+    button add_btn [26,2,5,3]
+    template card [1,auto,30,3]:
+      dot status [2,1,1,1]
+      text endpoint [4,1,18,1]
+      input role [22,1,7,1]
+      button del_btn [29,1,2,1]
+
+data:
+  worker_list: local reactive_workers
+  probe_status(url): GET {url}/v1/models timeout 3s
+
+bind:
+  workers.title <- "WORKERS"
+  workers.add_btn <- "+"
+  workers.card <- each data.worker_list as item
+  workers.card.status <- item.url | probe_status
+  workers.card.endpoint <- item.url
+  workers.card.role <- item.role
+  workers.card.del_btn <- "x"
+
+on workers.add_btn.click:
+  data.worker_list.push { url: read(workers.url_input), role: "gen" }
+  clear workers.url_input
+
+on workers.url_input.enter:
+  data.worker_list.push { url: read(workers.url_input), role: "gen" }
+  clear workers.url_input
+
+on workers.card.del_btn.click:
+  data.worker_list.remove item
+`.trim();
+
+// ── UI wiring ───────────────────────────────────────
+const $src = document.getElementById('dsl-src');
+const $err = document.getElementById('dsl-err');
+
+function apply() {
+  $err.textContent = '';
+  try {
+    _dsl = parseDSL($src.value);
+    _tree = buildLayoutTree(_dsl.layout);
+    initData(_dsl.data);
+    resolveInstances(_tree, _dsl.bind);
+    draw();
+    document.getElementById('st-edit').textContent = `${instances.length} inst`;
+  } catch(e) {
+    $err.textContent = e.message;
+  }
+}
+
+$src.value = localStorage.getItem('aabb_dsl') || DEFAULT_DSL;
+document.getElementById('btn-apply').onclick = () => { localStorage.setItem('aabb_dsl', $src.value); apply(); };
+document.getElementById('btn-reset').onclick = () => { $src.value = DEFAULT_DSL; localStorage.removeItem('aabb_dsl'); apply(); };
+$src.addEventListener('keydown', e => { if (e.key==='Enter'&&e.ctrlKey) { e.preventDefault(); document.getElementById('btn-apply').click(); } });
+
+// ── Boot ────────────────────────────────────────────
+measureCell();
+apply();
+
+// re-resolve transforms (probes etc.) periodically
+setInterval(() => rebuildAndDraw(), 15000);
 </script>
 </body>
 </html>
