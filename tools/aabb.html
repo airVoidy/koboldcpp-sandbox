@@ -5,355 +5,353 @@
 <title>AABB</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { height:100%; background:#0a0a0a; color:#b0b0b0; overflow:hidden; }
-#scr {
-  position:absolute; inset:0; overflow:hidden;
-  font: 13px/1 'Consolas','Courier New',monospace;
-  white-space: pre;
-  cursor: default;
-  user-select: none;
+html, body { height:100%; background:#0a0a0a; color:#b0b0b0; overflow:hidden; font:12px/1 'Consolas','Courier New',monospace; }
+#app { display:flex; height:100%; }
+
+/* ── Tree (left) ────────────────────────────────── */
+#tree {
+  width:200px; min-width:200px;
+  background:#0d0d0d; border-right:1px solid #222;
+  overflow-y:auto; padding:6px; font-size:11px;
 }
-#scr span { display:inline; }
-.hi { color:#58a6ff; }
-.dim { color:#555; }
-.br { color:#444; }
-.acc { color:#f78166; }
-.grn { color:#3fb950; }
-.inv { background:#58a6ff; color:#000; }
-.cur { background:#333; }
+.th { color:#58a6ff; font-size:10px; margin-bottom:4px; }
+.tn { padding:1px 2px; cursor:pointer; white-space:nowrap; overflow:hidden; }
+.tn:hover { background:#1a1a1a; }
+.tn.sel { color:#58a6ff; background:#111828; }
+.tn .nm { }
+.tn .al { color:#555; font-size:9px; }
+.tn .rc { color:#333; font-size:9px; }
+
+/* ── Canvas (center) ────────────────────────────── */
+#canvas { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#toolbar { height:28px; display:flex; align-items:center; gap:8px; padding:0 8px; border-bottom:1px solid #222; background:#0d0d0d; font-size:10px; color:#555; }
+#toolbar .lbl { color:#58a6ff; }
+#toolbar button { background:#161b22; border:1px solid #222; color:#b0b0b0; font:inherit; padding:2px 8px; cursor:pointer; }
+#toolbar button:hover { border-color:#58a6ff; }
+#toolbar button.active { border-color:#58a6ff; color:#58a6ff; }
+#screen-wrap { flex:1; overflow:auto; padding:8px; background:#050508; position:relative; }
+#screen { white-space:pre; line-height:15px; user-select:none; cursor:crosshair; display:inline-block; }
+#overlay { position:absolute; top:8px; left:8px; pointer-events:none; }
+.aabb-ov { position:absolute; border:1px solid rgba(88,166,255,0.3); background:rgba(88,166,255,0.02); pointer-events:none; }
+.aabb-ov.sel { border-color:#58a6ff; background:rgba(88,166,255,0.08); }
+#command-bar { display:flex; gap:6px; padding:6px 8px; border-top:1px solid #222; background:#0d0d0d; }
+#command { flex:1; background:#0a0a0a; border:1px solid #222; color:#b0b0b0; font:inherit; padding:4px 6px; }
+#command:focus { border-color:#58a6ff; outline:none; }
+#cmd-run { background:#161b22; border:1px solid #222; color:#b0b0b0; font:inherit; padding:4px 10px; cursor:pointer; }
+#status { height:20px; padding:2px 8px; font-size:10px; color:#555; border-top:1px solid #1a1a1a; }
+.ok { color:#3fb950; }
+.err { color:#f85149; }
+
+/* ── Props (right) ──────────────────────────────── */
+#props {
+  width:280px; min-width:280px;
+  background:#0d0d0d; border-left:1px solid #222;
+  overflow-y:auto; padding:6px; font-size:10px;
+}
+.ph { color:#58a6ff; font-size:10px; margin:6px 0 3px; }
+.pr { display:flex; gap:4px; padding:1px 0; }
+.pr .pk { color:#555; width:50px; text-align:right; flex-shrink:0; }
+.pr .pv { color:#b0b0b0; word-break:break-all; }
+.tabs { display:flex; gap:4px; margin:6px 0 4px; flex-wrap:wrap; }
+.tab { background:#161b22; border:1px solid #222; color:#b0b0b0; padding:2px 6px; cursor:pointer; font:inherit; font-size:9px; }
+.tab:hover { border-color:#58a6ff; }
+.tab.active { border-color:#58a6ff; color:#58a6ff; }
+#editor { width:100%; min-height:200px; background:#0a0a0a; border:1px solid #222; color:#b0b0b0; font:inherit; font-size:10px; padding:4px; resize:vertical; }
+#editor:focus { border-color:#58a6ff; outline:none; }
+#save-btn { background:#161b22; border:1px solid #222; color:#b0b0b0; font:inherit; padding:3px 10px; cursor:pointer; margin-top:4px; }
 </style>
 </head>
 <body>
-<div id="scr"></div>
+<div id="app">
+  <div id="tree"></div>
+  <div id="canvas">
+    <div id="toolbar">
+      <span class="lbl">AABB</span>
+      <span id="screen-info"></span>
+      <span id="sel-info"></span>
+      <span style="flex:1"></span>
+      <button id="mode-move" class="active">Move</button>
+      <button id="mode-resize">Resize</button>
+      <button id="mode-create">Create</button>
+    </div>
+    <div id="screen-wrap">
+      <pre id="screen"></pre>
+      <div id="overlay"></div>
+    </div>
+    <div id="command-bar">
+      <input id="command" type="text" placeholder="add label: [1,1,10,1] | delete subtree | undo">
+      <button id="cmd-run">Run</button>
+    </div>
+    <div id="status"></div>
+  </div>
+  <div id="props"></div>
+</div>
+
 <script>
 // ══════════════════════════════════════════════════════
-// ASCII grid engine — everything is cells in an N×M buffer
+// AABB client — loads everything from /api/ui-proto2/
 // ══════════════════════════════════════════════════════
 
-const CW = 8, CH = 15; // char size in px (monospace)
-let COLS, ROWS;
-let buf = [];    // [row][col] = { ch, cls }
-let boxes = [];  // all AABBs: { id, x, y, w, h, title, content, edit, focused, scroll }
-let _bid = 0;
-let sel = null;  // selected box id
-let drag = null; // { id, ox, oy, mx, my }
-let cursor = null; // { id, cx, cy } for edit mode
-let editBuf = {}; // id → lines[]
-const scr = document.getElementById('scr');
+const API = '/api/ui-proto2';
+let S = null; // current state from server
+let selectedId = null;
+let focusId = null;
+let mode = 'move';
+let currentTab = 'yaml';
+let CW = 8, CH = 15; // char cell px
 
-function init() {
-  COLS = Math.floor(window.innerWidth / CW);
-  ROWS = Math.floor(window.innerHeight / CH);
-  buf = [];
-  for (let r = 0; r < ROWS; r++) {
-    buf[r] = [];
-    for (let c = 0; c < COLS; c++) buf[r][c] = { ch: ' ', cls: '' };
+// ── Fetch ───────────────────────────────────────────
+async function load() {
+  const params = new URLSearchParams();
+  if (selectedId) params.set('selected_id', selectedId);
+  if (focusId) params.set('focus_id', focusId);
+  const res = await fetch(`${API}/state?${params}`);
+  S = await res.json();
+  if (!selectedId && S.selected_id) selectedId = S.selected_id;
+  if (!focusId && S.focus_id) focusId = S.focus_id;
+  render();
+}
+
+async function serverAction(endpoint, body) {
+  const res = await fetch(`${API}/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  S = await res.json();
+  if (S.selected_id) selectedId = S.selected_id;
+  setStatus(S.message || (S.ok ? 'ok' : 'error'), !S.ok);
+  render();
+}
+
+async function runCommand(cmd) {
+  await serverAction('command', { command: cmd, selected_id: selectedId, focus_id: focusId });
+}
+
+// ── Render ──────────────────────────────────────────
+function render() {
+  if (!S) return;
+  renderScreen();
+  renderOverlay();
+  renderTree();
+  renderProps();
+  document.getElementById('screen-info').textContent = `${S.screen.cols}×${S.screen.rows}`;
+  document.getElementById('sel-info').textContent = selectedId ? `sel: ${selectedId}` : '';
+}
+
+function renderScreen() {
+  const el = document.getElementById('screen');
+  el.textContent = (S.render.lines || []).join('\n');
+}
+
+function renderOverlay() {
+  const ov = document.getElementById('overlay');
+  ov.innerHTML = '';
+  if (!S.tree) return;
+  for (const n of S.tree) {
+    const [x, y, w, h] = n.rect;
+    const div = document.createElement('div');
+    div.className = 'aabb-ov' + (n.id === selectedId ? ' sel' : '');
+    div.style.left = (x * CW) + 'px';
+    div.style.top = (y * CH) + 'px';
+    div.style.width = (w * CW) + 'px';
+    div.style.height = (h * CH) + 'px';
+    div.dataset.id = n.id;
+    ov.appendChild(div);
   }
 }
 
-// ── Buffer ops ──────────────────────────────────────
-function put(r, c, ch, cls) {
-  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
-    buf[r][c] = { ch: ch || ' ', cls: cls || '' };
-  }
-}
-
-function putStr(r, c, s, cls, maxW) {
-  const lim = maxW !== undefined ? Math.min(s.length, maxW) : s.length;
-  for (let i = 0; i < lim; i++) put(r, c + i, s[i], cls);
-}
-
-function hLine(r, c, w, cls) {
-  put(r, c, '\u250c', cls);
-  for (let i = 1; i < w - 1; i++) put(r, c + i, '\u2500', cls);
-  put(r, c + w - 1, '\u2510', cls);
-}
-
-function bLine(r, c, w, cls) {
-  put(r, c, '\u2514', cls);
-  for (let i = 1; i < w - 1; i++) put(r, c + i, '\u2500', cls);
-  put(r, c + w - 1, '\u2518', cls);
-}
-
-function vLines(r, c, w, h, cls) {
-  for (let i = 1; i < h - 1; i++) {
-    put(r + i, c, '\u2502', cls);
-    put(r + i, c + w - 1, '\u2502', cls);
-  }
-}
-
-// ── Box management ──────────────────────────────────
-function addBox(o) {
-  const id = _bid++;
-  const b = {
-    id, x: o.x || 0, y: o.y || 0, w: o.w || 12, h: o.h || 3,
-    title: o.title || '', content: o.content || [],
-    edit: !!o.edit, click: o.click || null, scroll: 0
-  };
-  if (b.edit) editBuf[id] = (o.content || ['']).slice();
-  boxes.push(b);
-  return id;
-}
-
-function boxAt(gx, gy) {
-  // top-most (last drawn)
-  for (let i = boxes.length - 1; i >= 0; i--) {
-    const b = boxes[i];
-    if (gx >= b.x && gx < b.x + b.w && gy >= b.y && gy < b.y + b.h) return b;
-  }
-  return null;
-}
-
-function canPlace(id, nx, ny) {
-  const me = boxes.find(b => b.id === id);
-  if (!me) return false;
-  // bounds
-  if (nx < 0 || ny < 0 || nx + me.w > COLS || ny + me.h > ROWS) return false;
-  // collision with other boxes
-  for (const b of boxes) {
-    if (b.id === id) continue;
-    if (nx < b.x + b.w && nx + me.w > b.x && ny < b.y + b.h && ny + me.h > b.y) return false;
-  }
-  return true;
-}
-
-// ── Draw ────────────────────────────────────────────
-function draw() {
-  // clear
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++) buf[r][c] = { ch: ' ', cls: '' };
-
-  // grid dots
-  for (let r = 0; r < ROWS; r += 4)
-    for (let c = 0; c < COLS; c += 6) put(r, c, '\u00b7', 'dim');
-
-  // draw boxes
-  for (const b of boxes) {
-    const isSel = sel === b.id;
-    const bCls = isSel ? 'hi' : 'br';
-
-    // border
-    hLine(b.y, b.x, b.w, bCls);
-    bLine(b.y + b.h - 1, b.x, b.w, bCls);
-    vLines(b.y, b.x, b.w, b.h, bCls);
-
-    // title bar
-    if (b.title) {
-      const t = ' ' + b.title.slice(0, b.w - 4) + ' ';
-      putStr(b.y, b.x + 1, t, isSel ? 'hi' : '', b.w - 2);
+function renderTree() {
+  const el = document.getElementById('tree');
+  let h = '<div class="th">AABB Tree</div>';
+  if (S.tree) {
+    for (const n of S.tree) {
+      const indent = '\u00a0'.repeat(n.depth * 2);
+      const isSel = n.id === selectedId;
+      h += `<div class="tn${isSel ? ' sel' : ''}" data-id="${n.id}">`;
+      h += `${indent}<span class="nm">${n.name || n.id}</span>`;
+      if (n.alias) h += `<span class="al">.${n.alias}</span>`;
+      h += `<span class="rc"> [${n.rect.join(',')}]</span>`;
+      h += `</div>`;
     }
+  }
+  el.innerHTML = h;
+  el.querySelectorAll('.tn').forEach(tn => {
+    tn.addEventListener('click', () => {
+      selectedId = tn.dataset.id;
+      load();
+    });
+  });
+}
 
-    // content area
-    const innerW = b.w - 2;
-    const innerH = b.h - 2;
-    const lines = b.edit ? (editBuf[b.id] || ['']) : b.content;
-    const scrollOff = b.scroll || 0;
+function renderProps() {
+  const el = document.getElementById('props');
+  if (!S.selected) { el.innerHTML = '<div class="ph">Properties</div><div style="color:#333">No selection</div>'; return; }
+  const s = S.selected;
 
-    for (let row = 0; row < innerH; row++) {
-      const li = row + scrollOff;
-      if (li >= lines.length) break;
-      const line = lines[li] || '';
-      putStr(b.y + 1 + row, b.x + 1, line.slice(0, innerW), '', innerW);
-    }
+  let h = '<div class="ph">Selected</div>';
+  h += `<div class="pr"><span class="pk">id:</span><span class="pv">${s.id}</span></div>`;
+  h += `<div class="pr"><span class="pk">name:</span><span class="pv">${s.name || ''}</span></div>`;
+  h += `<div class="pr"><span class="pk">alias:</span><span class="pv">${s.alias || ''}</span></div>`;
+  h += `<div class="pr"><span class="pk">rect:</span><span class="pv">[${(s.rect||[]).join(', ')}]</span></div>`;
 
-    // cursor for edit mode
-    if (b.edit && cursor && cursor.id === b.id) {
-      const cr = b.y + 1 + cursor.cy - (b.scroll || 0);
-      const cc = b.x + 1 + cursor.cx;
-      if (cr > b.y && cr < b.y + b.h - 1 && cc > b.x && cc < b.x + b.w - 1) {
-        put(cr, cc, buf[cr][cc].ch || ' ', 'inv');
+  // Tabs
+  h += '<div class="tabs">';
+  for (const [key, label] of [['yaml','Node YAML'],['json','Node JSON'],['base','Base.txt'],['base_json','Base.json'],['events','events.dsl']]) {
+    h += `<div class="tab${currentTab === key ? ' active' : ''}" data-tab="${key}">${label}</div>`;
+  }
+  h += '</div>';
+
+  // Editor content
+  let content = '';
+  if (currentTab === 'yaml') content = s.yaml || '';
+  else if (currentTab === 'json') content = typeof s.json === 'string' ? s.json : JSON.stringify(s.json, null, 2);
+  else if (currentTab === 'base') content = S.layers?.base || '';
+  else if (currentTab === 'base_json') content = typeof S.layers?.base_json === 'string' ? S.layers.base_json : JSON.stringify(S.layers?.base_json, null, 2);
+  else if (currentTab === 'events') content = S.layers?.events_dsl || '';
+
+  h += `<textarea id="editor">${esc(content)}</textarea>`;
+  h += '<button id="save-btn">Save</button>';
+
+  // Diff
+  if (S.latest_diff && S.latest_diff.length) {
+    h += '<div class="ph">Latest Diff</div>';
+    h += `<div style="font-size:9px;color:#444;white-space:pre-wrap;">${esc(JSON.stringify(S.latest_diff, null, 2))}</div>`;
+  }
+
+  el.innerHTML = h;
+
+  // Wire tabs
+  el.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentTab = tab.dataset.tab;
+      renderProps();
+    });
+  });
+
+  // Wire save
+  const saveBtn = document.getElementById('save-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const text = document.getElementById('editor').value;
+      if (currentTab === 'yaml') {
+        await serverAction('node/save', { node_id: selectedId, yaml_text: text, focus_id: focusId });
+      } else if (currentTab === 'base' || currentTab === 'events' || currentTab === 'base_json') {
+        const files = {};
+        if (currentTab === 'base') files.base = text;
+        else if (currentTab === 'events') files.events_dsl = text;
+        else if (currentTab === 'base_json') files.base_json = text;
+        await serverAction('files/save', { files, focus_id: focusId, selected_id: selectedId });
       }
-    }
+    });
   }
-
-  // render to DOM
-  let html = '';
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const cell = buf[r][c];
-      const ch = cell.ch === '<' ? '&lt;' : cell.ch === '>' ? '&gt;' : cell.ch === '&' ? '&amp;' : cell.ch;
-      if (cell.cls) html += `<span class="${cell.cls}">${ch}</span>`;
-      else html += ch;
-    }
-    html += '\n';
-  }
-  scr.innerHTML = html;
 }
 
-// ── Mouse ───────────────────────────────────────────
-function gPos(e) {
-  return { gx: Math.floor(e.clientX / CW), gy: Math.floor(e.clientY / CH) };
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function setStatus(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : 'ok';
 }
 
-scr.addEventListener('mousedown', (e) => {
-  const { gx, gy } = gPos(e);
-  const b = boxAt(gx, gy);
-
-  if (b) {
-    sel = b.id;
-    // title bar click → start drag
-    if (gy === b.y) {
-      drag = { id: b.id, ox: b.x, oy: b.y, mx: gx, my: gy };
-    }
-    // click inside editable → set cursor
-    else if (b.edit && gy > b.y && gy < b.y + b.h - 1) {
-      cursor = { id: b.id, cx: Math.min(gx - b.x - 1, (editBuf[b.id][(gy - b.y - 1 + (b.scroll||0))] || '').length), cy: gy - b.y - 1 + (b.scroll || 0) };
-    }
-    // click on clickable
-    else if (b.click) {
-      b.click(b);
-    }
-  } else {
-    sel = null;
-    cursor = null;
-  }
-  draw();
-});
-
-scr.addEventListener('mousemove', (e) => {
-  if (!drag) return;
-  const { gx, gy } = gPos(e);
-  const dx = gx - drag.mx;
-  const dy = gy - drag.my;
-  const nx = drag.ox + dx;
-  const ny = drag.oy + dy;
-  if (canPlace(drag.id, nx, ny)) {
-    const b = boxes.find(b => b.id === drag.id);
-    b.x = nx; b.y = ny;
-    draw();
-  }
-});
-
-scr.addEventListener('mouseup', () => { drag = null; });
-
-// scroll inside box
-scr.addEventListener('wheel', (e) => {
-  const { gx, gy } = gPos(e);
-  const b = boxAt(gx, gy);
-  if (!b) return;
-  e.preventDefault();
-  const lines = b.edit ? (editBuf[b.id] || ['']) : b.content;
-  const maxScroll = Math.max(0, lines.length - (b.h - 2));
-  b.scroll = Math.max(0, Math.min(maxScroll, (b.scroll || 0) + (e.deltaY > 0 ? 1 : -1)));
-  draw();
-}, { passive: false });
-
-// ── Keyboard (edit mode) ────────────────────────────
-document.addEventListener('keydown', (e) => {
-  if (!cursor) return;
-  const b = boxes.find(b => b.id === cursor.id);
-  if (!b || !b.edit) return;
-  const lines = editBuf[b.id];
-  const innerW = b.w - 2;
-
-  if (e.key === 'Backspace') {
-    e.preventDefault();
-    if (cursor.cx > 0) {
-      lines[cursor.cy] = lines[cursor.cy].slice(0, cursor.cx - 1) + lines[cursor.cy].slice(cursor.cx);
-      cursor.cx--;
-    } else if (cursor.cy > 0) {
-      cursor.cx = lines[cursor.cy - 1].length;
-      lines[cursor.cy - 1] += lines[cursor.cy];
-      lines.splice(cursor.cy, 1);
-      cursor.cy--;
-    }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    if (e.shiftKey || lines.length < b.h - 2 + 10) {
-      const rest = lines[cursor.cy].slice(cursor.cx);
-      lines[cursor.cy] = lines[cursor.cy].slice(0, cursor.cx);
-      lines.splice(cursor.cy + 1, 0, rest);
-      cursor.cy++;
-      cursor.cx = 0;
-    }
-    // fire send on Enter without shift if single-line
-    if (!e.shiftKey && b._onEnter) b._onEnter(b);
-  } else if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    if (cursor.cx > 0) cursor.cx--;
-    else if (cursor.cy > 0) { cursor.cy--; cursor.cx = lines[cursor.cy].length; }
-  } else if (e.key === 'ArrowRight') {
-    e.preventDefault();
-    if (cursor.cx < lines[cursor.cy].length) cursor.cx++;
-    else if (cursor.cy < lines.length - 1) { cursor.cy++; cursor.cx = 0; }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (cursor.cy > 0) { cursor.cy--; cursor.cx = Math.min(cursor.cx, lines[cursor.cy].length); }
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (cursor.cy < lines.length - 1) { cursor.cy++; cursor.cx = Math.min(cursor.cx, lines[cursor.cy].length); }
-  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-    e.preventDefault();
-    lines[cursor.cy] = lines[cursor.cy].slice(0, cursor.cx) + e.key + lines[cursor.cy].slice(cursor.cx);
-    cursor.cx++;
-  }
-
-  // auto-scroll to cursor
-  const visY = cursor.cy - (b.scroll || 0);
-  if (visY < 0) b.scroll = cursor.cy;
-  if (visY >= b.h - 2) b.scroll = cursor.cy - (b.h - 3);
-
-  draw();
-});
-
-// ── Helpers ─────────────────────────────────────────
-function getEdit(id) { return (editBuf[id] || ['']).join('\n'); }
-function setEdit(id, s) { editBuf[id] = s.split('\n'); }
-function addLine(id, s) {
-  const b = boxes.find(b => b.id === id);
-  if (!b) return;
-  b.content.push(s);
-  const maxScroll = Math.max(0, b.content.length - (b.h - 2));
-  b.scroll = maxScroll;
-  draw();
+// ── Mouse: click on canvas → select ─────────────────
+function cellFromEvent(e) {
+  const wrap = document.getElementById('screen-wrap');
+  const scr = document.getElementById('screen');
+  const rect = scr.getBoundingClientRect();
+  // Measure actual cell size from rendered pre
+  const actualCW = rect.width / Math.max(1, S.screen.cols);
+  const actualCH = rect.height / Math.max(1, S.screen.rows);
+  CW = actualCW; CH = actualCH;
+  return {
+    x: Math.floor((e.clientX - rect.left) / actualCW),
+    y: Math.floor((e.clientY - rect.top) / actualCH)
+  };
 }
 
-// ════════════════════════════════════════════════════
-// Layout
-// ════════════════════════════════════════════════════
-init();
-window.addEventListener('resize', () => { init(); draw(); });
+let dragStart = null;
 
-// workers
-const wp = addBox({ x:0, y:0, w:30, h:8, title:'Workers' });
-boxes.find(b=>b.id===wp).content = [
-  '\u25CF 127.0.0.1:5001  gen',
-  '\u25CF 192.168.1.15    ana',
-  '',
-  '  [+ worker]'
-];
-
-// title
-addBox({ x:31, y:0, w:COLS-31, h:3, title:'AABB Sandbox', content:[''] });
-
-// chat
-const chat = addBox({ x:0, y:9, w:COLS, h:ROWS-12, title:'Chat' });
-
-// message input
-const msg = addBox({ x:0, y:ROWS-3, w:COLS-10, h:3, title:'message', edit:true, content:[''] });
-
-// send button
-const send = addBox({ x:COLS-10, y:ROWS-3, w:10, h:3, title:'send',
-  click: () => {
-    const t = getEdit(msg).trim();
-    if (!t) return;
-    setEdit(msg, '');
-    cursor = { id: msg, cx: 0, cy: 0 };
-    addLine(chat, '> ' + t);
+document.getElementById('screen-wrap').addEventListener('mousedown', async (e) => {
+  const cell = cellFromEvent(e);
+  if (mode === 'move' || mode === 'resize') {
+    // select via server (picks deepest AABB at cell)
+    await serverAction('select', { x: cell.x, y: cell.y, selected_id: selectedId, focus_id: focusId });
+    if (mode === 'move' && selectedId) {
+      dragStart = { x: cell.x, y: cell.y, origRect: S.selected?.rect?.slice() };
+    }
+  } else if (mode === 'create') {
+    dragStart = { x: cell.x, y: cell.y };
   }
 });
-boxes.find(b=>b.id===send).content = ['  Send'];
 
-// Enter in message → send
-boxes.find(b=>b.id===msg)._onEnter = () => {
-  const t = getEdit(msg).trim();
-  if (!t) return;
-  setEdit(msg, '');
-  cursor = { id: msg, cx: 0, cy: 0 };
-  addLine(chat, '> ' + t);
-};
+document.addEventListener('mousemove', (e) => {
+  if (!dragStart) return;
+  // visual feedback only — actual move on mouseup
+});
 
-draw();
+document.addEventListener('mouseup', async (e) => {
+  if (!dragStart) return;
+  const cell = cellFromEvent(e);
+  const dx = cell.x - dragStart.x;
+  const dy = cell.y - dragStart.y;
+
+  if (mode === 'move' && selectedId && dragStart.origRect && (dx !== 0 || dy !== 0)) {
+    const [ox, oy, ow, oh] = dragStart.origRect;
+    await serverAction('gui-action', {
+      action: 'move',
+      selected_id: selectedId,
+      focus_id: focusId,
+      rect: [ox + dx, oy + dy, ow, oh]
+    });
+  } else if (mode === 'resize' && selectedId && dragStart.origRect && (dx !== 0 || dy !== 0)) {
+    const [ox, oy, ow, oh] = dragStart.origRect;
+    await serverAction('gui-action', {
+      action: 'resize',
+      selected_id: selectedId,
+      focus_id: focusId,
+      rect: [ox, oy, ow + dx, oh + dy]
+    });
+  } else if (mode === 'create' && (dx !== 0 || dy !== 0)) {
+    const x1 = Math.min(dragStart.x, cell.x);
+    const y1 = Math.min(dragStart.y, cell.y);
+    const x2 = Math.max(dragStart.x, cell.x);
+    const y2 = Math.max(dragStart.y, cell.y);
+    await serverAction('gui-action', {
+      action: 'create',
+      selected_id: selectedId,
+      focus_id: focusId,
+      rect: [x1, y1, x2 - x1 + 1, y2 - y1 + 1],
+      parent_id: selectedId
+    });
+  }
+  dragStart = null;
+});
+
+// ── Command bar ─────────────────────────────────────
+document.getElementById('cmd-run').addEventListener('click', () => {
+  const cmd = document.getElementById('command').value.trim();
+  if (cmd) runCommand(cmd);
+});
+document.getElementById('command').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const cmd = e.target.value.trim();
+    if (cmd) runCommand(cmd);
+  }
+});
+
+// ── Mode buttons ────────────────────────────────────
+for (const m of ['move', 'resize', 'create']) {
+  document.getElementById(`mode-${m}`).addEventListener('click', () => {
+    mode = m;
+    document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
+    document.getElementById(`mode-${m}`).classList.add('active');
+  });
+}
+
+// ── Init ────────────────────────────────────────────
+load();
 </script>
 </body>
 </html>
