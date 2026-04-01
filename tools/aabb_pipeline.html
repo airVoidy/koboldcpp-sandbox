@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AABB Pipeline</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #1a1b26; --surface: #24283b; --surface2: #2f3349;
+  --border: #3b4261; --text: #c0caf5; --text-dim: #565f89;
+  --accent: #7aa2f7; --accent2: #bb9af7; --accent3: #7dcfff;
+  --green: #9ece6a; --red: #f7768e; --orange: #ff9e64; --yellow: #e0af68;
+}
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:'Consolas','Monaco','Courier New',monospace; font-size:14px; overflow:hidden; }
+#app { display:flex; flex-direction:column; height:100%; }
+#tab-bar { display:flex; align-items:center; height:32px; flex-shrink:0; background:var(--surface); border-bottom:1px solid var(--border); padding:0 8px; }
+#tab-bar button { background:none; border:none; border-bottom:2px solid transparent; color:var(--text-dim); padding:6px 16px; font-family:inherit; font-size:12px; cursor:pointer; }
+#tab-bar button:hover { color:var(--text); }
+#tab-bar button.active { color:var(--accent); border-bottom-color:var(--accent); }
+#tab-bar .spacer { flex:1; }
+#tab-bar .info { font-size:10px; color:var(--text-dim); padding-right:8px; }
+#workspace { display:flex; flex:1; min-height:0; }
+#canvas { flex:1; position:relative; overflow:hidden; min-width:0; }
+#text-layer { position:absolute; top:0; left:0; white-space:pre; line-height:1.25; user-select:none; z-index:1; }
+#svg-layer { position:absolute; top:0; left:0; pointer-events:none; z-index:2; }
+#overlay-svg { position:absolute; top:0; left:0; pointer-events:none; z-index:3; }
+/* html panels — DOM divs over char grid */
+.html-panel { position:absolute; z-index:4; overflow-y:auto; overflow-x:hidden; font:12px/1.4 Consolas,Monaco,"Courier New",monospace; color:var(--text); }
+.html-panel::-webkit-scrollbar { width:6px; }
+.html-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.html-panel .hp-card { padding:4px 6px; border-bottom:1px solid var(--border); }
+.html-panel .hp-title { color:var(--accent); font-weight:600; font-size:12px; display:flex; justify-content:space-between; }
+.html-panel .hp-status { font-size:10px; padding:1px 4px; border-radius:2px; }
+.html-panel .hp-status.done { color:var(--green); } .html-panel .hp-status.fail { color:var(--red); } .html-panel .hp-status.pending { color:var(--yellow); }
+.html-panel .hp-text { color:var(--text); font-size:11px; margin:2px 0; white-space:pre-wrap; word-break:break-word; }
+.html-panel .hp-tags { display:flex; flex-wrap:wrap; gap:3px; margin:2px 0; }
+.html-panel .hp-tag { font-size:9px; color:var(--accent2); background:var(--surface2); padding:0 4px; border-radius:2px; }
+.html-panel .hp-thread { margin-top:3px; border-top:1px solid var(--border); padding-top:3px; }
+.html-panel .hp-msg { font-size:10px; margin:1px 0; }
+.html-panel .hp-msg .hp-role { font-weight:600; }
+.html-panel .hp-msg.user .hp-role { color:var(--accent); }
+.html-panel .hp-msg.assistant .hp-role { color:var(--green); }
+.html-panel .hp-reactions { display:flex; gap:4px; margin:2px 0; font-size:10px; }
+.html-panel .hp-reaction { padding:0 3px; border-radius:2px; background:var(--surface2); }
+.html-panel .hp-reaction.pass { color:var(--green); } .hp-reaction.fail { color:var(--red); }
+#side-panel { width:420px; flex-shrink:0; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+#side-panel.hidden { display:none; }
+.panel-header { display:flex; align-items:center; padding:4px 8px; gap:6px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+.panel-header span { font-size:11px; color:var(--accent); font-weight:600; }
+.panel-header button { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:2px 8px; font-family:inherit; font-size:10px; border-radius:3px; cursor:pointer; }
+.panel-header button:hover { background:var(--border); }
+.c-dim { color:var(--text-dim); } .c-accent { color:var(--accent); } .c-accent2 { color:var(--accent2); }
+.c-accent3 { color:var(--accent3); } .c-green { color:var(--green); } .c-red { color:var(--red); }
+.c-orange { color:var(--orange); } .c-yellow { color:var(--yellow); }
+.c-cursor { background:var(--accent); color:var(--bg); }
+#side-content { flex:1; overflow-y:auto; padding:0; font-size:11px; }
+/* console */
+#console-log { flex:1; overflow-y:auto; padding:4px 8px; font-size:11px; }
+#console-log .cmd-in { color:var(--accent); }
+#console-log .cmd-out { color:var(--text-dim); }
+#console-log .cmd-err { color:var(--red); }
+#console-log .cmd-ok { color:var(--green); }
+#console-input-row { display:flex; border-top:1px solid var(--border); flex-shrink:0; }
+#console-input-row span { padding:4px 6px; color:var(--accent3); font-size:12px; }
+#console-input { flex:1; background:var(--bg); border:none; outline:none; color:var(--text); font:12px/1.4 Consolas,monospace; padding:4px 4px; }
+/* replay */
+.rp-step { padding:2px 8px; font-size:10px; cursor:pointer; border-left:2px solid transparent; }
+.rp-step:hover { background:var(--surface2); }
+.rp-step.current { border-left-color:var(--accent); background:var(--surface2); }
+.rp-cmd { color:var(--accent3); }
+.rp-args { color:var(--text-dim); }
+/* tree */
+.tv-row { display:flex; align-items:center; gap:3px; padding:1px 8px; cursor:pointer; white-space:nowrap; border-left:2px solid transparent; }
+.tv-row:hover { background:var(--surface2); }
+.tv-row.sel { background:var(--surface2); border-left-color:var(--accent); }
+.tv-name { font-weight:500; } .tv-dim { color:var(--text-dim); font-size:9px; }
+.tv-zone { color:var(--orange); font-size:9px; }
+/* props */
+#props-editor { flex-shrink:0; border-top:1px solid var(--border); padding:6px 8px; font-size:11px; max-height:200px; overflow-y:auto; background:var(--bg); }
+#props-editor.hidden { display:none; }
+#props-editor h4 { color:var(--accent); margin-bottom:4px; font-size:11px; }
+#props-editor label { display:flex; align-items:center; gap:4px; margin-bottom:3px; color:var(--text-dim); font-size:10px; }
+#props-editor label span { min-width:50px; }
+#props-editor input, #props-editor select { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:1px 4px; font-family:inherit; font-size:10px; border-radius:2px; outline:none; flex:1; min-width:0; }
+#props-editor input:focus { border-color:var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="tab-bar">
+    <button data-tab="console" class="active">Console</button>
+    <button data-tab="gui">GUI</button>
+    <button data-tab="inspect">Inspect</button>
+    <button data-tab="assembly">Assembly</button>
+    <button data-tab="replay">Replay</button>
+    <button data-tab="preview">Preview</button>
+    <div class="spacer"></div>
+    <div class="info" id="status-info"></div>
+  </div>
+  <div id="workspace">
+    <div id="canvas">
+      <div id="text-layer"></div>
+      <svg id="svg-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+      <svg id="overlay-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="side-panel">
+      <div class="panel-header">
+        <span id="side-title">Console</span>
+        <button id="btn-add-panel" style="display:none;">+Panel</button>
+        <button id="btn-add-zone" style="display:none;">+Zone</button>
+        <button id="btn-save">Save</button>
+        <button id="btn-load">Load</button>
+        <button id="btn-replay-all">Replay All</button>
+      </div>
+      <div id="side-content">
+        <div id="console-log"></div>
+      </div>
+      <div id="props-editor" class="hidden"></div>
+      <textarea id="asm-editor" spellcheck="false" style="display:none;flex:1;background:var(--bg);color:var(--text);border:none;outline:none;font:12px/1.4 Consolas,monospace;padding:6px 8px;resize:none;tab-size:2;"></textarea>
+      <div id="console-input-row"><span>&gt;</span><input id="console-input" autofocus spellcheck="false"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════════════════
+   AABB Pipeline — Meta-DSL with replay
+   Every GUI action = console command. Command log = source of truth.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+// ── Char size ──
+const _m = document.createElement('span');
+_m.style.cssText = 'position:absolute;left:-9999px;font:14px/1.25 Consolas,Monaco,"Courier New",monospace;white-space:pre;';
+_m.textContent = 'X'; document.body.appendChild(_m);
+const CW = _m.getBoundingClientRect().width, CH = _m.getBoundingClientRect().height;
+document.body.removeChild(_m);
+
+// ══════════════════════════════════════════════════════════════════════════
+//  DATA LAYER
+// ══════════════════════════════════════════════════════════════════════════
+const _data = {};
+const Data = {
+  set(path, value) {
+    const parts = path.split('.'); let obj = _data;
+    for (let i = 0; i < parts.length - 1; i++) { if (!(parts[i] in obj) || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {}; obj = obj[parts[i]]; }
+    obj[parts[parts.length - 1]] = value;
+  },
+  get(path) {
+    const parts = path.split('.'); let obj = _data;
+    for (const p of parts) { if (obj == null || typeof obj !== 'object') return undefined; obj = obj[p]; }
+    return obj;
+  },
+  dump() { return JSON.parse(JSON.stringify(_data)); },
+  load(key, fb) { try { const r = localStorage.getItem('aabb_' + key); if (r) return JSON.parse(r); } catch(_) {} return fb; },
+  save(key, v) { try { localStorage.setItem('aabb_' + key, JSON.stringify(v)); } catch(_) {} },
+  clear() { for (const k of Object.keys(_data)) delete _data[k]; }
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+//  PANEL MODEL
+// ══════════════════════════════════════════════════════════════════════════
+const panels = {};
+function createPanel(name, w, h) {
+  const buf = [];
+  for (let r = 0; r < h; r++) { const row = []; for (let c = 0; c < w; c++) row.push({ch:' ',cl:''}); buf.push(row); }
+  const p = { name, w, h, buf, scrollX:0, scrollY:0, zones:[], authoredZones:[], children:[], border:true, borderColor:'#3b4261', label:name, asm:{render:'',actions:{}} };
+  panels[name] = p; return p;
+}
+function panelWrite(panel, row, col, text, cl) {
+  if (typeof panel === 'string') panel = panels[panel]; if (!panel) return;
+  while (panel.buf.length <= row) { const r = []; for (let c = 0; c < panel.w; c++) r.push({ch:' ',cl:''}); panel.buf.push(r); }
+  const r = panel.buf[row];
+  for (let i = 0; i < text.length; i++) { const c = col+i; if (c<0) continue; while(r.length<=c) r.push({ch:' ',cl:''}); r[c]={ch:text[i],cl:cl||''}; }
+}
+function panelClear(panel) { if (typeof panel==='string') panel=panels[panel]; if(!panel) return; for(let r=0;r<panel.buf.length;r++) for(let c=0;c<panel.buf[r].length;c++) panel.buf[r][c]={ch:' ',cl:''}; }
+function zoneAdd(panel, y, x, w, h, type, action, data, style) { if(typeof panel==='string') panel=panels[panel]; if(!panel) return; panel.zones.push({x,y,w:w||1,h:h||1,type,action,data,style}); }
+function zoneClear(panel) { if(typeof panel==='string') panel=panels[panel]; if(!panel) return; panel.zones = panel.authoredZones.map(z=>({...z})); }
+function addChildPanel(parent, child, x, y, w, h) { if(typeof parent==='string') parent=panels[parent]; if(typeof child==='string') child=panels[child]; if(!parent||!child) return; parent.children.push({panel:child,x,y,w:w||child.w,h:h||child.h}); }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  GRID + RENDERER
+// ══════════════════════════════════════════════════════════════════════════
+let COLS=0, ROWS=0, G=[];
+const textLayer=document.getElementById('text-layer'), svgLayer=document.getElementById('svg-layer'), overlaySvg=document.getElementById('overlay-svg');
+
+function calcGrid() { const r=document.getElementById('canvas').getBoundingClientRect(); COLS=Math.floor(r.width/CW); ROWS=Math.floor(r.height/CH); }
+function initGrid() { G=[]; for(let r=0;r<ROWS;r++){const row=[];for(let c=0;c<COLS;c++)row.push({ch:' ',cl:''});G.push(row);} }
+function compositePanel(panel,gx,gy,vw,vh) {
+  const buf=panel.buf,sy=panel.scrollY,sx=panel.scrollX;
+  for(let r=0;r<vh;r++){const srcR=sy+r;if(srcR<0||srcR>=buf.length)continue;const srcRow=buf[srcR];for(let c=0;c<vw;c++){const srcC=sx+c;if(srcC<0||srcC>=srcRow.length)continue;const dx=gx+c,dy=gy+r;if(dx>=0&&dx<COLS&&dy>=0&&dy<ROWS)G[dy][dx]=srcRow[srcC];}}
+  for(const ch of panel.children) compositePanel(ch.panel,gx+ch.x,gy+ch.y,ch.w,ch.h);
+}
+function flushGrid() { let html=''; for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){const cell=G[r][c];if(cell.cl)html+=`<span class="${cell.cl}">${escH(cell.ch)}</span>`;else html+=escH(cell.ch);}html+='\n';} textLayer.innerHTML=html; }
+function escH(s) { return s==='<'?'&lt;':s==='>'?'&gt;':s==='&'?'&amp;':s; }
+function drawBorders() { let svg=''; function walk(p,gx,gy,vw,vh){if(p.border){const x=gx*CW,y=gy*CH,w=vw*CW,h=vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${p.borderColor}" stroke-width="1" rx="2"/>`;if(p.label)svg+=`<text x="${x+8}" y="${y-3}" fill="${p.borderColor}" font-size="10" font-family="Consolas,monospace">${escH(p.label)}</text>`;}for(const ch of p.children)walk(ch.panel,gx+ch.x,gy+ch.y,ch.w,ch.h);} if(rootPanel)walk(rootPanel,0,0,COLS,ROWS); svgLayer.setAttribute('width',COLS*CW);svgLayer.setAttribute('height',ROWS*CH);svgLayer.innerHTML=svg; }
+function drawOverlay() {
+  let svg='';
+  overlaySvg.setAttribute('width',COLS*CW);
+  overlaySvg.setAttribute('height',ROWS*CH);
+
+  // Selected panel highlight
+  if(selectedPanel&&selectedPanel!==rootPanel){
+    const pos=getPanelGlobalPos(selectedPanel);
+    if(pos){const x=pos.gx*CW,y=pos.gy*CH,w=pos.vw*CW,h=pos.vh*CH;
+      svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#e0af68" stroke-width="2" stroke-dasharray="4,2" rx="2"/>`;
+    }
+  }
+
+  // Zone overlays (all tabs except preview)
+  if(activeTab!=='preview'){
+    function walkZones(panel,gx,gy){
+      for(const z of panel.zones){
+        const zx=(gx+z.x)*CW,zy=(gy+z.y)*CH,zw=z.w*CW,zh=z.h*CH;
+        if(z.type==='button'){
+          svg+=`<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="rgba(255,158,100,0.06)" stroke="#ff9e6440" stroke-width="0.5" rx="1"/>`;
+        } else if(z.type==='input'){
+          svg+=`<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="rgba(122,162,247,0.06)" stroke="#7aa2f740" stroke-width="0.5" rx="1"/>`;
+        }
+        if(z.action) svg+=`<text x="${zx+1}" y="${zy-2}" fill="${z.type==='button'?'#ff9e64':'#7aa2f7'}" font-size="8" font-family="Consolas,monospace" opacity="0.7">${escH(z.action)}</text>`;
+      }
+      for(const ch of panel.children) walkZones(ch.panel,gx+ch.x,gy+ch.y);
+    }
+    if(rootPanel) walkZones(rootPanel,0,0);
+  }
+
+  // Focused input underline (preview)
+  if(activeTab==='preview'&&focusedZone&&focusedZone._panel){
+    const pos=getPanelGlobalPos(focusedZone._panel);
+    if(pos){const x=(pos.gx+focusedZone.x)*CW,y=(pos.gy+focusedZone.y+focusedZone.h)*CH-1,w=focusedZone.w*CW;
+      svg+=`<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y}" stroke="var(--accent)" stroke-width="1"/>`;
+    }
+  }
+
+  overlaySvg.innerHTML=svg;
+}
+function hitTestPanel(px,py,panel,gx,gy,vw,vh) { for(let i=panel.children.length-1;i>=0;i--){const ch=panel.children[i];const cx=gx+ch.x,cy=gy+ch.y;if(px>=cx&&px<cx+ch.w&&py>=cy&&py<cy+ch.h){const r=hitTestPanel(px,py,ch.panel,cx,cy,ch.w,ch.h);if(r)return r;}} const lx=px-gx+panel.scrollX,ly=py-gy+panel.scrollY;for(let i=panel.zones.length-1;i>=0;i--){const z=panel.zones[i];if(lx>=z.x&&lx<z.x+z.w&&ly>=z.y&&ly<z.y+z.h)return{panel,zone:z,localX:lx,localY:ly,gx,gy};} if(px>=gx&&px<gx+vw&&py>=gy&&py<gy+vh)return{panel,zone:null,localX:lx,localY:ly,gx,gy};return null; }
+function getPanelGlobalPos(panel) { if(panel===rootPanel)return{gx:0,gy:0,vw:COLS,vh:ROWS};function find(p,gx,gy){for(const ch of p.children){if(ch.panel===panel)return{gx:gx+ch.x,gy:gy+ch.y,vw:ch.w,vh:ch.h};const r=find(ch.panel,gx+ch.x,gy+ch.y);if(r)return r;}return null;}return rootPanel?find(rootPanel,0,0):null; }
+function findParentPanel(panel){function s(p){for(const ch of p.children){if(ch.panel===panel)return p;const r=s(ch.panel);if(r)return r;}return null;}return rootPanel?s(rootPanel):null;}
+function findParentEntry(panel){function s(p){for(const ch of p.children){if(ch.panel===panel)return ch;const r=s(ch.panel);if(r)return r;}return null;}return rootPanel?s(rootPanel):null;}
+
+let rootPanel = null;
+function draw() { if(!rootPanel)return; calcGrid(); initGrid(); compositePanel(rootPanel,0,0,COLS,ROWS); flushGrid(); drawBorders(); drawOverlay(); document.getElementById('status-info').textContent=`${COLS}x${ROWS} | ${Object.keys(panels).length}p | ${replay.length} steps`; }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ASSEMBLY INTERPRETER (same as aabb.html)
+// ══════════════════════════════════════════════════════════════════════════
+function asmTokenize(line){const tokens=[];let i=0;while(i<line.length){if(line[i]===' '||line[i]==='\t'||line[i]===','){i++;continue;}if(line[i]===';')break;if(line[i]==='"'||line[i]==="'"){const q=line[i];i++;let s='';while(i<line.length&&line[i]!==q){s+=line[i];i++;}if(i<line.length)i++;tokens.push(s);}else{let s='';while(i<line.length&&line[i]!==' '&&line[i]!=='\t'&&line[i]!==','){s+=line[i];i++;}tokens.push(s);}}return tokens;}
+function asmResolve(token,state){if(token==='_')return undefined;if(token==='true')return true;if(token==='false')return false;if(token.startsWith('@')){const parts=token.slice(1).split('.');let val=state[parts[0]];for(let i=1;i<parts.length;i++){if(val==null||typeof val!=='object')return undefined;val=val[parts[i]];}return val;}if(token.startsWith('+')){const n=parseInt(token.slice(1));return isNaN(n)?token:n;}if(token.startsWith('{')||token.startsWith('[')){try{return JSON.parse(token);}catch(_){}}const n=Number(token);if(!isNaN(n)&&token!=='')return n;return token;}
+function asmStore(state,ref,value){if(!ref||ref==='_')return;const name=ref.startsWith('@')?ref.slice(1):ref;const parts=name.split('.');if(parts.length===1){state[parts[0]]=value;return;}let obj=state[parts[0]];if(obj==null||typeof obj!=='object'){state[parts[0]]={};obj=state[parts[0]];}for(let i=1;i<parts.length-1;i++){if(obj[parts[i]]==null||typeof obj[parts[i]]!=='object')obj[parts[i]]={};obj=obj[parts[i]];}obj[parts[parts.length-1]]=value;}
+
+let selectedPanel=null, focusedZone=null, cursorPos=0, cursorVisible=true, cursorInterval=null;
+const _builtins={
+  write(a){panelWrite(a[0],+a[1],+a[2]||0,String(a[3]??''),a[4]||'');},
+  clear(a){panelClear(a[0]);},
+  zone(a){const z={x:+a[2],y:+a[1],w:+a[3]||1,h:+a[4]||1,type:a[5]||'button',action:a[6]||'',data:a[7],style:''};if(a[8])z.dataPath=a[8];if(z.type==='input'){z._value=Data.get(z.dataPath)||'';z._panel=panels[a[0]];}const p=typeof a[0]==='string'?panels[a[0]]:a[0];if(p)p.zones.push(z);},
+  zone_clear(a){zoneClear(a[0]);},
+  dget(a){return Data.get(a[0]);},dset(a){Data.set(a[0],a[1]);},dload(a){return Data.load(a[0],a[1]);},dsave(a){Data.save(a[0],a[1]);},
+  add(a){return(+a[0]||0)+(+a[1]||0);},len(a){return Array.isArray(a[0])?a[0].length:0;},
+  push(a){if(Array.isArray(a[0]))a[0].push(a[1]);},splice(a){if(Array.isArray(a[0]))a[0].splice(+a[1],+a[2]||1);},
+  get(a){return a[0]!=null?a[0][a[1]]:undefined;},set(a){if(a[0]!=null)a[0][a[1]]=a[2];},
+  concat(a){return String(a[0]??'')+String(a[1]??'');},
+  fmt(a){let s=String(a[0]||'');for(let i=1;i<a.length;i++)s=s.replace(`{${i-1}}`,String(a[i]??''));return s;},
+  status_color(a){const s=String(a[0]||'');return s==='ok'?'c-green':s==='fail'?'c-red':'c-yellow';},
+  log(a){clog(a.map(x=>String(x??'')).join(' '),'cmd-out');},
+  draw(){draw();},
+  async render(a){const p=typeof a[0]==='string'?panels[a[0]]:a[0];if(p&&p.asm&&p.asm.render)await execAsm(p.asm.render);draw();},
+  input_clear(a){Data.set(a[0],'');if(focusedZone&&focusedZone.dataPath===a[0]){focusedZone._value='';cursorPos=0;}},
+  async http(a){const method=String(a[0]||'GET').toUpperCase(),url=String(a[1]||''),timeout=+a[3]||10000,opts={method,signal:AbortSignal.timeout(timeout)};if(a[2]&&method!=='GET'){opts.headers={'Content-Type':'application/json'};opts.body=typeof a[2]==='string'?a[2]:JSON.stringify(a[2]);}try{const r=await fetch(url,opts);let body=null;try{body=await r.json();}catch(_){try{body=await r.text();}catch(_){}}return{ok:r.ok,status:r.status,body};}catch(e){return{ok:false,status:0,error:String(e)};}},
+  // ScrollView builtins
+  scrollview(a) { createScrollView(a[0], a[1], a[2], +a[3] || 20); },
+  scroll(a) { const sv = _scrollViews[a[0]]; if (sv) { sv.scrollY = Math.max(0, Math.min(sv.totalH - sv.viewportH, sv.scrollY + (+a[1]||0))); renderScrollView(a[0]); } },
+  scroll_to(a) { const sv = _scrollViews[a[0]]; if (sv) { if (a[1]==='end') sv.scrollY = Math.max(0, sv.totalH - sv.viewportH); else if (a[1]==='start') sv.scrollY = 0; else sv.scrollY = +a[1]||0; renderScrollView(a[0]); } },
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+//  CARD RENDERING MID-LAYER — char-grid templates + ScrollView
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Helpers ──
+function truncate(s, w) { s = String(s||''); return s.length <= w ? s : s.slice(0, w - 1) + '\u2026'; }
+function wordWrap(text, w) {
+  if (!text) return [''];
+  const lines = [];
+  for (const raw of String(text).split('\n')) {
+    if (raw.length <= w) { lines.push(raw); continue; }
+    let i = 0;
+    while (i < raw.length) { lines.push(raw.slice(i, i + w)); i += w; }
+  }
+  return lines;
+}
+
+// ── Field mapping (from gui_builder) ──
+const _fieldMap = {
+  title: { title:'title', name:'name', status:'status', type:'type', time:'time', children:'children', tags:'tags' },
+  text_area: { text:'answer', fallback:'question', think:'answerThink', textStatus:'answerStatus' },
+  tags: { tags:'tags' },
+  thread: { items:'thread', open:'threadOpen' },
+  reactions: { items:'reactions' },
+  list: {},
+  children: { items:'children', cardTemplate:'card_template' },
+  buttons: {},
+  form: { fields:'questionForm' },
+};
+
+function R(data, slotType, field, def) {
+  const map = _fieldMap[slotType];
+  const path = map && map[field];
+  return path && data ? (data[path] ?? def) : def;
+}
+
+// ── Char-grid card templates ──
+const _cardTemplates = {};  // name → { slots: [...] }
+
+const _charSlotRenderers = {
+  title(ctx, w) {
+    const icon = ctx.iconChar || '\u25cf';
+    const right = `  ${ctx.STATUS || ''}`;
+    const left = truncate(`${icon} ${ctx.title || ''}`, w - right.length);
+    return [{ text: left + right.padStart(w - left.length), color: 'c-accent' }];
+  },
+  text_area(ctx, w) {
+    const text = ctx.text || '';
+    if (!text) return [{ text: '  (empty)', color: 'c-dim' }];
+    return wordWrap(text, w - 2).map(l => ({ text: '  ' + l, color: '' }));
+  },
+  tags(ctx, w) {
+    if (!ctx.tagEntries || !ctx.tagEntries.length) return [];
+    const line = ctx.tagEntries.map(e => `${e.key}:${e.display}`).join('  ');
+    return [{ text: truncate(line, w), color: 'c-dim' }];
+  },
+  thread(ctx, w) {
+    if (!ctx.threadItems || !ctx.threadItems.length) return [];
+    const lines = [{ text: `\u25b8 ${ctx.threadLabel || 'thread'} (${ctx.threadCount})`, color: 'c-dim' }];
+    if (ctx.openCls) {
+      for (const t of ctx.threadItems) {
+        const role = t.name || 'system';
+        const cl = role === 'user' ? 'c-accent' : 'c-green';
+        const wrapped = wordWrap(t.content || '', w - 4);
+        lines.push({ text: `  ${t.initial} ${role}: ${wrapped[0] || ''}`, color: cl });
+        for (let i = 1; i < wrapped.length; i++) lines.push({ text: '    ' + wrapped[i], color: cl });
+      }
+    }
+    return lines;
+  },
+  reactions(ctx, w) {
+    if (!ctx.hasReactions) return [];
+    const items = ctx.reactionItems.map(r => (r.emoji||'\u2605') + (r.status==='pass'?'\u2713':'\u2717'));
+    return [{ text: items.join(' '), color: ctx.passClass === 'ok' ? 'c-green' : 'c-red' }];
+  },
+  buttons(ctx, w) {
+    if (!ctx.buttonItems || !ctx.buttonItems.length) return [];
+    return [{ text: ctx.buttonItems.map(b => `[${b}]`).join(' '), color: 'c-accent2' }];
+  },
+  children(ctx, w) {
+    const lines = [];
+    for (const child of (ctx.childItems || [])) {
+      const childLines = renderCardToLines(child, ctx._childTemplate || 'default', w - 2);
+      for (const l of childLines) lines.push({ text: '  ' + l.text, color: l.color });
+      lines.push({ text: '', color: '' }); // separator
+    }
+    return lines;
+  },
+  list(ctx, w) {
+    const lines = [];
+    for (const g of (ctx.listGroups || [])) {
+      lines.push({ text: `${g.NAME} (${g.count})`, color: 'c-accent2' });
+      for (const item of g.items) lines.push({ text: `  \u2022 ${truncate(item.text, w - 4)}`, color: '' });
+    }
+    return lines;
+  },
+  form(ctx, w) {
+    const lines = [];
+    for (const f of (ctx.formFields || [])) {
+      lines.push({ text: `${f.label}: ___`, color: 'c-accent3' });
+    }
+    return lines;
+  },
+};
+
+// ── Build slot context (ported from gui_builder) ──
+function buildSlotCtx(data, slot) {
+  const ctx = {};
+  const st = slot.type;
+  switch (st) {
+    case 'title': {
+      ctx.title = R(data,st,'title','') || R(data,st,'name','');
+      ctx.status = R(data,st,'status','pending'); ctx.STATUS = ctx.status.toUpperCase();
+      ctx.iconChar = '\u25cf'; ctx.time = R(data,st,'time','');
+      ctx.childCount = (R(data,st,'children',[])||[]).length;
+      ctx.hasTags = Object.keys(R(data,st,'tags',{})||{}).length > 0;
+      break;
+    }
+    case 'text_area': {
+      ctx.text = R(data,st,'text','') || R(data,st,'fallback','');
+      ctx.think = R(data,st,'think',''); ctx.thinkLen = ctx.think.length;
+      break;
+    }
+    case 'tags': {
+      const tags = R(data,st,'tags',{}) || {};
+      ctx.tagEntries = Object.entries(tags).filter(([k])=>!k.startsWith('_')).map(([k,v])=>{
+        const full = Array.isArray(v)?v.join(', '):String(v);
+        return {key:k, display:full.length>30?full.slice(0,30)+'\u2026':full, full};
+      });
+      break;
+    }
+    case 'thread': {
+      const thread = R(data,st,'items',[]) || [];
+      ctx.threadLabel = slot.label || 'thread';
+      ctx.threadCount = thread.length;
+      ctx.openCls = R(data,st,'open',false) ? 'open' : '';
+      ctx.threadItems = thread.map(t=>({initial:(t.name||t.role||'S')[0].toUpperCase(),name:t.name||t.role||'system',content:t.content||''}));
+      break;
+    }
+    case 'reactions': {
+      const reactions = R(data,st,'items',[]) || [];
+      ctx.reactionItems = reactions.map(r=>({status:r.status||'pending',emoji:r.emoji||'\u2605',worker:r.worker||''}));
+      ctx.hasReactions = reactions.length > 0;
+      ctx.passCount = reactions.filter(r=>r.status==='pass').length;
+      ctx.totalCount = reactions.length;
+      ctx.passClass = ctx.passCount === ctx.totalCount ? 'ok' : 'bad';
+      break;
+    }
+    case 'buttons': { ctx.buttonItems = slot.options?.items || []; break; }
+    case 'list': {
+      const groups = slot.options?.groups || ['entities','axioms','hypotheses'];
+      ctx.listGroups = groups.map(g=>{
+        const items = data[g+'_list']||[];
+        return {NAME:g.toUpperCase(),name:g,count:items.length,items:items.map(i=>({text:typeof i==='string'?i:(i.text||String(i)),groupCls:g}))};
+      }).filter(g=>g.items.length>0);
+      break;
+    }
+    case 'children': {
+      ctx._childTemplate = slot.options?.template;
+      ctx.childItems = (R(data,st,'items',[])||[]).map(c=>typeof c==='string'?{name:c,title:c,status:'pending'}:c);
+      break;
+    }
+    case 'form': {
+      ctx.formFields = (R(data,st,'fields',[])||slot.options?.fields||[]).map(q=>({label:q.question||q.label||'',type:q.type||'text'}));
+      break;
+    }
+  }
+  return ctx;
+}
+
+// ── Render card → line array ──
+function renderCardToLines(data, templateName, width) {
+  const tmpl = _cardTemplates[templateName];
+  if (!tmpl) {
+    // Fallback: simple title + text
+    const title = data.title || data.name || '';
+    const text = data.answer || data.content || '';
+    const lines = [{ text: truncate('\u25cf ' + title, width), color: 'c-accent' }];
+    for (const l of wordWrap(text, width - 2)) lines.push({ text: '  ' + l, color: '' });
+    return lines;
+  }
+  const allLines = [];
+  for (const slot of tmpl.slots) {
+    const renderer = _charSlotRenderers[slot.type];
+    if (!renderer) continue;
+    const ctx = buildSlotCtx(data, slot);
+    const slotLines = renderer(ctx, width);
+    allLines.push(...slotLines);
+  }
+  return allLines;
+}
+
+// ── ScrollView — virtual scroll over card array ──
+const _scrollViews = {};
+
+function createScrollView(panelName, templateName, dataPath, viewportH) {
+  _scrollViews[panelName] = { panelName, templateName, dataPath, viewportH, scrollY: 0, cardHeights: [], totalH: 0 };
+  // Recompute on creation
+  recomputeScrollView(panelName);
+  renderScrollView(panelName);
+}
+
+function recomputeScrollView(panelName) {
+  const sv = _scrollViews[panelName]; if (!sv) return;
+  const p = panels[sv.panelName]; if (!p) return;
+  const items = Data.get(sv.dataPath) || [];
+  sv.cardHeights = items.map(item => renderCardToLines(item, sv.templateName, p.w).length);
+  sv.totalH = sv.cardHeights.reduce((s, h) => s + h, 0);
+}
+
+function renderScrollView(panelName) {
+  const sv = _scrollViews[panelName]; if (!sv) return;
+  const p = panels[sv.panelName]; if (!p) return;
+  const items = Data.get(sv.dataPath) || [];
+  panelClear(p);
+  zoneClear(p);
+
+  // Find which cards overlap [scrollY .. scrollY + viewportH]
+  let y = 0;
+  let screenRow = 0;
+  for (let i = 0; i < items.length && screenRow < sv.viewportH; i++) {
+    const h = sv.cardHeights[i] || 1;
+    const cardTop = y;
+    const cardBot = y + h;
+
+    if (cardBot > sv.scrollY && cardTop < sv.scrollY + sv.viewportH) {
+      // This card is (partially) visible
+      const lines = renderCardToLines(items[i], sv.templateName, p.w);
+      const startLine = Math.max(0, sv.scrollY - cardTop);
+      const endLine = Math.min(h, sv.scrollY + sv.viewportH - cardTop);
+
+      for (let li = startLine; li < endLine && screenRow < sv.viewportH; li++) {
+        const line = lines[li];
+        if (line) panelWrite(p, screenRow, 0, truncate(line.text, p.w), line.color);
+        screenRow++;
+      }
+    }
+    y += h;
+  }
+
+  // Scrollbar indicator on right edge
+  if (sv.totalH > sv.viewportH) {
+    const barH = Math.max(1, Math.floor(sv.viewportH * sv.viewportH / sv.totalH));
+    const barY = Math.floor(sv.scrollY * sv.viewportH / sv.totalH);
+    for (let r = barY; r < barY + barH && r < sv.viewportH; r++) {
+      panelWrite(p, r, p.w - 1, '\u2588', 'c-dim');
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  HTML PANELS — DOM divs over char grid for smooth scroll
+// ══════════════════════════════════════════════════════════════════════════
+
+const _htmlPanels = {}; // name → { el, dataPath, template, panelName }
+
+function createHtmlPanel(panelName, templateName, dataPath) {
+  const p = panels[panelName];
+  if (!p) return;
+
+  // Remove existing if any
+  if (_htmlPanels[panelName]) _htmlPanels[panelName].el.remove();
+
+  const el = document.createElement('div');
+  el.className = 'html-panel';
+  el.id = 'hp-' + panelName;
+  document.getElementById('canvas').appendChild(el);
+
+  _htmlPanels[panelName] = { el, dataPath, template: templateName, panelName };
+  p._htmlPanel = true; // mark panel as html-rendered
+  positionHtmlPanel(panelName);
+  renderHtmlPanel(panelName);
+}
+
+function positionHtmlPanel(panelName) {
+  const hp = _htmlPanels[panelName]; if (!hp) return;
+  const pos = getPanelGlobalPos(panels[panelName]);
+  if (!pos) return;
+  hp.el.style.left = (pos.gx * CW) + 'px';
+  hp.el.style.top = (pos.gy * CH) + 'px';
+  hp.el.style.width = (pos.vw * CW) + 'px';
+  hp.el.style.height = (pos.vh * CH) + 'px';
+}
+
+function renderHtmlPanel(panelName) {
+  const hp = _htmlPanels[panelName]; if (!hp) return;
+  const items = Data.get(hp.dataPath) || [];
+  const tmpl = _cardTemplates[hp.template];
+
+  let html = '';
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    html += renderCardToHtml(item, hp.template, i);
+  }
+  hp.el.innerHTML = html;
+}
+
+function renderCardToHtml(data, templateName, index) {
+  const tmpl = _cardTemplates[templateName];
+  let html = `<div class="hp-card" data-idx="${index}">`;
+
+  if (!tmpl) {
+    // Fallback
+    const title = data.title || data.name || '';
+    const text = data.answer || data.content || '';
+    const status = data.status || '';
+    html += `<div class="hp-title"><span>${escH(title)}</span><span class="hp-status ${escH(status)}">${escH(status.toUpperCase())}</span></div>`;
+    if (text) html += `<div class="hp-text">${escH(text)}</div>`;
+    html += '</div>';
+    return html;
+  }
+
+  for (const slot of tmpl.slots) {
+    const ctx = buildSlotCtx(data, slot);
+    html += renderSlotToHtml(slot.type, ctx, data);
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderSlotToHtml(type, ctx, data) {
+  switch (type) {
+    case 'title': {
+      const status = ctx.status || 'pending';
+      return `<div class="hp-title"><span>\u25cf ${escH(ctx.title||'')}</span><span class="hp-status ${escH(status)}">${escH(ctx.STATUS||'')}</span></div>`;
+    }
+    case 'text_area': {
+      if (!ctx.text) return '';
+      return `<div class="hp-text">${escH(ctx.text)}</div>`;
+    }
+    case 'tags': {
+      if (!ctx.tagEntries?.length) return '';
+      return `<div class="hp-tags">${ctx.tagEntries.map(e=>`<span class="hp-tag">${escH(e.key)}: ${escH(e.display)}</span>`).join('')}</div>`;
+    }
+    case 'thread': {
+      if (!ctx.threadItems?.length) return '';
+      let h = `<div class="hp-thread">`;
+      for (const t of ctx.threadItems) {
+        const role = t.name || 'system';
+        h += `<div class="hp-msg ${escH(role)}"><span class="hp-role">${escH(t.initial)} ${escH(role)}:</span> ${escH(t.content)}</div>`;
+      }
+      return h + '</div>';
+    }
+    case 'reactions': {
+      if (!ctx.hasReactions) return '';
+      return `<div class="hp-reactions">${ctx.reactionItems.map(r=>`<span class="hp-reaction ${r.status}">${r.emoji}${r.status==='pass'?'\u2713':'\u2717'}</span>`).join('')}</div>`;
+    }
+    case 'buttons': {
+      if (!ctx.buttonItems?.length) return '';
+      return `<div style="margin:2px 0;">${ctx.buttonItems.map(b=>`<button style="font-size:10px;padding:1px 6px;margin-right:3px;">${escH(b)}</button>`).join('')}</div>`;
+    }
+    case 'children': {
+      if (!ctx.childItems?.length) return '';
+      let h = '<div style="padding-left:8px;border-left:1px solid var(--border);margin:2px 0;">';
+      for (let i = 0; i < ctx.childItems.length; i++) {
+        h += renderCardToHtml(ctx.childItems[i], ctx._childTemplate || 'default', i);
+      }
+      return h + '</div>';
+    }
+    case 'list': {
+      if (!ctx.listGroups?.length) return '';
+      let h = '';
+      for (const g of ctx.listGroups) {
+        h += `<div style="margin:2px 0;"><span style="color:var(--accent2);font-size:10px;">${escH(g.NAME)} (${g.count})</span>`;
+        for (const item of g.items) h += `<div style="font-size:10px;padding-left:8px;">\u2022 ${escH(item.text)}</div>`;
+        h += '</div>';
+      }
+      return h;
+    }
+    default: return '';
+  }
+}
+
+// Reposition all html panels on draw
+const _origDraw = draw;
+draw = function() {
+  _origDraw();
+  for (const name of Object.keys(_htmlPanels)) positionHtmlPanel(name);
+};
+
+// ── Assembly builtins for html panels ──
+_builtins.htmlpanel = function(a) { createHtmlPanel(a[0], a[1], a[2]); };
+_builtins.htmlpanel_render = function(a) { renderHtmlPanel(a[0]); };
+_builtins.htmlpanel_scroll = function(a) {
+  const hp = _htmlPanels[a[0]]; if (!hp) return;
+  if (a[1] === 'end') hp.el.scrollTop = hp.el.scrollHeight;
+  else if (a[1] === 'start') hp.el.scrollTop = 0;
+  else hp.el.scrollTop += (+a[1] || 0);
+};
+
+// ── Register default card templates ──
+_cardTemplates['message'] = {
+  slots: [
+    { type: 'title', label: 'Author' },
+    { type: 'text_area', label: 'Content' },
+  ]
+};
+
+_cardTemplates['node'] = {
+  slots: [
+    { type: 'title', label: 'Title' },
+    { type: 'tags', label: 'Tags' },
+    { type: 'text_area', label: 'Answer' },
+    { type: 'reactions', label: 'Reactions' },
+    { type: 'thread', label: 'Thread' },
+    { type: 'children', label: 'Children', options: { template: 'node' } },
+  ]
+};
+
+async function execAsm(code, extraState) {
+  const state = { ...extraState };
+  const lines = code.split('\n');
+  // Pre-scan labels: :name → line index
+  const labels = {};
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (l.startsWith(':')) labels[l] = i;
+  }
+  let ip = 0;
+  const max = lines.length * 50;
+  let steps = 0;
+  while (ip < lines.length && steps < max) {
+    steps++;
+    const line = lines[ip].trim();
+    if (!line || line.startsWith(';') || line.startsWith(':')) { ip++; continue; }
+    const tokens = asmTokenize(line);
+    if (!tokens.length) { ip++; continue; }
+    const op = tokens[0];
+
+    if (op === 'MOV') {
+      asmStore(state, tokens[1], asmResolve(tokens[2], state));
+      ip++;
+    } else if (op === 'CALL') {
+      const dst = tokens[1], fn = tokens[2], args = tokens.slice(3).map(t => asmResolve(t, state));
+      const b = _builtins[fn];
+      if (b) { let r = b(args); if (r instanceof Promise) r = await r; if (dst !== '_') asmStore(state, dst, r); }
+      ip++;
+    } else if (op === 'EACH') {
+      const itemRef = tokens[1], list = asmResolve(tokens[2], state), bodyLen = asmResolve(tokens[3], state);
+      if (Array.isArray(list) && bodyLen > 0) {
+        const bodyLines = lines.slice(ip + 1, ip + 1 + bodyLen);
+        for (let idx = 0; idx < list.length; idx++) {
+          asmStore(state, itemRef, list[idx]);
+          state['each_idx'] = idx;
+          await execAsm(bodyLines.join('\n'), state);
+          list[idx] = asmResolve(itemRef, state);
+        }
+      }
+      ip += 1 + (bodyLen || 0);
+    } else if (op === 'CMP') {
+      const cmpOp = tokens[2], a = asmResolve(tokens[3], state), b = asmResolve(tokens[4], state);
+      let r = false;
+      if (cmpOp === 'eq') r = a == b; else if (cmpOp === 'ne') r = a != b;
+      else if (cmpOp === 'gt') r = a > b; else if (cmpOp === 'lt') r = a < b;
+      asmStore(state, tokens[1], r);
+      ip++;
+    } else if (op === 'JIF') {
+      const cond = asmResolve(tokens[1], state);
+      const target = tokens[2];
+      if (cond) {
+        if (target.startsWith(':') && labels[target] !== undefined) {
+          ip = labels[target]; // jump to label line (will be skipped as :label on next iter)
+        } else {
+          ip += (typeof asmResolve(target, state) === 'number' ? asmResolve(target, state) : 1);
+        }
+      } else { ip++; }
+    } else { ip++; }
+  }
+  return state;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  COMMAND EXECUTOR + REPLAY
+// ══════════════════════════════════════════════════════════════════════════
+const replay = [];
+let _ctx = null; // currently selected panel name
+
+function exec(cmdStr, silent) {
+  const raw = typeof cmdStr === 'string' ? cmdStr.trim() : '';
+  if (!raw) return;
+
+  // Multi-line: split and handle block commands (action ... end)
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith(';'));
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const tokens = asmTokenize(line);
+
+    // Block command: "action <name>" ... "end"
+    if (tokens[0] === 'action' && tokens.length >= 2 && !line.includes('{')) {
+      const name = tokens[1];
+      const bodyLines = [];
+      i++;
+      while (i < lines.length && lines[i] !== 'end') { bodyLines.push(lines[i]); i++; }
+      if (i < lines.length) i++; // skip 'end'
+      const asm = bodyLines.join('\n');
+      const fullRaw = `action ${name}\n${bodyLines.join('\n')}\nend`;
+      const cmd = { cmd:'action', name, asm, _ctx: _ctx || 'screen' };
+      if (!['get','ls','find'].includes(cmd.cmd)) {
+        replay.push({ _raw: fullRaw, ...cmd, _ts: Date.now() });
+        applyCommand(cmd);
+      }
+      continue;
+    }
+
+    // Block command: "asm" ... "end"
+    if (tokens[0] === 'asm' && tokens.length === 1) {
+      const bodyLines = [];
+      i++;
+      while (i < lines.length && lines[i] !== 'end') { bodyLines.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      const code = bodyLines.join('\n');
+      const fullRaw = `asm\n${bodyLines.join('\n')}\nend`;
+      const cmd = { cmd:'asm', code, _ctx: _ctx || 'screen' };
+      replay.push({ _raw: fullRaw, ...cmd, _ts: Date.now() });
+      execAsm(code);
+      continue;
+    }
+
+    // Single-line command
+    const cmd = parseCmd(line);
+    if (!cmd) { i++; continue; }
+    if (['get','ls','find'].includes(cmd.cmd)) { runIntrospect(cmd); i++; continue; }
+    replay.push({ _raw: line, ...cmd, _ts: Date.now() });
+    applyCommand(cmd);
+    i++;
+  }
+  if (!silent) { draw(); updateReplayView(); }
+}
+
+function parseCmd(line) {
+  line = line.trim();
+  if (!line || line.startsWith(';')) return null;
+  const tokens = asmTokenize(line);
+  if (!tokens.length) return null;
+  const cmd = tokens[0];
+  const ctx = _ctx || 'screen';
+
+  if (cmd === 'panel') return { cmd:'panel', name:tokens[1], w:+tokens[2]||20, h:+tokens[3]||10, _ctx:ctx };
+  if (cmd === 'move') return { cmd:'move', x:+tokens[1]||0, y:+tokens[2]||0, _ctx:ctx };
+  if (cmd === 'resize') return { cmd:'resize', w:+tokens[1]||10, h:+tokens[2]||10, _ctx:ctx };
+  if (cmd === 'set') return { cmd:'set', prop:tokens[1], value: tokens[2]==='true'?true:tokens[2]==='false'?false:tokens[2], _ctx:ctx };
+  if (cmd === 'del') return { cmd:'del', _ctx:ctx };
+  if (cmd === 'write') return { cmd:'write', row:+tokens[1]||0, col:+tokens[2]||0, text:tokens[3]||'', color:tokens[4]||'', _ctx:ctx };
+  if (cmd === 'clear') return { cmd:'clear', _ctx:ctx };
+  if (cmd === 'zone') {
+    const z = { cmd:'zone', x:+tokens[1]||0, y:+tokens[2]||0, w:+tokens[3]||1, h:+tokens[4]||1, type:tokens[5]||'button', _ctx:ctx };
+    for (let i=6;i<tokens.length;i++) { const t=tokens[i]; const eq=t.indexOf('='); if(eq>0){const k=t.slice(0,eq),v=t.slice(eq+1);if(k==='action')z.action=v;else if(k==='dp')z.dataPath=v;} }
+    return z;
+  }
+  if (cmd === 'zone_del') return { cmd:'zone_del', index:+tokens[1]||0, _ctx:ctx };
+  if (cmd === 'action') {
+    // action name { ... } — collect block
+    const name = tokens[1];
+    let asm = tokens.slice(2).join(' ');
+    if (asm.startsWith('{')) asm = asm.slice(1); if (asm.endsWith('}')) asm = asm.slice(0,-1);
+    return { cmd:'action', name, asm: asm.trim(), _ctx:ctx };
+  }
+  if (cmd === 'action_del') return { cmd:'action_del', name:tokens[1], _ctx:ctx };
+  if (cmd === 'data') {
+    // Take raw text after "data <path> " to preserve JSON
+    const pathToken = tokens[1];
+    const pathEnd = line.indexOf(pathToken) + pathToken.length;
+    let rawVal = line.slice(pathEnd).trim();
+    let v = rawVal;
+    try { v = JSON.parse(rawVal); } catch(_) {}
+    return { cmd:'data', path:pathToken, value:v };
+  }
+  if (cmd === 'load') return { cmd:'load', path:tokens[1], key:tokens[2], default:tokens[3] };
+  if (cmd === 'render') return { cmd:'render', _ctx:ctx };
+  // run <action_name> [data] — execute panel action (goes through replay)
+  if (cmd === 'run') {
+    let data = tokens[2];
+    if (data !== undefined) { try { data = JSON.parse(data); } catch(_) {} }
+    return { cmd:'run', action:tokens[1], data, _ctx:ctx };
+  }
+  // extract <new_name> [zones=0,2,3] [rows=4-8] — move part of panel to new child
+  if (cmd === 'extract') {
+    const c = { cmd:'extract', newName:tokens[1], _ctx:ctx };
+    for (let i=2; i<tokens.length; i++) {
+      const t=tokens[i], eq=t.indexOf('=');
+      if (eq>0) {
+        const k=t.slice(0,eq), v=t.slice(eq+1);
+        if (k==='zones') c.zoneIndices = v.split(',').map(Number);
+        else if (k==='rows') { const [a,b]=v.split('-').map(Number); c.rowStart=a; c.rowEnd=b; }
+        else if (k==='x') c.x = +v;
+        else if (k==='y') c.y = +v;
+        else if (k==='w') c.w = +v;
+        else if (k==='h') c.h = +v;
+      }
+    }
+    return c;
+  }
+  // reparent <target_parent> — move selected panel under target
+  if (cmd === 'reparent') return { cmd:'reparent', target:tokens[1], _ctx:ctx };
+  // reorder <index> — move selected panel to index in parent's children
+  if (cmd === 'reorder') return { cmd:'reorder', index:+tokens[1]||0, _ctx:ctx };
+  // rename <new_name> — rename panel, update all refs
+  if (cmd === 'rename') return { cmd:'rename', newName:tokens[1], _ctx:ctx };
+  if (cmd === 'select') { _ctx = tokens[1]||'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return { cmd:'select', target:_ctx }; }
+  if (cmd === 'up') { const p=_ctx?findParentPanel(panels[_ctx]):null; _ctx=p?p.name:'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return null; }
+  if (cmd === 'root') { _ctx='screen'; clog(`\u2192 screen`, 'cmd-ok'); return null; }
+  if (cmd === 'get' || cmd === 'ls') return { cmd:'get', what:tokens[1], _ctx:ctx };
+  if (cmd === 'find') return { cmd:'find', pattern:tokens[1]||'*', _ctx:ctx };
+  clog(`unknown: ${cmd}`, 'cmd-err');
+  return null;
+}
+
+async function applyCommand(cmd) {
+  const ctx = cmd._ctx || 'screen';
+  switch(cmd.cmd) {
+    case 'panel': {
+      const p = createPanel(cmd.name, cmd.w, cmd.h);
+      addChildPanel(ctx, p, 0, 0, cmd.w, cmd.h);
+      _ctx = cmd.name;
+      clog(`panel ${cmd.name} ${cmd.w}x${cmd.h}`, 'cmd-ok');
+      break;
+    }
+    case 'move': {
+      const entry = findParentEntry(panels[ctx]);
+      if (entry) { entry.x = cmd.x; entry.y = cmd.y; clog(`move ${ctx} → ${cmd.x},${cmd.y}`, 'cmd-ok'); }
+      break;
+    }
+    case 'resize': {
+      const p = panels[ctx]; if (p) { p.w = cmd.w; p.h = cmd.h; const e=findParentEntry(p); if(e){e.w=cmd.w;e.h=cmd.h;} clog(`resize ${ctx} → ${cmd.w}x${cmd.h}`, 'cmd-ok'); }
+      break;
+    }
+    case 'set': {
+      const p = panels[ctx]; if (!p) break;
+      if (cmd.prop==='label') p.label=cmd.value;
+      else if (cmd.prop==='border') p.border=!!cmd.value;
+      else if (cmd.prop==='borderColor') p.borderColor=cmd.value;
+      clog(`set ${cmd.prop}=${cmd.value}`, 'cmd-ok');
+      break;
+    }
+    case 'del': {
+      const parent = findParentPanel(panels[ctx]);
+      if (parent) { parent.children = parent.children.filter(ch=>ch.panel.name!==ctx); delete panels[ctx]; _ctx=parent.name; clog(`deleted ${ctx}`, 'cmd-ok'); }
+      break;
+    }
+    case 'write': panelWrite(ctx, cmd.row, cmd.col, cmd.text, cmd.color); break;
+    case 'clear': panelClear(ctx); break;
+    case 'zone': {
+      const z = { x:cmd.x, y:cmd.y, w:cmd.w, h:cmd.h, type:cmd.type, action:cmd.action||'', style:'', _authored:true };
+      if (cmd.dataPath) z.dataPath = cmd.dataPath;
+      const p=panels[ctx]; if(p){p.authoredZones.push(z);p.zones.push(z);} clog(`zone ${cmd.type} [${cmd.x},${cmd.y}]`, 'cmd-ok');
+      break;
+    }
+    case 'zone_del': {
+      const p=panels[ctx]; if(p&&cmd.index<p.authoredZones.length){p.authoredZones.splice(cmd.index,1);p.zones=p.authoredZones.map(z=>({...z}));} break;
+    }
+    case 'action': {
+      const p=panels[ctx]; if(p){if(!p.asm)p.asm={render:'',actions:{}};if(cmd.name==='render')p.asm.render=cmd.asm;else p.asm.actions[cmd.name]=cmd.asm;clog(`action ${cmd.name} (${cmd.asm.split('\n').length} lines)`, 'cmd-ok');} break;
+    }
+    case 'action_del': { const p=panels[ctx]; if(p&&p.asm)delete p.asm.actions[cmd.name]; break; }
+    case 'select': _ctx = cmd.target; break;
+    case 'data': Data.set(cmd.path, cmd.value); clog(`data ${cmd.path}`, 'cmd-ok'); break;
+    case 'load': Data.set(cmd.path, Data.load(cmd.key, cmd.default)); clog(`load ${cmd.path}`, 'cmd-ok'); break;
+    case 'render': { const p=panels[ctx]; if(p&&p.asm&&p.asm.render) await execAsm(p.asm.render); break; }
+    case 'run': {
+      const p=panels[ctx];
+      if(p&&p.asm&&p.asm.actions&&p.asm.actions[cmd.action]){
+        clog(`\u25b6 ${cmd.action}${cmd.data!==undefined?' ['+JSON.stringify(cmd.data)+']':''}`, 'cmd-in');
+        await execAsm(p.asm.actions[cmd.action], {action_data:cmd.data, panel_name:ctx});
+        draw();
+        clog(`\u2713 ${cmd.action}`, 'cmd-ok');
+      } else { clog(`no action: ${cmd.action}`, 'cmd-err'); }
+      break;
+    }
+    case 'extract': {
+      // Extract: move content from selected panel into new child panel
+      // Partial: zones=0,2 rows=4-8 — only specific zones/rows
+      // Full: no params — move everything
+      const p = panels[ctx]; if (!p) break;
+      const partial = cmd.zoneIndices || cmd.rowStart !== undefined;
+      const nw = cmd.w || p.w, nh = cmd.h || (cmd.rowEnd !== undefined ? cmd.rowEnd - (cmd.rowStart||0) + 1 : p.h);
+      const nx = cmd.x || 0, ny = cmd.y || (cmd.rowStart || 0);
+      const newP = createPanel(cmd.newName, nw, nh);
+
+      if (partial) {
+        // Copy specific rows
+        const rs = cmd.rowStart || 0, re = cmd.rowEnd !== undefined ? cmd.rowEnd : p.buf.length - 1;
+        for (let r = rs; r <= re && r < p.buf.length; r++) {
+          const dr = r - rs;
+          if (dr < newP.buf.length) newP.buf[dr] = p.buf[r].map(c => ({...c}));
+        }
+        // Move specific zones (by index)
+        if (cmd.zoneIndices) {
+          const moved = cmd.zoneIndices.map(i => p.authoredZones[i]).filter(Boolean);
+          for (const z of moved) {
+            const copy = {...z, y: z.y - rs};
+            newP.authoredZones.push(copy); newP.zones.push(copy);
+          }
+          // Remove from original (reverse order)
+          for (const i of [...cmd.zoneIndices].sort((a,b)=>b-a)) {
+            p.authoredZones.splice(i, 1);
+          }
+          p.zones = p.authoredZones.map(z => ({...z}));
+        }
+        // Move related actions
+        const movedActions = new Set(newP.authoredZones.map(z=>z.action).filter(Boolean));
+        for (const a of movedActions) {
+          if (p.asm?.actions?.[a]) { newP.asm.actions[a] = p.asm.actions[a]; delete p.asm.actions[a]; }
+        }
+      } else {
+        // Full extract
+        newP.buf = p.buf.map(r => r.map(c => ({...c})));
+        newP.authoredZones = [...p.authoredZones]; newP.zones = [...p.zones];
+        newP.asm = { render: p.asm?.render || '', actions: {...(p.asm?.actions||{})} };
+        panelClear(p); p.authoredZones=[]; p.zones=[]; p.asm={render:'',actions:{}};
+      }
+
+      addChildPanel(p, newP, nx, ny, nw, nh);
+      // Rewrite refs
+      const re = new RegExp('"'+ctx.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'"','g');
+      if (newP.asm.render) newP.asm.render = newP.asm.render.replace(re, '"'+cmd.newName+'"');
+      for (const [k,v] of Object.entries(newP.asm.actions)) newP.asm.actions[k] = v.replace(re, '"'+cmd.newName+'"');
+      _ctx = cmd.newName;
+      clog(`extracted ${ctx} → ${cmd.newName}${partial ? ' (partial)' : ''}`, 'cmd-ok');
+      break;
+    }
+    case 'reparent': {
+      // Move selected panel under target parent
+      const p = panels[ctx]; const target = panels[cmd.target];
+      if (!p || !target || p === rootPanel) break;
+      const oldParent = findParentPanel(p);
+      if (oldParent) { const entry = findParentEntry(p); oldParent.children = oldParent.children.filter(ch => ch.panel !== p); addChildPanel(target, p, entry?.x||0, entry?.y||0, p.w, p.h); }
+      clog(`reparent ${ctx} → ${cmd.target}`, 'cmd-ok');
+      break;
+    }
+    case 'reorder': {
+      // Move selected panel to index in parent's children
+      const p = panels[ctx]; if (!p) break;
+      const parent = findParentPanel(p);
+      if (parent) {
+        const idx = parent.children.findIndex(ch => ch.panel === p);
+        if (idx >= 0) {
+          const [entry] = parent.children.splice(idx, 1);
+          const newIdx = Math.min(Math.max(0, cmd.index), parent.children.length);
+          parent.children.splice(newIdx, 0, entry);
+          clog(`reorder ${ctx} → index ${newIdx}`, 'cmd-ok');
+        }
+      }
+      break;
+    }
+    case 'rename': {
+      // Rename panel, update all assembly refs recursively
+      const p = panels[ctx]; if (!p || p === rootPanel) break;
+      const oldName = p.name;
+      delete panels[oldName];
+      p.name = cmd.newName; p.label = p.label === oldName ? cmd.newName : p.label;
+      panels[cmd.newName] = p;
+      // Rewrite refs in all panels' assembly
+      const re = new RegExp('"' + oldName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '"', 'g');
+      const replacement = '"' + cmd.newName + '"';
+      for (const panel of Object.values(panels)) {
+        if (panel.asm) {
+          if (panel.asm.render) panel.asm.render = panel.asm.render.replace(re, replacement);
+          for (const [k,v] of Object.entries(panel.asm.actions||{})) panel.asm.actions[k] = v.replace(re, replacement);
+        }
+        for (const z of panel.zones) { if (z.action) z.action = z.action.replace(oldName, cmd.newName); }
+        for (const z of panel.authoredZones) { if (z.action) z.action = z.action.replace(oldName, cmd.newName); }
+      }
+      _ctx = cmd.newName;
+      clog(`rename ${oldName} → ${cmd.newName}`, 'cmd-ok');
+      break;
+    }
+  }
+}
+
+// ── Introspection (not recorded) ──
+function runIntrospect(cmd) {
+  const ctx = cmd._ctx || 'screen';
+  const p = panels[ctx];
+  if (cmd.cmd === 'get' || cmd.cmd === 'ls') {
+    if (!cmd.what) {
+      if (!p) { clog('no panel: ' + ctx, 'cmd-err'); return; }
+      clog(`${p.name} ${p.w}x${p.h} border=${p.border} label=${p.label}`, 'cmd-out');
+      clog(`  children: ${p.children.map(c=>c.panel.name).join(', ')||'(none)'}`, 'cmd-out');
+      clog(`  zones: ${p.zones.length} (${p.authoredZones.length} authored)`, 'cmd-out');
+      clog(`  actions: ${p.asm?Object.keys(p.asm.actions).join(', '):'(none)'}`, 'cmd-out');
+    } else if (cmd.what === 'zones') {
+      if (!p) return;
+      for (let i=0;i<p.zones.length;i++) { const z=p.zones[i]; clog(`  [${i}] ${z.type} ${z.x},${z.y} ${z.w}x${z.h} → ${z.action||'-'} ${z._authored?'●':'◦'}`, 'cmd-out'); }
+    } else if (cmd.what === 'actions') {
+      if (!p||!p.asm) return;
+      if (p.asm.render) clog('  render (' + p.asm.render.split('\n').length + ' lines)', 'cmd-out');
+      for (const [n,code] of Object.entries(p.asm.actions||{})) clog(`  ${n} (${code.split('\n').length} lines)`, 'cmd-out');
+    } else if (cmd.what && cmd.what.startsWith('data')) {
+      const pattern = cmd.what.replace('data ','').replace('data','');
+      const d = Data.dump();
+      const flat = flattenObj(d);
+      for (const [k,v] of Object.entries(flat)) {
+        if (!pattern || k.includes(pattern)) clog(`  ${k} = ${JSON.stringify(v)}`, 'cmd-out');
+      }
+    } else if (cmd.what && cmd.what.startsWith('asm')) {
+      const actionName = cmd.what.replace('asm ','').replace('asm','').trim();
+      if (!p||!p.asm) return;
+      const code = actionName ? p.asm.actions[actionName] : p.asm.render;
+      if (code) clog(code, 'cmd-out'); else clog('(empty)', 'cmd-dim');
+    }
+  } else if (cmd.cmd === 'find') {
+    const pat = cmd.pattern.toLowerCase();
+    for (const [name, panel] of Object.entries(panels)) {
+      if (name === 'screen') continue;
+      if (name.toLowerCase().includes(pat) || (panel.label||'').toLowerCase().includes(pat)) clog(`  panel: ${name}`, 'cmd-out');
+      for (const z of panel.zones) { if ((z.action||'').toLowerCase().includes(pat) || z.type.includes(pat)) clog(`  zone: ${name}/${z.type} → ${z.action}`, 'cmd-out'); }
+    }
+  }
+}
+
+function flattenObj(obj, prefix='') {
+  const result = {};
+  for (const [k,v] of Object.entries(obj)) {
+    const key = prefix ? prefix+'.'+k : k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(result, flattenObj(v, key));
+    else result[key] = v;
+  }
+  return result;
+}
+
+// ── Replay ──
+async function replayAll() {
+  const saved = [...replay];
+  // Reset
+  for (const k of Object.keys(panels)) delete panels[k];
+  Data.clear(); _ctx = null;
+  rootPanel = createPanel('screen', COLS, ROWS); rootPanel.border = false;
+  replay.length = 0;
+  clog('── replay start ──', 'cmd-ok');
+  for (const cmd of saved) {
+    replay.push(cmd);
+    await applyCommand(cmd);
+  }
+  draw();
+  updateReplayView();
+  clog(`── replay done (${saved.length} steps) ──`, 'cmd-ok');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  TABS + UI
+// ══════════════════════════════════════════════════════════════════════════
+let activeTab = 'console';
+const tabBtns = document.querySelectorAll('#tab-bar button[data-tab]');
+const sidePanel = document.getElementById('side-panel');
+const sideContent = document.getElementById('side-content');
+const sideTitle = document.getElementById('side-title');
+const consoleLog = document.getElementById('console-log');
+const consoleInput = document.getElementById('console-input');
+const propsEditor = document.getElementById('props-editor');
+const consoleInputRow = document.getElementById('console-input-row');
+
+function clog(msg, cls) { const d=document.createElement('div'); d.className=cls||''; d.textContent=msg; consoleLog.appendChild(d); consoleLog.scrollTop=consoleLog.scrollHeight; }
+
+const asmEditor = document.getElementById('asm-editor');
+let asmEditPanel = null, asmEditAction = null;
+
+function setTab(name) {
+  activeTab = name;
+  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  sidePanel.classList.toggle('hidden', name === 'preview');
+  consoleLog.style.display = (name==='console') ? 'block' : 'none';
+  consoleInputRow.style.display = (name==='console') ? 'flex' : 'none';
+  propsEditor.classList.toggle('hidden', name !== 'gui');
+  asmEditor.style.display = (name==='assembly') ? 'block' : 'none';
+  document.getElementById('btn-add-panel').style.display = name==='gui' ? '' : 'none';
+  document.getElementById('btn-add-zone').style.display = name==='gui' ? '' : 'none';
+  sideTitle.textContent = {console:'Console',gui:'GUI',inspect:'Inspect',assembly:'Assembly',replay:'Replay',preview:''}[name]||'';
+  if (name === 'gui') renderTree();
+  if (name === 'inspect') renderInspect();
+  if (name === 'assembly') { asmEditAction = null; showAsmTab(); }
+  if (name === 'replay') updateReplayView();
+  if (name !== 'preview') { focusedZone=null; stopCursorBlink(); }
+  drawOverlay();
+}
+tabBtns.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+// ── Console input ──
+const _history = [];
+let _histIdx = -1;
+consoleInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const line = consoleInput.value.trim();
+    if (!line) return;
+    _history.push(line); _histIdx = _history.length;
+    clog('> ' + line, 'cmd-in');
+    exec(line);
+    consoleInput.value = '';
+  } else if (e.key === 'ArrowUp') {
+    if (_histIdx > 0) { _histIdx--; consoleInput.value = _history[_histIdx]; }
+  } else if (e.key === 'ArrowDown') {
+    if (_histIdx < _history.length - 1) { _histIdx++; consoleInput.value = _history[_histIdx]; } else { _histIdx = _history.length; consoleInput.value = ''; }
+  }
+});
+
+// ── GUI tab ──
+let _panelCounter = 0;
+
+function renderTree() {
+  if (!rootPanel) { sideContent.innerHTML = ''; return; }
+  let html = '';
+  function walk(panel, depth) {
+    const sel = selectedPanel === panel ? ' sel' : '';
+    html += `<div class="tv-row${sel}" data-panel="${panel.name}" style="padding-left:${depth*12+4}px">`;
+    html += `<span class="tv-name">${escH(panel.name)}</span>`;
+    html += `<span class="tv-dim">${panel.w}\u00d7${panel.h}</span>`;
+    if (panel.zones.length) html += `<span class="tv-zone">${panel.zones.length}z</span>`;
+    html += `</div>`;
+    // Show zones under selected panel
+    if (panel === selectedPanel) {
+      for (let i = 0; i < panel.zones.length; i++) {
+        const z = panel.zones[i];
+        const icon = z.type === 'button' ? '\u25a3' : z.type === 'input' ? '\u25a1' : '\u25c7';
+        html += `<div class="tv-row" style="padding-left:${(depth+1)*12+4}px;color:var(--orange);">`;
+        html += `${icon} ${z.type} [${z.x},${z.y} ${z.w}\u00d7${z.h}]`;
+        if (z.action) html += ` \u2192 ${escH(z.action)}`;
+        html += `</div>`;
+      }
+    }
+    for (const ch of panel.children) walk(ch.panel, depth + 1);
+  }
+  walk(rootPanel, 0);
+  sideContent.innerHTML = html;
+  sideContent.querySelectorAll('.tv-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const pname = row.dataset.panel;
+      if (pname) {
+        selectedPanel = panels[pname] || null;
+        _ctx = selectedPanel ? selectedPanel.name : 'screen';
+        renderTree();
+        showPanelProps();
+        drawOverlay();
+      }
+    });
+  });
+}
+
+function showPanelProps() {
+  const p = selectedPanel;
+  if (!p || p === rootPanel) { propsEditor.classList.add('hidden'); return; }
+  propsEditor.classList.remove('hidden');
+  const entry = findParentEntry(p);
+  propsEditor.innerHTML = `
+    <h4>${escH(p.name)}</h4>
+    <label><span>label</span><input data-gp="label" value="${escH(p.label||'')}"></label>
+    <label><span>w</span><input type="number" data-gp="w" value="${p.w}" min="2"></label>
+    <label><span>h</span><input type="number" data-gp="h" value="${p.h}" min="1"></label>
+    ${entry ? `<label><span>x</span><input type="number" data-gp="x" value="${entry.x}" min="0"></label>
+    <label><span>y</span><input type="number" data-gp="y" value="${entry.y}" min="0"></label>` : ''}
+    <label><span>border</span><input type="checkbox" data-gp="border" ${p.border?'checked':''}></label>
+    <label><span>borderColor</span><input data-gp="borderColor" value="${escH(p.borderColor||'#3b4261')}"></label>
+    <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">
+      <button data-gui-action="extract" style="font-size:9px;padding:1px 6px;">Extract</button>
+      <button data-gui-action="reorder-up" style="font-size:9px;padding:1px 6px;">▲</button>
+      <button data-gui-action="reorder-down" style="font-size:9px;padding:1px 6px;">▼</button>
+      <button data-gui-action="del" style="font-size:9px;padding:1px 6px;color:var(--red);">Del</button>
+    </div>
+  `;
+  propsEditor.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const prop = inp.dataset.gp;
+      if (prop === 'w' || prop === 'h') {
+        exec(`resize ${prop==='w' ? inp.value+' '+p.h : p.w+' '+inp.value}`);
+      } else if (prop === 'x' || prop === 'y') {
+        const e = findParentEntry(p);
+        if (e) exec(`move ${prop==='x' ? inp.value+' '+e.y : e.x+' '+inp.value}`);
+      } else if (prop === 'border') {
+        exec(`set border ${inp.checked}`);
+      } else {
+        exec(`set ${prop} ${inp.value}`);
+      }
+      renderTree();
+    });
+  });
+  propsEditor.querySelectorAll('[data-gui-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const act = btn.dataset.guiAction;
+      if (act === 'extract') {
+        const name = p.name + '_inner';
+        exec(`extract ${name}`);
+      } else if (act === 'reorder-up') {
+        const parent = findParentPanel(p);
+        if (parent) { const idx = parent.children.findIndex(ch=>ch.panel===p); if(idx>0) exec(`reorder ${idx-1}`); }
+      } else if (act === 'reorder-down') {
+        const parent = findParentPanel(p);
+        if (parent) { const idx = parent.children.findIndex(ch=>ch.panel===p); if(idx<parent.children.length-1) exec(`reorder ${idx+1}`); }
+      } else if (act === 'del') {
+        exec('del');
+        selectedPanel = null;
+      }
+      renderTree(); showPanelProps(); drawOverlay();
+    });
+  });
+}
+
+// ── Inspect tab ──────────────────────────────────────────────────────────
+function renderInspect() {
+  const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
+  if (!p) { sideContent.innerHTML = '<div style="padding:20px;color:var(--text-dim);text-align:center;">Click a panel</div>'; return; }
+  let html = `<div style="padding:8px;font-size:11px;">`;
+  html += `<h3 style="color:var(--accent);font-size:12px;margin:0 0 6px;">${escH(p.name)}</h3>`;
+  html += kv('size', `${p.w} \u00d7 ${p.h}`);
+  html += kv('label', p.label);
+  html += kv('border', p.border);
+  html += kv('children', p.children.map(c=>c.panel.name).join(', ')||'(none)');
+  html += kv('zones', `${p.zones.length} (${p.authoredZones.length} authored)`);
+
+  if (p.zones.length) {
+    html += `<h3 style="color:var(--orange);font-size:11px;margin:8px 0 4px;">Zones</h3>`;
+    for (let i=0; i<p.zones.length; i++) {
+      const z = p.zones[i];
+      const icon = z.type==='button' ? '\u25a3' : '\u25a1';
+      html += `<div style="margin:3px 0;padding:3px 4px;background:var(--bg);border:1px solid var(--border);border-radius:2px;font-size:10px;">`;
+      html += `<span style="color:var(--orange);">${icon} ${z.type}</span> [${z.x},${z.y} ${z.w}\u00d7${z.h}]`;
+      if (z.action) html += ` \u2192 <span style="color:var(--green);">${escH(z.action)}</span>`;
+      if (z.dataPath) html += ` <span style="color:var(--accent3);">dp=${escH(z.dataPath)}</span>`;
+      if (z._authored) html += ' \u25cf';
+      // Show action code if exists
+      if (z.action && p.asm && p.asm.actions && p.asm.actions[z.action]) {
+        html += `<details style="margin-top:2px;"><summary style="color:var(--text-dim);cursor:pointer;font-size:9px;">asm</summary>`;
+        html += `<pre style="font-size:9px;max-height:100px;overflow:auto;margin:2px 0;">${escH(p.asm.actions[z.action])}</pre></details>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  if (p.asm) {
+    html += `<h3 style="color:var(--green);font-size:11px;margin:8px 0 4px;">Assembly</h3>`;
+    if (p.asm.render) {
+      html += `<details open><summary style="cursor:pointer;color:var(--green);">render (${p.asm.render.split('\\n').length} lines)</summary>`;
+      html += `<pre style="font-size:9px;max-height:120px;overflow:auto;">${escH(p.asm.render)}</pre></details>`;
+    }
+    for (const [name, code] of Object.entries(p.asm.actions||{})) {
+      html += `<details><summary style="cursor:pointer;color:var(--green);">${escH(name)} (${code.split('\\n').length} lines)</summary>`;
+      html += `<pre style="font-size:9px;max-height:120px;overflow:auto;">${escH(code)}</pre></details>`;
+    }
+  }
+
+  html += `<h3 style="color:var(--accent3);font-size:11px;margin:8px 0 4px;">Data Layer</h3>`;
+  html += `<pre style="font-size:9px;max-height:150px;overflow:auto;">${escH(JSON.stringify(Data.dump(),null,2))}</pre>`;
+  html += `</div>`;
+  sideContent.innerHTML = html;
+}
+
+function kv(k,v) { return `<div style="display:flex;gap:6px;margin-bottom:2px;"><span style="color:var(--text-dim);min-width:60px;">${escH(k)}</span><span>${escH(String(v))}</span></div>`; }
+
+// ── Assembly tab ─────────────────────────────────────────────────────────
+function showAsmTab() {
+  const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
+  if (!p) { sideContent.innerHTML = ''; return; }
+  asmEditPanel = p;
+  // Don't reset asmEditAction here — caller sets it before calling showAsmTab
+  // Panel picker + action picker in sideContent
+  let html = '<div style="padding:4px 8px;font-size:10px;">';
+  // Panel picker
+  html += '<div style="margin-bottom:4px;">Panel: ';
+  for (const [name, panel] of Object.entries(panels)) {
+    if (panel === rootPanel) continue;
+    const sel = panel === p ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
+    html += `<span class="asm-pick-panel" data-p="${name}" style="${sel}cursor:pointer;margin-right:8px;">${escH(name)}</span>`;
+  }
+  html += '</div>';
+  // Action picker
+  const renderSel = !asmEditAction ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
+  html += `<div class="asm-pick-action" data-a="" style="${renderSel}cursor:pointer;margin-bottom:2px;">\u25b6 render</div>`;
+  for (const a of Object.keys(p.asm?.actions||{})) {
+    const sel = asmEditAction===a ? 'color:var(--orange);font-weight:700;' : 'color:var(--text-dim);';
+    html += `<div class="asm-pick-action" data-a="${escH(a)}" style="${sel}cursor:pointer;margin-bottom:2px;">\u25a3 ${escH(a)}</div>`;
+  }
+  // New action input
+  html += `<div style="margin-top:4px;display:flex;gap:4px;"><input id="new-action-name" placeholder="new action" style="flex:1;font-size:10px;padding:1px 4px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;border-radius:2px;"><button id="btn-new-action" style="font-size:10px;padding:1px 6px;">+</button></div>`;
+  html += `<div style="margin-top:4px;"><button id="btn-run-asm" style="font-size:10px;padding:2px 8px;">Run</button></div>`;
+  html += '</div>';
+  sideContent.innerHTML = html;
+
+  // Load editor content
+  if (!p.asm) p.asm = {render:'',actions:{}};
+  asmEditor.value = asmEditAction ? (p.asm.actions[asmEditAction]||'') : (p.asm.render||'');
+
+  // Wire clicks
+  sideContent.querySelectorAll('.asm-pick-panel').forEach(el => {
+    el.addEventListener('click', () => {
+      saveAsmEditor(false);
+      selectedPanel = panels[el.dataset.p]; _ctx = el.dataset.p;
+      asmEditPanel = selectedPanel; asmEditAction = null;
+      showAsmTab(); drawOverlay();
+    });
+  });
+  sideContent.querySelectorAll('.asm-pick-action').forEach(el => {
+    el.addEventListener('click', () => {
+      saveAsmEditor(false);
+      asmEditAction = el.dataset.a || null;
+      if (!asmEditPanel.asm) asmEditPanel.asm = {render:'',actions:{}};
+      asmEditor.value = asmEditAction ? (asmEditPanel.asm.actions[asmEditAction]||'') : (asmEditPanel.asm.render||'');
+      showAsmTab();
+    });
+  });
+  document.getElementById('btn-new-action')?.addEventListener('click', () => {
+    const name = document.getElementById('new-action-name')?.value?.trim();
+    if (!name || !asmEditPanel) return;
+    exec(`action ${name}\n; ${name}\nend`);
+    asmEditAction = name;
+    showAsmTab();
+  });
+  document.getElementById('btn-run-asm')?.addEventListener('click', async () => {
+    saveAsmEditor(true);
+    const code = asmEditor.value;
+    if (!code.trim()) return;
+    clog('[asm] executing...', 'cmd-out');
+    try { await execAsm(code); clog('[asm] done', 'cmd-ok'); } catch(e) { clog('[asm] '+e, 'cmd-err'); }
+    draw();
+  });
+}
+
+function saveAsmEditor(record) {
+  if (!asmEditPanel) return;
+  if (!asmEditPanel.asm) asmEditPanel.asm = {render:'',actions:{}};
+  const code = asmEditor.value;
+  if (asmEditAction) {
+    if (asmEditPanel.asm.actions[asmEditAction] !== code) {
+      asmEditPanel.asm.actions[asmEditAction] = code;
+      if (record) exec(`action ${asmEditAction}\n${code}\nend`);
+    }
+  } else {
+    if (asmEditPanel.asm.render !== code) {
+      asmEditPanel.asm.render = code;
+      if (record) exec(`action render\n${code}\nend`);
+    }
+  }
+}
+
+// No auto-save on blur — save explicitly before switching actions/panels
+
+// +Panel button
+document.getElementById('btn-add-panel').addEventListener('click', () => {
+  if (activeTab !== 'gui') return;
+  const name = 'panel_' + (++_panelCounter);
+  exec(`panel ${name} 20 10`);
+  exec('move 0 0');
+  selectedPanel = panels[name] || null;
+  renderTree();
+  showPanelProps();
+  drawOverlay();
+});
+
+// +Zone button
+document.getElementById('btn-add-zone').addEventListener('click', () => {
+  if (activeTab !== 'gui' || !selectedPanel || selectedPanel === rootPanel) return;
+  exec('zone 0 0 5 1 button');
+  renderTree();
+  drawOverlay();
+});
+
+// ── Replay tab ──
+function updateReplayView() {
+  if (activeTab !== 'replay') return;
+  let html = '';
+  for (let i = 0; i < replay.length; i++) {
+    const c = replay[i];
+    const display = c._raw || `${c.cmd} ${JSON.stringify(c).slice(0,60)}`;
+    html += `<div class="rp-step" data-idx="${i}"><span class="rp-cmd">${escH(c.cmd)}</span> <span class="rp-args">${escH(display)}</span></div>`;
+  }
+  if (!replay.length) html = '<div style="padding:20px;color:var(--text-dim);text-align:center;">No commands yet</div>';
+  sideContent.innerHTML = html;
+}
+
+// ── Canvas click ──
+function canvasToChar(e) { const r=document.getElementById('canvas').getBoundingClientRect(); return{col:Math.floor((e.clientX-r.left)/CW),row:Math.floor((e.clientY-r.top)/CH)}; }
+document.getElementById('canvas').addEventListener('click', (e) => {
+  const {col,row} = canvasToChar(e);
+  const hit = rootPanel ? hitTestPanel(col,row,rootPanel,0,0,COLS,ROWS) : null;
+  if (activeTab==='gui' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; renderTree(); showPanelProps(); drawOverlay(); }
+  if (activeTab==='inspect' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; renderInspect(); drawOverlay(); }
+  if (activeTab==='assembly' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; showAsmTab(); drawOverlay(); }
+  if (activeTab==='preview' && hit && hit.zone) {
+    if (hit.zone.type==='button' && hit.zone.action) {
+      const p=hit.panel;
+      const code = p.asm&&p.asm.actions&&p.asm.actions[hit.zone.action];
+      if (code) {
+        _ctx = p.name;
+        exec(`select ${p.name}`);
+        exec(`run ${hit.zone.action} ${hit.zone.data !== undefined ? JSON.stringify(hit.zone.data) : ''}`);
+      }
+    }
+    if (hit.zone.type==='input') {
+      focusInput(hit.zone, hit.panel, hit.localX - hit.zone.x);
+    }
+  }
+  if (activeTab==='preview' && hit && !hit.zone) { focusedZone=null; stopCursorBlink(); drawOverlay(); }
+});
+
+// ── Input focus + keyboard in Preview ──────────────────────────────────────
+function focusInput(zone, panel, clickCol) {
+  zone._panel = panel;
+  focusedZone = zone;
+  if (!zone._value) zone._value = zone.dataPath ? (Data.get(zone.dataPath) || '') : '';
+  cursorPos = Math.min(Math.max(0, clickCol), zone._value.length);
+  startCursorBlink();
+  drawOverlay();
+}
+function startCursorBlink() { stopCursorBlink(); cursorVisible=true; cursorInterval=setInterval(()=>{cursorVisible=!cursorVisible;renderFocusedInput();},530); }
+function stopCursorBlink() { if(cursorInterval){clearInterval(cursorInterval);cursorInterval=null;} cursorVisible=false; }
+
+function renderFocusedInput() {
+  if (!focusedZone||focusedZone.type!=='input') return;
+  const z=focusedZone, p=z._panel;
+  const val=z._value||'';
+  for(let c=0;c<z.w;c++){
+    const ch=c<val.length?val[c]:' ';
+    const cl=(c===cursorPos&&cursorVisible)?'c-cursor':(z.style||'');
+    panelWrite(p,z.y,z.x+c,ch,cl);
+  }
+  if(cursorPos===val.length&&cursorPos<z.w&&cursorVisible) panelWrite(p,z.y,z.x+cursorPos,'\u2588','c-cursor');
+  draw();
+}
+
+document.addEventListener('keydown', (e) => {
+  if(!focusedZone||focusedZone.type!=='input'||activeTab!=='preview') return;
+  const z=focusedZone;
+  let val=z._value||'';
+  if(e.key==='Backspace'){if(cursorPos>0){val=val.slice(0,cursorPos-1)+val.slice(cursorPos);cursorPos--;}}
+  else if(e.key==='Delete'){if(cursorPos<val.length)val=val.slice(0,cursorPos)+val.slice(cursorPos+1);}
+  else if(e.key==='ArrowLeft'){if(cursorPos>0)cursorPos--;}
+  else if(e.key==='ArrowRight'){if(cursorPos<val.length)cursorPos++;}
+  else if(e.key==='Home')cursorPos=0;
+  else if(e.key==='End')cursorPos=val.length;
+  else if(e.key==='Enter'){if(z.action){const p=z._panel;if(p){_ctx=p.name;exec(`run ${z.action} ${JSON.stringify(val)}`);}};return;}
+  else if(e.key==='Escape'){focusedZone=null;stopCursorBlink();drawOverlay();return;}
+  else if(e.key.length===1&&!e.ctrlKey&&!e.altKey&&!e.metaKey){val=val.slice(0,cursorPos)+e.key+val.slice(cursorPos);cursorPos++;}
+  else return;
+  e.preventDefault(); z._value=val;
+  if(z.dataPath)Data.set(z.dataPath,val);
+  cursorVisible=true; renderFocusedInput();
+});
+
+document.addEventListener('paste',(e)=>{
+  if(!focusedZone||focusedZone.type!=='input'||activeTab!=='preview')return;
+  e.preventDefault();const text=(e.clipboardData||window.clipboardData).getData('text');if(!text)return;
+  let val=focusedZone._value||'';val=val.slice(0,cursorPos)+text+val.slice(cursorPos);cursorPos+=text.length;
+  focusedZone._value=val;if(focusedZone.dataPath)Data.set(focusedZone.dataPath,val);cursorVisible=true;renderFocusedInput();
+});
+
+// ── Buttons ──────────────────────────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/aabb-pipeline/replay', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(replay) });
+    clog('saved ' + replay.length + ' steps', 'cmd-ok');
+  } catch(e) { clog('save error: '+e, 'cmd-err'); }
+});
+
+document.getElementById('btn-load').addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/aabb-pipeline/replay');
+    if (r.ok) {
+      const saved = await r.json();
+      // Reset
+      for (const k of Object.keys(panels)) delete panels[k];
+      Data.clear(); _ctx=null; replay.length=0;
+      rootPanel = createPanel('screen', COLS, ROWS); rootPanel.border=false; _ctx='screen';
+      for (const cmd of saved) { replay.push(cmd); await applyCommand(cmd); }
+      clog('loaded '+saved.length+' steps','cmd-ok');
+      draw(); if(activeTab==='gui')renderTree(); if(activeTab==='replay')updateReplayView();
+    }
+  } catch(e) { clog('load error: '+e, 'cmd-err'); }
+});
+
+document.getElementById('btn-replay-all').addEventListener('click', () => replayAll());
+
+// ══════════════════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════════════════
+async function init() {
+  calcGrid();
+  rootPanel = createPanel('screen', COLS, ROWS);
+  rootPanel.border = false;
+  _ctx = 'screen';
+
+  // Try load replay from server
+  try {
+    const r = await fetch('/api/aabb-pipeline/replay');
+    if (r.ok) {
+      const saved = await r.json();
+      if (Array.isArray(saved) && saved.length) {
+        clog(`loading ${saved.length} steps...`, 'cmd-out');
+        for (const cmd of saved) { replay.push(cmd); await applyCommand(cmd); }
+        clog('loaded', 'cmd-ok');
+      }
+    }
+  } catch(_) {}
+
+  draw();
+  clog('ready. type "help" or use GUI tab.', 'cmd-out');
+  clog(`context: ${_ctx}`, 'cmd-out');
+}
+
+init();
+window.addEventListener('resize', () => draw());
+
+// Mouse wheel → scroll scrollview panels
+document.getElementById('canvas').addEventListener('wheel', (e) => {
+  if (activeTab !== 'preview') return;
+  const { col, row } = canvasToChar(e);
+  const hit = rootPanel ? hitTestPanel(col, row, rootPanel, 0, 0, COLS, ROWS) : null;
+  if (hit && _scrollViews[hit.panel.name]) {
+    e.preventDefault();
+    const sv = _scrollViews[hit.panel.name];
+    sv.scrollY = Math.max(0, Math.min(sv.totalH - sv.viewportH, sv.scrollY + (e.deltaY > 0 ? 3 : -3)));
+    renderScrollView(hit.panel.name);
+    draw();
+  }
+}, { passive: false });
+</script>
+</body>
+</html>
