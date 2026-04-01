@@ -88,6 +88,7 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
         <button id="btn-add-panel" style="display:none;">+Panel</button>
         <button id="btn-add-zone" style="display:none;">+Zone</button>
         <button id="btn-save">Save</button>
+        <button id="btn-load">Load</button>
         <button id="btn-replay-all">Replay All</button>
       </div>
       <div id="side-content">
@@ -172,7 +173,7 @@ function compositePanel(panel,gx,gy,vw,vh) {
 function flushGrid() { let html=''; for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){const cell=G[r][c];if(cell.cl)html+=`<span class="${cell.cl}">${escH(cell.ch)}</span>`;else html+=escH(cell.ch);}html+='\n';} textLayer.innerHTML=html; }
 function escH(s) { return s==='<'?'&lt;':s==='>'?'&gt;':s==='&'?'&amp;':s; }
 function drawBorders() { let svg=''; function walk(p,gx,gy,vw,vh){if(p.border){const x=gx*CW,y=gy*CH,w=vw*CW,h=vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${p.borderColor}" stroke-width="1" rx="2"/>`;if(p.label)svg+=`<text x="${x+8}" y="${y-3}" fill="${p.borderColor}" font-size="10" font-family="Consolas,monospace">${escH(p.label)}</text>`;}for(const ch of p.children)walk(ch.panel,gx+ch.x,gy+ch.y,ch.w,ch.h);} if(rootPanel)walk(rootPanel,0,0,COLS,ROWS); svgLayer.setAttribute('width',COLS*CW);svgLayer.setAttribute('height',ROWS*CH);svgLayer.innerHTML=svg; }
-function drawOverlay() { let svg=''; overlaySvg.setAttribute('width',COLS*CW);overlaySvg.setAttribute('height',ROWS*CH); if(selectedPanel&&selectedPanel!==rootPanel){const pos=getPanelGlobalPos(selectedPanel);if(pos){const x=pos.gx*CW,y=pos.gy*CH,w=pos.vw*CW,h=pos.vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#e0af68" stroke-width="2" stroke-dasharray="4,2" rx="2"/>`;}} overlaySvg.innerHTML=svg; }
+function drawOverlay() { let svg=''; overlaySvg.setAttribute('width',COLS*CW);overlaySvg.setAttribute('height',ROWS*CH); if(selectedPanel&&selectedPanel!==rootPanel){const pos=getPanelGlobalPos(selectedPanel);if(pos){const x=pos.gx*CW,y=pos.gy*CH,w=pos.vw*CW,h=pos.vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#e0af68" stroke-width="2" stroke-dasharray="4,2" rx="2"/>`;}} if(activeTab==='preview'&&focusedZone&&focusedZone._panel){const pos=getPanelGlobalPos(focusedZone._panel);if(pos){const x=(pos.gx+focusedZone.x)*CW,y=(pos.gy+focusedZone.y+focusedZone.h)*CH-1,w=focusedZone.w*CW;svg+=`<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y}" stroke="var(--accent)" stroke-width="1"/>`;}} overlaySvg.innerHTML=svg; }
 function hitTestPanel(px,py,panel,gx,gy,vw,vh) { for(let i=panel.children.length-1;i>=0;i--){const ch=panel.children[i];const cx=gx+ch.x,cy=gy+ch.y;if(px>=cx&&px<cx+ch.w&&py>=cy&&py<cy+ch.h){const r=hitTestPanel(px,py,ch.panel,cx,cy,ch.w,ch.h);if(r)return r;}} const lx=px-gx+panel.scrollX,ly=py-gy+panel.scrollY;for(let i=panel.zones.length-1;i>=0;i--){const z=panel.zones[i];if(lx>=z.x&&lx<z.x+z.w&&ly>=z.y&&ly<z.y+z.h)return{panel,zone:z,localX:lx,localY:ly,gx,gy};} if(px>=gx&&px<gx+vw&&py>=gy&&py<gy+vh)return{panel,zone:null,localX:lx,localY:ly,gx,gy};return null; }
 function getPanelGlobalPos(panel) { if(panel===rootPanel)return{gx:0,gy:0,vw:COLS,vh:ROWS};function find(p,gx,gy){for(const ch of p.children){if(ch.panel===panel)return{gx:gx+ch.x,gy:gy+ch.y,vw:ch.w,vh:ch.h};const r=find(ch.panel,gx+ch.x,gy+ch.y);if(r)return r;}return null;}return rootPanel?find(rootPanel,0,0):null; }
 function findParentPanel(panel){function s(p){for(const ch of p.children){if(ch.panel===panel)return p;const r=s(ch.panel);if(r)return r;}return null;}return rootPanel?s(rootPanel):null;}
@@ -309,9 +310,17 @@ function parseCmd(line) {
   }
   if (cmd === 'load') return { cmd:'load', path:tokens[1], key:tokens[2], default:tokens[3] };
   if (cmd === 'render') return { cmd:'render', _ctx:ctx };
-  if (cmd === 'select') { _ctx = tokens[1]||'screen'; clog(`→ ${_ctx}`, 'cmd-ok'); return null; }
-  if (cmd === 'up') { const p=_ctx?findParentPanel(panels[_ctx]):null; _ctx=p?p.name:'screen'; clog(`→ ${_ctx}`, 'cmd-ok'); return null; }
-  if (cmd === 'root') { _ctx='screen'; clog(`→ screen`, 'cmd-ok'); return null; }
+  // extract <new_name> — move selected panel's content into a new child panel
+  if (cmd === 'extract') return { cmd:'extract', newName:tokens[1], _ctx:ctx };
+  // reparent <target_parent> — move selected panel under target
+  if (cmd === 'reparent') return { cmd:'reparent', target:tokens[1], _ctx:ctx };
+  // reorder <index> — move selected panel to index in parent's children
+  if (cmd === 'reorder') return { cmd:'reorder', index:+tokens[1]||0, _ctx:ctx };
+  // rename <new_name> — rename panel, update all refs
+  if (cmd === 'rename') return { cmd:'rename', newName:tokens[1], _ctx:ctx };
+  if (cmd === 'select') { _ctx = tokens[1]||'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return null; }
+  if (cmd === 'up') { const p=_ctx?findParentPanel(panels[_ctx]):null; _ctx=p?p.name:'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return null; }
+  if (cmd === 'root') { _ctx='screen'; clog(`\u2192 screen`, 'cmd-ok'); return null; }
   if (cmd === 'get' || cmd === 'ls') return { cmd:'get', what:tokens[1], _ctx:ctx };
   if (cmd === 'find') return { cmd:'find', pattern:tokens[1]||'*', _ctx:ctx };
   clog(`unknown: ${cmd}`, 'cmd-err');
@@ -368,6 +377,69 @@ async function applyCommand(cmd) {
     case 'data': Data.set(cmd.path, cmd.value); clog(`data ${cmd.path}`, 'cmd-ok'); break;
     case 'load': Data.set(cmd.path, Data.load(cmd.key, cmd.default)); clog(`load ${cmd.path}`, 'cmd-ok'); break;
     case 'render': { const p=panels[ctx]; if(p&&p.asm&&p.asm.render) await execAsm(p.asm.render); break; }
+    case 'extract': {
+      // Extract: create new child panel from selected, move content+zones into it
+      const p = panels[ctx]; if (!p) break;
+      const newP = createPanel(cmd.newName, p.w, p.h);
+      newP.buf = p.buf.map(r => r.map(c => ({...c})));
+      newP.authoredZones = [...p.authoredZones]; newP.zones = [...p.zones];
+      newP.asm = { render: p.asm?.render || '', actions: {...(p.asm?.actions||{})} };
+      // Clear original, add new as child
+      panelClear(p); p.authoredZones=[]; p.zones=[]; p.asm={render:'',actions:{}};
+      addChildPanel(p, newP, 0, 0, p.w, p.h);
+      // Rewrite panel refs in assembly: replace ctx name with newName
+      if (newP.asm.render) newP.asm.render = newP.asm.render.replace(new RegExp('"'+ctx+'"','g'), '"'+cmd.newName+'"');
+      for (const [k,v] of Object.entries(newP.asm.actions)) newP.asm.actions[k] = v.replace(new RegExp('"'+ctx+'"','g'), '"'+cmd.newName+'"');
+      _ctx = cmd.newName;
+      clog(`extracted ${ctx} → ${cmd.newName}`, 'cmd-ok');
+      break;
+    }
+    case 'reparent': {
+      // Move selected panel under target parent
+      const p = panels[ctx]; const target = panels[cmd.target];
+      if (!p || !target || p === rootPanel) break;
+      const oldParent = findParentPanel(p);
+      if (oldParent) { const entry = findParentEntry(p); oldParent.children = oldParent.children.filter(ch => ch.panel !== p); addChildPanel(target, p, entry?.x||0, entry?.y||0, p.w, p.h); }
+      clog(`reparent ${ctx} → ${cmd.target}`, 'cmd-ok');
+      break;
+    }
+    case 'reorder': {
+      // Move selected panel to index in parent's children
+      const p = panels[ctx]; if (!p) break;
+      const parent = findParentPanel(p);
+      if (parent) {
+        const idx = parent.children.findIndex(ch => ch.panel === p);
+        if (idx >= 0) {
+          const [entry] = parent.children.splice(idx, 1);
+          const newIdx = Math.min(Math.max(0, cmd.index), parent.children.length);
+          parent.children.splice(newIdx, 0, entry);
+          clog(`reorder ${ctx} → index ${newIdx}`, 'cmd-ok');
+        }
+      }
+      break;
+    }
+    case 'rename': {
+      // Rename panel, update all assembly refs recursively
+      const p = panels[ctx]; if (!p || p === rootPanel) break;
+      const oldName = p.name;
+      delete panels[oldName];
+      p.name = cmd.newName; p.label = p.label === oldName ? cmd.newName : p.label;
+      panels[cmd.newName] = p;
+      // Rewrite refs in all panels' assembly
+      const re = new RegExp('"' + oldName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '"', 'g');
+      const replacement = '"' + cmd.newName + '"';
+      for (const panel of Object.values(panels)) {
+        if (panel.asm) {
+          if (panel.asm.render) panel.asm.render = panel.asm.render.replace(re, replacement);
+          for (const [k,v] of Object.entries(panel.asm.actions||{})) panel.asm.actions[k] = v.replace(re, replacement);
+        }
+        for (const z of panel.zones) { if (z.action) z.action = z.action.replace(oldName, cmd.newName); }
+        for (const z of panel.authoredZones) { if (z.action) z.action = z.action.replace(oldName, cmd.newName); }
+      }
+      _ctx = cmd.newName;
+      clog(`rename ${oldName} → ${cmd.newName}`, 'cmd-ok');
+      break;
+    }
   }
 }
 
@@ -545,6 +617,12 @@ function showPanelProps() {
     <label><span>y</span><input type="number" data-gp="y" value="${entry.y}" min="0"></label>` : ''}
     <label><span>border</span><input type="checkbox" data-gp="border" ${p.border?'checked':''}></label>
     <label><span>borderColor</span><input data-gp="borderColor" value="${escH(p.borderColor||'#3b4261')}"></label>
+    <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">
+      <button data-gui-action="extract" style="font-size:9px;padding:1px 6px;">Extract</button>
+      <button data-gui-action="reorder-up" style="font-size:9px;padding:1px 6px;">▲</button>
+      <button data-gui-action="reorder-down" style="font-size:9px;padding:1px 6px;">▼</button>
+      <button data-gui-action="del" style="font-size:9px;padding:1px 6px;color:var(--red);">Del</button>
+    </div>
   `;
   propsEditor.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('change', () => {
@@ -560,6 +638,25 @@ function showPanelProps() {
         exec(`set ${prop} ${inp.value}`);
       }
       renderTree();
+    });
+  });
+  propsEditor.querySelectorAll('[data-gui-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const act = btn.dataset.guiAction;
+      if (act === 'extract') {
+        const name = p.name + '_inner';
+        exec(`extract ${name}`);
+      } else if (act === 'reorder-up') {
+        const parent = findParentPanel(p);
+        if (parent) { const idx = parent.children.findIndex(ch=>ch.panel===p); if(idx>0) exec(`reorder ${idx-1}`); }
+      } else if (act === 'reorder-down') {
+        const parent = findParentPanel(p);
+        if (parent) { const idx = parent.children.findIndex(ch=>ch.panel===p); if(idx<parent.children.length-1) exec(`reorder ${idx+1}`); }
+      } else if (act === 'del') {
+        exec('del');
+        selectedPanel = null;
+      }
+      renderTree(); showPanelProps(); drawOverlay();
     });
   });
 }
@@ -609,16 +706,86 @@ document.getElementById('canvas').addEventListener('click', (e) => {
       const code = p.asm&&p.asm.actions&&p.asm.actions[hit.zone.action];
       if (code) { clog(`▶ ${hit.zone.action}`, 'cmd-in'); execAsm(code,{action_data:hit.zone.data,panel_name:p.name}).then(()=>draw()); }
     }
-    if (hit.zone.type==='input') { /* TODO: input focus */ }
+    if (hit.zone.type==='input') {
+      focusInput(hit.zone, hit.panel, hit.localX - hit.zone.x);
+    }
   }
+  if (activeTab==='preview' && hit && !hit.zone) { focusedZone=null; stopCursorBlink(); drawOverlay(); }
 });
 
-// ── Buttons ──
+// ── Input focus + keyboard in Preview ──────────────────────────────────────
+function focusInput(zone, panel, clickCol) {
+  zone._panel = panel;
+  focusedZone = zone;
+  if (!zone._value) zone._value = zone.dataPath ? (Data.get(zone.dataPath) || '') : '';
+  cursorPos = Math.min(Math.max(0, clickCol), zone._value.length);
+  startCursorBlink();
+  drawOverlay();
+}
+function startCursorBlink() { stopCursorBlink(); cursorVisible=true; cursorInterval=setInterval(()=>{cursorVisible=!cursorVisible;renderFocusedInput();},530); }
+function stopCursorBlink() { if(cursorInterval){clearInterval(cursorInterval);cursorInterval=null;} cursorVisible=false; }
+
+function renderFocusedInput() {
+  if (!focusedZone||focusedZone.type!=='input') return;
+  const z=focusedZone, p=z._panel;
+  const val=z._value||'';
+  for(let c=0;c<z.w;c++){
+    const ch=c<val.length?val[c]:' ';
+    const cl=(c===cursorPos&&cursorVisible)?'c-cursor':(z.style||'');
+    panelWrite(p,z.y,z.x+c,ch,cl);
+  }
+  if(cursorPos===val.length&&cursorPos<z.w&&cursorVisible) panelWrite(p,z.y,z.x+cursorPos,'\u2588','c-cursor');
+  draw();
+}
+
+document.addEventListener('keydown', (e) => {
+  if(!focusedZone||focusedZone.type!=='input'||activeTab!=='preview') return;
+  const z=focusedZone;
+  let val=z._value||'';
+  if(e.key==='Backspace'){if(cursorPos>0){val=val.slice(0,cursorPos-1)+val.slice(cursorPos);cursorPos--;}}
+  else if(e.key==='Delete'){if(cursorPos<val.length)val=val.slice(0,cursorPos)+val.slice(cursorPos+1);}
+  else if(e.key==='ArrowLeft'){if(cursorPos>0)cursorPos--;}
+  else if(e.key==='ArrowRight'){if(cursorPos<val.length)cursorPos++;}
+  else if(e.key==='Home')cursorPos=0;
+  else if(e.key==='End')cursorPos=val.length;
+  else if(e.key==='Enter'){if(z.action){const p=z._panel;const code=p.asm&&p.asm.actions&&p.asm.actions[z.action];if(code){clog('\u25b6 '+z.action,'cmd-in');execAsm(code,{action_data:val,panel_name:p.name}).then(()=>draw());}}return;}
+  else if(e.key==='Escape'){focusedZone=null;stopCursorBlink();drawOverlay();return;}
+  else if(e.key.length===1&&!e.ctrlKey&&!e.altKey&&!e.metaKey){val=val.slice(0,cursorPos)+e.key+val.slice(cursorPos);cursorPos++;}
+  else return;
+  e.preventDefault(); z._value=val;
+  if(z.dataPath)Data.set(z.dataPath,val);
+  cursorVisible=true; renderFocusedInput();
+});
+
+document.addEventListener('paste',(e)=>{
+  if(!focusedZone||focusedZone.type!=='input'||activeTab!=='preview')return;
+  e.preventDefault();const text=(e.clipboardData||window.clipboardData).getData('text');if(!text)return;
+  let val=focusedZone._value||'';val=val.slice(0,cursorPos)+text+val.slice(cursorPos);cursorPos+=text.length;
+  focusedZone._value=val;if(focusedZone.dataPath)Data.set(focusedZone.dataPath,val);cursorVisible=true;renderFocusedInput();
+});
+
+// ── Buttons ──────────────────────────────────────────────────────────────
 document.getElementById('btn-save').addEventListener('click', async () => {
   try {
     const r = await fetch('/api/aabb-pipeline/replay', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(replay) });
     clog('saved ' + replay.length + ' steps', 'cmd-ok');
   } catch(e) { clog('save error: '+e, 'cmd-err'); }
+});
+
+document.getElementById('btn-load').addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/aabb-pipeline/replay');
+    if (r.ok) {
+      const saved = await r.json();
+      // Reset
+      for (const k of Object.keys(panels)) delete panels[k];
+      Data.clear(); _ctx=null; replay.length=0;
+      rootPanel = createPanel('screen', COLS, ROWS); rootPanel.border=false; _ctx='screen';
+      for (const cmd of saved) { replay.push(cmd); await applyCommand(cmd); }
+      clog('loaded '+saved.length+' steps','cmd-ok');
+      draw(); if(activeTab==='gui')renderTree(); if(activeTab==='replay')updateReplayView();
+    }
+  } catch(e) { clog('load error: '+e, 'cmd-err'); }
 });
 
 document.getElementById('btn-replay-all').addEventListener('click', () => replayAll());
