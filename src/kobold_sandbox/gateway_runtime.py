@@ -120,6 +120,10 @@ class GatewayRuntime:
         # Job templates (from YAML)
         self._templates: dict[str, dict] = {}
 
+        # Payload functions (claims, table, etc.)
+        from .workflow_dsl import build_default_builtins
+        self._payload_fns = build_default_builtins()
+
         # Shared state for assembly handlers
         self.state: dict[str, Any] = {}
 
@@ -541,10 +545,21 @@ class GatewayRuntime:
         # Create initial jobs
         for job_spec in spec.get("jobs", []):
             payload = job_spec.get("payload", "")
-            # Interpolate $input
-            if isinstance(payload, str) and "$input" in payload:
-                inp = runtime.state.get("input", "")
-                payload = payload.replace("$input", str(inp))
+            # Resolve payload functions: fn_name($var) or fn_name(literal)
+            if isinstance(payload, str):
+                import re
+                fn_match = re.match(r'^(\w+)\((.+)\)$', payload.strip())
+                if fn_match and fn_match.group(1) in runtime._payload_fns:
+                    fn_name, arg_str = fn_match.group(1), fn_match.group(2).strip()
+                    # Resolve arg: $input → state value, else literal
+                    if arg_str.startswith("$"):
+                        arg_val = runtime.state.get(arg_str[1:], arg_str)
+                    else:
+                        arg_val = arg_str
+                    payload = runtime._payload_fns[fn_name](arg_val)
+                elif "$input" in payload:
+                    inp = runtime.state.get("input", "")
+                    payload = payload.replace("$input", str(inp))
 
             job = GatewayJob(
                 id=job_spec["id"],
