@@ -556,8 +556,7 @@ function renderEvents(events) {
 
 function renderState(status) {
   const el = document.getElementById('stateView');
-  const data = { state_keys: status.state_keys, jobs: status.jobs };
-  el.textContent = JSON.stringify(data, null, 2);
+  el.textContent = JSON.stringify({ state: status.state, jobs: status.jobs }, null, 2);
 }
 
 function updateCardsFromState(status) {
@@ -568,7 +567,7 @@ function updateCardsFromState(status) {
       nodes[jid] = {
         id: jid, title: jid, status: job.status,
         icon: job.status === 'done' ? 'J' : job.status === 'active' ? '>' : '?',
-        answer: job.result_preview || '',
+        answer: job.result || '',
         tags: { worker: job.worker, priority: job.priority },
         collapsed: false,
       };
@@ -577,7 +576,7 @@ function updateCardsFromState(status) {
       if (nodes[jid].status !== job.status) {
         nodes[jid].status = job.status;
         nodes[jid].icon = job.status === 'done' ? 'J' : job.status === 'active' ? '>' : '?';
-        if (job.result_preview) nodes[jid].answer = job.result_preview;
+        if (job.result) nodes[jid].answer = job.result;
         changed = true;
       }
     }

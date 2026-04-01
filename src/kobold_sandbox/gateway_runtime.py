@@ -201,7 +201,7 @@ class GatewayRuntime:
                 "id": j.id, "worker": j.worker, "status": j.status.value,
                 "priority": j.priority, "started_at": j.started_at,
                 "finished_at": j.finished_at, "error": j.error,
-                "result_preview": str(j.result)[:200] if j.result else None,
+                "result": j.result,
             }
             for jid, j in self._jobs.items()
         }
@@ -209,7 +209,7 @@ class GatewayRuntime:
             "queues": queues,
             "jobs": jobs,
             "events": [{"job_id": e.job_id, "type": e.event_type, "ts": e.timestamp} for e in self.events[-50:]],
-            "state_keys": list(self.state.keys()),
+            "state": {k: v for k, v in self.state.items()},
         }
 
     def shutdown(self):
@@ -394,12 +394,17 @@ class GatewayRuntime:
             try:
                 asm_result = asm_execute(sub.handler_asm, self._wf_ctx)
                 # Merge asm output back to shared state
+                merged_keys = []
                 for k, v in asm_result.state.items():
                     self.state[k] = v
+                    merged_keys.append(k)
+                self.on_thread("system", "handler", f"{sub.event}: merged {merged_keys}", {"asm_error": asm_result.error})
                 if asm_result.error:
                     log.error("handler asm error for %s: %s", sub.event, asm_result.error)
+                    self.on_thread("system", "handler", f"ERROR: {asm_result.error}", {})
             except Exception as exc:
                 log.error("handler failed for %s: %s", sub.event, exc)
+                self.on_thread("system", "handler", f"EXCEPTION: {exc}", {})
 
         # Process then-actions
         for action in sub.then:
@@ -503,8 +508,9 @@ class GatewayRuntime:
         for name, tpl in spec.get("job_templates", {}).items():
             runtime._templates[name] = tpl
 
-        # Parse subscriptions (on:)
-        for event_key, handler_spec in spec.get("on", {}).items():
+        # Parse subscriptions (on:) — YAML parses bare `on` as boolean True
+        on_section = spec.get("on") or spec.get(True) or {}
+        for event_key, handler_spec in on_section.items():
             asm_code = handler_spec.get("do", "")
             then_actions = handler_spec.get("then", [])
             context = handler_spec.get("context", {})
