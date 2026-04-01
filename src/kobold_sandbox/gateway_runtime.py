@@ -574,11 +574,11 @@ class GatewayRuntime:
                 items = self.state.get(items_key, [])
                 if not isinstance(items, list):
                     items = []
-                for idx in range(len(items)):
-                    # Only pass explicit with: context + index. No hidden item copy.
+                for idx, item in enumerate(items):
+                    # for_each semantics: item = current element, index = position
                     job = self._instantiate_template(
                         template_name, f"{template_name}.{idx}",
-                        {**merged_ctx, "index": idx}
+                        {**merged_ctx, "item": item, "index": idx}
                     )
                     if job:
                         self.enqueue(job)
