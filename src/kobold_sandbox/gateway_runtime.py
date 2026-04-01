@@ -93,25 +93,38 @@ class GatewayEvent:
 
 def _parse_messages(raw_messages: list, state: dict) -> list[dict]:
     """Parse YAML messages list into [{role, content}] with variable interpolation."""
+    import re
+
+    def _resolve(path, st):
+        parts = path.split(".")
+        val = st.get(parts[0])
+        for p in parts[1:]:
+            if val is None or not isinstance(val, dict):
+                return None
+            val = val.get(p)
+        return val
+
+    def _interp(text, st):
+        if not isinstance(text, str):
+            return text
+        text = re.sub(r'\{\$([a-zA-Z_][\w.]*)\}', lambda m: str(v) if (v := _resolve(m.group(1), st)) is not None else "", text)
+        for k, v in sorted(st.items(), key=lambda x: -len(x[0])):
+            text = text.replace(f"${k}", str(v) if v is not None else "")
+        return text
+
     result = []
     for m in raw_messages:
         if isinstance(m, dict):
             if "role" in m and "content" in m:
                 role, content = m["role"], m["content"]
             else:
-                # Shorthand: {user: "text"} or {assistant: "text"}
                 role = list(m.keys())[0]
                 content = m[role]
         elif isinstance(m, str):
             role, content = "user", m
         else:
             continue
-        # Interpolate variables
-        if isinstance(content, str):
-            for k, v in state.items():
-                content = content.replace(f"${{{k}}}", str(v) if v is not None else "")
-                content = content.replace(f"${k}", str(v) if v is not None else "")
-        result.append({"role": str(role), "content": str(content)})
+        result.append({"role": str(role), "content": _interp(str(content), state)})
     return result
 
 
@@ -451,9 +464,14 @@ class GatewayRuntime:
             resolved_ctx = {}
             for k, v in with_ctx.items():
                 if isinstance(v, str) and v.startswith("$"):
-                    resolved_ctx[k] = self.state.get(v[1:], v)
+                    resolved_ctx[k] = self._resolve_path(v[1:]) or v
                 else:
                     resolved_ctx[k] = v
+
+            # Derive entity index from parent job id (e.g. trim_probe.3 → .3)
+            parent_suffix = ""
+            if "." in event.job_id:
+                parent_suffix = "." + event.job_id.rsplit(".", 1)[1]
 
             if "for_each" in action:
                 items_key = action["for_each"]
@@ -468,7 +486,8 @@ class GatewayRuntime:
                     if job:
                         self.enqueue(job)
             else:
-                job = self._instantiate_template(template_name, template_name, resolved_ctx)
+                job_id = template_name + parent_suffix if parent_suffix else template_name
+                job = self._instantiate_template(template_name, job_id, resolved_ctx)
                 if job:
                     self.enqueue(job)
 
@@ -479,16 +498,27 @@ class GatewayRuntime:
             log.warning("unknown job template: %s", name)
             return None
 
+        # Resolve template field refs ($config.xxx)
+        def tpl_resolve(val):
+            if isinstance(val, str) and val.startswith("$"):
+                resolved = self._resolve_path(val[1:], context)
+                return resolved if resolved is not None else val
+            return val
+
         messages = None
         if "messages" in tpl:
             messages = _parse_messages(tpl["messages"], {**self.state, **context})
 
         # Parse capture
-        capture = tpl.get("capture")
+        capture = tpl_resolve(tpl.get("capture"))
         coerce = tpl.get("coerce")
         if isinstance(capture, dict):
             coerce = capture.get("coerce", coerce)
             capture = capture.get("regex", capture.get("pattern"))
+        if isinstance(capture, str):
+            capture = tpl_resolve(capture)
+
+        grammar = tpl_resolve(tpl.get("grammar"))
 
         stop = tpl.get("stop")
         if isinstance(stop, str):
@@ -501,7 +531,7 @@ class GatewayRuntime:
             mode=tpl.get("mode", "prompt"),
             temp=float(tpl.get("temp", tpl.get("temperature", 0.6))),
             max_tokens=int(tpl.get("max", tpl.get("max_tokens", 2048))),
-            grammar=tpl.get("grammar"),
+            grammar=grammar,
             capture=capture,
             coerce=coerce,
             no_think=bool(tpl.get("no_think", False)),
@@ -512,13 +542,31 @@ class GatewayRuntime:
 
     # ── Helpers ────────────────────────────────────────────
 
+    def _resolve_path(self, path: str, extra: dict | None = None) -> Any:
+        """Resolve dotted path like 'item._title' from state + extra."""
+        merged = {**self.state, **(extra or {})}
+        parts = path.split(".")
+        val = merged.get(parts[0])
+        for p in parts[1:]:
+            if val is None or not isinstance(val, dict):
+                return None
+            val = val.get(p)
+        return val
+
     def _interpolate(self, text: str, extra: dict | None = None) -> str:
-        """Replace $var and {$var} in text with state values."""
+        """Replace {$var.path} and $var in text with state values."""
         if not isinstance(text, str):
             return text
+        import re
+        # First: {$path.to.value} — braced refs with dot paths
+        def _repl_braced(m):
+            path = m.group(1)
+            val = self._resolve_path(path, extra)
+            return str(val) if val is not None else ""
+        text = re.sub(r'\{\$([a-zA-Z_][\w.]*)\}', _repl_braced, text)
+        # Second: $path.to.value — bare refs (longest match first)
         merged = {**self.state, **(extra or {})}
-        for k, v in merged.items():
-            text = text.replace(f"${{{k}}}", str(v) if v is not None else "")
+        for k, v in sorted(merged.items(), key=lambda x: -len(x[0])):
             text = text.replace(f"${k}", str(v) if v is not None else "")
         return text
 
