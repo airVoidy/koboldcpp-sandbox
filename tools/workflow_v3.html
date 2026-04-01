@@ -223,6 +223,9 @@ on:
     do: |
       CALL @item.status, check_status, @_event.result
       MOV @item.reaction, @_event.result
+    then:
+      - enqueue: comfyui_gen
+        with: {item_idx: $item_idx}
 
 # === Job templates ===
 job_templates:
@@ -288,6 +291,15 @@ job_templates:
     temp: 0.2
     max: 512
     no_think: true
+
+  comfyui_gen:
+    type: comfyui
+    worker: comfyui
+    workflow: "C:/Users/vAiry/.lmstudio/models/Z-Image +LoRA.json"
+    node: "6"
+    field: text
+    payload: ${item.text}
+    server: "http://localhost:8188"
 </textarea>
       <div style="padding:4px 8px;display:flex;gap:4px;border-top:1px solid var(--border);flex-shrink:0;">
         <button class="btn sm primary" id="btnRun">Run</button>
