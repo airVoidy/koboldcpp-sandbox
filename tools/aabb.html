@@ -106,6 +106,7 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
         <button id="btn-add-panel">+Panel</button>
         <button id="btn-add-zone">+Zone</button>
         <button id="btn-run">Run</button>
+        <button id="btn-save">Save</button>
       </div>
       <div id="side-content"></div>
       <div id="props-editor" class="hidden"></div>
@@ -596,15 +597,6 @@ const _builtins = {
     } catch(e) {
       return { ok: false, status: 0, error: String(e) };
     }
-  },
-  // convenience: check if url responds ok
-  async http_ok(args) {
-    const url = String(args[0] || '');
-    if (!url) return false;
-    try {
-      const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(+args[1] || 5000) });
-      return r.ok;
-    } catch(_) { return false; }
   },
 };
 
@@ -1191,6 +1183,18 @@ document.getElementById('btn-run').addEventListener('click', async () => {
 
 asmEditor.addEventListener('input', () => { saveAsmEditor(); });
 
+document.getElementById('btn-save').addEventListener('click', async () => {
+  const project = exportProject();
+  try {
+    const r = await fetch('/api/aabb/project', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(project)
+    });
+    const result = await r.json();
+    log(result.ok ? 'project saved' : 'save failed');
+  } catch (e) { log('save error: ' + e, true); }
+});
+
 function renderAsmActionList() {
   if (!asmEditingPanel) { sideContent.innerHTML = ''; return; }
   const p = asmEditingPanel;
@@ -1325,112 +1329,35 @@ function exportProject() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  DEFAULT PROJECT — declarative JSON, loaded by generic loadProject()
+//  INIT — load project from external JSON file
 // ══════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_PROJECT = {
-  data: {
-    "workers.items": { _load: "workers", _default: [{ url: "http://localhost:5001", role: "gen", status: "unknown" }] },
-    "workers.draft_url": ""
-  },
-  panels: [
-    {
-      name: "workers", x: 1, y: 1, w: 34, h: 20, label: "workers", border: true,
-      asm: {
-        render: `; ── workers render ──
-CALL @items, dget, "workers.items"
-CALL @draft, dget, "workers.draft_url"
-CALL _, clear, "workers"
-CALL _, zone_clear, "workers"
-CALL _, write, "workers", 0, 1, "WORKERS", "c-accent"
-CALL _, zone, "workers", 2, 1, 26, 1, "input", "workers_add", "", "workers.draft_url"
-CALL _, write, "workers", 2, 1, @draft, ""
-CALL _, zone, "workers", 2, 28, 3, 1, "button", "workers_add"
-CALL _, write, "workers", 2, 28, " + ", "c-green"
-EACH @w, @items, +8
-  CALL @row, add, 4, @each_idx
-  CALL @dot_cl, status_color, @w.status
-  CALL _, write, "workers", @row, 1, "\u25cf", @dot_cl
-  CALL _, write, "workers", @row, 3, @w.url, ""
-  CALL _, write, "workers", @row, 25, @w.role, "c-accent2"
-  CALL _, write, "workers", @row, 31, "\u00d7", "c-red"
-  CALL _, zone, "workers", @row, 1, 1, 1, "button", "workers_probe", @each_idx
-  CALL _, zone, "workers", @row, 31, 1, 1, "button", "workers_del", @each_idx`,
-        actions: {
-          workers_add: `; add worker — probe via generic http_ok
-CALL @url, dget, "workers.draft_url"
-CMP @empty, eq, @url, ""
-JIF @empty, +99
-CALL @items, dget, "workers.items"
-CALL @probe_url, concat, @url, "/v1/models"
-CALL @ok, http_ok, @probe_url, 3000
-CMP @is_ok, eq, @ok, true
-JIF @is_ok, +2
-MOV @status, "fail"
-JIF true, +1
-MOV @status, "ok"
-MOV @w, {}
-CALL _, set, @w, "url", @url
-CALL _, set, @w, "role", "gen"
-CALL _, set, @w, "status", @status
-CALL _, push, @items, @w
-CALL _, dset, "workers.items", @items
-CALL _, dsave, "workers", @items
-CALL _, input_clear, "workers.draft_url"
-CALL _, log, "added worker"
-CALL _, render, "workers"`,
-          workers_del: `; delete worker by index
-CALL @items, dget, "workers.items"
-CALL _, splice, @items, @action_data, 1
-CALL _, dset, "workers.items", @items
-CALL _, dsave, "workers", @items
-CALL _, log, "removed worker"
-CALL _, render, "workers"`,
-          workers_probe: `; probe worker via generic http_ok
-CALL @items, dget, "workers.items"
-CALL @w, get, @items, @action_data
-CALL @url, get, @w, "url"
-CALL @probe_url, concat, @url, "/v1/models"
-CALL _, log, @probe_url
-CALL @ok, http_ok, @probe_url, 3000
-CMP @status_val, eq, @ok, true
-JIF @status_val, +2
-MOV @st, "fail"
-JIF true, +1
-MOV @st, "ok"
-CALL _, set, @w, "status", @st
-CALL _, dset, "workers.items", @items
-CALL _, dsave, "workers", @items
-CALL _, log, @st
-CALL _, render, "workers"`,
-        }
-      }
-    },
-    {
-      name: "chat", x: 37, y: 1, w: 50, h: 20, label: "chat", border: true, borderColor: "#565f89",
-      asm: {
-        render: `; ── chat render ──
-CALL _, clear, "chat"
-CALL _, zone_clear, "chat"
-CALL _, write, "chat", 1, 1, "user: hello", "c-accent"
-CALL _, write, "chat", 2, 1, "bot: hi there!", "c-green"
-CALL _, write, "chat", 3, 1, "user: run extract", "c-accent"
-CALL _, write, "chat", 4, 1, "bot: done. 42 entities.", "c-green"
-CALL _, write, "chat", 17, 1, ">", "c-accent3"
-CALL _, zone, "chat", 17, 3, 45, 1, "input", "chat_send", "", "chat.input"`,
-        actions: {
-          chat_send: `; send chat message
-CALL @msg, dget, "chat.input"
-CALL _, log, @msg
-CALL _, input_clear, "chat.input"`,
-        }
-      }
+async function init() {
+  try {
+    const r = await fetch('/api/aabb/project');
+    if (r.ok) {
+      const project = await r.json();
+      await loadProject(project);
+      log('project loaded from server');
+    } else {
+      log('no project on server, starting empty', true);
+      calcGrid();
+      rootPanel = createPanel('screen', COLS, ROWS);
+      rootPanel.border = false;
+      draw();
+      renderPanelTree();
     }
-  ]
-};
+  } catch (e) {
+    log('failed to load project: ' + e, true);
+    calcGrid();
+    rootPanel = createPanel('screen', COLS, ROWS);
+    rootPanel.border = false;
+    draw();
+    renderPanelTree();
+  }
+}
 
-// ── Init ───────────────────────────────────────────────────────────────────
-loadProject(DEFAULT_PROJECT);
+init();
 window.addEventListener('resize', () => { draw(); if (activeTab === 'panels') renderPanelTree(); });
 
 </script>

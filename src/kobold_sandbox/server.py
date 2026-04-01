@@ -2848,6 +2848,24 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/api/aabb/project")
+    def get_aabb_project() -> dict:
+        """Serve the AABB project JSON."""
+        import json
+        proj_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_project.json"
+        if proj_path.exists():
+            return json.loads(proj_path.read_text(encoding="utf-8"))
+        return {"data": {}, "panels": []}
+
+    @app.post("/api/aabb/project")
+    async def save_aabb_project(request: Request) -> dict:
+        """Save the AABB project JSON."""
+        import json
+        body = await request.json()
+        proj_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_project.json"
+        proj_path.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
+        return {"ok": True}
+
     @app.get("/workflow", response_class=HTMLResponse)
     def workflow_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow.html"
