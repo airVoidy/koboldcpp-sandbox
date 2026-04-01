@@ -543,6 +543,11 @@ class GatewayRuntime:
         if "enqueue" in action:
             template_name = action["enqueue"]
             with_ctx = action.get("with", {})
+
+            # Inherit context from parent job (for_each item flows through chain)
+            parent_job = self._jobs.get(event.job_id)
+            inherited_ctx = dict(parent_job.context) if parent_job and parent_job.context else {}
+
             # Resolve with-context variables
             resolved_ctx = {}
             for k, v in with_ctx.items():
@@ -556,6 +561,9 @@ class GatewayRuntime:
             if "." in event.job_id:
                 parent_suffix = "." + event.job_id.rsplit(".", 1)[1]
 
+            # Merge: inherited from parent → explicit with → for_each
+            merged_ctx = {**inherited_ctx, **resolved_ctx}
+
             if "for_each" in action:
                 items_key = action["for_each"]
                 items = self.state.get(items_key, [])
@@ -564,13 +572,13 @@ class GatewayRuntime:
                 for idx, item in enumerate(items):
                     job = self._instantiate_template(
                         template_name, f"{template_name}.{idx}",
-                        {**resolved_ctx, "item": item, "index": idx, "item_idx": idx}
+                        {**merged_ctx, "item": item, "index": idx, "item_idx": idx}
                     )
                     if job:
                         self.enqueue(job)
             else:
                 job_id = template_name + parent_suffix if parent_suffix else template_name
-                job = self._instantiate_template(template_name, job_id, resolved_ctx)
+                job = self._instantiate_template(template_name, job_id, merged_ctx)
                 if job:
                     self.enqueue(job)
 
