@@ -71,6 +71,8 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
   <div id="tab-bar">
     <button data-tab="console" class="active">Console</button>
     <button data-tab="gui">GUI</button>
+    <button data-tab="inspect">Inspect</button>
+    <button data-tab="assembly">Assembly</button>
     <button data-tab="replay">Replay</button>
     <button data-tab="preview">Preview</button>
     <div class="spacer"></div>
@@ -95,6 +97,7 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
         <div id="console-log"></div>
       </div>
       <div id="props-editor" class="hidden"></div>
+      <textarea id="asm-editor" spellcheck="false" style="display:none;flex:1;background:var(--bg);color:var(--text);border:none;outline:none;font:12px/1.4 Consolas,monospace;padding:6px 8px;resize:none;tab-size:2;"></textarea>
       <div id="console-input-row"><span>&gt;</span><input id="console-input" autofocus spellcheck="false"></div>
     </div>
   </div>
@@ -310,8 +313,23 @@ function parseCmd(line) {
   }
   if (cmd === 'load') return { cmd:'load', path:tokens[1], key:tokens[2], default:tokens[3] };
   if (cmd === 'render') return { cmd:'render', _ctx:ctx };
-  // extract <new_name> — move selected panel's content into a new child panel
-  if (cmd === 'extract') return { cmd:'extract', newName:tokens[1], _ctx:ctx };
+  // extract <new_name> [zones=0,2,3] [rows=4-8] — move part of panel to new child
+  if (cmd === 'extract') {
+    const c = { cmd:'extract', newName:tokens[1], _ctx:ctx };
+    for (let i=2; i<tokens.length; i++) {
+      const t=tokens[i], eq=t.indexOf('=');
+      if (eq>0) {
+        const k=t.slice(0,eq), v=t.slice(eq+1);
+        if (k==='zones') c.zoneIndices = v.split(',').map(Number);
+        else if (k==='rows') { const [a,b]=v.split('-').map(Number); c.rowStart=a; c.rowEnd=b; }
+        else if (k==='x') c.x = +v;
+        else if (k==='y') c.y = +v;
+        else if (k==='w') c.w = +v;
+        else if (k==='h') c.h = +v;
+      }
+    }
+    return c;
+  }
   // reparent <target_parent> — move selected panel under target
   if (cmd === 'reparent') return { cmd:'reparent', target:tokens[1], _ctx:ctx };
   // reorder <index> — move selected panel to index in parent's children
@@ -378,20 +396,55 @@ async function applyCommand(cmd) {
     case 'load': Data.set(cmd.path, Data.load(cmd.key, cmd.default)); clog(`load ${cmd.path}`, 'cmd-ok'); break;
     case 'render': { const p=panels[ctx]; if(p&&p.asm&&p.asm.render) await execAsm(p.asm.render); break; }
     case 'extract': {
-      // Extract: create new child panel from selected, move content+zones into it
+      // Extract: move content from selected panel into new child panel
+      // Partial: zones=0,2 rows=4-8 — only specific zones/rows
+      // Full: no params — move everything
       const p = panels[ctx]; if (!p) break;
-      const newP = createPanel(cmd.newName, p.w, p.h);
-      newP.buf = p.buf.map(r => r.map(c => ({...c})));
-      newP.authoredZones = [...p.authoredZones]; newP.zones = [...p.zones];
-      newP.asm = { render: p.asm?.render || '', actions: {...(p.asm?.actions||{})} };
-      // Clear original, add new as child
-      panelClear(p); p.authoredZones=[]; p.zones=[]; p.asm={render:'',actions:{}};
-      addChildPanel(p, newP, 0, 0, p.w, p.h);
-      // Rewrite panel refs in assembly: replace ctx name with newName
-      if (newP.asm.render) newP.asm.render = newP.asm.render.replace(new RegExp('"'+ctx+'"','g'), '"'+cmd.newName+'"');
-      for (const [k,v] of Object.entries(newP.asm.actions)) newP.asm.actions[k] = v.replace(new RegExp('"'+ctx+'"','g'), '"'+cmd.newName+'"');
+      const partial = cmd.zoneIndices || cmd.rowStart !== undefined;
+      const nw = cmd.w || p.w, nh = cmd.h || (cmd.rowEnd !== undefined ? cmd.rowEnd - (cmd.rowStart||0) + 1 : p.h);
+      const nx = cmd.x || 0, ny = cmd.y || (cmd.rowStart || 0);
+      const newP = createPanel(cmd.newName, nw, nh);
+
+      if (partial) {
+        // Copy specific rows
+        const rs = cmd.rowStart || 0, re = cmd.rowEnd !== undefined ? cmd.rowEnd : p.buf.length - 1;
+        for (let r = rs; r <= re && r < p.buf.length; r++) {
+          const dr = r - rs;
+          if (dr < newP.buf.length) newP.buf[dr] = p.buf[r].map(c => ({...c}));
+        }
+        // Move specific zones (by index)
+        if (cmd.zoneIndices) {
+          const moved = cmd.zoneIndices.map(i => p.authoredZones[i]).filter(Boolean);
+          for (const z of moved) {
+            const copy = {...z, y: z.y - rs};
+            newP.authoredZones.push(copy); newP.zones.push(copy);
+          }
+          // Remove from original (reverse order)
+          for (const i of [...cmd.zoneIndices].sort((a,b)=>b-a)) {
+            p.authoredZones.splice(i, 1);
+          }
+          p.zones = p.authoredZones.map(z => ({...z}));
+        }
+        // Move related actions
+        const movedActions = new Set(newP.authoredZones.map(z=>z.action).filter(Boolean));
+        for (const a of movedActions) {
+          if (p.asm?.actions?.[a]) { newP.asm.actions[a] = p.asm.actions[a]; delete p.asm.actions[a]; }
+        }
+      } else {
+        // Full extract
+        newP.buf = p.buf.map(r => r.map(c => ({...c})));
+        newP.authoredZones = [...p.authoredZones]; newP.zones = [...p.zones];
+        newP.asm = { render: p.asm?.render || '', actions: {...(p.asm?.actions||{})} };
+        panelClear(p); p.authoredZones=[]; p.zones=[]; p.asm={render:'',actions:{}};
+      }
+
+      addChildPanel(p, newP, nx, ny, nw, nh);
+      // Rewrite refs
+      const re = new RegExp('"'+ctx.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'"','g');
+      if (newP.asm.render) newP.asm.render = newP.asm.render.replace(re, '"'+cmd.newName+'"');
+      for (const [k,v] of Object.entries(newP.asm.actions)) newP.asm.actions[k] = v.replace(re, '"'+cmd.newName+'"');
       _ctx = cmd.newName;
-      clog(`extracted ${ctx} → ${cmd.newName}`, 'cmd-ok');
+      clog(`extracted ${ctx} → ${cmd.newName}${partial ? ' (partial)' : ''}`, 'cmd-ok');
       break;
     }
     case 'reparent': {
@@ -527,6 +580,9 @@ const consoleInputRow = document.getElementById('console-input-row');
 
 function clog(msg, cls) { const d=document.createElement('div'); d.className=cls||''; d.textContent=msg; consoleLog.appendChild(d); consoleLog.scrollTop=consoleLog.scrollHeight; }
 
+const asmEditor = document.getElementById('asm-editor');
+let asmEditPanel = null, asmEditAction = null;
+
 function setTab(name) {
   activeTab = name;
   tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -534,11 +590,15 @@ function setTab(name) {
   consoleLog.style.display = (name==='console') ? 'block' : 'none';
   consoleInputRow.style.display = (name==='console') ? 'flex' : 'none';
   propsEditor.classList.toggle('hidden', name !== 'gui');
+  asmEditor.style.display = (name==='assembly') ? 'block' : 'none';
   document.getElementById('btn-add-panel').style.display = name==='gui' ? '' : 'none';
   document.getElementById('btn-add-zone').style.display = name==='gui' ? '' : 'none';
-  sideTitle.textContent = {console:'Console',gui:'GUI',replay:'Replay',preview:''}[name]||'';
+  sideTitle.textContent = {console:'Console',gui:'GUI',inspect:'Inspect',assembly:'Assembly',replay:'Replay',preview:''}[name]||'';
   if (name === 'gui') renderTree();
+  if (name === 'inspect') renderInspect();
+  if (name === 'assembly') showAsmTab();
   if (name === 'replay') updateReplayView();
+  if (name !== 'preview') { focusedZone=null; stopCursorBlink(); }
   drawOverlay();
 }
 tabBtns.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
@@ -661,6 +721,142 @@ function showPanelProps() {
   });
 }
 
+// ── Inspect tab ──────────────────────────────────────────────────────────
+function renderInspect() {
+  const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
+  if (!p) { sideContent.innerHTML = '<div style="padding:20px;color:var(--text-dim);text-align:center;">Click a panel</div>'; return; }
+  let html = `<div style="padding:8px;font-size:11px;">`;
+  html += `<h3 style="color:var(--accent);font-size:12px;margin:0 0 6px;">${escH(p.name)}</h3>`;
+  html += kv('size', `${p.w} \u00d7 ${p.h}`);
+  html += kv('label', p.label);
+  html += kv('border', p.border);
+  html += kv('children', p.children.map(c=>c.panel.name).join(', ')||'(none)');
+  html += kv('zones', `${p.zones.length} (${p.authoredZones.length} authored)`);
+
+  if (p.zones.length) {
+    html += `<h3 style="color:var(--orange);font-size:11px;margin:8px 0 4px;">Zones</h3>`;
+    for (let i=0; i<p.zones.length; i++) {
+      const z = p.zones[i];
+      const icon = z.type==='button' ? '\u25a3' : '\u25a1';
+      html += `<div style="margin:3px 0;padding:3px 4px;background:var(--bg);border:1px solid var(--border);border-radius:2px;font-size:10px;">`;
+      html += `<span style="color:var(--orange);">${icon} ${z.type}</span> [${z.x},${z.y} ${z.w}\u00d7${z.h}]`;
+      if (z.action) html += ` \u2192 <span style="color:var(--green);">${escH(z.action)}</span>`;
+      if (z.dataPath) html += ` <span style="color:var(--accent3);">dp=${escH(z.dataPath)}</span>`;
+      if (z._authored) html += ' \u25cf';
+      // Show action code if exists
+      if (z.action && p.asm && p.asm.actions && p.asm.actions[z.action]) {
+        html += `<details style="margin-top:2px;"><summary style="color:var(--text-dim);cursor:pointer;font-size:9px;">asm</summary>`;
+        html += `<pre style="font-size:9px;max-height:100px;overflow:auto;margin:2px 0;">${escH(p.asm.actions[z.action])}</pre></details>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  if (p.asm) {
+    html += `<h3 style="color:var(--green);font-size:11px;margin:8px 0 4px;">Assembly</h3>`;
+    if (p.asm.render) {
+      html += `<details open><summary style="cursor:pointer;color:var(--green);">render (${p.asm.render.split('\\n').length} lines)</summary>`;
+      html += `<pre style="font-size:9px;max-height:120px;overflow:auto;">${escH(p.asm.render)}</pre></details>`;
+    }
+    for (const [name, code] of Object.entries(p.asm.actions||{})) {
+      html += `<details><summary style="cursor:pointer;color:var(--green);">${escH(name)} (${code.split('\\n').length} lines)</summary>`;
+      html += `<pre style="font-size:9px;max-height:120px;overflow:auto;">${escH(code)}</pre></details>`;
+    }
+  }
+
+  html += `<h3 style="color:var(--accent3);font-size:11px;margin:8px 0 4px;">Data Layer</h3>`;
+  html += `<pre style="font-size:9px;max-height:150px;overflow:auto;">${escH(JSON.stringify(Data.dump(),null,2))}</pre>`;
+  html += `</div>`;
+  sideContent.innerHTML = html;
+}
+
+function kv(k,v) { return `<div style="display:flex;gap:6px;margin-bottom:2px;"><span style="color:var(--text-dim);min-width:60px;">${escH(k)}</span><span>${escH(String(v))}</span></div>`; }
+
+// ── Assembly tab ─────────────────────────────────────────────────────────
+function showAsmTab() {
+  const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
+  if (!p) { sideContent.innerHTML = ''; return; }
+  asmEditPanel = p; asmEditAction = null;
+  // Panel picker + action picker in sideContent
+  let html = '<div style="padding:4px 8px;font-size:10px;">';
+  // Panel picker
+  html += '<div style="margin-bottom:4px;">Panel: ';
+  for (const [name, panel] of Object.entries(panels)) {
+    if (panel === rootPanel) continue;
+    const sel = panel === p ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
+    html += `<span class="asm-pick-panel" data-p="${name}" style="${sel}cursor:pointer;margin-right:8px;">${escH(name)}</span>`;
+  }
+  html += '</div>';
+  // Action picker
+  const renderSel = !asmEditAction ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
+  html += `<div class="asm-pick-action" data-a="" style="${renderSel}cursor:pointer;margin-bottom:2px;">\u25b6 render</div>`;
+  for (const a of Object.keys(p.asm?.actions||{})) {
+    const sel = asmEditAction===a ? 'color:var(--orange);font-weight:700;' : 'color:var(--text-dim);';
+    html += `<div class="asm-pick-action" data-a="${escH(a)}" style="${sel}cursor:pointer;margin-bottom:2px;">\u25a3 ${escH(a)}</div>`;
+  }
+  // New action input
+  html += `<div style="margin-top:4px;display:flex;gap:4px;"><input id="new-action-name" placeholder="new action" style="flex:1;font-size:10px;padding:1px 4px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;border-radius:2px;"><button id="btn-new-action" style="font-size:10px;padding:1px 6px;">+</button></div>`;
+  html += `<div style="margin-top:4px;"><button id="btn-run-asm" style="font-size:10px;padding:2px 8px;">Run</button></div>`;
+  html += '</div>';
+  sideContent.innerHTML = html;
+
+  // Load editor content
+  if (!p.asm) p.asm = {render:'',actions:{}};
+  asmEditor.value = asmEditAction ? (p.asm.actions[asmEditAction]||'') : (p.asm.render||'');
+
+  // Wire clicks
+  sideContent.querySelectorAll('.asm-pick-panel').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedPanel = panels[el.dataset.p]; _ctx = el.dataset.p;
+      asmEditPanel = selectedPanel; asmEditAction = null;
+      showAsmTab(); drawOverlay();
+    });
+  });
+  sideContent.querySelectorAll('.asm-pick-action').forEach(el => {
+    el.addEventListener('click', () => {
+      asmEditAction = el.dataset.a || null;
+      if (!asmEditPanel.asm) asmEditPanel.asm = {render:'',actions:{}};
+      asmEditor.value = asmEditAction ? (asmEditPanel.asm.actions[asmEditAction]||'') : (asmEditPanel.asm.render||'');
+      showAsmTab();
+    });
+  });
+  document.getElementById('btn-new-action')?.addEventListener('click', () => {
+    const name = document.getElementById('new-action-name')?.value?.trim();
+    if (!name || !asmEditPanel) return;
+    exec(`action ${name}\n; ${name}\nend`);
+    asmEditAction = name;
+    showAsmTab();
+  });
+  document.getElementById('btn-run-asm')?.addEventListener('click', async () => {
+    // Save current editor content
+    saveAsmEditor();
+    const code = asmEditor.value;
+    if (!code.trim()) return;
+    clog('[asm] executing...', 'cmd-out');
+    try { await execAsm(code); clog('[asm] done', 'cmd-ok'); } catch(e) { clog('[asm] '+e, 'cmd-err'); }
+    draw();
+  });
+}
+
+function saveAsmEditor() {
+  if (!asmEditPanel) return;
+  if (!asmEditPanel.asm) asmEditPanel.asm = {render:'',actions:{}};
+  const code = asmEditor.value;
+  if (asmEditAction) {
+    if (asmEditPanel.asm.actions[asmEditAction] !== code) {
+      asmEditPanel.asm.actions[asmEditAction] = code;
+      exec(`action ${asmEditAction}\n${code}\nend`);
+    }
+  } else {
+    if (asmEditPanel.asm.render !== code) {
+      asmEditPanel.asm.render = code;
+      exec(`action render\n${code}\nend`);
+    }
+  }
+}
+
+asmEditor.addEventListener('blur', () => saveAsmEditor());
+
 // +Panel button
 document.getElementById('btn-add-panel').addEventListener('click', () => {
   if (activeTab !== 'gui') return;
@@ -699,7 +895,9 @@ function canvasToChar(e) { const r=document.getElementById('canvas').getBounding
 document.getElementById('canvas').addEventListener('click', (e) => {
   const {col,row} = canvasToChar(e);
   const hit = rootPanel ? hitTestPanel(col,row,rootPanel,0,0,COLS,ROWS) : null;
-  if (activeTab==='gui' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; renderTree(); drawOverlay(); }
+  if (activeTab==='gui' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; renderTree(); showPanelProps(); drawOverlay(); }
+  if (activeTab==='inspect' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; renderInspect(); drawOverlay(); }
+  if (activeTab==='assembly' && hit) { selectedPanel=hit.panel; _ctx=hit.panel.name; showAsmTab(); drawOverlay(); }
   if (activeTab==='preview' && hit && hit.zone) {
     if (hit.zone.type==='button' && hit.zone.action) {
       const p=hit.panel;
