@@ -516,6 +516,11 @@ class GatewayRuntime:
         # Merge subscription context
         for k, v in sub.context.items():
             self._wf_ctx.vars[k] = v
+        # Inherit parent job context (item, index from for_each chain)
+        parent_job = self._jobs.get(event.job_id)
+        if parent_job and parent_job.context:
+            for k, v in parent_job.context.items():
+                self._wf_ctx.vars[k] = v
 
         # Run assembly handler
         if sub.handler_asm:
