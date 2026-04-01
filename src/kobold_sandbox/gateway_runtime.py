@@ -516,11 +516,6 @@ class GatewayRuntime:
         # Merge subscription context
         for k, v in sub.context.items():
             self._wf_ctx.vars[k] = v
-        # Merge parent job's with-context (e.g. item_idx from for_each)
-        parent_job = self._jobs.get(event.job_id)
-        if parent_job and parent_job.context:
-            for k, v in parent_job.context.items():
-                self._wf_ctx.vars[k] = v
 
         # Run assembly handler
         if sub.handler_asm:
@@ -553,11 +548,12 @@ class GatewayRuntime:
             parent_job = self._jobs.get(event.job_id)
             inherited_ctx = dict(parent_job.context) if parent_job and parent_job.context else {}
 
-            # Resolve with-context variables
+            # Resolve with-context variables (check parent context first, then state)
             resolved_ctx = {}
             for k, v in with_ctx.items():
                 if isinstance(v, str) and v.startswith("$"):
-                    resolved_ctx[k] = self._resolve_path(v[1:]) or v
+                    ref = v[1:]
+                    resolved_ctx[k] = inherited_ctx.get(ref) or self._resolve_path(ref) or v
                 else:
                     resolved_ctx[k] = v
 
@@ -574,11 +570,12 @@ class GatewayRuntime:
                 items = self.state.get(items_key, [])
                 if not isinstance(items, list):
                     items = []
-                for idx, item in enumerate(items):
-                    # for_each semantics: item = current element, index = position
+                for idx, item_val in enumerate(items):
+                    # for_each: item = current element, index = position
+                    # with: adds explicit params for chaining (e.g. item_idx)
                     job = self._instantiate_template(
                         template_name, f"{template_name}.{idx}",
-                        {**merged_ctx, "item": item, "index": idx}
+                        {**merged_ctx, "item": item_val, "index": idx}
                     )
                     if job:
                         self.enqueue(job)
