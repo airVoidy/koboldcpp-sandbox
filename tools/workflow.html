@@ -757,7 +757,7 @@ function _buildSlotCtx(slot, nd, resolved) {
       base.count = items.length;
       base.color = colorVar ? `color:var(--${colorVar})` : '';
       base.items = items.map(item => ({
-        text: esc(typeof item === 'string' ? item : item.title || item.name || JSON.stringify(item)),
+        text: esc(typeof item === 'string' ? item : item.title || item.name || item.text || JSON.stringify(item)),
         color: colorVar ? `color:var(--${colorVar})` : '',
       }));
       return base;
@@ -1072,6 +1072,8 @@ const _viewAsmBuiltins = {
   keys(a) { return a[0] != null && typeof a[0] === 'object' ? Object.keys(a[0]) : []; },
   json(a) { try { return JSON.stringify(a[0], null, 2); } catch (_) { return String(a[0]); } },
   default(a) { return a[0] != null && a[0] !== '' ? a[0] : a[1]; },
+  pluck(a) { return Array.isArray(a[0]) ? a[0].map(item => item != null ? item[a[1]] : undefined).filter(v => v != null) : []; },
+  map_fmt(a) { const arr = a[0], tpl = String(a[1] || '{0}'); return Array.isArray(arr) ? arr.map(item => { let s = tpl; if (typeof item === 'object') { for (const [k, v] of Object.entries(item)) s = s.replace(`{${k}}`, String(v ?? '')); } else { s = s.replace('{0}', String(item ?? '')); } return s; }) : []; },
 };
 
 function execViewAsm(code, nd) {
@@ -1630,7 +1632,7 @@ function renderSlot(slot, nd, resolved) {
           ${esc(label)} <span style="opacity:.5">${items.length}</span>
         </div>
         <div class="node-list-body${isOpen?' open':''}" data-list-body="${key}">
-          ${items.map(item => `<div class="node-list-item" style="${color}"><span class="bullet">&#8226;</span>${esc(typeof item === 'string' ? item : item.title || item.name || JSON.stringify(item))}</div>`).join('')}
+          ${items.map(item => `<div class="node-list-item" style="${color}"><span class="bullet">&#8226;</span>${esc(typeof item === 'string' ? item : item.title || item.name || item.text || JSON.stringify(item))}</div>`).join('')}
         </div>
       </div>`;
     }
