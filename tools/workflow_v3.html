@@ -132,23 +132,162 @@ textarea { resize:vertical; }
 
     <!-- YAML tab -->
     <div id="tab-yaml" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-      <textarea id="yamlEditor" spellcheck="false" style="flex:1;border:none;padding:8px;font-size:11px;line-height:1.3;min-height:0;resize:none;">workflow: demo_v3
+      <textarea id="yamlEditor" spellcheck="false" style="flex:1;border:none;padding:8px;font-size:11px;line-height:1.3;min-height:0;resize:none;">workflow: demoness_v3
 version: 3
 
 input: >
-  Hello world test
+  написать 4 описания внешности демониц в разных образах
+  [проверить, что разные образы, разный цвет глаз,
+  разный цвет волос, разные позы,
+  стиль: аниме]
 
+config:
+  params_int:
+    grammar: |
+      root ::= digits term
+      digits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]
+      term ::= " " | "\n" | "\""
+    capture: "[0-9]+"
+    coerce: int
+  params_binary:
+    grammar: |
+      root ::= digit term
+      digit ::= "0" | "1"
+      term ::= " " | "\n" | "\""
+    capture: "[01]"
+    coerce: int
+
+# === Phase 1: Bootstrap (parallel) ===
 jobs:
+  - id: claims
+    worker: analyzer
+    payload: claims($input)
+    priority: high
+    temp: 0.1
+    max: 2048
+    no_think: true
+
   - id: answer
     worker: generator
     payload: $input
     temp: 0.7
-    max: 512
+    max: 2048
+    no_think: true
 
+# === Reactive handlers ===
 on:
+  claims.done:
+    do: |
+      CALL @parsed, parse_sections, @claims
+      MOV @entities, @parsed.entities
+      MOV @axioms, @parsed.axioms
+      MOV @hypotheses, @parsed.hypotheses
+
   answer.done:
     do: |
-      MOV @result, @answer
+      CALL @numbered_answer, numbered, @answer
+      CALL @indexed_answer, char_indexed, @answer
+
+  all_done:
+    wait_for: [claims, answer]
+    do: |
+      CALL @items, wrap_list, @entities, "name"
+      CALL @items, enrich_entities, @items, @answer
+    then:
+      - for_each: items
+        enqueue: trim_probe
+        with: {item_idx: $index}
+
+  trim_probe.*.done:
+    do: |
+      CALL @item.text, substr, @answer, @item.char_start, @_event.result
+    then:
+      - enqueue: confirm_probe
+        with: {item_idx: $item_idx}
+
+  confirm_probe.*.done:
+    do: |
+      MOV @item.confirmed, @_event.result
+    then:
+      - enqueue: style_check
+        with: {item_idx: $item_idx}
+
+  style_check.*.done:
+    do: |
+      MOV @item.style_ok, @_event.result
+    then:
+      - enqueue: reaction_check
+        with: {item_idx: $item_idx}
+
+  reaction_check.*.done:
+    do: |
+      CALL @item.status, check_status, @_event.result
+      MOV @item.reaction, @_event.result
+
+# === Job templates ===
+job_templates:
+  trim_probe:
+    worker: generator
+    mode: probe
+    grammar: $config.params_int.grammar
+    capture:
+      regex: $config.params_int.capture
+      coerce: $config.params_int.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: $indexed_answer
+      - assistant: |
+          <think>
+          Блок #${item.local_id} начинается с символа ${item.char_start}
+          и заканчивается на символе char_end:
+    temp: 0
+    max: 6
+
+  confirm_probe:
+    worker: generator
+    mode: probe
+    grammar: $config.params_binary.grammar
+    capture:
+      regex: $config.params_binary.capture
+      coerce: $config.params_binary.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: $numbered_answer
+      - assistant: |
+          <think>
+          Описание "${item._title}":
+          ${item.text}
+          ((answer generated) == true) ===
+    temp: 0
+    max: 2
+
+  style_check:
+    worker: analyzer
+    mode: probe
+    grammar: $config.params_binary.grammar
+    capture:
+      regex: $config.params_binary.capture
+      coerce: $config.params_binary.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: |
+          Описание:
+          ${item.text}
+          Вопрос: Соответствует ли стиль "аниме"?
+      - assistant: |
+          <think>
+          ((стиль аниме) == true) ===
+    temp: 0
+    max: 2
+
+  reaction_check:
+    worker: analyzer
+    payload: |
+      Evaluate this text. Reply PASS if good, FAIL + reason if not.
+      ${item.text}
+    temp: 0.2
+    max: 512
+    no_think: true
 </textarea>
       <div style="padding:4px 8px;display:flex;gap:4px;border-top:1px solid var(--border);flex-shrink:0;">
         <button class="btn sm primary" id="btnRun">Run</button>
