@@ -218,12 +218,54 @@ let _ctx = null; // currently selected panel name
 
 function exec(cmdStr, silent) {
   const raw = typeof cmdStr === 'string' ? cmdStr.trim() : '';
-  const cmd = parseCmd(raw);
-  if (!cmd) return;
-  // Introspection commands don't get recorded
-  if (['get','ls','find'].includes(cmd.cmd)) { runIntrospect(cmd); return; }
-  replay.push({ _raw: raw, ...cmd, _ts: Date.now() });
-  applyCommand(cmd);
+  if (!raw) return;
+
+  // Multi-line: split and handle block commands (action ... end)
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith(';'));
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const tokens = asmTokenize(line);
+
+    // Block command: "action <name>" ... "end"
+    if (tokens[0] === 'action' && tokens.length >= 2 && !line.includes('{')) {
+      const name = tokens[1];
+      const bodyLines = [];
+      i++;
+      while (i < lines.length && lines[i] !== 'end') { bodyLines.push(lines[i]); i++; }
+      if (i < lines.length) i++; // skip 'end'
+      const asm = bodyLines.join('\n');
+      const fullRaw = `action ${name}\n${bodyLines.join('\n')}\nend`;
+      const cmd = { cmd:'action', name, asm, _ctx: _ctx || 'screen' };
+      if (!['get','ls','find'].includes(cmd.cmd)) {
+        replay.push({ _raw: fullRaw, ...cmd, _ts: Date.now() });
+        applyCommand(cmd);
+      }
+      continue;
+    }
+
+    // Block command: "asm" ... "end"
+    if (tokens[0] === 'asm' && tokens.length === 1) {
+      const bodyLines = [];
+      i++;
+      while (i < lines.length && lines[i] !== 'end') { bodyLines.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      const code = bodyLines.join('\n');
+      const fullRaw = `asm\n${bodyLines.join('\n')}\nend`;
+      const cmd = { cmd:'asm', code, _ctx: _ctx || 'screen' };
+      replay.push({ _raw: fullRaw, ...cmd, _ts: Date.now() });
+      execAsm(code);
+      continue;
+    }
+
+    // Single-line command
+    const cmd = parseCmd(line);
+    if (!cmd) { i++; continue; }
+    if (['get','ls','find'].includes(cmd.cmd)) { runIntrospect(cmd); i++; continue; }
+    replay.push({ _raw: line, ...cmd, _ts: Date.now() });
+    applyCommand(cmd);
+    i++;
+  }
   if (!silent) { draw(); updateReplayView(); }
 }
 
@@ -256,7 +298,15 @@ function parseCmd(line) {
     return { cmd:'action', name, asm: asm.trim(), _ctx:ctx };
   }
   if (cmd === 'action_del') return { cmd:'action_del', name:tokens[1], _ctx:ctx };
-  if (cmd === 'data') { let v=tokens.slice(2).join(' '); try{v=JSON.parse(v);}catch(_){} return { cmd:'data', path:tokens[1], value:v }; }
+  if (cmd === 'data') {
+    // Take raw text after "data <path> " to preserve JSON
+    const pathToken = tokens[1];
+    const pathEnd = line.indexOf(pathToken) + pathToken.length;
+    let rawVal = line.slice(pathEnd).trim();
+    let v = rawVal;
+    try { v = JSON.parse(rawVal); } catch(_) {}
+    return { cmd:'data', path:pathToken, value:v };
+  }
   if (cmd === 'load') return { cmd:'load', path:tokens[1], key:tokens[2], default:tokens[3] };
   if (cmd === 'render') return { cmd:'render', _ctx:ctx };
   if (cmd === 'select') { _ctx = tokens[1]||'screen'; clog(`→ ${_ctx}`, 'cmd-ok'); return null; }
