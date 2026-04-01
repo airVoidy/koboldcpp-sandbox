@@ -567,10 +567,10 @@ const _builtins = {
   },
   log(args)        { log(args.map(a => String(a ?? '')).join(' ')); },
   draw()           { draw(); },
-  render(args)     {
+  async render(args) {
     // re-run panel's render assembly
     const p = typeof args[0] === 'string' ? panels[args[0]] : args[0];
-    if (p && p.asm && p.asm.render) execAsm(p.asm.render);
+    if (p && p.asm && p.asm.render) await execAsm(p.asm.render);
     draw();
   },
   input_clear(args) {
@@ -1191,8 +1191,11 @@ function renderAsmActionList() {
     const sel = asmEditingAction === a ? 'color:var(--orange);font-weight:700;' : 'color:var(--text-dim);';
     html += `<div class="asm-pick" data-action="${escH(a)}" style="${sel}cursor:pointer;margin-bottom:2px;">\u25a3 ${escH(a)}</div>`;
   }
-  // Add action button
-  html += `<div class="asm-add-action" style="color:var(--green);cursor:pointer;margin-top:4px;">+ new action</div>`;
+  // Add action inline form
+  html += `<div style="margin-top:4px;display:flex;gap:4px;align-items:center;">`;
+  html += `<input id="asm-new-action-name" type="text" placeholder="action name" style="flex:1;font-size:10px;padding:1px 4px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;border-radius:2px;">`;
+  html += `<button id="asm-add-action-btn" style="font-size:10px;padding:1px 6px;color:var(--green);background:var(--surface2);border:1px solid var(--border);cursor:pointer;border-radius:2px;">+</button>`;
+  html += `</div>`;
   html += `</div>`;
   sideContent.innerHTML = html;
 
@@ -1209,14 +1212,18 @@ function renderAsmActionList() {
       renderAsmActionList();
     });
   });
-  sideContent.querySelector('.asm-add-action')?.addEventListener('click', () => {
-    const name = prompt('Action name:');
-    if (!name) return;
+  const addBtn = document.getElementById('asm-add-action-btn');
+  const addInput = document.getElementById('asm-new-action-name');
+  function doAddAction() {
+    const name = (addInput.value || '').trim();
+    if (!name || !asmEditingPanel) return;
     if (!asmEditingPanel.asm) asmEditingPanel.asm = { render: '', actions: {} };
     asmEditingPanel.asm.actions[name] = '; ' + name + ' action\n';
     showAsmEditor(asmEditingPanel, name);
     renderAsmActionList();
-  });
+  }
+  if (addBtn) addBtn.addEventListener('click', doAddAction);
+  if (addInput) addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAddAction(); });
 }
 
 // ══════════════════════════════════════════════════════════════════════════
