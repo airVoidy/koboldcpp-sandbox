@@ -605,6 +605,12 @@ const _builtins = {
 async function execAsm(code, extraState) {
   const state = { ...extraState };
   const lines = code.split('\n');
+  // Pre-scan labels: :name → line index
+  const labels = {};
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (l.startsWith(':')) labels[l] = i;
+  }
   let ip = 0;
   const maxSteps = lines.length * 50;
   let steps = 0;
@@ -612,72 +618,51 @@ async function execAsm(code, extraState) {
   while (ip < lines.length && steps < maxSteps) {
     steps++;
     const line = lines[ip].trim();
-    if (!line || line.startsWith(';')) { ip++; continue; }
+    if (!line || line.startsWith(';') || line.startsWith(':')) { ip++; continue; }
     const tokens = asmTokenize(line);
     if (!tokens.length) { ip++; continue; }
     const op = tokens[0];
 
     if (op === 'MOV') {
-      // MOV @dst, value
-      const val = asmResolve(tokens[2], state);
-      asmStore(state, tokens[1], val);
+      asmStore(state, tokens[1], asmResolve(tokens[2], state));
       ip++;
-
     } else if (op === 'CALL') {
-      // CALL @dst, fn, args...
-      const dst = tokens[1];
-      const fn = tokens[2];
-      const args = tokens.slice(3).map(t => asmResolve(t, state));
+      const dst = tokens[1], fn = tokens[2], args = tokens.slice(3).map(t => asmResolve(t, state));
       const builtin = _builtins[fn];
       if (builtin) {
         let result = builtin(args);
         if (result instanceof Promise) result = await result;
         if (dst !== '_') asmStore(state, dst, result);
-      } else {
-        log(`[asm] unknown fn: ${fn}`, true);
-      }
+      } else { log(`[asm] unknown fn: ${fn}`, true); }
       ip++;
-
     } else if (op === 'EACH') {
-      // EACH @item, @list, +bodyLen
-      const itemRef = tokens[1];
-      const list = asmResolve(tokens[2], state);
-      const bodyLen = asmResolve(tokens[3], state);
+      const itemRef = tokens[1], list = asmResolve(tokens[2], state), bodyLen = asmResolve(tokens[3], state);
       if (Array.isArray(list) && bodyLen > 0) {
         const bodyLines = lines.slice(ip + 1, ip + 1 + bodyLen);
         for (let idx = 0; idx < list.length; idx++) {
-          asmStore(state, itemRef, list[idx]);
-          state['each_idx'] = idx;
+          asmStore(state, itemRef, list[idx]); state['each_idx'] = idx;
           await execAsm(bodyLines.join('\n'), state);
-          // sync back mutations
           list[idx] = asmResolve(itemRef, state);
         }
       }
       ip += 1 + (bodyLen || 0);
-
     } else if (op === 'CMP') {
-      // CMP @dst, op, @a, @b
-      const cmpOp = tokens[2];
-      const a = asmResolve(tokens[3], state);
-      const b = asmResolve(tokens[4], state);
+      const cmpOp = tokens[2], a = asmResolve(tokens[3], state), b = asmResolve(tokens[4], state);
       let result = false;
-      if (cmpOp === 'eq') result = a == b;
-      else if (cmpOp === 'ne') result = a != b;
-      else if (cmpOp === 'gt') result = a > b;
-      else if (cmpOp === 'lt') result = a < b;
-      asmStore(state, tokens[1], result);
-      ip++;
-
+      if (cmpOp === 'eq') result = a == b; else if (cmpOp === 'ne') result = a != b;
+      else if (cmpOp === 'gt') result = a > b; else if (cmpOp === 'lt') result = a < b;
+      asmStore(state, tokens[1], result); ip++;
     } else if (op === 'JIF') {
-      // JIF @cond, +offset
       const cond = asmResolve(tokens[1], state);
-      const offset = asmResolve(tokens[2], state);
-      if (cond) ip += (typeof offset === 'number' ? offset : 1);
-      else ip++;
-
-    } else {
-      ip++;
-    }
+      const target = tokens[2];
+      if (cond) {
+        if (target.startsWith(':') && labels[target] !== undefined) {
+          ip = labels[target];
+        } else {
+          ip += (typeof asmResolve(target, state) === 'number' ? asmResolve(target, state) : 1);
+        }
+      } else { ip++; }
+    } else { ip++; }
   }
   return state;
 }
