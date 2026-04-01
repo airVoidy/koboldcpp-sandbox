@@ -212,7 +212,67 @@ const _builtins={
   async http(a){const method=String(a[0]||'GET').toUpperCase(),url=String(a[1]||''),timeout=+a[3]||10000,opts={method,signal:AbortSignal.timeout(timeout)};if(a[2]&&method!=='GET'){opts.headers={'Content-Type':'application/json'};opts.body=typeof a[2]==='string'?a[2]:JSON.stringify(a[2]);}try{const r=await fetch(url,opts);let body=null;try{body=await r.json();}catch(_){try{body=await r.text();}catch(_){}}return{ok:r.ok,status:r.status,body};}catch(e){return{ok:false,status:0,error:String(e)};}},
 };
 
-async function execAsm(code,extraState){const state={...extraState};const lines=code.split('\n');let ip=0;const max=lines.length*50;let steps=0;while(ip<lines.length&&steps<max){steps++;const line=lines[ip].trim();if(!line||line.startsWith(';')){ip++;continue;}const tokens=asmTokenize(line);if(!tokens.length){ip++;continue;}const op=tokens[0];if(op==='MOV'){asmStore(state,tokens[1],asmResolve(tokens[2],state));ip++;}else if(op==='CALL'){const dst=tokens[1],fn=tokens[2],args=tokens.slice(3).map(t=>asmResolve(t,state));const b=_builtins[fn];if(b){let r=b(args);if(r instanceof Promise)r=await r;if(dst!=='_')asmStore(state,dst,r);}ip++;}else if(op==='EACH'){const itemRef=tokens[1],list=asmResolve(tokens[2],state),bodyLen=asmResolve(tokens[3],state);if(Array.isArray(list)&&bodyLen>0){const bodyLines=lines.slice(ip+1,ip+1+bodyLen);for(let idx=0;idx<list.length;idx++){asmStore(state,itemRef,list[idx]);state['each_idx']=idx;await execAsm(bodyLines.join('\n'),state);list[idx]=asmResolve(itemRef,state);}}ip+=1+(bodyLen||0);}else if(op==='CMP'){const cmpOp=tokens[2],a=asmResolve(tokens[3],state),b=asmResolve(tokens[4],state);let r=false;if(cmpOp==='eq')r=a==b;else if(cmpOp==='ne')r=a!=b;else if(cmpOp==='gt')r=a>b;else if(cmpOp==='lt')r=a<b;asmStore(state,tokens[1],r);ip++;}else if(op==='JIF'){const cond=asmResolve(tokens[1],state),offset=asmResolve(tokens[2],state);if(cond)ip+=(typeof offset==='number'?offset:1);else ip++;}else{ip++;}}return state;}
+async function execAsm(code, extraState) {
+  const state = { ...extraState };
+  const lines = code.split('\n');
+  // Pre-scan labels: :name → line index
+  const labels = {};
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (l.startsWith(':')) labels[l] = i;
+  }
+  let ip = 0;
+  const max = lines.length * 50;
+  let steps = 0;
+  while (ip < lines.length && steps < max) {
+    steps++;
+    const line = lines[ip].trim();
+    if (!line || line.startsWith(';') || line.startsWith(':')) { ip++; continue; }
+    const tokens = asmTokenize(line);
+    if (!tokens.length) { ip++; continue; }
+    const op = tokens[0];
+
+    if (op === 'MOV') {
+      asmStore(state, tokens[1], asmResolve(tokens[2], state));
+      ip++;
+    } else if (op === 'CALL') {
+      const dst = tokens[1], fn = tokens[2], args = tokens.slice(3).map(t => asmResolve(t, state));
+      const b = _builtins[fn];
+      if (b) { let r = b(args); if (r instanceof Promise) r = await r; if (dst !== '_') asmStore(state, dst, r); }
+      ip++;
+    } else if (op === 'EACH') {
+      const itemRef = tokens[1], list = asmResolve(tokens[2], state), bodyLen = asmResolve(tokens[3], state);
+      if (Array.isArray(list) && bodyLen > 0) {
+        const bodyLines = lines.slice(ip + 1, ip + 1 + bodyLen);
+        for (let idx = 0; idx < list.length; idx++) {
+          asmStore(state, itemRef, list[idx]);
+          state['each_idx'] = idx;
+          await execAsm(bodyLines.join('\n'), state);
+          list[idx] = asmResolve(itemRef, state);
+        }
+      }
+      ip += 1 + (bodyLen || 0);
+    } else if (op === 'CMP') {
+      const cmpOp = tokens[2], a = asmResolve(tokens[3], state), b = asmResolve(tokens[4], state);
+      let r = false;
+      if (cmpOp === 'eq') r = a == b; else if (cmpOp === 'ne') r = a != b;
+      else if (cmpOp === 'gt') r = a > b; else if (cmpOp === 'lt') r = a < b;
+      asmStore(state, tokens[1], r);
+      ip++;
+    } else if (op === 'JIF') {
+      const cond = asmResolve(tokens[1], state);
+      const target = tokens[2];
+      if (cond) {
+        if (target.startsWith(':') && labels[target] !== undefined) {
+          ip = labels[target]; // jump to label line (will be skipped as :label on next iter)
+        } else {
+          ip += (typeof asmResolve(target, state) === 'number' ? asmResolve(target, state) : 1);
+        }
+      } else { ip++; }
+    } else { ip++; }
+  }
+  return state;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 //  COMMAND EXECUTOR + REPLAY
