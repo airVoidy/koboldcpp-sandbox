@@ -3965,6 +3965,11 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_test.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/aabb-symbolic", response_class=HTMLResponse)
+    def aabb_symbolic_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_symbolic.html"
+        return html_path.read_text(encoding="utf-8")
+
     @app.get("/ui-proto", response_class=HTMLResponse)
     @app.get("/ui_proto", response_class=HTMLResponse)
     def ui_proto_page() -> str:
