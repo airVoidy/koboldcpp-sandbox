@@ -577,7 +577,7 @@ class GatewayRuntime:
                 for idx, item in enumerate(items):
                     job = self._instantiate_template(
                         template_name, f"{template_name}.{idx}",
-                        {**merged_ctx, "item": item, "index": idx, "item_idx": idx}
+                        {**merged_ctx, "entity": item, "item": item, "index": idx, "item_idx": idx}
                     )
                     if job:
                         self.enqueue(job)
