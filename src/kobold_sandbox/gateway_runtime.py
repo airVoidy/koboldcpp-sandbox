@@ -57,6 +57,7 @@ class GatewayJob:
     capture: Any = None
     coerce: str | None = None
     no_think: bool = False
+    stop: list[str] | None = None
     tags: list[str] = field(default_factory=list)
     # for_each context
     context: dict[str, Any] = field(default_factory=dict)
@@ -89,6 +90,30 @@ class GatewayEvent:
 
 
 # ── Gateway Runtime ───────────────────────────────────────
+
+def _parse_messages(raw_messages: list, state: dict) -> list[dict]:
+    """Parse YAML messages list into [{role, content}] with variable interpolation."""
+    result = []
+    for m in raw_messages:
+        if isinstance(m, dict):
+            if "role" in m and "content" in m:
+                role, content = m["role"], m["content"]
+            else:
+                # Shorthand: {user: "text"} or {assistant: "text"}
+                role = list(m.keys())[0]
+                content = m[role]
+        elif isinstance(m, str):
+            role, content = "user", m
+        else:
+            continue
+        # Interpolate variables
+        if isinstance(content, str):
+            for k, v in state.items():
+                content = content.replace(f"${{{k}}}", str(v) if v is not None else "")
+                content = content.replace(f"${k}", str(v) if v is not None else "")
+        result.append({"role": str(role), "content": str(content)})
+    return result
+
 
 class GatewayRuntime:
     """Job queue + reactive event dispatch for workflow v3."""
@@ -150,8 +175,11 @@ class GatewayRuntime:
     # ── Public API ────────────────────────────────────────
 
     def enqueue(self, job: GatewayJob) -> str:
-        """Add job to worker queue. Returns job_id."""
+        """Add job to worker queue. Returns job_id. Skips if job ID already exists."""
         with self._jobs_lock:
+            if job.id in self._jobs:
+                log.debug("skip enqueue: job %s already exists (status=%s)", job.id, self._jobs[job.id].status.value)
+                return job.id
             self._jobs[job.id] = job
 
         worker = job.worker
@@ -294,25 +322,19 @@ class GatewayRuntime:
 
     def _execute_job(self, job: GatewayJob) -> Any:
         """Execute a single job via LLM call."""
+        extra = job.context  # per-job context (from for_each, with:, etc.)
         # Build messages
         if job.messages:
             messages = []
             for m in job.messages:
-                role = list(m.keys())[0] if isinstance(m, dict) and "role" not in m else m.get("role", "user")
-                content = list(m.values())[0] if isinstance(m, dict) and "content" not in m else m.get("content", "")
-                # Interpolate variables from state
-                if isinstance(content, str):
-                    for k, v in self.state.items():
-                        content = content.replace(f"${{{k}}}", str(v) if v is not None else "")
-                        content = content.replace(f"@{k}", str(v) if v is not None else "")
+                role = m.get("role", "user")
+                content = self._interpolate(m.get("content", ""), extra)
                 messages.append({"role": role, "content": content})
         else:
-            payload = job.payload
-            if isinstance(payload, str):
-                for k, v in self.state.items():
-                    payload = payload.replace(f"${{{k}}}", str(v) if v is not None else "")
-            messages = [{"role": "user", "content": str(payload)}]
+            payload = self._interpolate(str(job.payload or ""), extra)
+            messages = [{"role": "user", "content": payload}]
 
+        is_probe = job.mode in ("probe", "probe_continue")
         result = self._wf_ctx.llm_call(
             job.worker,
             messages=messages,
@@ -322,6 +344,8 @@ class GatewayRuntime:
             grammar=job.grammar,
             capture=job.capture,
             no_think=job.no_think,
+            stop=job.stop,
+            max_continue=1 if is_probe else None,
             tag=job.id,
         )
 
@@ -360,10 +384,14 @@ class GatewayRuntime:
             for sub in self._subs.get(wildcard_key, []):
                 self._run_handler(sub, event)
 
-        # all_done subscriptions
+        # all_done subscriptions (fire once, then remove)
+        fired = []
         for sub in self._all_done_subs:
             if self._check_all_done(sub):
                 self._run_handler(sub, event)
+                fired.append(sub)
+        for sub in fired:
+            self._all_done_subs.remove(sub)
 
     def _check_all_done(self, sub: Subscription) -> bool:
         """Check if all jobs in wait_for are done."""
@@ -451,37 +479,48 @@ class GatewayRuntime:
             log.warning("unknown job template: %s", name)
             return None
 
-        # Interpolate template values with context
-        def interp(val):
-            if not isinstance(val, str):
-                return val
-            for k, v in {**self.state, **context}.items():
-                val = val.replace(f"${{{k}}}", str(v) if v is not None else "")
-                val = val.replace(f"${k}", str(v) if v is not None else "")
-            return val
-
         messages = None
         if "messages" in tpl:
-            messages = []
-            for m in tpl["messages"]:
-                if isinstance(m, dict):
-                    for role, content in m.items():
-                        messages.append({"role": role, "content": interp(str(content))})
+            messages = _parse_messages(tpl["messages"], {**self.state, **context})
+
+        # Parse capture
+        capture = tpl.get("capture")
+        coerce = tpl.get("coerce")
+        if isinstance(capture, dict):
+            coerce = capture.get("coerce", coerce)
+            capture = capture.get("regex", capture.get("pattern"))
+
+        stop = tpl.get("stop")
+        if isinstance(stop, str):
+            stop = [stop]
 
         return GatewayJob(
             id=job_id,
             worker=tpl.get("worker", "generator"),
-            payload=interp(tpl.get("payload", "")),
+            payload=self._interpolate(tpl.get("payload", ""), context),
             mode=tpl.get("mode", "prompt"),
-            temp=float(tpl.get("temp", 0.6)),
-            max_tokens=int(tpl.get("max", 2048)),
+            temp=float(tpl.get("temp", tpl.get("temperature", 0.6))),
+            max_tokens=int(tpl.get("max", tpl.get("max_tokens", 2048))),
             grammar=tpl.get("grammar"),
-            capture=tpl.get("capture"),
-            coerce=tpl.get("coerce"),
+            capture=capture,
+            coerce=coerce,
             no_think=bool(tpl.get("no_think", False)),
+            stop=stop,
             messages=messages,
             context=context,
         )
+
+    # ── Helpers ────────────────────────────────────────────
+
+    def _interpolate(self, text: str, extra: dict | None = None) -> str:
+        """Replace $var and {$var} in text with state values."""
+        if not isinstance(text, str):
+            return text
+        merged = {**self.state, **(extra or {})}
+        for k, v in merged.items():
+            text = text.replace(f"${{{k}}}", str(v) if v is not None else "")
+            text = text.replace(f"${k}", str(v) if v is not None else "")
+        return text
 
     # ── v3 YAML Parser ────────────────────────────────────
 
@@ -561,16 +600,39 @@ class GatewayRuntime:
                     inp = runtime.state.get("input", "")
                     payload = payload.replace("$input", str(inp))
 
+            # Parse messages if present
+            messages = None
+            if "messages" in job_spec:
+                messages = _parse_messages(job_spec["messages"], runtime.state)
+
+            # Parse capture: can be string or dict {regex, coerce}
+            capture = job_spec.get("capture")
+            coerce = job_spec.get("coerce")
+            if isinstance(capture, dict):
+                coerce = capture.get("coerce", coerce)
+                capture = capture.get("regex", capture.get("pattern"))
+
+            # Parse stop: can be string or list
+            stop = job_spec.get("stop")
+            if isinstance(stop, str):
+                stop = [stop]
+
             job = GatewayJob(
                 id=job_spec["id"],
                 worker=job_spec.get("worker", "generator"),
                 payload=payload,
+                messages=messages,
+                mode=job_spec.get("mode", "prompt"),
                 priority=job_spec.get("priority", "normal"),
-                timeout=float(job_spec.get("timeout", "120").rstrip("s")),
+                timeout=float(str(job_spec.get("timeout", "120")).rstrip("s")),
                 retry=int(job_spec.get("retry", 0)),
-                temp=float(job_spec.get("temp", 0.6)),
-                max_tokens=int(job_spec.get("max", 2048)),
+                temp=float(job_spec.get("temp", job_spec.get("temperature", 0.6))),
+                max_tokens=int(job_spec.get("max", job_spec.get("max_tokens", 2048))),
+                grammar=job_spec.get("grammar"),
+                capture=capture,
+                coerce=coerce,
                 no_think=bool(job_spec.get("no_think", False)),
+                stop=stop,
                 tags=job_spec.get("tags", []),
             )
             runtime.enqueue(job)
