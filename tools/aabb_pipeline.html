@@ -217,11 +217,12 @@ const replay = [];
 let _ctx = null; // currently selected panel name
 
 function exec(cmdStr, silent) {
-  const cmd = parseCmd(cmdStr);
+  const raw = typeof cmdStr === 'string' ? cmdStr.trim() : '';
+  const cmd = parseCmd(raw);
   if (!cmd) return;
   // Introspection commands don't get recorded
   if (['get','ls','find'].includes(cmd.cmd)) { runIntrospect(cmd); return; }
-  replay.push({ ...cmd, _ts: Date.now() });
+  replay.push({ _raw: raw, ...cmd, _ts: Date.now() });
   applyCommand(cmd);
   if (!silent) { draw(); updateReplayView(); }
 }
@@ -539,7 +540,8 @@ function updateReplayView() {
   let html = '';
   for (let i = 0; i < replay.length; i++) {
     const c = replay[i];
-    html += `<div class="rp-step" data-idx="${i}"><span class="rp-cmd">${escH(c.cmd)}</span> <span class="rp-args">${escH(JSON.stringify(c).slice(0,80))}</span></div>`;
+    const display = c._raw || `${c.cmd} ${JSON.stringify(c).slice(0,60)}`;
+    html += `<div class="rp-step" data-idx="${i}"><span class="rp-cmd">${escH(c.cmd)}</span> <span class="rp-args">${escH(display)}</span></div>`;
   }
   if (!replay.length) html = '<div style="padding:20px;color:var(--text-dim);text-align:center;">No commands yet</div>';
   sideContent.innerHTML = html;
