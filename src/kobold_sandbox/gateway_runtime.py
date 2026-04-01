@@ -58,6 +58,12 @@ class GatewayJob:
     coerce: str | None = None
     no_think: bool = False
     stop: list[str] | None = None
+    # ComfyUI fields
+    job_type: str = "llm"  # "llm" | "comfyui"
+    comfyui_workflow: str = ""
+    comfyui_node: str = "6"
+    comfyui_field: str = "text"
+    comfyui_server: str = "http://127.0.0.1:8188"
     tags: list[str] = field(default_factory=list)
     # for_each context
     context: dict[str, Any] = field(default_factory=dict)
@@ -282,11 +288,12 @@ class GatewayRuntime:
     def _dispatch_loop(self, worker: str):
         """Per-worker dispatch loop: pop job, execute, fire event."""
         base_url = self.workers.get(worker, "").rstrip("/")
-        if not base_url:
+        # ComfyUI jobs have their own server URL, don't need worker mapping
+        if not base_url and worker != "comfyui":
             log.error("no URL for worker %s", worker)
             return
 
-        lock = self._get_endpoint_lock(base_url)
+        lock = self._get_endpoint_lock(base_url or worker)
 
         while self._running:
             # Pop next job
@@ -334,7 +341,83 @@ class GatewayRuntime:
                     self._fire_event(GatewayEvent(job_id=job.id, event_type="failed", error=str(exc)))
 
     def _execute_job(self, job: GatewayJob) -> Any:
-        """Execute a single job via LLM call."""
+        """Execute a single job — dispatch by job_type."""
+        if job.job_type == "comfyui":
+            return self._execute_comfyui(job)
+        return self._execute_llm(job)
+
+    def _execute_comfyui(self, job: GatewayJob) -> Any:
+        """Execute a ComfyUI image generation job."""
+        import json as _json
+        from pathlib import Path
+
+        extra = job.context
+        value = self._interpolate(str(job.payload or ""), extra)
+        server = job.comfyui_server
+        wf_path = Path(job.comfyui_workflow)
+
+        if not wf_path.exists():
+            raise FileNotFoundError(f"ComfyUI workflow not found: {wf_path}")
+
+        with open(wf_path, "r", encoding="utf-8") as f:
+            workflow = _json.load(f)
+
+        # Inject value into node
+        node_id = job.comfyui_node
+        field = job.comfyui_field
+        if node_id in workflow and field in workflow[node_id].get("inputs", {}):
+            workflow[node_id]["inputs"][field] = value
+
+        # Submit to ComfyUI
+        resp = self._http.post(f"{server}/prompt", json={"prompt": workflow}, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        prompt_id = result.get("prompt_id", "")
+        node_errors = result.get("node_errors", {})
+
+        if node_errors:
+            raise RuntimeError(f"ComfyUI node errors: {node_errors}")
+
+        self.on_thread("system", "ComfyUI", f"Queued: {prompt_id}", {"prompt_id": prompt_id, "job_id": job.id})
+
+        # Poll for completion
+        max_wait = int(job.timeout)
+        poll_interval = 3
+        elapsed = 0
+        image_url = None
+
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            try:
+                hist_resp = self._http.get(f"{server}/history/{prompt_id}", timeout=10)
+                hist_data = hist_resp.json()
+                prompt_data = hist_data.get(prompt_id, {})
+                status = prompt_data.get("status", {})
+                if status.get("completed"):
+                    outputs = prompt_data.get("outputs", {})
+                    for nid, out in outputs.items():
+                        if "images" in out:
+                            for img in out["images"]:
+                                fname = img.get("filename", "")
+                                subfolder = img.get("subfolder", "")
+                                img_type = img.get("type", "output")
+                                image_url = f"{server}/view?filename={fname}&subfolder={subfolder}&type={img_type}"
+                                break
+                        if image_url:
+                            break
+                    break
+            except Exception:
+                pass
+
+        if not image_url:
+            raise TimeoutError(f"ComfyUI timeout waiting for {prompt_id} ({max_wait}s)")
+
+        self.on_thread("system", "ComfyUI", f"Done: {image_url}", {"image_url": image_url, "job_id": job.id})
+        return image_url
+
+    def _execute_llm(self, job: GatewayJob) -> Any:
+        """Execute a single LLM job."""
         extra = job.context  # per-job context (from for_each, with:, etc.)
         # Build messages
         if job.messages:
@@ -531,6 +614,11 @@ class GatewayRuntime:
             mode=tpl.get("mode", "prompt"),
             temp=float(tpl.get("temp", tpl.get("temperature", 0.6))),
             max_tokens=int(tpl.get("max", tpl.get("max_tokens", 2048))),
+            job_type="comfyui" if tpl.get("type") == "comfyui" else "llm",
+            comfyui_workflow=tpl.get("workflow", ""),
+            comfyui_node=str(tpl.get("node", "6")),
+            comfyui_field=tpl.get("field", "text"),
+            comfyui_server=tpl.get("server", "http://127.0.0.1:8188"),
             grammar=grammar,
             capture=capture,
             coerce=coerce,
