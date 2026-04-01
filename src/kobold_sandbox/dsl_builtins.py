@@ -33,6 +33,20 @@ def slice_lines(text: Any, start: Any, end: Any) -> str:
     return "\n".join(lines[s:e]).strip()
 
 
+def substr(text: Any, start: Any, end: Any) -> str:
+    """Extract substring by character positions (0-based)."""
+    t = str(text)
+    try:
+        s = max(0, int(start))
+    except (ValueError, TypeError):
+        s = 0
+    try:
+        e = min(len(t), int(end))
+    except (ValueError, TypeError):
+        e = len(t)
+    return t[s:e].strip()
+
+
 def numbered(text: Any) -> str:
     """Add line numbers to text (1-based)."""
     return "\n".join(f"{i+1}. {l}" for i, l in enumerate(str(text).split("\n")))
@@ -253,6 +267,10 @@ def register_dsl_builtins() -> None:
     @asm_function("slice_lines", params=["text", "start", "end"], outputs=["result"])
     def _slice_lines(ctx, args, flags):
         return slice_lines(*args[:3])
+
+    @asm_function("substr", params=["text", "start", "end"], outputs=["result"])
+    def _substr(ctx, args, flags):
+        return substr(*args[:3])
 
     @asm_function("numbered", params=["text"], outputs=["result"])
     def _numbered(ctx, args, flags):
