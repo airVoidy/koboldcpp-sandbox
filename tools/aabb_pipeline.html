@@ -596,7 +596,7 @@ function setTab(name) {
   sideTitle.textContent = {console:'Console',gui:'GUI',inspect:'Inspect',assembly:'Assembly',replay:'Replay',preview:''}[name]||'';
   if (name === 'gui') renderTree();
   if (name === 'inspect') renderInspect();
-  if (name === 'assembly') showAsmTab();
+  if (name === 'assembly') { asmEditAction = null; showAsmTab(); }
   if (name === 'replay') updateReplayView();
   if (name !== 'preview') { focusedZone=null; stopCursorBlink(); }
   drawOverlay();
@@ -776,7 +776,8 @@ function kv(k,v) { return `<div style="display:flex;gap:6px;margin-bottom:2px;">
 function showAsmTab() {
   const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
   if (!p) { sideContent.innerHTML = ''; return; }
-  asmEditPanel = p; asmEditAction = null;
+  asmEditPanel = p;
+  // Don't reset asmEditAction here — caller sets it before calling showAsmTab
   // Panel picker + action picker in sideContent
   let html = '<div style="padding:4px 8px;font-size:10px;">';
   // Panel picker
@@ -807,6 +808,7 @@ function showAsmTab() {
   // Wire clicks
   sideContent.querySelectorAll('.asm-pick-panel').forEach(el => {
     el.addEventListener('click', () => {
+      saveAsmEditor(false);
       selectedPanel = panels[el.dataset.p]; _ctx = el.dataset.p;
       asmEditPanel = selectedPanel; asmEditAction = null;
       showAsmTab(); drawOverlay();
@@ -814,6 +816,7 @@ function showAsmTab() {
   });
   sideContent.querySelectorAll('.asm-pick-action').forEach(el => {
     el.addEventListener('click', () => {
+      saveAsmEditor(false);
       asmEditAction = el.dataset.a || null;
       if (!asmEditPanel.asm) asmEditPanel.asm = {render:'',actions:{}};
       asmEditor.value = asmEditAction ? (asmEditPanel.asm.actions[asmEditAction]||'') : (asmEditPanel.asm.render||'');
@@ -828,8 +831,7 @@ function showAsmTab() {
     showAsmTab();
   });
   document.getElementById('btn-run-asm')?.addEventListener('click', async () => {
-    // Save current editor content
-    saveAsmEditor();
+    saveAsmEditor(true);
     const code = asmEditor.value;
     if (!code.trim()) return;
     clog('[asm] executing...', 'cmd-out');
@@ -838,24 +840,24 @@ function showAsmTab() {
   });
 }
 
-function saveAsmEditor() {
+function saveAsmEditor(record) {
   if (!asmEditPanel) return;
   if (!asmEditPanel.asm) asmEditPanel.asm = {render:'',actions:{}};
   const code = asmEditor.value;
   if (asmEditAction) {
     if (asmEditPanel.asm.actions[asmEditAction] !== code) {
       asmEditPanel.asm.actions[asmEditAction] = code;
-      exec(`action ${asmEditAction}\n${code}\nend`);
+      if (record) exec(`action ${asmEditAction}\n${code}\nend`);
     }
   } else {
     if (asmEditPanel.asm.render !== code) {
       asmEditPanel.asm.render = code;
-      exec(`action render\n${code}\nend`);
+      if (record) exec(`action render\n${code}\nend`);
     }
   }
 }
 
-asmEditor.addEventListener('blur', () => saveAsmEditor());
+// No auto-save on blur — save explicitly before switching actions/panels
 
 // +Panel button
 document.getElementById('btn-add-panel').addEventListener('click', () => {
