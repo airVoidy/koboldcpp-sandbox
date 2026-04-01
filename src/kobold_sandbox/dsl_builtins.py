@@ -162,15 +162,19 @@ def enrich_entities(entities: list[dict], answer: str, key: str = "") -> list[di
         norm = re.sub(r'^["\']|["\']$', "", norm).strip()
 
         found = False
-        for idx, line in enumerate(lines):
+        char_pos = 0
+        for line_idx, line in enumerate(lines):
             if norm and norm.lower() in line.lower():
-                entity["_startNum"] = idx + 1
+                entity["_startNum"] = line_idx + 1
                 entity["_firstLine"] = line
+                entity["char_start"] = char_pos
                 found = True
                 break
+            char_pos += len(line) + 1  # +1 for \n
         if not found:
             entity["_startNum"] = 1
             entity["_firstLine"] = lines[0] if lines else ""
+            entity["char_start"] = 0
 
     return entities
 
