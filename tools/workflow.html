@@ -698,14 +698,27 @@ function renderFromTemplate(type, ctx) {
 }
 
 // ── _buildSlotCtx: build template context for each slot type ──
-function _buildSlotCtx(slot, nd) {
+// If slot.asm exists, run it first — its output registers override resolved + nd
+function _buildSlotCtx(slot, nd, resolved) {
   const type = slot.type;
   const bind = slot.bind || '';
-  const base = { nodeId: nd.id, bind, label: esc(slot.label || bind) };
+
+  // Slot-level asm: run per-slot assembly, merge into a local resolved
+  let slotResolved = resolved;
+  if (slot.asm) {
+    const slotState = execViewAsm(slot.asm, nd);
+    slotResolved = { ...resolved, ...slotState };
+  }
+
+  const val0 = resolveField(bind, slotResolved, nd);
+  // Asm can override label and color via registers
+  const asmLabel = slotResolved && slotResolved.label;
+  const asmColor = slotResolved && slotResolved.color;
+  const base = { nodeId: nd.id, bind, label: esc(asmLabel || slot.label || bind) };
 
   switch (type) {
     case 'tags': {
-      const tags = nd[bind] || {};
+      const tags = val0 || {};
       const keys = Object.keys(tags);
       if (!keys.length) return null;
       base.tags = keys.map(k => {
@@ -717,11 +730,11 @@ function _buildSlotCtx(slot, nd) {
       return base;
     }
     case 'text': {
-      const text = nd[bind] || '';
-      const thinkKey = bind + 'Think';
+      const text = val0 || '';
+      const thinkVal = resolveField(bind + 'Think', resolved, nd) || '';
       base.text = esc(text);
       base.emptyCls = text ? '' : ' empty';
-      base.think = nd[thinkKey] ? esc(nd[thinkKey]) : '';
+      base.think = thinkVal ? esc(thinkVal) : '';
       base.imageUrl = nd.imageUrl ? esc(nd.imageUrl) : '';
       base.buttons = (slot.buttons || []).map(b => ({
         label: esc(b.label),
@@ -732,30 +745,32 @@ function _buildSlotCtx(slot, nd) {
       return base;
     }
     case 'list': {
-      const items = nd[bind] || [];
+      // asm can provide @items directly, or resolve via val0
+      const items = (slotResolved && slotResolved.items) || val0 || [];
       if (!items.length) return null;
       const key = nd.id + ':' + bind;
       const isOpen = nd._listOpen && nd._listOpen[key];
+      const colorVar = asmColor || slot.color;
       base.hasItems = true;
       base.key = key;
       base.isOpen = isOpen;
       base.count = items.length;
-      base.color = slot.color ? `color:var(--${slot.color})` : '';
+      base.color = colorVar ? `color:var(--${colorVar})` : '';
       base.items = items.map(item => ({
         text: esc(typeof item === 'string' ? item : item.title || item.name || JSON.stringify(item)),
-        color: slot.color ? `color:var(--${slot.color})` : '',
+        color: colorVar ? `color:var(--${colorVar})` : '',
       }));
       return base;
     }
     case 'thread': {
-      const msgs = nd[bind] || [];
+      const msgs = val0 || [];
       base.count = msgs.length;
       base.threadOpen = nd.threadOpen;
       base.msgs = msgs.map(m => ({ msgHtml: renderThreadMsg(m) }));
       return base;
     }
     case 'reactions': {
-      const reactions = nd[bind] || [];
+      const reactions = val0 || [];
       if (!reactions.length) return null;
       const groups = {};
       reactions.forEach(r => {
@@ -789,17 +804,17 @@ function _buildSlotCtx(slot, nd) {
       return base;
     }
     case 'display': {
-      const text = nd[bind] || '';
+      const text = val0 || '';
       if (!text) return null;
       const r = R(bind, nd);
       base.label = esc(r.label);
-      base.text = esc(String(r.value));
+      base.text = esc(String(text));
       return base;
     }
     case 'form': {
       const fields = slot.fields || [];
       base.fields = fields.map(f => {
-        const val = nd[f.bind] || '';
+        const val = resolveField(f.bind, resolved, nd) || '';
         const isTextarea = f.multiline || String(val).length > 80;
         return {
           label: esc(f.label || f.bind),
@@ -814,14 +829,14 @@ function _buildSlotCtx(slot, nd) {
       return base;
     }
     case 'image': {
-      const src = nd[bind] || nd.imageUrl || '';
+      const src = val0 || nd.imageUrl || '';
       if (!src) return null;
       base.src = esc(src);
       base.alt = esc(slot.label || 'Image');
       return base;
     }
     case 'data_table': {
-      const data = nd[bind] || [];
+      const data = val0 || [];
       if (!Array.isArray(data) || !data.length) return null;
       const cols = Object.keys(data[0]);
       base.hasRows = true;
@@ -839,8 +854,8 @@ function _buildSlotCtx(slot, nd) {
 }
 
 // ── renderSlotFromTemplate: render a slot using template engine ──
-function renderSlotFromTemplate(slot, nd) {
-  const ctx = _buildSlotCtx(slot, nd);
+function renderSlotFromTemplate(slot, nd, resolved) {
+  const ctx = _buildSlotCtx(slot, nd, resolved);
   if (!ctx) return '';
   return renderFromTemplate(slot.type, ctx);
 }
@@ -990,6 +1005,148 @@ const cardTemplates = {
   }
 };
 
+// ── Card Views: assembly-driven binding layer ──
+// Each view: { template: 'cardTemplateName', asm: 'CALL @answer, get, @entity, "description"\n...' }
+// The asm snippet reads fields from @entity (the node) and stores resolved values in @registers.
+// Rendering reads @slotBind from the resolved state, falling back to nd[slot.bind].
+let cardViews = {};
+try { cardViews = JSON.parse(localStorage.getItem('wf_card_views') || '{}'); } catch(_) {}
+function saveCardViews() { try { localStorage.setItem('wf_card_views', JSON.stringify(cardViews)); } catch(_) {} }
+
+// ── Mini Assembly VM (subset of aabb_pipeline execAsm) ──
+function _viewAsmTokenize(line) {
+  const tokens = []; let i = 0;
+  while (i < line.length) {
+    if (line[i] === ' ' || line[i] === '\t' || line[i] === ',') { i++; continue; }
+    if (line[i] === ';') break;
+    if (line[i] === '"' || line[i] === "'") {
+      const q = line[i]; i++; let s = '';
+      while (i < line.length && line[i] !== q) { s += line[i]; i++; }
+      if (i < line.length) i++;
+      tokens.push(s);
+    } else {
+      let s = '';
+      while (i < line.length && line[i] !== ' ' && line[i] !== '\t' && line[i] !== ',') { s += line[i]; i++; }
+      tokens.push(s);
+    }
+  }
+  return tokens;
+}
+
+function _viewAsmResolve(token, state) {
+  if (token === '_') return undefined;
+  if (token === 'true') return true;
+  if (token === 'false') return false;
+  if (token.startsWith('@')) {
+    const parts = token.slice(1).split('.');
+    let val = state[parts[0]];
+    for (let i = 1; i < parts.length; i++) { if (val == null || typeof val !== 'object') return undefined; val = val[parts[i]]; }
+    return val;
+  }
+  if (token.startsWith('+')) { const n = parseInt(token.slice(1)); return isNaN(n) ? token : n; }
+  if (token.startsWith('{') || token.startsWith('[')) { try { return JSON.parse(token); } catch (_) {} }
+  const n = Number(token); if (!isNaN(n) && token !== '') return n;
+  return token;
+}
+
+function _viewAsmStore(state, ref, value) {
+  if (!ref || ref === '_') return;
+  const name = ref.startsWith('@') ? ref.slice(1) : ref;
+  const parts = name.split('.');
+  if (parts.length === 1) { state[parts[0]] = value; return; }
+  let obj = state[parts[0]];
+  if (obj == null || typeof obj !== 'object') { state[parts[0]] = {}; obj = state[parts[0]]; }
+  for (let i = 1; i < parts.length - 1; i++) { if (obj[parts[i]] == null || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {}; obj = obj[parts[i]]; }
+  obj[parts[parts.length - 1]] = value;
+}
+
+// Builtins for view assembly (data access + transforms only, no panel ops)
+const _viewAsmBuiltins = {
+  get(a) { return a[0] != null ? a[0][a[1]] : undefined; },
+  set(a) { if (a[0] != null) a[0][a[1]] = a[2]; },
+  concat(a) { return String(a[0] ?? '') + String(a[1] ?? ''); },
+  fmt(a) { let s = String(a[0] || ''); for (let i = 1; i < a.length; i++) s = s.replace(`{${i-1}}`, String(a[i] ?? '')); return s; },
+  len(a) { return Array.isArray(a[0]) ? a[0].length : typeof a[0] === 'string' ? a[0].length : 0; },
+  add(a) { return (+a[0] || 0) + (+a[1] || 0); },
+  slice(a) { return Array.isArray(a[0]) ? a[0].slice(+a[1] || 0, a[2] != null ? +a[2] : undefined) : String(a[0] || '').slice(+a[1] || 0, a[2] != null ? +a[2] : undefined); },
+  keys(a) { return a[0] != null && typeof a[0] === 'object' ? Object.keys(a[0]) : []; },
+  json(a) { try { return JSON.stringify(a[0], null, 2); } catch (_) { return String(a[0]); } },
+  default(a) { return a[0] != null && a[0] !== '' ? a[0] : a[1]; },
+};
+
+function execViewAsm(code, nd) {
+  if (!code || !code.trim()) return {};
+  const state = { entity: nd };
+  const lines = code.split('\n');
+  const labels = {};
+  for (let i = 0; i < lines.length; i++) { const l = lines[i].trim(); if (l.startsWith(':')) labels[l] = i; }
+  let ip = 0;
+  const max = lines.length * 50;
+  let steps = 0;
+  while (ip < lines.length && steps < max) {
+    steps++;
+    const line = lines[ip].trim();
+    if (!line || line.startsWith(';') || line.startsWith(':') || line.startsWith('#')) { ip++; continue; }
+    const tokens = _viewAsmTokenize(line);
+    if (!tokens.length) { ip++; continue; }
+    const op = tokens[0];
+    if (op === 'MOV') {
+      _viewAsmStore(state, tokens[1], _viewAsmResolve(tokens[2], state));
+      ip++;
+    } else if (op === 'CALL') {
+      const dst = tokens[1], fn = tokens[2], args = tokens.slice(3).map(t => _viewAsmResolve(t, state));
+      const b = _viewAsmBuiltins[fn];
+      if (b) { const r = b(args); if (dst !== '_') _viewAsmStore(state, dst, r); }
+      ip++;
+    } else if (op === 'EACH') {
+      const itemRef = tokens[1], list = _viewAsmResolve(tokens[2], state), bodyLen = _viewAsmResolve(tokens[3], state);
+      if (Array.isArray(list) && bodyLen > 0) {
+        const bodyLines = lines.slice(ip + 1, ip + 1 + bodyLen);
+        for (let idx = 0; idx < list.length; idx++) {
+          _viewAsmStore(state, itemRef, list[idx]);
+          state['each_idx'] = idx;
+          execViewAsm(bodyLines.join('\n'), state.entity);
+          Object.assign(state, execViewAsm(bodyLines.join('\n'), state.entity));
+        }
+      }
+      ip += 1 + (bodyLen || 0);
+    } else if (op === 'CMP') {
+      const cmpOp = tokens[2], a = _viewAsmResolve(tokens[3], state), b = _viewAsmResolve(tokens[4], state);
+      let r = false;
+      if (cmpOp === 'eq') r = a == b; else if (cmpOp === 'ne') r = a != b;
+      else if (cmpOp === 'gt') r = a > b; else if (cmpOp === 'lt') r = a < b;
+      _viewAsmStore(state, tokens[1], r);
+      ip++;
+    } else if (op === 'JIF') {
+      const cond = _viewAsmResolve(tokens[1], state), target = tokens[2];
+      if (cond) {
+        if (target.startsWith(':') && labels[target] !== undefined) ip = labels[target];
+        else ip += (typeof _viewAsmResolve(target, state) === 'number' ? _viewAsmResolve(target, state) : 1);
+      } else { ip++; }
+    } else { ip++; }
+  }
+  return state;
+}
+
+// resolveView: returns { tpl, resolved } for a node
+// resolved = asm output state (slot registers), or {} if no view/asm
+function resolveView(nd) {
+  if (nd.view && cardViews[nd.view]) {
+    const view = cardViews[nd.view];
+    const tpl = resolveTemplate(view.template);
+    const resolved = view.asm ? execViewAsm(view.asm, nd) : {};
+    return { tpl, resolved };
+  }
+  return { tpl: resolveTemplate(nd.card), resolved: {} };
+}
+
+// resolveField: get resolved value or fall back to nd[slot.bind]
+// resolved state from asm has @slotBind → value; we read state[slotBind]
+function resolveField(bind, resolved, nd) {
+  if (resolved && bind in resolved) return resolved[bind];
+  return nd[bind];
+}
+
 // ── Node tree ──────────────────────────────────────────
 // nodes: {id: nodeData}
 let nodes = {};
@@ -1001,7 +1158,6 @@ function saveNodes() { try { localStorage.setItem('wf_nodes', JSON.stringify(nod
 function createNode(opts) {
   const id = 'n_' + (_nodeIdN++);
   const cardType = opts.card || 'entity';
-  const tpl = cardTemplates[cardType] || cardTemplates.entity;
   const nd = {
     id,
     parentId: opts.parentId || null,
@@ -1013,7 +1169,9 @@ function createNode(opts) {
     threadOpen: false,
     _listOpen: {},
   };
-  // Initialize fields from template slots (no hardcoded field names)
+  if (opts.view) nd.view = opts.view;
+  // Initialize fields from template slots (asm resolves at render time, not init)
+  const { tpl } = resolveView(nd);
   for (const slot of tpl.slots) {
     if (!slot.bind) continue;
     const t = slot.type;
@@ -1248,7 +1406,7 @@ function renderTree() {
 }
 
 function renderNode(nd) {
-  const tpl = cardTemplates[nd.card] || cardTemplates.entity;
+  const { tpl, resolved } = resolveView(nd);
   const div = document.createElement('div');
   div.className = `node status-${nd.status}`;
   div.dataset.nodeId = nd.id;
@@ -1276,7 +1434,7 @@ function renderNode(nd) {
 
   // render slots from template
   for (const slot of tpl.slots) {
-    body += renderSlot(slot, nd);
+    body += renderSlot(slot, nd, resolved);
   }
 
   // pending patches
@@ -1411,10 +1569,20 @@ function renderNode(nd) {
   return div;
 }
 
-function renderSlot(slot, nd) {
+function renderSlot(slot, nd, resolved) {
+  const bind = slot.bind || '';
+  // Slot-level asm
+  let slotResolved = resolved;
+  if (slot.asm) {
+    const slotState = execViewAsm(slot.asm, nd);
+    slotResolved = { ...resolved, ...slotState };
+  }
+  const val0 = resolveField(bind, slotResolved, nd);
+  const asmColor = slotResolved && slotResolved.color;
+  const asmLabel = slotResolved && slotResolved.label;
   switch (slot.type) {
     case 'tags': {
-      const tags = nd[slot.bind] || {};
+      const tags = val0 || {};
       const keys = Object.keys(tags);
       if (!keys.length) return '';
       return `<div class="node-tags">${keys.map(k => {
@@ -1426,21 +1594,21 @@ function renderSlot(slot, nd) {
       }).join('')}</div>`;
     }
     case 'text': {
-      const text = nd[slot.bind] || '';
-      const thinkKey = slot.bind + 'Think';
+      const text = val0 || '';
+      const thinkVal = resolveField(bind + 'Think', resolved, nd) || '';
       const emptyCls = text ? '' : ' empty';
       const buttons = slot.buttons || [];
-      let hdr = `<div class="node-answer-hdr"><span class="label">${esc(slot.label || slot.bind)}</span>`;
+      let hdr = `<div class="node-answer-hdr"><span class="label">${esc(slot.label || bind)}</span>`;
       buttons.forEach(b => {
         const colorStyle = b.color ? `color:var(--${b.color});border-color:var(--${b.color})` : '';
         hdr += `<button class="btn sm" style="${colorStyle}" data-event="${esc(b.event)}" data-node="${nd.id}">${esc(b.label)}</button>`;
       });
       hdr += `</div>`;
       let html = `<div class="node-answer">${hdr}
-        <textarea class="node-answer-ta${emptyCls}" data-ans="${nd.id}:${slot.bind}" placeholder="(pending...)">${esc(text)}</textarea>
-        <button class="btn sm node-answer-apply" data-apply-ans="${nd.id}:${slot.bind}">Apply changes</button>`;
-      if (nd[thinkKey]) {
-        html += `<details class="msg-think" style="margin-top:3px;"><summary>think</summary><pre>${esc(nd[thinkKey])}</pre></details>`;
+        <textarea class="node-answer-ta${emptyCls}" data-ans="${nd.id}:${bind}" placeholder="(pending...)">${esc(text)}</textarea>
+        <button class="btn sm node-answer-apply" data-apply-ans="${nd.id}:${bind}">Apply changes</button>`;
+      if (thinkVal) {
+        html += `<details class="msg-think" style="margin-top:3px;"><summary>think</summary><pre>${esc(thinkVal)}</pre></details>`;
       }
       if (nd.imageUrl) {
         html += `<div class="node-image"><img src="${esc(nd.imageUrl)}" alt="Generated" loading="lazy" /></div>`;
@@ -1449,15 +1617,17 @@ function renderSlot(slot, nd) {
       return html;
     }
     case 'list': {
-      const items = nd[slot.bind] || [];
+      const items = (slotResolved && slotResolved.items) || val0 || [];
       if (!items.length) return '';
-      const key = nd.id + ':' + slot.bind;
+      const key = nd.id + ':' + bind;
       const isOpen = nd._listOpen && nd._listOpen[key];
-      const color = slot.color ? `color:var(--${slot.color})` : '';
+      const colorVar = asmColor || slot.color;
+      const color = colorVar ? `color:var(--${colorVar})` : '';
+      const label = asmLabel || slot.label || bind;
       return `<div class="node-lists">
         <div class="node-list-hdr" data-list-toggle="${key}">
           <span class="arrow${isOpen?' open':''}">&#9654;</span>
-          ${esc(slot.label || slot.bind)} <span style="opacity:.5">${items.length}</span>
+          ${esc(label)} <span style="opacity:.5">${items.length}</span>
         </div>
         <div class="node-list-body${isOpen?' open':''}" data-list-body="${key}">
           ${items.map(item => `<div class="node-list-item" style="${color}"><span class="bullet">&#8226;</span>${esc(typeof item === 'string' ? item : item.title || item.name || JSON.stringify(item))}</div>`).join('')}
@@ -1465,7 +1635,7 @@ function renderSlot(slot, nd) {
       </div>`;
     }
     case 'thread': {
-      const msgs = nd[slot.bind] || [];
+      const msgs = val0 || [];
       const cnt = msgs.length;
       return `<div class="node-thread-bar" data-thread-toggle="${nd.id}">
         <span class="arrow${nd.threadOpen?' open':''}">&#9654;</span>
@@ -1480,7 +1650,7 @@ function renderSlot(slot, nd) {
       </div>`;
     }
     case 'reactions': {
-      const reactions = nd[slot.bind] || [];
+      const reactions = val0 || [];
       if (!reactions.length) return '';
       // group by emoji: {emoji: [author1, author2]}
       const groups = {};
@@ -1750,12 +1920,13 @@ document.getElementById('settings-overlay').addEventListener('click', (e) => {
 function serializeNode(nd, indent) {
   indent = indent || 0;
   const pad = '  '.repeat(indent);
-  const tpl = cardTemplates[nd.card] || cardTemplates.entity;
+  const { tpl } = resolveView(nd);
   let lines = [];
   lines.push(`${pad}- card: ${nd.card}`);
+  if (nd.view) lines.push(`${pad}  view: ${nd.view}`);
   lines.push(`${pad}  title: ${JSON.stringify(nd.title)}`);
   lines.push(`${pad}  status: ${nd.status}`);
-  // Serialize bound slots from template (no hardcoded field names)
+  // Serialize bound slots (raw nd data, asm resolves at render time)
   for (const slot of tpl.slots) {
     if (!slot.bind) continue;
     const val = nd[slot.bind];
@@ -1806,6 +1977,19 @@ function exportTreeDSL() {
       dsl += line + '\n';
     });
   }
+  // views section
+  if (Object.keys(cardViews).length) {
+    dsl += '\nviews:\n';
+    for (const [name, view] of Object.entries(cardViews)) {
+      dsl += `  ${name}:\n    template: ${view.template}\n`;
+      if (view.asm) {
+        dsl += `    asm: |\n`;
+        for (const line of view.asm.split('\n')) {
+          dsl += `      ${line}\n`;
+        }
+      }
+    }
+  }
   document.getElementById('tree-dsl-editor').value = dsl;
 }
 
@@ -1829,9 +2013,9 @@ function workflowVarsToTree(vars) {
     rootId = createNode({ card: 'root', title: rootTitle, status: 'active' });
   }
   const root = nodes[rootId];
-  const tpl = resolveTemplate(root.card);
+  const { tpl } = resolveView(root);
 
-  // Build patch data: match vars to slot binds (exact or strip _list suffix)
+  // Build patch data: match vars to slot binds
   const patchData = {};
   for (const slot of tpl.slots) {
     if (!slot.bind) continue;
@@ -1844,27 +2028,20 @@ function workflowVarsToTree(vars) {
     // Children: expand array into child nodes, then store child ids
     if (slot.type === 'children' && Array.isArray(val)) {
       const childCardType = slot.card || 'entity';
-      const childTpl = cardTemplates[childCardType] || cardTemplates.entity;
       val.forEach(item => {
         if (typeof item !== 'object') return;
         const title = item.title || item.name || Object.values(item)[0] || 'Entity';
         const existingChild = root.children.find(cid => nodes[cid] && nodes[cid].title === title);
         if (!existingChild) {
           const opts = { parentId: rootId, card: childCardType, title };
-          for (const cs of childTpl.slots) {
-            if (!cs.bind || cs.type === 'children' || cs.type === 'actions') continue;
-            if (item[cs.bind] !== undefined) opts[cs.bind] = item[cs.bind];
-          }
-          const textSlot = childTpl.slots.find(s => s.type === 'text');
-          if (textSlot && opts[textSlot.bind]) opts.status = 'done';
+          for (const [ik, iv] of Object.entries(item)) opts[ik] = iv;
           const cid = createNode(opts);
           root.children.push(cid);
         }
       });
-      // children handled directly, skip proposePatch for this slot
       continue;
     }
-    patchData[dsKey] = val;
+    patchData[slot.bind] = val;
   }
 
   // Scoped dsSet for each var
@@ -2092,6 +2269,7 @@ function renderTypeBody(name, tpl) {
   // slots
   const slots = tpl.slots || [];
   slots.forEach((s, i) => {
+    const hasAsm = !!s.asm;
     html += `<div class="slot-row" data-slot-type="${esc(name)}" data-slot-idx="${i}">
       <select class="slot-type-sel" data-sf="type">${SLOT_TYPES.map(t => `<option${t === s.type ? ' selected' : ''}>${t}</option>`).join('')}</select>
       <input class="slot-bind" data-sf="bind" placeholder="bind" value="${esc(s.bind || '')}" />
@@ -2099,10 +2277,17 @@ function renderTypeBody(name, tpl) {
       <select class="slot-color" data-sf="color"><option value="">color</option>${COLORS.filter(Boolean).map(c => `<option${c === (s.color||'') ? ' selected' : ''}>${c}</option>`).join('')}</select>
       <input class="slot-ds" data-sf="ds" placeholder="ds key" value="${esc(s.ds || '')}" style="width:80px;" title="DataStore key (e.g. entities.$id)" />
       <select class="slot-accept" data-sf="accept"><option value="">accept</option><option${s.accept === 'auto' ? ' selected' : ''}>auto</option><option${s.accept === 'manual' ? ' selected' : ''}>manual</option></select>
+      <button class="slot-asm-toggle" data-slot-asm-toggle="${i}" title="Assembly resolver" style="font-size:9px;padding:0 3px;${hasAsm ? 'color:var(--green);' : ''}">asm</button>
       <button class="slot-move" data-slot-move="up" title="Move up">&#9650;</button>
       <button class="slot-move" data-slot-move="down" title="Move down">&#9660;</button>
       <button class="slot-rm" data-slot-remove title="Remove">&times;</button>
     </div>`;
+    if (hasAsm) {
+      html += `<div class="slot-asm-editor" data-slot-asm-type="${esc(name)}" data-slot-asm-idx="${i}" style="padding:2px 0 4px 20px;">
+        <textarea data-slot-asm-ta="${i}" spellcheck="false" style="width:100%;min-height:50px;max-height:120px;font-size:9px;font-family:inherit;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px;resize:vertical;tab-size:2;">${esc(s.asm)}</textarea>
+        <button class="btn sm" data-slot-asm-apply="${i}" style="font-size:9px;margin-top:1px;">Apply asm</button>
+      </div>`;
+    }
   });
 
   html += `<div class="slot-add-row">
@@ -2206,24 +2391,180 @@ function wireSlotEditors(container) {
       log(`icon changed for ${typeName}: ${tpl.icon}`);
     });
   });
+
+  // slot asm toggle: add/remove asm on slot
+  container.querySelectorAll('[data-slot-asm-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('.slot-row');
+      const typeName = row.dataset.slotType;
+      const idx = parseInt(row.dataset.slotIdx);
+      const tpl = cardTemplates[typeName];
+      if (!tpl || !tpl.slots[idx]) return;
+      if (tpl.slots[idx].asm) {
+        delete tpl.slots[idx].asm;
+      } else {
+        tpl.slots[idx].asm = `; ${tpl.slots[idx].type} resolver\nCALL @${tpl.slots[idx].bind || 'items'}, get, @entity, "${tpl.slots[idx].bind || 'field'}"`;
+      }
+      saveCardTemplates();
+      renderTypesPanel();
+    });
+  });
+
+  // slot asm apply
+  container.querySelectorAll('[data-slot-asm-apply]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const wrapper = btn.closest('.slot-asm-editor');
+      const typeName = wrapper.dataset.slotAsmType;
+      const idx = parseInt(wrapper.dataset.slotAsmIdx);
+      const ta = wrapper.querySelector(`[data-slot-asm-ta="${idx}"]`);
+      const tpl = cardTemplates[typeName];
+      if (!tpl || !tpl.slots[idx] || !ta) return;
+      tpl.slots[idx].asm = ta.value;
+      saveCardTemplates();
+      renderTree();
+      log(`slot asm applied: ${typeName}[${idx}]`);
+    });
+  });
+}
+
+// ── Views panel (assembly-driven bindings) ──
+let _viewsExpanded = {};
+function renderViewsPanel() {
+  const el = document.getElementById('views-panel');
+  const tplNames = Object.keys(cardTemplates);
+  let html = `<h3>Views <button class="btn sm" id="btnAddView">+ New</button></h3>`;
+  html += `<div id="schema-new-view-form" class="schema-inline-form" style="display:none;">
+    <input id="newViewName" placeholder="view name" style="width:100px;" />
+    <select id="newViewTpl" style="width:90px;">${tplNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+    <button class="btn sm primary" id="btnNewViewOk">Add</button>
+    <button class="btn sm" id="btnNewViewCancel">x</button>
+  </div>`;
+
+  for (const [name, view] of Object.entries(cardViews)) {
+    const isOpen = _viewsExpanded[name];
+    const asmLines = (view.asm || '').split('\n').filter(l => l.trim() && !l.trim().startsWith(';')).length;
+    html += `<div class="stype-item">
+      <div class="stype-hdr" data-view-toggle="${esc(name)}">
+        <span class="arrow${isOpen ? ' open' : ''}">&#9654;</span>
+        <span class="stype-icon">V</span>
+        <span class="stype-name">${esc(name)}</span>
+        <span class="stype-count">${esc(view.template)} &middot; ${asmLines} ops</span>
+        <button class="stype-del" data-view-del="${esc(name)}" title="Delete view">&times;</button>
+      </div>`;
+    if (isOpen) {
+      const tpl = resolveTemplate(view.template);
+      const slots = (tpl.slots || []).filter(s => s.bind).map(s => s.bind);
+      const defaultAsm = view.asm || ('; Assembly bindings for ' + name + '\n; Available slots: ' + slots.join(', ') + '\n; Example:\n; CALL @answer, get, @entity, "my_custom_field"\n');
+      html += `<div class="stype-body open" data-view-body="${esc(name)}">`;
+      html += `<div style="margin-bottom:4px;"><label style="font-size:10px;color:var(--text-dim);">Template:</label>
+        <select data-view-tpl="${esc(name)}" style="width:100px;">${tplNames.map(n => `<option value="${esc(n)}"${n === view.template ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        <span style="font-size:9px;color:var(--text-dim);margin-left:4px;">slots: ${slots.join(', ')}</span></div>`;
+      html += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:2px;">Assembly (CALL @slot, get, @entity, "field"):</div>`;
+      html += `<textarea data-view-asm="${esc(name)}" spellcheck="false" style="width:100%;min-height:80px;max-height:200px;font-size:10px;font-family:inherit;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px;resize:vertical;tab-size:2;">${esc(defaultAsm)}</textarea>`;
+      html += `<button class="btn sm primary" data-view-apply="${esc(name)}" style="margin-top:2px;">Apply</button>`;
+      html += `</div>`;
+    } else {
+      html += `<div class="stype-body" data-view-body="${esc(name)}"></div>`;
+    }
+    html += `</div>`;
+  }
+
+  if (!Object.keys(cardViews).length) {
+    html += `<div style="font-size:10px;color:var(--text-dim);padding:4px;">No views defined. Views use assembly snippets to map data fields to template slots.</div>`;
+  }
+
+  el.innerHTML = html;
+
+  // wire add view
+  document.getElementById('btnAddView').addEventListener('click', () => {
+    document.getElementById('schema-new-view-form').style.display = 'flex';
+  });
+  document.getElementById('btnNewViewCancel')?.addEventListener('click', () => {
+    document.getElementById('schema-new-view-form').style.display = 'none';
+  });
+  document.getElementById('btnNewViewOk')?.addEventListener('click', () => {
+    const name = document.getElementById('newViewName').value.trim();
+    const tpl = document.getElementById('newViewTpl').value;
+    if (!name) return;
+    if (cardViews[name]) { log('view already exists: ' + name); return; }
+    cardViews[name] = { template: tpl, asm: '' };
+    saveCardViews();
+    _viewsExpanded[name] = true;
+    renderViewsPanel();
+    log(`view added: ${name}`);
+  });
+
+  // wire toggle
+  el.querySelectorAll('[data-view-toggle]').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.closest('[data-view-del]')) return;
+      const name = hdr.dataset.viewToggle;
+      _viewsExpanded[name] = !_viewsExpanded[name];
+      renderViewsPanel();
+    });
+  });
+
+  // wire delete
+  el.querySelectorAll('[data-view-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.viewDel;
+      if (!confirm(`Delete view "${name}"?`)) return;
+      delete cardViews[name];
+      saveCardViews();
+      renderViewsPanel();
+      log(`view deleted: ${name}`);
+    });
+  });
+
+  // wire template change
+  el.querySelectorAll('[data-view-tpl]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const name = sel.dataset.viewTpl;
+      cardViews[name].template = sel.value;
+      saveCardViews();
+      renderViewsPanel();
+    });
+  });
+
+  // wire asm apply
+  el.querySelectorAll('[data-view-apply]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.viewApply;
+      const ta = el.querySelector(`[data-view-asm="${name}"]`);
+      if (!ta || !cardViews[name]) return;
+      cardViews[name].asm = ta.value;
+      saveCardViews();
+      renderTree();
+      log(`view asm applied: ${name}`);
+    });
+  });
 }
 
 // ── FieldMap + Checkpoints panel ──
+let _flowSubTab = 'fieldmap';
 function renderFlowPanel() {
   const el = document.getElementById('schema-flow');
-  let html = `<h3>Field Map <button class="btn sm primary" id="btnApplyFieldMap">Apply</button> <button class="btn sm" id="btnResetFieldMap">Reset</button></h3>`;
 
-  // FieldMap DSL editor
-  html += `<textarea id="fieldmap-editor" spellcheck="false" style="flex:1; resize:none; border:1px solid var(--border); padding:6px; font-size:11px; line-height:1.3; min-height:200px; background:var(--bg); color:var(--text); font-family:inherit; border-radius:3px;">${esc(fieldMapDsl)}</textarea>`;
+  // Sub-tabs: Field Map | Views
+  let html = `<div style="display:flex;gap:2px;margin-bottom:6px;">
+    <button class="btn sm${_flowSubTab === 'fieldmap' ? ' primary' : ''}" data-flow-sub="fieldmap">Field Map</button>
+    <button class="btn sm${_flowSubTab === 'views' ? ' primary' : ''}" data-flow-sub="views">Views</button>
+  </div>`;
 
-  // Parsed preview
+  // Field Map content
+  html += `<div id="flow-fieldmap" style="display:${_flowSubTab === 'fieldmap' ? 'block' : 'none'};">`;
+  html += `<div style="display:flex;gap:4px;margin-bottom:4px;"><button class="btn sm primary" id="btnApplyFieldMap">Apply</button> <button class="btn sm" id="btnResetFieldMap">Reset</button></div>`;
+  html += `<textarea id="fieldmap-editor" spellcheck="false" style="width:100%; resize:none; border:1px solid var(--border); padding:6px; font-size:11px; line-height:1.3; min-height:200px; background:var(--bg); color:var(--text); font-family:inherit; border-radius:3px;">${esc(fieldMapDsl)}</textarea>`;
   const parsed = parseFieldMapDsl(fieldMapDsl);
   html += `<div style="margin-top:6px; padding:4px 6px; background:var(--bg); border:1px solid var(--border); border-radius:3px; font-size:10px; color:var(--text-dim); max-height:80px; overflow-y:auto;">`;
   html += Object.entries(parsed).map(([slot, fields]) => {
     const flds = Object.entries(fields).map(([k, v]) => `${k}:${v}`).join(', ');
     return `<span style="color:var(--green);">${esc(slot)}</span> ${esc(flds) || '(empty)'}`;
   }).join('<br>');
-  html += `</div>`;
+  html += `</div></div>`;
+
+  // Views content
+  html += `<div id="flow-views" style="display:${_flowSubTab === 'views' ? 'block' : 'none'};"><div id="views-panel"></div></div>`;
 
   // Checkpoints section
   html += `<h3 style="margin-top:10px;">Checkpoints <button class="btn sm" id="btnSaveCheckpoint">Save</button></h3>`;
@@ -2264,6 +2605,7 @@ function renderFlowPanel() {
     if (!name) return;
     schemaCheckpoints[name] = {
       cardTemplates: JSON.parse(JSON.stringify(cardTemplates)),
+      cardViews: JSON.parse(JSON.stringify(cardViews)),
       fieldMapDsl: document.getElementById('fieldmap-editor').value,
       treeDsl: typeof exportTreeDSL === 'function' ? document.getElementById('tree-dsl-editor')?.value || '' : '',
       time: ts(),
@@ -2284,6 +2626,12 @@ function renderFlowPanel() {
         for (const k of Object.keys(cardTemplates)) delete cardTemplates[k];
         Object.assign(cardTemplates, cp.cardTemplates);
         saveCardTemplates();
+      }
+      // restore cardViews
+      if (cp.cardViews) {
+        for (const k of Object.keys(cardViews)) delete cardViews[k];
+        Object.assign(cardViews, cp.cardViews);
+        saveCardViews();
       }
       // restore fieldmap
       if (cp.fieldMapDsl) { fieldMapDsl = cp.fieldMapDsl; saveFieldMap(); }
@@ -2307,6 +2655,17 @@ function renderFlowPanel() {
       log(`checkpoint deleted: ${name}`);
     });
   });
+
+  // wire sub-tabs
+  el.querySelectorAll('[data-flow-sub]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _flowSubTab = btn.dataset.flowSub;
+      renderFlowPanel();
+    });
+  });
+
+  // render views panel if active
+  if (_flowSubTab === 'views') renderViewsPanel();
 }
 
 // hook: when switchPage to schema, render
@@ -2449,13 +2808,12 @@ function _saveProvenance() { try { localStorage.setItem('wf_provenance', JSON.st
 function proposePatch(nodeId, data, meta = {}) {
   const nd = nodes[nodeId];
   if (!nd) { log('proposePatch: node ' + nodeId + ' not found'); return null; }
-  const tpl = resolveTemplate(nd.card);
+  const { tpl } = resolveView(nd);
   const patchId = _patchIdN++;
   const patch = { id: patchId, nodeId, data, meta, time: ts(), resolved: {} };
   let anyPending = false;
 
   for (const [key, val] of Object.entries(data)) {
-    // match slot: exact bind or bind without _list suffix
     const slot = tpl.slots.find(s => s.bind === key || s.bind === key + '_list');
     if (!slot) {
       patch.resolved[key] = 'unknown';
@@ -2463,7 +2821,6 @@ function proposePatch(nodeId, data, meta = {}) {
       continue;
     }
 
-    // First iteration: known slots = auto, unknown = pending
     const rule = slot.accept || 'auto';
     if (rule === 'auto') {
       nd[slot.bind] = val;
@@ -2494,21 +2851,20 @@ function acceptPatch(patchId, key) {
   const patch = _pendingPatches[idx];
   const nd = nodes[patch.nodeId];
   if (!nd) return;
-  const tpl = resolveTemplate(nd.card);
+  const { tpl } = resolveView(nd);
+  const _findSlot = (k) => tpl.slots.find(s => s.bind === k || s.bind === k + '_list') || null;
 
   if (key) {
-    // accept single key
     const val = patch.data[key];
-    const slot = tpl.slots.find(s => s.bind === key || s.bind === key + '_list');
+    const slot = _findSlot(key);
     if (slot) nd[slot.bind] = val;
     patch.resolved[key] = 'accepted';
     _provenance.push({ patchId, nodeId: patch.nodeId, field: slot ? slot.bind : key, dsKey: key, status: 'done', time: ts(), source: 'manual' });
   } else {
-    // accept all pending keys
     for (const [k, status] of Object.entries(patch.resolved)) {
       if (status !== 'pending') continue;
       const val = patch.data[k];
-      const slot = tpl.slots.find(s => s.bind === k || s.bind === k + '_list');
+      const slot = _findSlot(k);
       if (slot) nd[slot.bind] = val;
       patch.resolved[k] = 'accepted';
       _provenance.push({ patchId, nodeId: patch.nodeId, field: slot ? slot.bind : k, dsKey: k, status: 'done', time: ts(), source: 'manual' });
