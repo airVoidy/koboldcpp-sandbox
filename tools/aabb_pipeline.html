@@ -176,7 +176,46 @@ function compositePanel(panel,gx,gy,vw,vh) {
 function flushGrid() { let html=''; for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){const cell=G[r][c];if(cell.cl)html+=`<span class="${cell.cl}">${escH(cell.ch)}</span>`;else html+=escH(cell.ch);}html+='\n';} textLayer.innerHTML=html; }
 function escH(s) { return s==='<'?'&lt;':s==='>'?'&gt;':s==='&'?'&amp;':s; }
 function drawBorders() { let svg=''; function walk(p,gx,gy,vw,vh){if(p.border){const x=gx*CW,y=gy*CH,w=vw*CW,h=vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${p.borderColor}" stroke-width="1" rx="2"/>`;if(p.label)svg+=`<text x="${x+8}" y="${y-3}" fill="${p.borderColor}" font-size="10" font-family="Consolas,monospace">${escH(p.label)}</text>`;}for(const ch of p.children)walk(ch.panel,gx+ch.x,gy+ch.y,ch.w,ch.h);} if(rootPanel)walk(rootPanel,0,0,COLS,ROWS); svgLayer.setAttribute('width',COLS*CW);svgLayer.setAttribute('height',ROWS*CH);svgLayer.innerHTML=svg; }
-function drawOverlay() { let svg=''; overlaySvg.setAttribute('width',COLS*CW);overlaySvg.setAttribute('height',ROWS*CH); if(selectedPanel&&selectedPanel!==rootPanel){const pos=getPanelGlobalPos(selectedPanel);if(pos){const x=pos.gx*CW,y=pos.gy*CH,w=pos.vw*CW,h=pos.vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#e0af68" stroke-width="2" stroke-dasharray="4,2" rx="2"/>`;}} if(activeTab==='preview'&&focusedZone&&focusedZone._panel){const pos=getPanelGlobalPos(focusedZone._panel);if(pos){const x=(pos.gx+focusedZone.x)*CW,y=(pos.gy+focusedZone.y+focusedZone.h)*CH-1,w=focusedZone.w*CW;svg+=`<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y}" stroke="var(--accent)" stroke-width="1"/>`;}} overlaySvg.innerHTML=svg; }
+function drawOverlay() {
+  let svg='';
+  overlaySvg.setAttribute('width',COLS*CW);
+  overlaySvg.setAttribute('height',ROWS*CH);
+
+  // Selected panel highlight
+  if(selectedPanel&&selectedPanel!==rootPanel){
+    const pos=getPanelGlobalPos(selectedPanel);
+    if(pos){const x=pos.gx*CW,y=pos.gy*CH,w=pos.vw*CW,h=pos.vh*CH;
+      svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#e0af68" stroke-width="2" stroke-dasharray="4,2" rx="2"/>`;
+    }
+  }
+
+  // Zone overlays (all tabs except preview)
+  if(activeTab!=='preview'){
+    function walkZones(panel,gx,gy){
+      for(const z of panel.zones){
+        const zx=(gx+z.x)*CW,zy=(gy+z.y)*CH,zw=z.w*CW,zh=z.h*CH;
+        if(z.type==='button'){
+          svg+=`<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="rgba(255,158,100,0.06)" stroke="#ff9e6440" stroke-width="0.5" rx="1"/>`;
+        } else if(z.type==='input'){
+          svg+=`<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="rgba(122,162,247,0.06)" stroke="#7aa2f740" stroke-width="0.5" rx="1"/>`;
+        }
+        if(z.action) svg+=`<text x="${zx+1}" y="${zy-2}" fill="${z.type==='button'?'#ff9e64':'#7aa2f7'}" font-size="8" font-family="Consolas,monospace" opacity="0.7">${escH(z.action)}</text>`;
+      }
+      for(const ch of panel.children) walkZones(ch.panel,gx+ch.x,gy+ch.y);
+    }
+    if(rootPanel) walkZones(rootPanel,0,0);
+  }
+
+  // Focused input underline (preview)
+  if(activeTab==='preview'&&focusedZone&&focusedZone._panel){
+    const pos=getPanelGlobalPos(focusedZone._panel);
+    if(pos){const x=(pos.gx+focusedZone.x)*CW,y=(pos.gy+focusedZone.y+focusedZone.h)*CH-1,w=focusedZone.w*CW;
+      svg+=`<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y}" stroke="var(--accent)" stroke-width="1"/>`;
+    }
+  }
+
+  overlaySvg.innerHTML=svg;
+}
 function hitTestPanel(px,py,panel,gx,gy,vw,vh) { for(let i=panel.children.length-1;i>=0;i--){const ch=panel.children[i];const cx=gx+ch.x,cy=gy+ch.y;if(px>=cx&&px<cx+ch.w&&py>=cy&&py<cy+ch.h){const r=hitTestPanel(px,py,ch.panel,cx,cy,ch.w,ch.h);if(r)return r;}} const lx=px-gx+panel.scrollX,ly=py-gy+panel.scrollY;for(let i=panel.zones.length-1;i>=0;i--){const z=panel.zones[i];if(lx>=z.x&&lx<z.x+z.w&&ly>=z.y&&ly<z.y+z.h)return{panel,zone:z,localX:lx,localY:ly,gx,gy};} if(px>=gx&&px<gx+vw&&py>=gy&&py<gy+vh)return{panel,zone:null,localX:lx,localY:ly,gx,gy};return null; }
 function getPanelGlobalPos(panel) { if(panel===rootPanel)return{gx:0,gy:0,vw:COLS,vh:ROWS};function find(p,gx,gy){for(const ch of p.children){if(ch.panel===panel)return{gx:gx+ch.x,gy:gy+ch.y,vw:ch.w,vh:ch.h};const r=find(ch.panel,gx+ch.x,gy+ch.y);if(r)return r;}return null;}return rootPanel?find(rootPanel,0,0):null; }
 function findParentPanel(panel){function s(p){for(const ch of p.children){if(ch.panel===panel)return p;const r=s(ch.panel);if(r)return r;}return null;}return rootPanel?s(rootPanel):null;}
