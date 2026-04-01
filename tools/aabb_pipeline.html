@@ -192,7 +192,7 @@ function compositePanel(panel,gx,gy,vw,vh) {
   for(let r=0;r<vh;r++){const srcR=sy+r;if(srcR<0||srcR>=buf.length)continue;const srcRow=buf[srcR];for(let c=0;c<vw;c++){const srcC=sx+c;if(srcC<0||srcC>=srcRow.length)continue;const dx=gx+c,dy=gy+r;if(dx>=0&&dx<COLS&&dy>=0&&dy<ROWS)G[dy][dx]=srcRow[srcC];}}
   for(const ch of panel.children) compositePanel(ch.panel,gx+ch.x,gy+ch.y,ch.w,ch.h);
 }
-function flushGrid() { let html=''; for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){const cell=G[r][c];if(cell.cl)html+=`<span class="${cell.cl}">${escH(cell.ch)}</span>`;else html+=escH(cell.ch);}html+='\n';} textLayer.innerHTML=html; }
+function flushGrid() { let html=''; for(let r=0;r<ROWS;r++){let c=0;while(c<COLS){const cl=G[r][c].cl;let run='';while(c<COLS&&G[r][c].cl===cl){run+=escH(G[r][c].ch);c++;}html+=cl?`<span class="${cl}">${run}</span>`:run;}html+='\n';} textLayer.innerHTML=html; }
 function escH(s) { return s==='<'?'&lt;':s==='>'?'&gt;':s==='&'?'&amp;':s; }
 function drawBorders() { let svg=''; function walk(p,gx,gy,vw,vh){if(p.border){const x=gx*CW,y=gy*CH,w=vw*CW,h=vh*CH;svg+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${p.borderColor}" stroke-width="1" rx="2"/>`;if(p.label)svg+=`<text x="${x+8}" y="${y-3}" fill="${p.borderColor}" font-size="10" font-family="Consolas,monospace">${escH(p.label)}</text>`;}for(const ch of p.children)walk(ch.panel,gx+ch.x,gy+ch.y,ch.w,ch.h);} if(rootPanel)walk(rootPanel,0,0,COLS,ROWS); svgLayer.setAttribute('width',COLS*CW);svgLayer.setAttribute('height',ROWS*CH);svgLayer.innerHTML=svg; }
 function drawOverlay() {
