@@ -2866,6 +2866,30 @@ def create_app(root: str) -> FastAPI:
         proj_path.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
         return {"ok": True}
 
+    @app.get("/aabb-pipeline", response_class=HTMLResponse)
+    def aabb_pipeline_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_pipeline.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/api/aabb-pipeline/replay")
+    def get_aabb_pipeline_replay() -> list:
+        """Serve the AABB pipeline replay."""
+        import json
+        replay_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_pipeline_replay.jsonl"
+        if replay_path.exists():
+            lines = replay_path.read_text(encoding="utf-8").strip().split('\n')
+            return [json.loads(l) for l in lines if l.strip()]
+        return []
+
+    @app.post("/api/aabb-pipeline/replay")
+    async def save_aabb_pipeline_replay(request: Request) -> dict:
+        """Save the AABB pipeline replay."""
+        import json
+        body = await request.json()
+        replay_path = Path(__file__).resolve().parents[2] / "tools" / "aabb_pipeline_replay.jsonl"
+        replay_path.write_text('\n'.join(json.dumps(cmd, ensure_ascii=False) for cmd in body) + '\n', encoding="utf-8")
+        return {"ok": True, "steps": len(body)}
+
     @app.get("/workflow", response_class=HTMLResponse)
     def workflow_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow.html"
