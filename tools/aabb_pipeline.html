@@ -24,6 +24,25 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
 #text-layer { position:absolute; top:0; left:0; white-space:pre; line-height:1.25; user-select:none; z-index:1; }
 #svg-layer { position:absolute; top:0; left:0; pointer-events:none; z-index:2; }
 #overlay-svg { position:absolute; top:0; left:0; pointer-events:none; z-index:3; }
+/* html panels — DOM divs over char grid */
+.html-panel { position:absolute; z-index:4; overflow-y:auto; overflow-x:hidden; font:12px/1.4 Consolas,Monaco,"Courier New",monospace; color:var(--text); }
+.html-panel::-webkit-scrollbar { width:6px; }
+.html-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.html-panel .hp-card { padding:4px 6px; border-bottom:1px solid var(--border); }
+.html-panel .hp-title { color:var(--accent); font-weight:600; font-size:12px; display:flex; justify-content:space-between; }
+.html-panel .hp-status { font-size:10px; padding:1px 4px; border-radius:2px; }
+.html-panel .hp-status.done { color:var(--green); } .html-panel .hp-status.fail { color:var(--red); } .html-panel .hp-status.pending { color:var(--yellow); }
+.html-panel .hp-text { color:var(--text); font-size:11px; margin:2px 0; white-space:pre-wrap; word-break:break-word; }
+.html-panel .hp-tags { display:flex; flex-wrap:wrap; gap:3px; margin:2px 0; }
+.html-panel .hp-tag { font-size:9px; color:var(--accent2); background:var(--surface2); padding:0 4px; border-radius:2px; }
+.html-panel .hp-thread { margin-top:3px; border-top:1px solid var(--border); padding-top:3px; }
+.html-panel .hp-msg { font-size:10px; margin:1px 0; }
+.html-panel .hp-msg .hp-role { font-weight:600; }
+.html-panel .hp-msg.user .hp-role { color:var(--accent); }
+.html-panel .hp-msg.assistant .hp-role { color:var(--green); }
+.html-panel .hp-reactions { display:flex; gap:4px; margin:2px 0; font-size:10px; }
+.html-panel .hp-reaction { padding:0 3px; border-radius:2px; background:var(--surface2); }
+.html-panel .hp-reaction.pass { color:var(--green); } .hp-reaction.fail { color:var(--red); }
 #side-panel { width:420px; flex-shrink:0; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
 #side-panel.hidden { display:none; }
 .panel-header { display:flex; align-items:center; padding:4px 8px; gap:6px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
@@ -504,6 +523,146 @@ function renderScrollView(panelName) {
     }
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  HTML PANELS — DOM divs over char grid for smooth scroll
+// ══════════════════════════════════════════════════════════════════════════
+
+const _htmlPanels = {}; // name → { el, dataPath, template, panelName }
+
+function createHtmlPanel(panelName, templateName, dataPath) {
+  const p = panels[panelName];
+  if (!p) return;
+
+  // Remove existing if any
+  if (_htmlPanels[panelName]) _htmlPanels[panelName].el.remove();
+
+  const el = document.createElement('div');
+  el.className = 'html-panel';
+  el.id = 'hp-' + panelName;
+  document.getElementById('canvas').appendChild(el);
+
+  _htmlPanels[panelName] = { el, dataPath, template: templateName, panelName };
+  p._htmlPanel = true; // mark panel as html-rendered
+  positionHtmlPanel(panelName);
+  renderHtmlPanel(panelName);
+}
+
+function positionHtmlPanel(panelName) {
+  const hp = _htmlPanels[panelName]; if (!hp) return;
+  const pos = getPanelGlobalPos(panels[panelName]);
+  if (!pos) return;
+  hp.el.style.left = (pos.gx * CW) + 'px';
+  hp.el.style.top = (pos.gy * CH) + 'px';
+  hp.el.style.width = (pos.vw * CW) + 'px';
+  hp.el.style.height = (pos.vh * CH) + 'px';
+}
+
+function renderHtmlPanel(panelName) {
+  const hp = _htmlPanels[panelName]; if (!hp) return;
+  const items = Data.get(hp.dataPath) || [];
+  const tmpl = _cardTemplates[hp.template];
+
+  let html = '';
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    html += renderCardToHtml(item, hp.template, i);
+  }
+  hp.el.innerHTML = html;
+}
+
+function renderCardToHtml(data, templateName, index) {
+  const tmpl = _cardTemplates[templateName];
+  let html = `<div class="hp-card" data-idx="${index}">`;
+
+  if (!tmpl) {
+    // Fallback
+    const title = data.title || data.name || '';
+    const text = data.answer || data.content || '';
+    const status = data.status || '';
+    html += `<div class="hp-title"><span>${escH(title)}</span><span class="hp-status ${escH(status)}">${escH(status.toUpperCase())}</span></div>`;
+    if (text) html += `<div class="hp-text">${escH(text)}</div>`;
+    html += '</div>';
+    return html;
+  }
+
+  for (const slot of tmpl.slots) {
+    const ctx = buildSlotCtx(data, slot);
+    html += renderSlotToHtml(slot.type, ctx, data);
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderSlotToHtml(type, ctx, data) {
+  switch (type) {
+    case 'title': {
+      const status = ctx.status || 'pending';
+      return `<div class="hp-title"><span>\u25cf ${escH(ctx.title||'')}</span><span class="hp-status ${escH(status)}">${escH(ctx.STATUS||'')}</span></div>`;
+    }
+    case 'text_area': {
+      if (!ctx.text) return '';
+      return `<div class="hp-text">${escH(ctx.text)}</div>`;
+    }
+    case 'tags': {
+      if (!ctx.tagEntries?.length) return '';
+      return `<div class="hp-tags">${ctx.tagEntries.map(e=>`<span class="hp-tag">${escH(e.key)}: ${escH(e.display)}</span>`).join('')}</div>`;
+    }
+    case 'thread': {
+      if (!ctx.threadItems?.length) return '';
+      let h = `<div class="hp-thread">`;
+      for (const t of ctx.threadItems) {
+        const role = t.name || 'system';
+        h += `<div class="hp-msg ${escH(role)}"><span class="hp-role">${escH(t.initial)} ${escH(role)}:</span> ${escH(t.content)}</div>`;
+      }
+      return h + '</div>';
+    }
+    case 'reactions': {
+      if (!ctx.hasReactions) return '';
+      return `<div class="hp-reactions">${ctx.reactionItems.map(r=>`<span class="hp-reaction ${r.status}">${r.emoji}${r.status==='pass'?'\u2713':'\u2717'}</span>`).join('')}</div>`;
+    }
+    case 'buttons': {
+      if (!ctx.buttonItems?.length) return '';
+      return `<div style="margin:2px 0;">${ctx.buttonItems.map(b=>`<button style="font-size:10px;padding:1px 6px;margin-right:3px;">${escH(b)}</button>`).join('')}</div>`;
+    }
+    case 'children': {
+      if (!ctx.childItems?.length) return '';
+      let h = '<div style="padding-left:8px;border-left:1px solid var(--border);margin:2px 0;">';
+      for (let i = 0; i < ctx.childItems.length; i++) {
+        h += renderCardToHtml(ctx.childItems[i], ctx._childTemplate || 'default', i);
+      }
+      return h + '</div>';
+    }
+    case 'list': {
+      if (!ctx.listGroups?.length) return '';
+      let h = '';
+      for (const g of ctx.listGroups) {
+        h += `<div style="margin:2px 0;"><span style="color:var(--accent2);font-size:10px;">${escH(g.NAME)} (${g.count})</span>`;
+        for (const item of g.items) h += `<div style="font-size:10px;padding-left:8px;">\u2022 ${escH(item.text)}</div>`;
+        h += '</div>';
+      }
+      return h;
+    }
+    default: return '';
+  }
+}
+
+// Reposition all html panels on draw
+const _origDraw = draw;
+draw = function() {
+  _origDraw();
+  for (const name of Object.keys(_htmlPanels)) positionHtmlPanel(name);
+};
+
+// ── Assembly builtins for html panels ──
+_builtins.htmlpanel = function(a) { createHtmlPanel(a[0], a[1], a[2]); };
+_builtins.htmlpanel_render = function(a) { renderHtmlPanel(a[0]); };
+_builtins.htmlpanel_scroll = function(a) {
+  const hp = _htmlPanels[a[0]]; if (!hp) return;
+  if (a[1] === 'end') hp.el.scrollTop = hp.el.scrollHeight;
+  else if (a[1] === 'start') hp.el.scrollTop = 0;
+  else hp.el.scrollTop += (+a[1] || 0);
+};
 
 // ── Register default card templates ──
 _cardTemplates['message'] = {
