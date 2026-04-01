@@ -53,49 +53,81 @@ from .data_store.store import DataStore
 from .atomic_data_revision import create_atomic_data_revision_router
 from .atomic_wiki import create_atomic_wiki_router
 from .atomic_dsl_api import create_atomic_dsl_router
-from .ui_proto import (
-    AddNodeOp,
-    ConsoleCommandError,
-    ConsolePatchContext,
-    LayoutDocument,
-    LayoutNode,
-    MoveNodeOp,
-    NlpMeta,
-    NodeMeta,
-    Rect,
-    ScreenSpec,
-    SetNodeRectOp,
-    UiRuntime,
-    UpdateNodeMetaOp,
-    apply_patch_ops,
-    build_ui_runtime,
-    compile_console_command,
-    load_ui,
-    render_utf_runtime,
-    save_ui,
-)
-from .ui_proto_reactive import (
-    ReactiveUiError,
-    add_node as reactive_add_node,
-    build_base_json as reactive_build_base_json,
-    compose_layers as reactive_compose_layers,
-    delete_node as reactive_delete_node,
-    ensure_project as reactive_ensure_project,
-    global_rect as reactive_global_rect,
-    load_project as reactive_load_project,
-    local_rect as reactive_local_rect,
-    move_node as reactive_move_node,
-    next_id as reactive_next_id,
-    pick_node as reactive_pick_node,
-    project_tree as reactive_project_tree,
-    replace_node_from_yaml as reactive_replace_node_from_yaml,
-    resolve_focus as reactive_resolve_focus,
-    resize_node as reactive_resize_node,
-    save_layers as reactive_save_layers,
-    save_project as reactive_save_project,
-    selected_node_json as reactive_selected_node_json,
-    selected_node_yaml as reactive_selected_node_yaml,
-)
+try:
+    from .ui_proto import (
+        AddNodeOp,
+        ConsoleCommandError,
+        ConsolePatchContext,
+        LayoutDocument,
+        LayoutNode,
+        MoveNodeOp,
+        NlpMeta,
+        NodeMeta,
+        Rect,
+        ScreenSpec,
+        SetNodeRectOp,
+        UiRuntime,
+        UpdateNodeMetaOp,
+        apply_patch_ops,
+        build_ui_runtime,
+        compile_console_command,
+        load_ui,
+        render_utf_runtime,
+        save_ui,
+    )
+    _UI_PROTO_AVAILABLE = True
+except Exception:
+    _UI_PROTO_AVAILABLE = False
+
+    class _UiProtoMissingError(RuntimeError):
+        pass
+
+    def _missing_ui_proto(*_args: Any, **_kwargs: Any) -> Any:
+        raise _UiProtoMissingError("legacy ui_proto module is unavailable in this checkout")
+
+    AddNodeOp = MoveNodeOp = SetNodeRectOp = UpdateNodeMetaOp = object
+    ConsoleCommandError = _UiProtoMissingError
+    ConsolePatchContext = LayoutDocument = LayoutNode = NlpMeta = NodeMeta = Rect = ScreenSpec = UiRuntime = object
+    apply_patch_ops = build_ui_runtime = compile_console_command = load_ui = render_utf_runtime = save_ui = _missing_ui_proto
+
+try:
+    from .ui_proto_reactive import (
+        ReactiveUiError,
+        add_node as reactive_add_node,
+        build_base_json as reactive_build_base_json,
+        compose_layers as reactive_compose_layers,
+        delete_node as reactive_delete_node,
+        ensure_project as reactive_ensure_project,
+        global_rect as reactive_global_rect,
+        load_project as reactive_load_project,
+        local_rect as reactive_local_rect,
+        move_node as reactive_move_node,
+        next_id as reactive_next_id,
+        pick_node as reactive_pick_node,
+        project_tree as reactive_project_tree,
+        replace_node_from_yaml as reactive_replace_node_from_yaml,
+        resolve_focus as reactive_resolve_focus,
+        resize_node as reactive_resize_node,
+        save_layers as reactive_save_layers,
+        save_project as reactive_save_project,
+        selected_node_json as reactive_selected_node_json,
+        selected_node_yaml as reactive_selected_node_yaml,
+    )
+    _UI_PROTO_REACTIVE_AVAILABLE = True
+except Exception:
+    _UI_PROTO_REACTIVE_AVAILABLE = False
+
+    class ReactiveUiError(RuntimeError):
+        pass
+
+    def _missing_ui_proto_reactive(*_args: Any, **_kwargs: Any) -> Any:
+        raise ReactiveUiError("legacy ui_proto_reactive module is unavailable in this checkout")
+
+    reactive_add_node = reactive_build_base_json = reactive_compose_layers = reactive_delete_node = _missing_ui_proto_reactive
+    reactive_ensure_project = reactive_global_rect = reactive_load_project = reactive_local_rect = _missing_ui_proto_reactive
+    reactive_move_node = reactive_next_id = reactive_pick_node = reactive_project_tree = _missing_ui_proto_reactive
+    reactive_replace_node_from_yaml = reactive_resolve_focus = reactive_resize_node = _missing_ui_proto_reactive
+    reactive_save_layers = reactive_save_project = reactive_selected_node_json = reactive_selected_node_yaml = _missing_ui_proto_reactive
 
 
 class CreateNodeRequest(BaseModel):
@@ -154,6 +186,10 @@ def _encoding_report(text: Any) -> dict[str, Any]:
         "repair_preview": repair_preview[:240],
         "sample": value[:240],
     }
+
+
+def _legacy_ui_unavailable(name: str) -> HTTPException:
+    return HTTPException(status_code=410, detail=f"legacy UI '{name}' is unavailable in this checkout")
 
 
 class NotesRequest(BaseModel):
@@ -1268,8 +1304,7 @@ def create_app(root: str) -> FastAPI:
 
     @app.get("/behavior", response_class=HTMLResponse)
     def behavior_page() -> str:
-        html_path = Path(__file__).resolve().parents[2] / "tools" / "behavior_tree.html"
-        return html_path.read_text(encoding="utf-8")
+        raise _legacy_ui_unavailable("/behavior")
 
     # ------------------------------------------------------------------
     # Reactive Entity endpoints
@@ -3332,11 +3367,15 @@ def create_app(root: str) -> FastAPI:
 
     @app.get("/api/ui-proto/state")
     def ui_proto_state(selected_id: str | None = None, focus_id: str | None = None) -> dict[str, Any]:
+        if not _UI_PROTO_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto/*")
         layout_doc, node_meta, runtime = _load_ui_proto_runtime()
         return _ui_proto_response(layout_doc, node_meta, runtime, selected_id=selected_id, focus_id=focus_id)
 
     @app.post("/api/ui-proto/select")
     def ui_proto_select(request: UiProtoSelectRequest) -> dict[str, Any]:
+        if not _UI_PROTO_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto/*")
         layout_doc, node_meta, runtime = _load_ui_proto_runtime()
         resolved_focus = _ui_proto_resolve_focus(layout_doc, request.focus_id)
         focus_rect = layout_doc.nodes[resolved_focus].rect
@@ -3346,6 +3385,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto/gui-action")
     def ui_proto_gui_action(request: UiProtoGuiActionRequest) -> dict[str, Any]:
+        if not _UI_PROTO_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto/*")
         nonlocal ui_proto_last_diff, ui_proto_last_snap_debug
         layout_doc, node_meta, runtime = _load_ui_proto_runtime()
         resolved_focus = _ui_proto_resolve_focus(layout_doc, request.focus_id)
@@ -3419,6 +3460,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto/meta")
     def ui_proto_save_meta(request: UiProtoMetaSaveRequest) -> dict[str, Any]:
+        if not _UI_PROTO_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto/*")
         nonlocal ui_proto_last_diff, ui_proto_last_snap_debug
         layout_doc, node_meta, runtime = _load_ui_proto_runtime()
         if request.selected_id not in layout_doc.nodes:
@@ -3445,6 +3488,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto/command")
     def ui_proto_command(request: UiProtoCommandRequest) -> dict[str, Any]:
+        if not _UI_PROTO_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto/*")
         nonlocal ui_proto_last_diff, ui_proto_last_snap_debug
         layout_doc, node_meta, runtime = _load_ui_proto_runtime()
         context = ConsolePatchContext(selected_id=request.selected_id)
@@ -3621,11 +3666,15 @@ def create_app(root: str) -> FastAPI:
 
     @app.get("/api/ui-proto2/state")
     def ui_proto2_state(selected_id: str | None = None, focus_id: str | None = None) -> dict[str, Any]:
+        if not _UI_PROTO_REACTIVE_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto2/*")
         project = _load_ui_proto2_project()
         return _ui_proto2_response(project, selected_id=selected_id, focus_id=focus_id)
 
     @app.post("/api/ui-proto2/select")
     def ui_proto2_select(request: UiProto2SelectRequest) -> dict[str, Any]:
+        if not _UI_PROTO_REACTIVE_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto2/*")
         project = _load_ui_proto2_project()
         resolved_focus = reactive_resolve_focus(project, request.focus_id)
         selected_id = reactive_pick_node(project, request.x, request.y, resolved_focus) or request.selected_id or resolved_focus
@@ -3633,6 +3682,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto2/gui-action")
     def ui_proto2_gui_action(request: UiProto2GuiActionRequest) -> dict[str, Any]:
+        if not _UI_PROTO_REACTIVE_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto2/*")
         nonlocal ui_proto2_last_diff
         project = _load_ui_proto2_project()
         resolved_focus = reactive_resolve_focus(project, request.focus_id)
@@ -3664,6 +3715,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto2/node/save")
     def ui_proto2_node_save(request: UiProto2NodeSaveRequest) -> dict[str, Any]:
+        if not _UI_PROTO_REACTIVE_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto2/*")
         nonlocal ui_proto2_last_diff
         project = _load_ui_proto2_project()
         ui_proto2_undo_stack.append((copy.deepcopy(project), request.selected_id, request.focus_id))
@@ -3678,6 +3731,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto2/files/save")
     def ui_proto2_files_save(request: UiProto2FilesSaveRequest) -> dict[str, Any]:
+        if not _UI_PROTO_REACTIVE_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto2/*")
         nonlocal ui_proto2_last_diff
         project = _load_ui_proto2_project()
         ui_proto2_undo_stack.append((copy.deepcopy(project), request.selected_id, request.focus_id))
@@ -3692,6 +3747,8 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/ui-proto2/command")
     def ui_proto2_command(request: UiProto2CommandRequest) -> dict[str, Any]:
+        if not _UI_PROTO_REACTIVE_AVAILABLE:
+            raise _legacy_ui_unavailable("/api/ui-proto2/*")
         nonlocal ui_proto2_last_diff
         if request.command.strip().lower() == "undo":
             if not ui_proto2_undo_stack:
