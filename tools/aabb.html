@@ -319,10 +319,12 @@ function compositePanel(panel, gx, gy, vw, vh) {
 function flushGrid() {
   let html = '';
   for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const cell = G[r][c];
-      if (cell.cl) html += `<span class="${cell.cl}">${escH(cell.ch)}</span>`;
-      else html += escH(cell.ch);
+    let c = 0;
+    while (c < COLS) {
+      const cl = G[r][c].cl;
+      let run = '';
+      while (c < COLS && G[r][c].cl === cl) { run += escH(G[r][c].ch); c++; }
+      html += cl ? `<span class="${cl}">${run}</span>` : run;
     }
     html += '\n';
   }
