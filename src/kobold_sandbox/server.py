@@ -3843,6 +3843,69 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow.html"
         return html_path.read_text(encoding="utf-8")
 
+    # ── Workflow v3: Gateway Runtime ────────────────────────
+    from .gateway_runtime import GatewayRuntime, GatewayEvent
+
+    _v3_runtimes: dict[str, GatewayRuntime] = {}
+    _v3_lock = threading.Lock()
+
+    @app.post("/api/workflow/v3/run")
+    async def run_workflow_v3(request: Request) -> dict:
+        body = await request.json()
+        yaml_text = body.get("yaml", "")
+        worker_map = body.get("workers", {})
+        if not worker_map:
+            worker_map = {w.get("role", "generator"): w.get("url", "") for w in body.get("worker_list", [])}
+        settings = body.get("settings", {})
+
+        run_id = f"v3_{int(time.time()*1000)}"
+        events_log: list[dict] = []
+        thread: list[dict] = []
+
+        def on_event(e: GatewayEvent):
+            events_log.append({"job_id": e.job_id, "type": e.event_type, "ts": e.timestamp})
+
+        def on_thread(role, name, content, extra=None):
+            thread.append({"role": role, "name": name, "content": str(content)[:500], **(extra or {})})
+
+        try:
+            runtime = GatewayRuntime.from_yaml(
+                yaml_text, workers=worker_map, settings=settings,
+                on_event=on_event, on_thread=on_thread,
+            )
+        except Exception as exc:
+            return {"status": "error", "error": str(exc)}
+
+        with _v3_lock:
+            _v3_runtimes[run_id] = runtime
+
+        return {"status": "started", "run_id": run_id}
+
+    @app.get("/api/workflow/v3/status")
+    def get_workflow_v3_status(run_id: str) -> dict:
+        with _v3_lock:
+            runtime = _v3_runtimes.get(run_id)
+        if not runtime:
+            return {"error": "run not found"}
+        return runtime.get_status()
+
+    @app.post("/api/workflow/v3/cancel")
+    async def cancel_workflow_v3(request: Request) -> dict:
+        body = await request.json()
+        run_id = body.get("run_id", "")
+        job_id = body.get("job_id", "")
+        with _v3_lock:
+            runtime = _v3_runtimes.get(run_id)
+        if not runtime:
+            return {"error": "run not found"}
+        ok = runtime.cancel(job_id)
+        return {"ok": ok}
+
+    @app.get("/workflow-v3", response_class=HTMLResponse)
+    def workflow_v3_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow_v3.html"
+        return html_path.read_text(encoding="utf-8")
+
     @app.get("/aabb", response_class=HTMLResponse)
     def aabb_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb.html"
