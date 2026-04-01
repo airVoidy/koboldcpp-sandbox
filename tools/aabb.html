@@ -577,13 +577,34 @@ const _builtins = {
     Data.set(args[0], '');
     if (focusedZone && focusedZone.dataPath === args[0]) { focusedZone._value = ''; cursorPos = 0; }
   },
-  async probe(args) {
-    const url = String(args[0] || '').replace(/\/+$/, '');
-    if (!url) return 'fail';
+  async http(args) {
+    // http method url [body] [timeout_ms]
+    const method = String(args[0] || 'GET').toUpperCase();
+    const url = String(args[1] || '');
+    if (!url) return { ok: false, status: 0, error: 'no url' };
+    const timeout = +args[3] || 10000;
+    const opts = { method, signal: AbortSignal.timeout(timeout) };
+    if (args[2] && method !== 'GET') {
+      opts.headers = { 'Content-Type': 'application/json' };
+      opts.body = typeof args[2] === 'string' ? args[2] : JSON.stringify(args[2]);
+    }
     try {
-      const r = await fetch(url + '/v1/models', { signal: AbortSignal.timeout(3000) });
-      return r.ok ? 'ok' : 'fail';
-    } catch(_) { return 'fail'; }
+      const r = await fetch(url, opts);
+      let body = null;
+      try { body = await r.json(); } catch(_) { try { body = await r.text(); } catch(_) {} }
+      return { ok: r.ok, status: r.status, body };
+    } catch(e) {
+      return { ok: false, status: 0, error: String(e) };
+    }
+  },
+  // convenience: check if url responds ok
+  async http_ok(args) {
+    const url = String(args[0] || '');
+    if (!url) return false;
+    try {
+      const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(+args[1] || 5000) });
+      return r.ok;
+    } catch(_) { return false; }
   },
 };
 
@@ -1227,27 +1248,96 @@ function renderAsmActionList() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  INIT — panels + assembly (zero hardcode render/action functions)
+//  PROJECT LOADER — generic, no hardcoded panels/actions
 // ══════════════════════════════════════════════════════════════════════════
 
-function initDemo() {
+async function loadProject(project) {
   calcGrid();
 
-  // Data
-  const workers = Data.load('workers', [{ url: 'http://localhost:5001', role: 'gen', status: 'unknown' }]);
-  Data.set('workers.items', workers);
-  Data.set('workers.draft_url', '');
+  // 1. Seed data layer
+  if (project.data) {
+    for (const [path, spec] of Object.entries(project.data)) {
+      if (spec && typeof spec === 'object' && spec._load) {
+        // Load from localStorage with fallback
+        Data.set(path, Data.load(spec._load, spec._default));
+      } else {
+        Data.set(path, spec);
+      }
+    }
+  }
 
-  // Root
+  // 2. Build panel tree
   const root = createPanel('screen', COLS, ROWS);
   root.border = false;
   rootPanel = root;
 
-  // Workers panel + assembly
-  const wp = createPanel('workers', 34, 20);
-  wp.label = 'workers';
-  wp.asm = {
-    render: `; ── workers render ──
+  function buildPanels(defs, parent) {
+    for (const def of defs) {
+      const p = createPanel(def.name, def.w, def.h);
+      if (def.label !== undefined) p.label = def.label;
+      if (def.border !== undefined) p.border = def.border;
+      if (def.borderColor) p.borderColor = def.borderColor;
+      if (def.asm) p.asm = { render: def.asm.render || '', actions: { ...def.asm.actions } };
+      addChildPanel(parent, p, def.x, def.y, def.w, def.h);
+      if (def.children) buildPanels(def.children, p);
+    }
+  }
+  if (project.panels) buildPanels(project.panels, root);
+
+  // 3. Run render assembly for all panels
+  for (const p of Object.values(panels)) {
+    if (p.asm && p.asm.render && p !== root) {
+      await execAsm(p.asm.render);
+    }
+  }
+
+  draw();
+  renderPanelTree();
+}
+
+// Export current state as project JSON (for save/load)
+function exportProject() {
+  function serializePanel(panel, parent) {
+    const entry = parent ? parent.children.find(ch => ch.panel === panel) : null;
+    const def = {
+      name: panel.name,
+      x: entry ? entry.x : 0, y: entry ? entry.y : 0,
+      w: panel.w, h: panel.h,
+      label: panel.label || panel.name,
+    };
+    if (panel.border) def.border = true;
+    if (panel.borderColor && panel.borderColor !== '#3b4261') def.borderColor = panel.borderColor;
+    if (panel.asm && (panel.asm.render || Object.keys(panel.asm.actions || {}).length)) {
+      def.asm = { render: panel.asm.render || '' };
+      if (panel.asm.actions && Object.keys(panel.asm.actions).length) {
+        def.asm.actions = { ...panel.asm.actions };
+      }
+    }
+    if (panel.children.length) {
+      def.children = panel.children.map(ch => serializePanel(ch.panel, panel));
+    }
+    return def;
+  }
+  return {
+    data: Data.dump(),
+    panels: rootPanel ? rootPanel.children.map(ch => serializePanel(ch.panel, rootPanel)) : []
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  DEFAULT PROJECT — declarative JSON, loaded by generic loadProject()
+// ══════════════════════════════════════════════════════════════════════════
+
+const DEFAULT_PROJECT = {
+  data: {
+    "workers.items": { _load: "workers", _default: [{ url: "http://localhost:5001", role: "gen", status: "unknown" }] },
+    "workers.draft_url": ""
+  },
+  panels: [
+    {
+      name: "workers", x: 1, y: 1, w: 34, h: 20, label: "workers", border: true,
+      asm: {
+        render: `; ── workers render ──
 CALL @items, dget, "workers.items"
 CALL @draft, dget, "workers.draft_url"
 CALL _, clear, "workers"
@@ -1266,13 +1356,19 @@ EACH @w, @items, +8
   CALL _, write, "workers", @row, 31, "\u00d7", "c-red"
   CALL _, zone, "workers", @row, 1, 1, 1, "button", "workers_probe", @each_idx
   CALL _, zone, "workers", @row, 31, 1, 1, "button", "workers_del", @each_idx`,
-    actions: {
-      workers_add: `; add worker from input
+        actions: {
+          workers_add: `; add worker — probe via generic http_ok
 CALL @url, dget, "workers.draft_url"
 CMP @empty, eq, @url, ""
 JIF @empty, +99
 CALL @items, dget, "workers.items"
-CALL @status, probe, @url
+CALL @probe_url, concat, @url, "/v1/models"
+CALL @ok, http_ok, @probe_url, 3000
+CMP @is_ok, eq, @ok, true
+JIF @is_ok, +2
+MOV @status, "fail"
+JIF true, +1
+MOV @status, "ok"
 MOV @w, {}
 CALL _, set, @w, "url", @url
 CALL _, set, @w, "role", "gen"
@@ -1283,34 +1379,37 @@ CALL _, dsave, "workers", @items
 CALL _, input_clear, "workers.draft_url"
 CALL _, log, "added worker"
 CALL _, render, "workers"`,
-      workers_del: `; delete worker by index
+          workers_del: `; delete worker by index
 CALL @items, dget, "workers.items"
 CALL _, splice, @items, @action_data, 1
 CALL _, dset, "workers.items", @items
 CALL _, dsave, "workers", @items
 CALL _, log, "removed worker"
 CALL _, render, "workers"`,
-      workers_probe: `; probe worker status
+          workers_probe: `; probe worker via generic http_ok
 CALL @items, dget, "workers.items"
 CALL @w, get, @items, @action_data
 CALL @url, get, @w, "url"
-CALL _, log, @url
-CALL @status, probe, @url
-CALL _, set, @w, "status", @status
+CALL @probe_url, concat, @url, "/v1/models"
+CALL _, log, @probe_url
+CALL @ok, http_ok, @probe_url, 3000
+CMP @status_val, eq, @ok, true
+JIF @status_val, +2
+MOV @st, "fail"
+JIF true, +1
+MOV @st, "ok"
+CALL _, set, @w, "status", @st
 CALL _, dset, "workers.items", @items
 CALL _, dsave, "workers", @items
-CALL _, log, @status
+CALL _, log, @st
 CALL _, render, "workers"`,
-    }
-  };
-  addChildPanel(root, wp, 1, 1, 34, 20);
-
-  // Chat panel + assembly
-  const cp = createPanel('chat', 50, 20);
-  cp.label = 'chat';
-  cp.borderColor = '#565f89';
-  cp.asm = {
-    render: `; ── chat render ──
+        }
+      }
+    },
+    {
+      name: "chat", x: 37, y: 1, w: 50, h: 20, label: "chat", border: true, borderColor: "#565f89",
+      asm: {
+        render: `; ── chat render ──
 CALL _, clear, "chat"
 CALL _, zone_clear, "chat"
 CALL _, write, "chat", 1, 1, "user: hello", "c-accent"
@@ -1319,24 +1418,19 @@ CALL _, write, "chat", 3, 1, "user: run extract", "c-accent"
 CALL _, write, "chat", 4, 1, "bot: done. 42 entities.", "c-green"
 CALL _, write, "chat", 17, 1, ">", "c-accent3"
 CALL _, zone, "chat", 17, 3, 45, 1, "input", "chat_send", "", "chat.input"`,
-    actions: {
-      chat_send: `; send chat message
+        actions: {
+          chat_send: `; send chat message
 CALL @msg, dget, "chat.input"
 CALL _, log, @msg
 CALL _, input_clear, "chat.input"`,
+        }
+      }
     }
-  };
-  addChildPanel(root, cp, 37, 1, 50, 20);
+  ]
+};
 
-  // Run render assembly for each panel
-  execAsm(wp.asm.render);
-  execAsm(cp.asm.render);
-
-  draw();
-  renderPanelTree();
-}
-
-initDemo();
+// ── Init ───────────────────────────────────────────────────────────────────
+loadProject(DEFAULT_PROJECT);
 window.addEventListener('resize', () => { draw(); if (activeTab === 'panels') renderPanelTree(); });
 
 </script>
