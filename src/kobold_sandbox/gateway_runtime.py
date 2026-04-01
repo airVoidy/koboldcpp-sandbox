@@ -571,13 +571,14 @@ class GatewayRuntime:
 
             if "for_each" in action:
                 items_key = action["for_each"]
+                var_name = action.get("as", "item")
                 items = self.state.get(items_key, [])
                 if not isinstance(items, list):
                     items = []
                 for idx, item in enumerate(items):
                     job = self._instantiate_template(
                         template_name, f"{template_name}.{idx}",
-                        {**merged_ctx, "entity": item, "item": item, "index": idx, "item_idx": idx}
+                        {**merged_ctx, var_name: item, "index": idx}
                     )
                     if job:
                         self.enqueue(job)
