@@ -112,3 +112,52 @@ class CommitInfo(BaseModel):
     message: str
     timestamp: str
     author: str = "DataStore"
+
+
+# ---------------------------------------------------------------------------
+# Contracts — semantic templates that can be instantiated per-node
+# ---------------------------------------------------------------------------
+
+class ContractSlot(BaseModel):
+    """A single slot in a contract template."""
+    bind: str                            # field name on node (e.g. 'axioms_list')
+    type: str = "list"                   # slot type: list, text, tags, children, etc.
+    label: str = ""
+    ds: str | None = None                # DS key template (e.g. 'axioms.$id')
+    accept: str = "auto"                 # 'auto' | 'manual'
+    color: str | None = None
+
+
+class Contract(BaseModel):
+    """A contract template (Schema workscope entry).
+
+    Semantic skeleton — defines what fields are possible and how they behave.
+    No data until instantiated. Rules (accept, constraints) are declared here.
+    """
+    name: str                            # template name (e.g. 'root', 'entity')
+    icon: str = "#"
+    extends: str | None = None           # parent contract for inheritance
+    slots: list[ContractSlot] = Field(default_factory=list)
+    patch: list[dict[str, Any]] | None = None  # patch ops for inheritance
+    created_at: str = Field(default_factory=utc_now)
+    updated_at: str = Field(default_factory=utc_now)
+
+
+class ContractInstance(BaseModel):
+    """An instantiated contract property — someone accepted the contract."""
+    contract: str                        # contract name
+    node_id: str                         # owner node
+    ds_key: str                          # scoped key (e.g. 'axioms.n_0')
+    field: str                           # slot bind (e.g. 'axioms_list')
+    status: str = "instantiated"         # instantiated | active | closed
+    source: str | None = None            # who instantiated
+    created_at: str = Field(default_factory=utc_now)
+
+
+class PatchProposal(BaseModel):
+    """A proposed data delivery to a node, evaluated against contract rules."""
+    node_id: str
+    data: dict[str, Any]
+    meta: dict[str, Any] = Field(default_factory=dict)
+    resolved: dict[str, str] = Field(default_factory=dict)  # key → accepted|pending|rejected|unknown
+    created_at: str = Field(default_factory=utc_now)

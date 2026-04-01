@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from dataclasses import asdict, is_dataclass
 import uuid
 import json
 import re
@@ -13,6 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import httpx
+import yaml
 from pydantic import BaseModel
 
 from .assertions import ClaimStatus, HypothesisTree
@@ -51,6 +53,49 @@ from .data_store.store import DataStore
 from .atomic_data_revision import create_atomic_data_revision_router
 from .atomic_wiki import create_atomic_wiki_router
 from .atomic_dsl_api import create_atomic_dsl_router
+from .ui_proto import (
+    AddNodeOp,
+    ConsoleCommandError,
+    ConsolePatchContext,
+    LayoutDocument,
+    LayoutNode,
+    MoveNodeOp,
+    NlpMeta,
+    NodeMeta,
+    Rect,
+    ScreenSpec,
+    SetNodeRectOp,
+    UiRuntime,
+    UpdateNodeMetaOp,
+    apply_patch_ops,
+    build_ui_runtime,
+    compile_console_command,
+    load_ui,
+    render_utf_runtime,
+    save_ui,
+)
+from .ui_proto_reactive import (
+    ReactiveUiError,
+    add_node as reactive_add_node,
+    build_base_json as reactive_build_base_json,
+    compose_layers as reactive_compose_layers,
+    delete_node as reactive_delete_node,
+    ensure_project as reactive_ensure_project,
+    global_rect as reactive_global_rect,
+    load_project as reactive_load_project,
+    local_rect as reactive_local_rect,
+    move_node as reactive_move_node,
+    next_id as reactive_next_id,
+    pick_node as reactive_pick_node,
+    project_tree as reactive_project_tree,
+    replace_node_from_yaml as reactive_replace_node_from_yaml,
+    resolve_focus as reactive_resolve_focus,
+    resize_node as reactive_resize_node,
+    save_layers as reactive_save_layers,
+    save_project as reactive_save_project,
+    selected_node_json as reactive_selected_node_json,
+    selected_node_yaml as reactive_selected_node_yaml,
+)
 
 
 class CreateNodeRequest(BaseModel):
@@ -215,6 +260,71 @@ class PlanTaskRequest(BaseModel):
     tree_id: str = "auto"
     run: bool = False
     settings: dict | None = None
+
+
+class UiProtoCommandRequest(BaseModel):
+    command: str
+    selected_id: str | None = None
+    focus_id: str | None = None
+
+
+class UiProtoSelectRequest(BaseModel):
+    x: int
+    y: int
+    selected_id: str | None = None
+    focus_id: str | None = None
+
+
+class UiProtoGuiActionRequest(BaseModel):
+    action: str
+    selected_id: str | None = None
+    focus_id: str | None = None
+    rect: list[int] | None = None
+    parent_id: str | None = None
+    kind: str = "panel"
+    node_id: str | None = None
+
+
+class UiProtoMetaSaveRequest(BaseModel):
+    selected_id: str
+    yaml_text: str
+    focus_id: str | None = None
+
+
+class UiProto2NodeSaveRequest(BaseModel):
+    selected_id: str
+    yaml_text: str
+    focus_id: str | None = None
+
+
+class UiProto2FilesSaveRequest(BaseModel):
+    base_text: str
+    events_dsl: str
+    selected_id: str | None = None
+    focus_id: str | None = None
+
+
+class UiProto2CommandRequest(BaseModel):
+    command: str
+    selected_id: str | None = None
+    focus_id: str | None = None
+
+
+class UiProto2SelectRequest(BaseModel):
+    x: int
+    y: int
+    selected_id: str | None = None
+    focus_id: str | None = None
+
+
+class UiProto2GuiActionRequest(BaseModel):
+    action: str
+    selected_id: str | None = None
+    focus_id: str | None = None
+    rect: list[int] | None = None
+    parent_id: str | None = None
+    kind: str = "panel"
+    node_id: str | None = None
 
 
 def _mcp_success(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -2824,9 +2934,790 @@ def create_app(root: str) -> FastAPI:
             "tokens": gen_result.get("tokens"),
         }
 
+    ui_proto_root = Path(root).resolve() / "ui_proto"
+    ui_proto_layout_path = ui_proto_root / "layout.yaml"
+    ui_proto_nodes_dir = ui_proto_root / "nodes"
+    ui_proto_undo_stack: list[tuple[LayoutDocument, dict[str, NodeMeta], str | None]] = []
+    ui_proto_last_diff: list[dict[str, Any]] = []
+    ui_proto_last_snap_debug: dict[str, Any] = {}
+    ui_proto2_root = Path(root).resolve() / "ui_proto_reactive"
+    ui_proto2_undo_stack: list[tuple[dict[str, Any], str | None, str | None]] = []
+    ui_proto2_last_diff: list[dict[str, Any]] = []
+
+    def _default_ui_proto_docs() -> tuple[LayoutDocument, dict[str, NodeMeta]]:
+        layout_doc = LayoutDocument(
+            screen=ScreenSpec(cols=120, rows=36, root="root"),
+            nodes={
+                "root": LayoutNode(
+                    id="root",
+                    kind="screen",
+                    rect=Rect(0, 0, 120, 36),
+                    parent=None,
+                    children=["status_bar", "worker_panel", "chat_feed", "chat_input", "send_button"],
+                ),
+                "status_bar": LayoutNode(
+                    id="status_bar",
+                    kind="panel",
+                    rect=Rect(0, 0, 120, 3),
+                    parent="root",
+                    children=[],
+                ),
+                "worker_panel": LayoutNode(
+                    id="worker_panel",
+                    kind="panel",
+                    rect=Rect(0, 3, 30, 29),
+                    parent="root",
+                    children=[],
+                ),
+                "chat_feed": LayoutNode(
+                    id="chat_feed",
+                    kind="panel",
+                    rect=Rect(30, 3, 90, 29),
+                    parent="root",
+                    children=[],
+                ),
+                "chat_input": LayoutNode(
+                    id="chat_input",
+                    kind="panel",
+                    rect=Rect(0, 32, 104, 4),
+                    parent="root",
+                    children=[],
+                ),
+                "send_button": LayoutNode(
+                    id="send_button",
+                    kind="panel",
+                    rect=Rect(104, 32, 16, 4),
+                    parent="root",
+                    children=[],
+                ),
+            },
+        )
+        node_meta = {
+            "root": NodeMeta(title="Root", role="screen.root", kind="screen"),
+            "status_bar": NodeMeta(
+                title="Status",
+                role="panel.status",
+                kind="panel",
+                renderer="utf_panel",
+                props={"preview_lines": ["thin client / utf proto", "worker + chat skeleton"]},
+            ),
+            "worker_panel": NodeMeta(
+                title="Workers",
+                role="panel.workers",
+                kind="panel",
+                renderer="utf_list",
+                data={"workers": {"method": "GET", "path": "/api/behavior/agents"}},
+                bind={"items": "workers.agents"},
+                props={"bullet": "•", "preview_lines": ["items <- workers.agents"]},
+            ),
+            "chat_feed": NodeMeta(
+                title="Chat",
+                role="panel.chat_feed",
+                kind="panel",
+                renderer="utf_log",
+                data={"chat_log": {"method": "GET", "path": "/api/chat/log", "query": {"session_id": "default"}}},
+                bind={"items": "chat_log.entries"},
+                props={"preview_lines": ["log <- chat_log.entries"]},
+            ),
+            "chat_input": NodeMeta(
+                title="Input",
+                role="input.chat",
+                kind="panel",
+                renderer="utf_input",
+                props={"placeholder": "Describe your task...", "value": ""},
+            ),
+            "send_button": NodeMeta(
+                title="Send",
+                role="action.send",
+                kind="panel",
+                renderer="utf_button",
+                props={"text": "Send"},
+                actions={
+                    "press": {
+                        "method": "POST",
+                        "path": "/api/chat",
+                        "body": {"session_id": "default", "message_from_panel": "chat_input"},
+                        "after": [
+                            {"refresh_panel": "chat_feed"},
+                            {"set_panel_prop": {"panel": "chat_input", "key": "value", "value": ""}},
+                        ],
+                    }
+                },
+            ),
+        }
+        return layout_doc, node_meta
+
+    def _ensure_ui_proto_files() -> None:
+        if ui_proto_layout_path.exists():
+            return
+        ui_proto_root.mkdir(parents=True, exist_ok=True)
+        layout_doc, node_meta = _default_ui_proto_docs()
+        save_ui(ui_proto_layout_path, ui_proto_nodes_dir, layout_doc, node_meta)
+
+    def _load_ui_proto_runtime() -> tuple[LayoutDocument, dict[str, NodeMeta], UiRuntime]:
+        _ensure_ui_proto_files()
+        loaded = load_ui(ui_proto_layout_path, ui_proto_nodes_dir)
+        runtime = build_ui_runtime(loaded.layout_doc, loaded.node_meta)
+        return loaded.layout_doc, loaded.node_meta, runtime
+
+    def _ui_proto_depth(runtime: UiRuntime, node_id: str) -> int:
+        depth = 0
+        current = runtime.nodes.get(node_id)
+        while current is not None and current.parent is not None:
+            depth += 1
+            current = runtime.nodes.get(current.parent)
+        return depth
+
+    def _ui_proto_pick(runtime: UiRuntime, x: int, y: int) -> str | None:
+        hits: list[tuple[int, int, str]] = []
+        for node in runtime.nodes.values():
+            if node.kind == "screen":
+                continue
+            if node.rect.x <= x < node.rect.right and node.rect.y <= y < node.rect.bottom:
+                area = node.rect.w * node.rect.h
+                depth = _ui_proto_depth(runtime, node.id)
+                hits.append((area, -depth, node.id))
+        if not hits:
+            return None
+        hits.sort()
+        return hits[0][2]
+
+    def _ui_proto_is_descendant(layout_doc: LayoutDocument, node_id: str, ancestor_id: str) -> bool:
+        current = layout_doc.nodes.get(node_id)
+        while current is not None:
+            if current.id == ancestor_id:
+                return True
+            if current.parent is None:
+                return False
+            current = layout_doc.nodes.get(current.parent)
+        return False
+
+    def _ui_proto_resolve_focus(layout_doc: LayoutDocument, focus_id: str | None) -> str:
+        if focus_id and focus_id in layout_doc.nodes:
+            return focus_id
+        return layout_doc.screen.root
+
+    def _ui_proto_local_rect(rect: Rect, focus_rect: Rect) -> list[int]:
+        return [rect.x - focus_rect.x, rect.y - focus_rect.y, rect.w, rect.h]
+
+    def _ui_proto_meta_yaml(node_meta: dict[str, NodeMeta], node_id: str | None) -> str:
+        if not node_id:
+            return ""
+        meta = node_meta.get(node_id, NodeMeta())
+        payload = {
+            "title": meta.title,
+            "role": meta.role,
+            "kind": meta.kind,
+            "renderer": meta.renderer,
+            "data": dict(meta.data),
+            "bind": dict(meta.bind),
+            "actions": dict(meta.actions),
+            "view": dict(meta.view),
+            "binding": dict(meta.binding),
+            "events": dict(meta.events),
+            "nlp": {
+                "synonyms": list(meta.nlp.synonyms),
+                "description": meta.nlp.description,
+                "tags": list(meta.nlp.tags),
+            },
+            "props": dict(meta.props),
+        }
+        return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+
+    def _ui_proto_tree_payload(layout_doc: LayoutDocument, focus_id: str) -> list[dict[str, Any]]:
+        ordered: list[dict[str, Any]] = []
+        focus_rect = layout_doc.nodes[focus_id].rect
+
+        def visit(node_id: str, depth: int) -> None:
+            node = layout_doc.nodes[node_id]
+            ordered.append(
+                {
+                    "id": node.id,
+                    "kind": node.kind,
+                    "depth": depth,
+                    "children": list(node.children),
+                    "rect": _ui_proto_local_rect(node.rect, focus_rect),
+                }
+            )
+            for child_id in node.children:
+                if child_id in layout_doc.nodes:
+                    visit(child_id, depth + 1)
+
+        visit(focus_id, 0)
+        return ordered
+
+    def _ui_proto_diff_payload() -> list[dict[str, Any]]:
+        return list(ui_proto_last_diff)
+
+    def _ui_proto_snap_rect(
+        layout_doc: LayoutDocument,
+        *,
+        node_id: str | None,
+        parent_id: str | None,
+        rect: Rect,
+        threshold: int = 1,
+    ) -> tuple[Rect, dict[str, Any]]:
+        snapped = Rect(rect.x, rect.y, rect.w, rect.h)
+        targets: list[dict[str, Any]] = []
+        if parent_id and parent_id in layout_doc.nodes:
+            parent = layout_doc.nodes[parent_id]
+            if abs(snapped.x - parent.rect.x) <= threshold:
+                snapped = Rect(parent.rect.x, snapped.y, snapped.w, snapped.h)
+                targets.append({"side": "left", "target": f"{parent.id}.left"})
+            if abs(snapped.y - parent.rect.y) <= threshold:
+                snapped = Rect(snapped.x, parent.rect.y, snapped.w, snapped.h)
+                targets.append({"side": "top", "target": f"{parent.id}.top"})
+            if abs(snapped.right - parent.rect.right) <= threshold:
+                snapped = Rect(parent.rect.right - snapped.w, snapped.y, snapped.w, snapped.h)
+                targets.append({"side": "right", "target": f"{parent.id}.right"})
+            if abs(snapped.bottom - parent.rect.bottom) <= threshold:
+                snapped = Rect(snapped.x, parent.rect.bottom - snapped.h, snapped.w, snapped.h)
+                targets.append({"side": "bottom", "target": f"{parent.id}.bottom"})
+            for sibling_id in parent.children:
+                if sibling_id == node_id or sibling_id not in layout_doc.nodes:
+                    continue
+                sibling = layout_doc.nodes[sibling_id]
+                overlap_y = min(snapped.bottom, sibling.rect.bottom) - max(snapped.y, sibling.rect.y)
+                overlap_x = min(snapped.right, sibling.rect.right) - max(snapped.x, sibling.rect.x)
+                if overlap_y >= 1:
+                    if abs(snapped.x - sibling.rect.right) <= threshold:
+                        snapped = Rect(sibling.rect.right, snapped.y, snapped.w, snapped.h)
+                        targets.append({"side": "left", "target": f"{sibling.id}.right"})
+                    if abs(snapped.right - sibling.rect.x) <= threshold:
+                        snapped = Rect(sibling.rect.x - snapped.w, snapped.y, snapped.w, snapped.h)
+                        targets.append({"side": "right", "target": f"{sibling.id}.left"})
+                if overlap_x >= 1:
+                    if abs(snapped.y - sibling.rect.bottom) <= threshold:
+                        snapped = Rect(snapped.x, sibling.rect.bottom, snapped.w, snapped.h)
+                        targets.append({"side": "top", "target": f"{sibling.id}.bottom"})
+                    if abs(snapped.bottom - sibling.rect.y) <= threshold:
+                        snapped = Rect(snapped.x, sibling.rect.y - snapped.h, snapped.w, snapped.h)
+                        targets.append({"side": "bottom", "target": f"{sibling.id}.top"})
+        return snapped, {
+            "applied": bool(targets),
+            "raw_rect": rect.to_list(),
+            "snapped_rect": snapped.to_list(),
+            "targets": targets,
+        }
+
+    def _ui_proto_parse_rect(raw_rect: list[int] | None) -> Rect:
+        if not isinstance(raw_rect, list) or len(raw_rect) != 4 or not all(isinstance(v, int) for v in raw_rect):
+            raise HTTPException(status_code=400, detail="rect must be [x, y, w, h]")
+        rect = Rect(x=raw_rect[0], y=raw_rect[1], w=raw_rect[2], h=raw_rect[3])
+        if rect.w <= 0 or rect.h <= 0:
+            raise HTTPException(status_code=400, detail="rect must have positive width and height")
+        return rect
+
+    def _ui_proto_global_rect(layout_doc: LayoutDocument, focus_id: str, local_rect: Rect) -> Rect:
+        focus_rect = layout_doc.nodes[focus_id].rect
+        return Rect(
+            x=focus_rect.x + local_rect.x,
+            y=focus_rect.y + local_rect.y,
+            w=local_rect.w,
+            h=local_rect.h,
+        )
+
+    def _ui_proto_next_id(layout_doc: LayoutDocument, base: str = "panel") -> str:
+        candidate_base = re.sub(r"[^a-zA-Z0-9_]+", "_", base).strip("_") or "panel"
+        if candidate_base not in layout_doc.nodes:
+            return candidate_base
+        index = 1
+        while f"{candidate_base}_{index}" in layout_doc.nodes:
+            index += 1
+        return f"{candidate_base}_{index}"
+
+    def _ui_proto_node_meta_to_patch(meta: NodeMeta) -> dict[str, Any]:
+        return {
+            "title": meta.title,
+            "role": meta.role,
+            "kind": meta.kind,
+            "renderer": meta.renderer,
+            "data": dict(meta.data),
+            "bind": dict(meta.bind),
+            "actions": dict(meta.actions),
+            "view": dict(meta.view),
+            "binding": dict(meta.binding),
+            "events": dict(meta.events),
+            "nlp": {
+                "synonyms": list(meta.nlp.synonyms),
+                "description": meta.nlp.description,
+                "tags": list(meta.nlp.tags),
+            },
+            "props": dict(meta.props),
+        }
+
+    def _ui_proto_parse_meta_yaml(yaml_text: str) -> NodeMeta:
+        try:
+            data = yaml.safe_load(yaml_text) or {}
+        except yaml.YAMLError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid YAML: {exc}") from exc
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="meta YAML must be a mapping")
+        nlp_raw = data.get("nlp") or {}
+        if not isinstance(nlp_raw, dict):
+            raise HTTPException(status_code=400, detail="nlp must be a mapping")
+        synonyms = nlp_raw.get("synonyms") or []
+        tags = nlp_raw.get("tags") or []
+        if not isinstance(synonyms, list) or not all(isinstance(v, str) for v in synonyms):
+            raise HTTPException(status_code=400, detail="nlp.synonyms must be a list of strings")
+        if not isinstance(tags, list) or not all(isinstance(v, str) for v in tags):
+            raise HTTPException(status_code=400, detail="nlp.tags must be a list of strings")
+        for key in ("data", "bind", "actions", "view", "binding", "events", "props"):
+            value = data.get(key) or {}
+            if not isinstance(value, dict):
+                raise HTTPException(status_code=400, detail=f"{key} must be a mapping")
+        return NodeMeta(
+            title=str(data.get("title") or ""),
+            role=str(data.get("role") or "node.unknown"),
+            kind=str(data.get("kind") or "panel"),
+            renderer=str(data.get("renderer") or "utf_panel"),
+            data=dict(data.get("data") or {}),
+            bind=dict(data.get("bind") or {}),
+            actions=dict(data.get("actions") or {}),
+            view=dict(data.get("view") or {}),
+            binding=dict(data.get("binding") or {}),
+            events=dict(data.get("events") or {}),
+            nlp=NlpMeta(
+                synonyms=list(synonyms),
+                description=str(nlp_raw.get("description") or ""),
+                tags=list(tags),
+            ),
+            props=dict(data.get("props") or {}),
+        )
+
+    def _ui_proto_response(
+        layout_doc: LayoutDocument,
+        node_meta: dict[str, NodeMeta],
+        runtime: UiRuntime,
+        *,
+        selected_id: str | None,
+        focus_id: str | None = None,
+        message: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_focus = _ui_proto_resolve_focus(layout_doc, focus_id)
+        if selected_id in runtime.nodes and _ui_proto_is_descendant(layout_doc, selected_id, resolved_focus):
+            resolved_selected = selected_id
+        else:
+            resolved_selected = resolved_focus
+        render = render_utf_runtime(runtime, resolved_selected, root_id=resolved_focus)
+        selected_node = runtime.nodes.get(resolved_selected)
+        focus_node = runtime.nodes.get(resolved_focus)
+        focus_rect = focus_node.rect if focus_node is not None else Rect(0, 0, runtime.cols, runtime.rows)
+        return {
+            "ok": True,
+            "message": message or "",
+            "selected_id": resolved_selected,
+            "focus_id": resolved_focus,
+            "screen": {"cols": render.cols, "rows": render.rows},
+            "render": {"lines": render.lines},
+            "tree": _ui_proto_tree_payload(layout_doc, resolved_focus),
+            "selected": {
+                "id": resolved_selected,
+                "kind": selected_node.kind if selected_node else "",
+                "title": selected_node.title if selected_node else "",
+                "role": selected_node.role if selected_node else "",
+                "renderer": selected_node.renderer if selected_node else "",
+                "rect": _ui_proto_local_rect(selected_node.rect, focus_rect) if selected_node else [0, 0, 0, 0],
+                "meta_yaml": _ui_proto_meta_yaml(node_meta, resolved_selected),
+                "meta_json": _serialize(_ui_proto_node_meta_to_patch(node_meta.get(resolved_selected, NodeMeta()))),
+                "resolved": _serialize(selected_node.resolved if selected_node else {}),
+            },
+            "focus": {
+                "id": resolved_focus,
+                "title": focus_node.title if focus_node else "",
+            },
+            "latest_diff": _ui_proto_diff_payload(),
+            "snap_debug": dict(ui_proto_last_snap_debug),
+        }
+
+    @app.get("/api/ui-proto/state")
+    def ui_proto_state(selected_id: str | None = None, focus_id: str | None = None) -> dict[str, Any]:
+        layout_doc, node_meta, runtime = _load_ui_proto_runtime()
+        return _ui_proto_response(layout_doc, node_meta, runtime, selected_id=selected_id, focus_id=focus_id)
+
+    @app.post("/api/ui-proto/select")
+    def ui_proto_select(request: UiProtoSelectRequest) -> dict[str, Any]:
+        layout_doc, node_meta, runtime = _load_ui_proto_runtime()
+        resolved_focus = _ui_proto_resolve_focus(layout_doc, request.focus_id)
+        focus_rect = layout_doc.nodes[resolved_focus].rect
+        picked = _ui_proto_pick(runtime, focus_rect.x + request.x, focus_rect.y + request.y)
+        selected_id = picked or request.selected_id or resolved_focus
+        return _ui_proto_response(layout_doc, node_meta, runtime, selected_id=selected_id, focus_id=resolved_focus)
+
+    @app.post("/api/ui-proto/gui-action")
+    def ui_proto_gui_action(request: UiProtoGuiActionRequest) -> dict[str, Any]:
+        nonlocal ui_proto_last_diff, ui_proto_last_snap_debug
+        layout_doc, node_meta, runtime = _load_ui_proto_runtime()
+        resolved_focus = _ui_proto_resolve_focus(layout_doc, request.focus_id)
+        action = request.action.strip().lower()
+        ops: list[Any] = []
+        next_selected = request.selected_id or resolved_focus
+
+        if action == "move":
+            node_id = request.selected_id or ""
+            if node_id not in layout_doc.nodes:
+                raise HTTPException(status_code=400, detail="selected_id is required for move")
+            rect = _ui_proto_global_rect(layout_doc, resolved_focus, _ui_proto_parse_rect(request.rect))
+            current = layout_doc.nodes[node_id]
+            snapped_rect, ui_proto_last_snap_debug = _ui_proto_snap_rect(
+                layout_doc,
+                node_id=node_id,
+                parent_id=current.parent,
+                rect=rect,
+            )
+            dx = snapped_rect.x - current.rect.x
+            dy = snapped_rect.y - current.rect.y
+            ops = [MoveNodeOp(node_id, dx, dy)]
+            next_selected = node_id
+        elif action == "resize":
+            node_id = request.selected_id or ""
+            if node_id not in layout_doc.nodes:
+                raise HTTPException(status_code=400, detail="selected_id is required for resize")
+            rect = _ui_proto_global_rect(layout_doc, resolved_focus, _ui_proto_parse_rect(request.rect))
+            current = layout_doc.nodes[node_id]
+            snapped_rect, ui_proto_last_snap_debug = _ui_proto_snap_rect(
+                layout_doc,
+                node_id=node_id,
+                parent_id=current.parent,
+                rect=rect,
+            )
+            ops = [SetNodeRectOp(node_id, snapped_rect)]
+            next_selected = node_id
+        elif action == "create":
+            rect = _ui_proto_global_rect(layout_doc, resolved_focus, _ui_proto_parse_rect(request.rect))
+            parent_id = request.parent_id or request.selected_id or resolved_focus
+            if parent_id not in layout_doc.nodes:
+                raise HTTPException(status_code=400, detail=f"unknown parent_id '{parent_id}'")
+            node_id = request.node_id or _ui_proto_next_id(layout_doc, request.kind)
+            snapped_rect, ui_proto_last_snap_debug = _ui_proto_snap_rect(
+                layout_doc,
+                node_id=None,
+                parent_id=parent_id,
+                rect=rect,
+            )
+            ops = [AddNodeOp(node_id, parent_id, request.kind or "panel", snapped_rect)]
+            next_selected = node_id
+        else:
+            raise HTTPException(status_code=400, detail=f"unsupported gui action '{request.action}'")
+
+        ui_proto_undo_stack.append((copy.deepcopy(layout_doc), copy.deepcopy(node_meta), request.selected_id))
+        try:
+            applied = apply_patch_ops(layout_doc, node_meta, ops)
+        except UiLayoutError as exc:
+            ui_proto_undo_stack.pop()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        save_ui(ui_proto_layout_path, ui_proto_nodes_dir, applied.layout_doc, applied.node_meta)
+        ui_proto_last_diff = [_serialize(op) for op in ops]
+        return _ui_proto_response(
+            applied.layout_doc,
+            applied.node_meta,
+            applied.runtime,
+            selected_id=next_selected,
+            focus_id=resolved_focus,
+            message=f"gui {action} applied",
+        )
+
+    @app.post("/api/ui-proto/meta")
+    def ui_proto_save_meta(request: UiProtoMetaSaveRequest) -> dict[str, Any]:
+        nonlocal ui_proto_last_diff, ui_proto_last_snap_debug
+        layout_doc, node_meta, runtime = _load_ui_proto_runtime()
+        if request.selected_id not in layout_doc.nodes:
+            raise HTTPException(status_code=400, detail=f"unknown node '{request.selected_id}'")
+        meta = _ui_proto_parse_meta_yaml(request.yaml_text)
+        op = UpdateNodeMetaOp(request.selected_id, _ui_proto_node_meta_to_patch(meta))
+        ui_proto_undo_stack.append((copy.deepcopy(layout_doc), copy.deepcopy(node_meta), request.selected_id))
+        try:
+            applied = apply_patch_ops(layout_doc, node_meta, [op])
+        except UiLayoutError as exc:
+            ui_proto_undo_stack.pop()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        save_ui(ui_proto_layout_path, ui_proto_nodes_dir, applied.layout_doc, applied.node_meta)
+        ui_proto_last_diff = [_serialize(op)]
+        ui_proto_last_snap_debug = {}
+        return _ui_proto_response(
+            applied.layout_doc,
+            applied.node_meta,
+            applied.runtime,
+            selected_id=request.selected_id,
+            focus_id=request.focus_id,
+            message="meta saved",
+        )
+
+    @app.post("/api/ui-proto/command")
+    def ui_proto_command(request: UiProtoCommandRequest) -> dict[str, Any]:
+        nonlocal ui_proto_last_diff, ui_proto_last_snap_debug
+        layout_doc, node_meta, runtime = _load_ui_proto_runtime()
+        context = ConsolePatchContext(selected_id=request.selected_id)
+        resolved_focus = _ui_proto_resolve_focus(layout_doc, request.focus_id)
+        try:
+            compiled = compile_console_command(request.command, layout_doc, context)
+        except (ConsoleCommandError, UiLayoutError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        if compiled.control == "undo":
+            if not ui_proto_undo_stack:
+                return _ui_proto_response(
+                    layout_doc,
+                    node_meta,
+                    runtime,
+                    selected_id=request.selected_id or resolved_focus,
+                    focus_id=resolved_focus,
+                    message="undo stack is empty",
+                )
+            prev_layout, prev_meta, prev_selected = ui_proto_undo_stack.pop()
+            save_ui(ui_proto_layout_path, ui_proto_nodes_dir, prev_layout, prev_meta)
+            ui_proto_last_diff = []
+            ui_proto_last_snap_debug = {}
+            prev_runtime = build_ui_runtime(prev_layout, prev_meta)
+            return _ui_proto_response(
+                prev_layout,
+                prev_meta,
+                prev_runtime,
+                selected_id=prev_selected or prev_runtime.root_id,
+                focus_id=request.focus_id,
+                message="undo applied",
+            )
+
+        if compiled.control in {"preview", "diff", "apply"}:
+            ui_proto_last_snap_debug = {}
+            return _ui_proto_response(
+                layout_doc,
+                node_meta,
+                runtime,
+                selected_id=request.selected_id or resolved_focus,
+                focus_id=resolved_focus,
+                message=f"{compiled.control} is passive in this build",
+            )
+
+        if not compiled.ops:
+            ui_proto_last_snap_debug = {}
+            return _ui_proto_response(
+                layout_doc,
+                node_meta,
+                runtime,
+                selected_id=compiled.context.selected_id or runtime.root_id,
+                focus_id=resolved_focus,
+            )
+
+        ui_proto_undo_stack.append((copy.deepcopy(layout_doc), copy.deepcopy(node_meta), request.selected_id))
+        try:
+            normalized_ops = []
+            for op in compiled.ops:
+                if isinstance(op, AddNodeOp):
+                    local_rect = op.rect
+                    global_rect = _ui_proto_global_rect(layout_doc, resolved_focus, local_rect)
+                    normalized_ops.append(AddNodeOp(op.id, op.parent, op.kind, global_rect))
+                else:
+                    normalized_ops.append(op)
+            compiled.ops = normalized_ops
+            applied = apply_patch_ops(layout_doc, node_meta, compiled.ops)
+        except UiLayoutError as exc:
+            ui_proto_undo_stack.pop()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        save_ui(ui_proto_layout_path, ui_proto_nodes_dir, applied.layout_doc, applied.node_meta)
+        ui_proto_last_diff = [_serialize(op) for op in compiled.ops]
+        ui_proto_last_snap_debug = {}
+        return _ui_proto_response(
+            applied.layout_doc,
+            applied.node_meta,
+            applied.runtime,
+            selected_id=compiled.context.selected_id or applied.runtime.root_id,
+            focus_id=resolved_focus,
+            message="applied",
+        )
+
+    def _load_ui_proto2_project() -> dict[str, Any]:
+        reactive_ensure_project(ui_proto2_root)
+        return reactive_load_project(ui_proto2_root)
+
+    def _ui_proto2_response(
+        project: dict[str, Any],
+        *,
+        selected_id: str | None,
+        focus_id: str | None,
+        message: str = "",
+    ) -> dict[str, Any]:
+        resolved_focus = reactive_resolve_focus(project, focus_id)
+        by_id = {node["id"]: node for node in project["nodes"]}
+        if selected_id and selected_id in by_id and selected_id in {item["id"] for item in reactive_project_tree(project, resolved_focus)}:
+            resolved_selected = selected_id
+        else:
+            resolved_selected = resolved_focus
+        return {
+            "ok": True,
+            "message": message,
+            "selected_id": resolved_selected,
+            "focus_id": resolved_focus,
+            "screen": {"cols": by_id[resolved_focus]["rect"][2], "rows": by_id[resolved_focus]["rect"][3]},
+            "render": {"lines": reactive_compose_layers(project, resolved_focus)},
+            "tree": reactive_project_tree(project, resolved_focus),
+            "selected": {
+                "id": resolved_selected,
+                "yaml": reactive_selected_node_yaml(project, resolved_selected),
+                "json": reactive_selected_node_json(project, resolved_selected),
+                "rect": reactive_local_rect(project, by_id[resolved_selected]["rect"], resolved_focus),
+                "name": by_id[resolved_selected].get("name") or "",
+                "alias": by_id[resolved_selected].get("alias") or "",
+            },
+            "focus": {"id": resolved_focus},
+            "layers": {
+                "base": project["layers"].get("base") or "",
+                "base_json": reactive_build_base_json(project),
+                "events_dsl": project.get("events_dsl") or "",
+            },
+            "latest_diff": list(ui_proto2_last_diff),
+        }
+
+    def _ui_proto2_parse_rect(raw_rect: list[int] | None) -> list[int]:
+        if not isinstance(raw_rect, list) or len(raw_rect) != 4 or not all(isinstance(v, int) for v in raw_rect):
+            raise HTTPException(status_code=400, detail="rect must be [x, y, w, h]")
+        if raw_rect[2] <= 0 or raw_rect[3] <= 0:
+            raise HTTPException(status_code=400, detail="rect must have positive width and height")
+        return list(raw_rect)
+
+    def _ui_proto2_apply_command(project: dict[str, Any], command: str, focus_id: str, selected_id: str | None) -> tuple[str | None, list[dict[str, Any]]]:
+        text = str(command or "").strip()
+        lowered = text.lower()
+        if lowered == "undo":
+            return selected_id, []
+        if lowered.startswith("select "):
+            node_id = text.split(" ", 1)[1].strip()
+            if not any(node["id"] == node_id for node in project["nodes"]):
+                raise ReactiveUiError(f"unknown node '{node_id}'")
+            return node_id, []
+        if lowered == "delete":
+            if not selected_id:
+                raise ReactiveUiError("no selected node")
+            reactive_delete_node(project, selected_id, delete_subtree=False)
+            parent_id = next((node.get("parent") for node in project["nodes"] if node["id"] == selected_id), None)
+            return parent_id or focus_id, [{"op": "delete_node", "id": selected_id}]
+        if lowered == "delete subtree":
+            if not selected_id:
+                raise ReactiveUiError("no selected node")
+            parent_id = next((node.get("parent") for node in project["nodes"] if node["id"] == selected_id), None)
+            reactive_delete_node(project, selected_id, delete_subtree=True)
+            return parent_id or focus_id, [{"op": "delete_subtree", "id": selected_id}]
+        if lowered.startswith("add "):
+            rest = text[4:].strip()
+            head, sep, raw_rect = rest.partition(":")
+            if not sep:
+                raise ReactiveUiError("Usage: add <id>: [x, y, w, h] | add <kind> <id>: [x, y, w, h]")
+            head_tokens = head.strip().split()
+            if len(head_tokens) == 1:
+                kind = "panel"
+                node_id = head_tokens[0]
+            elif len(head_tokens) == 2:
+                kind, node_id = head_tokens
+            else:
+                raise ReactiveUiError("Usage: add <id>: [x, y, w, h] | add <kind> <id>: [x, y, w, h]")
+            rect_value = yaml.safe_load(raw_rect.strip())
+            if not isinstance(rect_value, list) or len(rect_value) != 4 or not all(isinstance(v, int) for v in rect_value):
+                raise ReactiveUiError("add rect must be [x, y, w, h]")
+            parent_id = selected_id or focus_id
+            reactive_add_node(project, parent_id, node_id, reactive_global_rect(project, rect_value, focus_id), kind=kind)
+            return node_id, [{"op": "add_node", "id": node_id, "parent": parent_id, "kind": kind, "rect": rect_value}]
+        raise ReactiveUiError(f"unsupported command '{command}'")
+
+    @app.get("/api/ui-proto2/state")
+    def ui_proto2_state(selected_id: str | None = None, focus_id: str | None = None) -> dict[str, Any]:
+        project = _load_ui_proto2_project()
+        return _ui_proto2_response(project, selected_id=selected_id, focus_id=focus_id)
+
+    @app.post("/api/ui-proto2/select")
+    def ui_proto2_select(request: UiProto2SelectRequest) -> dict[str, Any]:
+        project = _load_ui_proto2_project()
+        resolved_focus = reactive_resolve_focus(project, request.focus_id)
+        selected_id = reactive_pick_node(project, request.x, request.y, resolved_focus) or request.selected_id or resolved_focus
+        return _ui_proto2_response(project, selected_id=selected_id, focus_id=resolved_focus)
+
+    @app.post("/api/ui-proto2/gui-action")
+    def ui_proto2_gui_action(request: UiProto2GuiActionRequest) -> dict[str, Any]:
+        nonlocal ui_proto2_last_diff
+        project = _load_ui_proto2_project()
+        resolved_focus = reactive_resolve_focus(project, request.focus_id)
+        action = request.action.strip().lower()
+        selected_id = request.selected_id or resolved_focus
+        local_rect = _ui_proto2_parse_rect(request.rect)
+        global_rect = reactive_global_rect(project, local_rect, resolved_focus)
+        ui_proto2_undo_stack.append((copy.deepcopy(project), request.selected_id, request.focus_id))
+        try:
+            if action == "move":
+                reactive_move_node(project, selected_id, global_rect)
+                ui_proto2_last_diff = [{"op": "move_node", "id": selected_id, "rect": local_rect}]
+            elif action == "resize":
+                reactive_resize_node(project, selected_id, global_rect)
+                ui_proto2_last_diff = [{"op": "resize_node", "id": selected_id, "rect": local_rect}]
+            elif action == "create":
+                parent_id = request.parent_id or request.selected_id or resolved_focus
+                node_id = request.node_id or reactive_next_id(project, request.kind or "panel")
+                reactive_add_node(project, parent_id, node_id, global_rect, kind=request.kind or "panel")
+                selected_id = node_id
+                ui_proto2_last_diff = [{"op": "add_node", "id": node_id, "parent": parent_id, "kind": request.kind or "panel", "rect": local_rect}]
+            else:
+                raise ReactiveUiError(f"unsupported gui action '{request.action}'")
+        except ReactiveUiError as exc:
+            ui_proto2_undo_stack.pop()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reactive_save_project(ui_proto2_root, project)
+        return _ui_proto2_response(project, selected_id=selected_id, focus_id=resolved_focus, message=f"gui {action} applied")
+
+    @app.post("/api/ui-proto2/node/save")
+    def ui_proto2_node_save(request: UiProto2NodeSaveRequest) -> dict[str, Any]:
+        nonlocal ui_proto2_last_diff
+        project = _load_ui_proto2_project()
+        ui_proto2_undo_stack.append((copy.deepcopy(project), request.selected_id, request.focus_id))
+        try:
+            reactive_replace_node_from_yaml(project, request.selected_id, request.yaml_text)
+        except ReactiveUiError as exc:
+            ui_proto2_undo_stack.pop()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reactive_save_project(ui_proto2_root, project)
+        ui_proto2_last_diff = [{"op": "update_node", "id": request.selected_id}]
+        return _ui_proto2_response(project, selected_id=request.selected_id, focus_id=request.focus_id, message="node saved")
+
+    @app.post("/api/ui-proto2/files/save")
+    def ui_proto2_files_save(request: UiProto2FilesSaveRequest) -> dict[str, Any]:
+        nonlocal ui_proto2_last_diff
+        project = _load_ui_proto2_project()
+        ui_proto2_undo_stack.append((copy.deepcopy(project), request.selected_id, request.focus_id))
+        reactive_save_layers(
+            project,
+            base=request.base_text,
+            events_dsl=request.events_dsl,
+        )
+        reactive_save_project(ui_proto2_root, project)
+        ui_proto2_last_diff = [{"op": "save_layers"}]
+        return _ui_proto2_response(project, selected_id=request.selected_id, focus_id=request.focus_id, message="layers saved")
+
+    @app.post("/api/ui-proto2/command")
+    def ui_proto2_command(request: UiProto2CommandRequest) -> dict[str, Any]:
+        nonlocal ui_proto2_last_diff
+        if request.command.strip().lower() == "undo":
+            if not ui_proto2_undo_stack:
+                project = _load_ui_proto2_project()
+                return _ui_proto2_response(project, selected_id=request.selected_id, focus_id=request.focus_id, message="undo stack is empty")
+            prev_project, prev_selected, prev_focus = ui_proto2_undo_stack.pop()
+            reactive_save_project(ui_proto2_root, prev_project)
+            ui_proto2_last_diff = []
+            return _ui_proto2_response(prev_project, selected_id=prev_selected, focus_id=prev_focus, message="undo applied")
+        project = _load_ui_proto2_project()
+        resolved_focus = reactive_resolve_focus(project, request.focus_id)
+        ui_proto2_undo_stack.append((copy.deepcopy(project), request.selected_id, request.focus_id))
+        try:
+            next_selected, diff = _ui_proto2_apply_command(project, request.command, resolved_focus, request.selected_id)
+        except ReactiveUiError as exc:
+            ui_proto2_undo_stack.pop()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reactive_save_project(ui_proto2_root, project)
+        ui_proto2_last_diff = diff
+        return _ui_proto2_response(project, selected_id=next_selected, focus_id=resolved_focus, message="applied")
+
     def _serialize(v: Any) -> Any:
         if isinstance(v, (str, int, float, bool, type(None))):
             return v
+        if is_dataclass(v):
+            return _serialize(asdict(v))
         if isinstance(v, list):
             return [_serialize(x) for x in v]
         if isinstance(v, dict):
@@ -2893,6 +3784,17 @@ def create_app(root: str) -> FastAPI:
     @app.get("/workflow", response_class=HTMLResponse)
     def workflow_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/aabb", response_class=HTMLResponse)
+    def aabb_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/ui-proto", response_class=HTMLResponse)
+    @app.get("/ui_proto", response_class=HTMLResponse)
+    def ui_proto_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "ui_proto.html"
         return html_path.read_text(encoding="utf-8")
 
     @app.get("/think-lab", response_class=HTMLResponse)
