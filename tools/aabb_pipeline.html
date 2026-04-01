@@ -412,6 +412,12 @@ function parseCmd(line) {
   }
   if (cmd === 'load') return { cmd:'load', path:tokens[1], key:tokens[2], default:tokens[3] };
   if (cmd === 'render') return { cmd:'render', _ctx:ctx };
+  // run <action_name> [data] — execute panel action (goes through replay)
+  if (cmd === 'run') {
+    let data = tokens[2];
+    if (data !== undefined) { try { data = JSON.parse(data); } catch(_) {} }
+    return { cmd:'run', action:tokens[1], data, _ctx:ctx };
+  }
   // extract <new_name> [zones=0,2,3] [rows=4-8] — move part of panel to new child
   if (cmd === 'extract') {
     const c = { cmd:'extract', newName:tokens[1], _ctx:ctx };
@@ -435,7 +441,7 @@ function parseCmd(line) {
   if (cmd === 'reorder') return { cmd:'reorder', index:+tokens[1]||0, _ctx:ctx };
   // rename <new_name> — rename panel, update all refs
   if (cmd === 'rename') return { cmd:'rename', newName:tokens[1], _ctx:ctx };
-  if (cmd === 'select') { _ctx = tokens[1]||'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return null; }
+  if (cmd === 'select') { _ctx = tokens[1]||'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return { cmd:'select', target:_ctx }; }
   if (cmd === 'up') { const p=_ctx?findParentPanel(panels[_ctx]):null; _ctx=p?p.name:'screen'; clog(`\u2192 ${_ctx}`, 'cmd-ok'); return null; }
   if (cmd === 'root') { _ctx='screen'; clog(`\u2192 screen`, 'cmd-ok'); return null; }
   if (cmd === 'get' || cmd === 'ls') return { cmd:'get', what:tokens[1], _ctx:ctx };
@@ -491,9 +497,20 @@ async function applyCommand(cmd) {
       const p=panels[ctx]; if(p){if(!p.asm)p.asm={render:'',actions:{}};if(cmd.name==='render')p.asm.render=cmd.asm;else p.asm.actions[cmd.name]=cmd.asm;clog(`action ${cmd.name} (${cmd.asm.split('\n').length} lines)`, 'cmd-ok');} break;
     }
     case 'action_del': { const p=panels[ctx]; if(p&&p.asm)delete p.asm.actions[cmd.name]; break; }
+    case 'select': _ctx = cmd.target; break;
     case 'data': Data.set(cmd.path, cmd.value); clog(`data ${cmd.path}`, 'cmd-ok'); break;
     case 'load': Data.set(cmd.path, Data.load(cmd.key, cmd.default)); clog(`load ${cmd.path}`, 'cmd-ok'); break;
     case 'render': { const p=panels[ctx]; if(p&&p.asm&&p.asm.render) await execAsm(p.asm.render); break; }
+    case 'run': {
+      const p=panels[ctx];
+      if(p&&p.asm&&p.asm.actions&&p.asm.actions[cmd.action]){
+        clog(`\u25b6 ${cmd.action}${cmd.data!==undefined?' ['+JSON.stringify(cmd.data)+']':''}`, 'cmd-in');
+        await execAsm(p.asm.actions[cmd.action], {action_data:cmd.data, panel_name:ctx});
+        draw();
+        clog(`\u2713 ${cmd.action}`, 'cmd-ok');
+      } else { clog(`no action: ${cmd.action}`, 'cmd-err'); }
+      break;
+    }
     case 'extract': {
       // Extract: move content from selected panel into new child panel
       // Partial: zones=0,2 rows=4-8 — only specific zones/rows
@@ -1003,7 +1020,11 @@ document.getElementById('canvas').addEventListener('click', (e) => {
     if (hit.zone.type==='button' && hit.zone.action) {
       const p=hit.panel;
       const code = p.asm&&p.asm.actions&&p.asm.actions[hit.zone.action];
-      if (code) { clog(`▶ ${hit.zone.action}`, 'cmd-in'); execAsm(code,{action_data:hit.zone.data,panel_name:p.name}).then(()=>draw()); }
+      if (code) {
+        _ctx = p.name;
+        exec(`select ${p.name}`);
+        exec(`run ${hit.zone.action} ${hit.zone.data !== undefined ? JSON.stringify(hit.zone.data) : ''}`);
+      }
     }
     if (hit.zone.type==='input') {
       focusInput(hit.zone, hit.panel, hit.localX - hit.zone.x);
@@ -1047,7 +1068,7 @@ document.addEventListener('keydown', (e) => {
   else if(e.key==='ArrowRight'){if(cursorPos<val.length)cursorPos++;}
   else if(e.key==='Home')cursorPos=0;
   else if(e.key==='End')cursorPos=val.length;
-  else if(e.key==='Enter'){if(z.action){const p=z._panel;const code=p.asm&&p.asm.actions&&p.asm.actions[z.action];if(code){clog('\u25b6 '+z.action,'cmd-in');execAsm(code,{action_data:val,panel_name:p.name}).then(()=>draw());}}return;}
+  else if(e.key==='Enter'){if(z.action){const p=z._panel;if(p){_ctx=p.name;exec(`run ${z.action} ${JSON.stringify(val)}`);}};return;}
   else if(e.key==='Escape'){focusedZone=null;stopCursorBlink();drawOverlay();return;}
   else if(e.key.length===1&&!e.ctrlKey&&!e.altKey&&!e.metaKey){val=val.slice(0,cursorPos)+e.key+val.slice(cursorPos);cursorPos++;}
   else return;
