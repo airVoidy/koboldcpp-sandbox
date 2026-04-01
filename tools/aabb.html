@@ -208,16 +208,17 @@ function createPanel(name, w, h) {
   const panel = {
     name, w, h, buf,
     scrollX: 0, scrollY: 0,
-    zones: [],
-    children: [],   // { panel, x, y, w, h } — child panel placements
+    zones: [],           // runtime zones (from asm.render + authored)
+    authoredZones: [],   // persisted zones (created via GUI, first-class)
+    children: [],        // { panel, x, y, w, h } — child panel placements
     border: true,
     borderColor: '#3b4261',
     label: name,
     // view state
     collapsed: false,
     // assembly
-    asm: '',         // assembly source code
-    asmActions: {},  // action_name → assembly code (labels)
+    asm: '',
+    asmActions: {},
   };
   panels[name] = panel;
   return panel;
@@ -258,7 +259,8 @@ function zoneAdd(panel, y, x, w, h, type, action, data, style) {
 function zoneClear(panel) {
   if (typeof panel === 'string') panel = panels[panel];
   if (!panel) return;
-  panel.zones.length = 0;
+  // Clear render-created zones, keep authored zones
+  panel.zones = panel.authoredZones.map(z => ({ ...z }));
 }
 
 function addChildPanel(parent, child, x, y, w, h) {
@@ -749,11 +751,13 @@ function renderPanelTree() {
       const zSel = z === selectedZone ? ' sel' : '';
       const icon = z.type === 'button' ? '\u25a3' : z.type === 'input' ? '\u25a1' : '\u25c7';
       const color = z.type === 'button' ? 'c-orange' : z.type === 'input' ? 'c-accent' : 'c-accent3';
+      const origin = z._authored ? '\u2022' : '\u25e6'; // ● authored, ○ rendered
       html += `<div class="tv-row${zSel}" data-panel="${panel.name}" data-zone="${i}" style="padding-left:${(depth + 1) * 12 + 4}px">`;
       html += `<span class="tv-arrow ${color}">${icon}</span>`;
       html += `<span class="tv-name ${color}">${z.type}</span>`;
       html += `<span class="tv-dim">[${z.x},${z.y} ${z.w}\u00d7${z.h}]</span>`;
       if (z.action) html += `<span class="tv-zone">\u2192 ${escH(z.action)}</span>`;
+      html += `<span class="tv-dim">${origin}</span>`;
       html += `</div>`;
     }
     for (const ch of panel.children) walk(ch.panel, depth + 1);
@@ -1067,6 +1071,8 @@ function showZoneProps(zone, panel) {
     btn.addEventListener('click', () => {
       const idx = panel.zones.indexOf(zone);
       if (idx >= 0) panel.zones.splice(idx, 1);
+      const aidx = panel.authoredZones.indexOf(zone);
+      if (aidx >= 0) panel.authoredZones.splice(aidx, 1);
       selectedZone = null;
       propsEditor.classList.add('hidden');
       draw(); renderPanelTree();
@@ -1131,7 +1137,8 @@ document.getElementById('btn-add-zone').addEventListener('click', () => {
   if (activeTab !== 'panels') return;
   const panel = selectedPanel || rootPanel;
   if (!panel) return;
-  const z = { x: 0, y: 0, w: 5, h: 1, type: 'button', action: '', style: '' };
+  const z = { x: 0, y: 0, w: 5, h: 1, type: 'button', action: '', style: '', _authored: true };
+  panel.authoredZones.push(z);
   panel.zones.push(z);
   selectedZone = z;
   draw();
@@ -1282,6 +1289,10 @@ async function loadProject(project) {
       if (def.border !== undefined) p.border = def.border;
       if (def.borderColor) p.borderColor = def.borderColor;
       if (def.asm) p.asm = { render: def.asm.render || '', actions: { ...def.asm.actions } };
+      if (def.zones) {
+        p.authoredZones = def.zones.map(z => ({ ...z, _authored: true }));
+        p.zones = p.authoredZones.map(z => ({ ...z }));
+      }
       addChildPanel(parent, p, def.x, def.y, def.w, def.h);
       if (def.children) buildPanels(def.children, p);
     }
@@ -1316,6 +1327,12 @@ function exportProject() {
       if (panel.asm.actions && Object.keys(panel.asm.actions).length) {
         def.asm.actions = { ...panel.asm.actions };
       }
+    }
+    if (panel.authoredZones && panel.authoredZones.length) {
+      def.zones = panel.authoredZones.map(z => {
+        const { _authored, _panel, _value, ...rest } = z;
+        return rest;
+      });
     }
     if (panel.children.length) {
       def.children = panel.children.map(ch => serializePanel(ch.panel, panel));
