@@ -97,10 +97,16 @@ textarea { resize:vertical; }
 <div class="main">
   <!-- Left: Workers + Job Queues -->
   <div class="panel panel-left">
-    <div class="panel-hdr">WORKERS <button class="btn sm" id="btnAddWorker" style="margin-left:auto;">+</button></div>
-    <div class="panel-body" id="workers-panel">
-      <div style="font-size:10px;color:var(--text-dim);">Add workers to start</div>
+    <div class="panel-hdr">WORKERS <button class="btn sm" id="btnImportV2" title="Import from v2" style="margin-left:auto;font-size:9px;">v2</button> <button class="btn sm" id="btnAddWorker">+</button></div>
+    <div id="worker-add-form" style="display:none;padding:4px 8px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;gap:3px;align-items:center;">
+        <input id="newWorkerUrl" placeholder="http://host:port" style="flex:1;font-size:10px;padding:2px 4px;" />
+        <input id="newWorkerRole" placeholder="role" style="width:60px;font-size:10px;padding:2px 4px;" value="generator" />
+        <button class="btn sm primary" id="btnWorkerOk" style="font-size:10px;">Add</button>
+        <button class="btn sm" id="btnWorkerCancel" style="font-size:10px;">x</button>
+      </div>
     </div>
+    <div class="panel-body" id="workers-panel"></div>
     <div class="panel-hdr" style="border-top:1px solid var(--border);">JOB QUEUES</div>
     <div class="panel-body" id="queues-panel" style="flex:2;">
       <div style="font-size:10px;color:var(--text-dim);">Run a v3 workflow to see queues</div>
@@ -221,13 +227,35 @@ function renderWorkers() {
 }
 
 document.getElementById('btnAddWorker').addEventListener('click', () => {
-  const url = prompt('Worker URL:', 'http://127.0.0.1:5001');
-  if (!url) return;
-  const role = prompt('Role:', 'generator');
-  if (!role) return;
+  document.getElementById('worker-add-form').style.display = 'block';
+  document.getElementById('newWorkerUrl').focus();
+});
+document.getElementById('btnWorkerCancel').addEventListener('click', () => {
+  document.getElementById('worker-add-form').style.display = 'none';
+});
+document.getElementById('btnWorkerOk').addEventListener('click', () => {
+  const url = document.getElementById('newWorkerUrl').value.trim();
+  const role = document.getElementById('newWorkerRole').value.trim();
+  if (!url || !role) return;
   workers.push({ url, role, status: 'unknown' });
   saveWorkers();
   renderWorkers();
+  document.getElementById('worker-add-form').style.display = 'none';
+  document.getElementById('newWorkerUrl').value = '';
+  checkWorker(workers[workers.length - 1]).then(renderWorkers);
+});
+document.getElementById('btnImportV2').addEventListener('click', () => {
+  const v2w = JSON.parse(localStorage.getItem('reactive_workers') || '[]');
+  if (!v2w.length) return;
+  const existing = new Set(workers.map(w => w.url + ':' + w.role));
+  let added = 0;
+  for (const w of v2w) {
+    if (!existing.has(w.url + ':' + w.role)) {
+      workers.push({ url: w.url, role: w.role, status: 'unknown' });
+      added++;
+    }
+  }
+  if (added) { saveWorkers(); renderWorkers(); workers.forEach(w => checkWorker(w).then(renderWorkers)); }
 });
 
 // ══════════════════════════════════════════════════════════

@@ -56,6 +56,7 @@ class GatewayJob:
     grammar: str | None = None
     capture: Any = None
     coerce: str | None = None
+    no_think: bool = False
     tags: list[str] = field(default_factory=list)
     # for_each context
     context: dict[str, Any] = field(default_factory=dict)
@@ -316,6 +317,7 @@ class GatewayRuntime:
             max_tokens=job.max_tokens,
             grammar=job.grammar,
             capture=job.capture,
+            no_think=job.no_think,
             tag=job.id,
         )
 
@@ -467,6 +469,7 @@ class GatewayRuntime:
             grammar=tpl.get("grammar"),
             capture=tpl.get("capture"),
             coerce=tpl.get("coerce"),
+            no_think=bool(tpl.get("no_think", False)),
             messages=messages,
             context=context,
         )
@@ -546,6 +549,7 @@ class GatewayRuntime:
                 retry=int(job_spec.get("retry", 0)),
                 temp=float(job_spec.get("temp", 0.6)),
                 max_tokens=int(job_spec.get("max", 2048)),
+                no_think=bool(job_spec.get("no_think", False)),
                 tags=job_spec.get("tags", []),
             )
             runtime.enqueue(job)
