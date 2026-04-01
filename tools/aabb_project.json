@@ -1,0 +1,28 @@
+{
+  "data": {
+    "workers.items": { "_load": "workers", "_default": [{ "url": "http://localhost:5001", "role": "gen", "status": "unknown" }] },
+    "workers.draft_url": ""
+  },
+  "panels": [
+    {
+      "name": "workers", "x": 1, "y": 1, "w": 34, "h": 20, "label": "workers", "border": true,
+      "asm": {
+        "render": "; ── workers render ──\nCALL @items, dget, \"workers.items\"\nCALL @draft, dget, \"workers.draft_url\"\nCALL _, clear, \"workers\"\nCALL _, zone_clear, \"workers\"\nCALL _, write, \"workers\", 0, 1, \"WORKERS\", \"c-accent\"\nCALL _, zone, \"workers\", 2, 1, 26, 1, \"input\", \"workers_add\", \"\", \"workers.draft_url\"\nCALL _, write, \"workers\", 2, 1, @draft, \"\"\nCALL _, zone, \"workers\", 2, 28, 3, 1, \"button\", \"workers_add\"\nCALL _, write, \"workers\", 2, 28, \" + \", \"c-green\"\nEACH @w, @items, +8\n  CALL @row, add, 4, @each_idx\n  CALL @dot_cl, status_color, @w.status\n  CALL _, write, \"workers\", @row, 1, \"●\", @dot_cl\n  CALL _, write, \"workers\", @row, 3, @w.url, \"\"\n  CALL _, write, \"workers\", @row, 25, @w.role, \"c-accent2\"\n  CALL _, write, \"workers\", @row, 31, \"×\", \"c-red\"\n  CALL _, zone, \"workers\", @row, 1, 1, 1, \"button\", \"workers_probe\", @each_idx\n  CALL _, zone, \"workers\", @row, 31, 1, 1, \"button\", \"workers_del\", @each_idx",
+        "actions": {
+          "workers_add": "; add worker — probe via generic http\nCALL @url, dget, \"workers.draft_url\"\nCMP @empty, eq, @url, \"\"\nJIF @empty, +99\nCALL @items, dget, \"workers.items\"\nCALL @probe_url, concat, @url, \"/v1/models\"\nCALL @r, http, \"GET\", @probe_url, \"\", 3000\nCALL @ok, get, @r, \"ok\"\nCMP @is_ok, eq, @ok, true\nJIF @is_ok, +2\nMOV @status, \"fail\"\nJIF true, +1\nMOV @status, \"ok\"\nMOV @w, {}\nCALL _, set, @w, \"url\", @url\nCALL _, set, @w, \"role\", \"gen\"\nCALL _, set, @w, \"status\", @status\nCALL _, push, @items, @w\nCALL _, dset, \"workers.items\", @items\nCALL _, dsave, \"workers\", @items\nCALL _, input_clear, \"workers.draft_url\"\nCALL _, log, \"added worker\"\nCALL _, render, \"workers\"",
+          "workers_del": "; delete worker by index\nCALL @items, dget, \"workers.items\"\nCALL _, splice, @items, @action_data, 1\nCALL _, dset, \"workers.items\", @items\nCALL _, dsave, \"workers\", @items\nCALL _, log, \"removed worker\"\nCALL _, render, \"workers\"",
+          "workers_probe": "; probe worker via generic http\nCALL @items, dget, \"workers.items\"\nCALL @w, get, @items, @action_data\nCALL @url, get, @w, \"url\"\nCALL @probe_url, concat, @url, \"/v1/models\"\nCALL _, log, @probe_url\nCALL @r, http, \"GET\", @probe_url, \"\", 3000\nCALL @ok, get, @r, \"ok\"\nCMP @status_val, eq, @ok, true\nJIF @status_val, +2\nMOV @st, \"fail\"\nJIF true, +1\nMOV @st, \"ok\"\nCALL _, set, @w, \"status\", @st\nCALL _, dset, \"workers.items\", @items\nCALL _, dsave, \"workers\", @items\nCALL _, log, @st\nCALL _, render, \"workers\""
+        }
+      }
+    },
+    {
+      "name": "chat", "x": 37, "y": 1, "w": 50, "h": 20, "label": "chat", "border": true, "borderColor": "#565f89",
+      "asm": {
+        "render": "; ── chat render ──\nCALL _, clear, \"chat\"\nCALL _, zone_clear, \"chat\"\nCALL _, write, \"chat\", 1, 1, \"user: hello\", \"c-accent\"\nCALL _, write, \"chat\", 2, 1, \"bot: hi there!\", \"c-green\"\nCALL _, write, \"chat\", 3, 1, \"user: run extract\", \"c-accent\"\nCALL _, write, \"chat\", 4, 1, \"bot: done. 42 entities.\", \"c-green\"\nCALL _, write, \"chat\", 17, 1, \">\", \"c-accent3\"\nCALL _, zone, \"chat\", 17, 3, 45, 1, \"input\", \"chat_send\", \"\", \"chat.input\"",
+        "actions": {
+          "chat_send": "; send chat message\nCALL @msg, dget, \"chat.input\"\nCALL _, log, @msg\nCALL _, input_clear, \"chat.input\""
+        }
+      }
+    }
+  ]
+}
