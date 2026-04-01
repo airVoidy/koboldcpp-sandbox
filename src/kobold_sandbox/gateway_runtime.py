@@ -516,7 +516,7 @@ class GatewayRuntime:
         # Merge subscription context
         for k, v in sub.context.items():
             self._wf_ctx.vars[k] = v
-        # Inherit parent job context (item, index from for_each chain)
+        # Merge parent job's with-context (e.g. item_idx from for_each)
         parent_job = self._jobs.get(event.job_id)
         if parent_job and parent_job.context:
             for k, v in parent_job.context.items():
@@ -549,7 +549,7 @@ class GatewayRuntime:
             template_name = action["enqueue"]
             with_ctx = action.get("with", {})
 
-            # Inherit context from parent job (for_each item flows through chain)
+            # Inherit explicit with-context from parent job (e.g. item_idx)
             parent_job = self._jobs.get(event.job_id)
             inherited_ctx = dict(parent_job.context) if parent_job and parent_job.context else {}
 
@@ -571,14 +571,14 @@ class GatewayRuntime:
 
             if "for_each" in action:
                 items_key = action["for_each"]
-                var_name = action.get("as", "item")
                 items = self.state.get(items_key, [])
                 if not isinstance(items, list):
                     items = []
-                for idx, item in enumerate(items):
+                for idx in range(len(items)):
+                    # Only pass explicit with: context + index. No hidden item copy.
                     job = self._instantiate_template(
                         template_name, f"{template_name}.{idx}",
-                        {**merged_ctx, var_name: item, "index": idx}
+                        {**merged_ctx, "index": idx}
                     )
                     if job:
                         self.enqueue(job)
