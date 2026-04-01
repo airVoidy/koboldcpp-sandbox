@@ -62,6 +62,26 @@ kobold-sandbox run "Проверь гипотезу и выпиши против
 kobold-sandbox serve --host 127.0.0.1 --port 8060
 ```
 
+## MCP-like Interface
+
+Поверх основного API есть MCP-like JSON-RPC endpoint:
+
+```text
+http://127.0.0.1:8060/api/mcp
+```
+
+Есть и `stdio`-режим для host-клиентов:
+
+```bash
+kobold-sandbox mcp-stdio
+```
+
+Для агентных клиентов см.:
+
+- `MCP_AGENTS.md`
+- `examples/mcp_host_demo.py`
+- `examples/mcp_host_demo.ps1`
+
 ## Структура
 
 ```text

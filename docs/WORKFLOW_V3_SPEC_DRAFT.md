@@ -52,14 +52,14 @@ Queue[generator @ localhost:5001]:
 ### Subscription (on)
 ```yaml
 on:
-  claims.done:
+  - job: claims
+    event: done
     do: |
       CALL @parsed, parse_sections, @claims
       CALL @entities, wrap_list, @parsed.entities, "name"
-    then:
-      - enqueue: table_extract
 
-  answer.done:
+  - job: answer
+    event: done
     do: |
       CALL @numbered, numbered, @answer
       CALL @_, store_set, "last_answer", @answer
@@ -69,7 +69,7 @@ on:
       - enqueue: trim_probe_3
       - enqueue: trim_probe_4
 
-  all_done: [claims, answer]:
+  - all_done: [claims, answer]
     do: |
       CALL @entities, enrich_entities, @entities, @answer
     then:
@@ -114,7 +114,8 @@ jobs:
 # === Reactive handlers ===
 on:
   # Claims ready → parse entities
-  claims.done:
+  - job: claims
+    event: done
     do: |
       CALL @parsed, parse_sections, @claims
       MOV @entities, @parsed.entities
@@ -122,12 +123,13 @@ on:
       MOV @hypotheses, @parsed.hypotheses
 
   # Answer ready → prepare numbered text
-  answer.done:
+  - job: answer
+    event: done
     do: |
       CALL @numbered_answer, numbered, @answer
 
   # Both ready → enrich + start entity processing
-  all_done: [claims, answer]:
+  - all_done: [claims, answer]
     do: |
       CALL @items, wrap_list, @entities, "name"
       CALL @items, enrich_entities, @items, @answer
@@ -137,7 +139,8 @@ on:
         with: {item_idx: $index}
 
   # Trim probe done → slice + enqueue confirm
-  trim_probe.done:
+  - job: trim_probe
+    event: done
     do: |
       CALL @item.text, substr, @answer, @item.char_start, @item.char_end
     then:
@@ -145,7 +148,8 @@ on:
         with: {item_idx: $item_idx}
 
   # Confirm probe done → enqueue style check
-  confirm_probe.done:
+  - job: confirm_probe
+    event: done
     do: |
       MOV @item.confirmed, @confirmed
     then:
@@ -153,7 +157,8 @@ on:
         with: {item_idx: $item_idx}
 
   # Style check done → enqueue reaction
-  style_check.done:
+  - job: style_check
+    event: done
     do: |
       MOV @item.style_ok, @style_ok
     then:
@@ -161,13 +166,14 @@ on:
         with: {item_idx: $item_idx}
 
   # Reaction done → mark entity complete
-  reaction_check.done:
+  - job: reaction_check
+    event: done
     do: |
       CALL @item.status, check_status, @reaction
       MOV @item.reaction, @reaction
 
   # All entities done → save results
-  all_done: [reaction_check.*]:
+  - all_done: [reaction_check.*]
     do: |
       CALL @_, store_set, "demoness.entities", @items
       CALL @_, store_snapshot, "demoness_complete"

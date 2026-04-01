@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import time
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +41,27 @@ def _choose_prompt_mode(messages: list[dict], prompt_mode: str) -> str:
     if len(messages) == 1 and str(messages[0].get("role", "")).lower() == "user":
         return "instruct"
     return "chat"
+
+
+def _coerce_chat_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                if "text" in item:
+                    parts.append(str(item.get("text") or ""))
+                elif item.get("type") == "text":
+                    parts.append(str(item.get("content") or ""))
+                else:
+                    parts.append(str(item))
+            else:
+                parts.append(str(item))
+        return "".join(parts)
+    if content is None:
+        return ""
+    return str(content)
 
 
 def _messages_to_instruct_prompt(messages: list[dict]) -> str:
@@ -134,6 +159,7 @@ def llm_call_with_continue(
     started_at = time.perf_counter()
 
     try:
+        empty_polls = 0
         for i in range(max_continue + 1):
             payload: dict[str, Any] | None = None
             try:
@@ -174,8 +200,43 @@ def llm_call_with_continue(
                         payload.update(extra_payload)
                     resp = http.post(url, json=payload)
                     resp.raise_for_status()
-                    data = resp.json()
+                    body = resp.text if hasattr(resp, "text") else ""
+                    log.debug(
+                        "llm_continue chat iteration=%s status=%s body_len=%s body_preview=%r",
+                        i,
+                        getattr(resp, "status_code", None),
+                        len(body or ""),
+                        (body or "")[:400],
+                    )
+                    try:
+                        data = resp.json()
+                        empty_polls = 0
+                    except json.JSONDecodeError:
+                        if not str(body or "").strip():
+                            empty_polls += 1
+                            log.debug(
+                                "llm_continue empty non-json response iteration=%s empty_polls=%s",
+                                i,
+                                empty_polls,
+                            )
+                            if empty_polls > max_continue:
+                                break
+                            time.sleep(0.15)
+                            continue
+                        log.warning(
+                            "llm_continue non-json response iteration=%s status=%s body_preview=%r",
+                            i,
+                            getattr(resp, "status_code", None),
+                            (body or "")[:400],
+                        )
+                        raise
             except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError):
+                log.warning(
+                    "llm_continue transport retry iteration=%s prompt_mode=%s payload_present=%s",
+                    i,
+                    selected_mode,
+                    payload is not None,
+                )
                 if own_http:
                     http.close()
                     http = httpx.Client(timeout=timeout, trust_env=False)
@@ -194,10 +255,49 @@ def llm_call_with_continue(
                     else:
                         resp = http.post(url, json=payload)
                         resp.raise_for_status()
-                        data = resp.json()
+                        body = resp.text if hasattr(resp, "text") else ""
+                        log.debug(
+                            "llm_continue retry chat iteration=%s status=%s body_len=%s body_preview=%r",
+                            i,
+                            getattr(resp, "status_code", None),
+                            len(body or ""),
+                            (body or "")[:400],
+                        )
+                        try:
+                            data = resp.json()
+                            empty_polls = 0
+                        except json.JSONDecodeError:
+                            if not str(body or "").strip():
+                                empty_polls += 1
+                                log.debug(
+                                    "llm_continue retry empty non-json response iteration=%s empty_polls=%s",
+                                    i,
+                                    empty_polls,
+                                )
+                                if empty_polls > max_continue:
+                                    break
+                                time.sleep(0.15)
+                                continue
+                            log.warning(
+                                "llm_continue retry non-json response iteration=%s status=%s body_preview=%r",
+                                i,
+                                getattr(resp, "status_code", None),
+                                (body or "")[:400],
+                            )
+                            raise
                 except Exception:
+                    log.exception(
+                        "llm_continue transport retry failed iteration=%s prompt_mode=%s",
+                        i,
+                        selected_mode,
+                    )
                     break
             except httpx.HTTPStatusError:
+                log.exception(
+                    "llm_continue http status error iteration=%s prompt_mode=%s",
+                    i,
+                    selected_mode,
+                )
                 break
 
             raw_responses.append(data)
@@ -207,19 +307,58 @@ def llm_call_with_continue(
                 last_finish = str(item.get("finish_reason") or "stop")
             else:
                 choice = (data.get("choices") or [{}])[0]
-                chunk = choice.get("message", {}).get("content", "")
-                last_finish = choice.get("finish_reason", "stop")
+                message = choice.get("message", {}) or {}
+                raw_content = message.get("content", "")
+                chunk = _coerce_chat_content(raw_content)
+                last_finish = str(choice.get("finish_reason", "stop") or "stop")
+                if not isinstance(raw_content, str):
+                    log.debug(
+                        "llm_continue coerced non-string chat content: type=%s finish_reason=%s",
+                        type(raw_content).__name__,
+                        last_finish,
+                    )
             result += chunk
 
+            log.debug(
+                "llm_continue iteration=%s prompt_mode=%s finish_reason=%r content_type=%s chunk_len=%s continue_on_length=%s will_continue=%s",
+                i,
+                selected_mode,
+                last_finish,
+                type(raw_content).__name__ if selected_mode != "instruct" else "str",
+                len(chunk),
+                continue_on_length,
+                bool(continue_on_length and _is_length_finish(last_finish)),
+            )
+
             if not continue_on_length:
+                log.debug(
+                    "llm_continue stop iteration=%s reason=no_continue_on_length finish_reason=%r result_len=%s",
+                    i,
+                    last_finish,
+                    len(result),
+                )
                 break
             if not _is_length_finish(last_finish):
+                log.debug(
+                    "llm_continue stop iteration=%s reason=finish_reason_not_length finish_reason=%r result_len=%s",
+                    i,
+                    last_finish,
+                    len(result),
+                )
                 break
+            log.debug(
+                "llm_continue continue iteration=%s reason=finish_reason_length finish_reason=%r result_len=%s",
+                i,
+                last_finish,
+                len(result),
+            )
     finally:
         if own_http:
             http.close()
 
     latency_ms = int((time.perf_counter() - started_at) * 1000)
+    if not str(result or "").strip():
+        raise RuntimeError("Continue loop ended without a response")
     answer, think = strip_think(result)
 
     return LLMResult(

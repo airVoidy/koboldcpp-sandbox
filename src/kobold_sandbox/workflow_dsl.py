@@ -1222,6 +1222,9 @@ def _atomic_apply_function(ctx: WorkflowContext, fn_name: str, pos_args: list[An
     if fn_name == "parse_table":
         source = str(pos_args[0] if pos_args else "")
         return _atomic_table_struct(source) or {"headers": [], "rows": []}
+    if fn_name == "parse_table_rows":
+        source = str(pos_args[0] if pos_args else "")
+        return _parse_markdown_table(source)
     if fn_name == "row_count":
         table = _atomic_table_struct(pos_args[0] if pos_args else None)
         return len(table.get("rows", [])) if table else 0

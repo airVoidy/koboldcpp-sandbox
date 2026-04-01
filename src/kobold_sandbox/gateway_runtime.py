@@ -7,6 +7,7 @@ Workers always busy. Runtime fills gaps with assembly transforms.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 import uuid
@@ -95,28 +96,51 @@ class GatewayEvent:
             self.timestamp = time.time()
 
 
+# ── Interpolation helpers ─────────────────────────────────
+
+def _resolve_interp_path(path: str, state: dict[str, Any]) -> Any:
+    parts = str(path or "").split(".")
+    if not parts or not parts[0]:
+        return None
+    val = state.get(parts[0])
+    for p in parts[1:]:
+        if isinstance(val, dict):
+            val = val.get(p)
+        elif isinstance(val, list) and p.isdigit():
+            idx = int(p)
+            if idx < 0 or idx >= len(val):
+                return None
+            val = val[idx]
+        else:
+            return None
+    return val
+
+
+def _interpolate_text(text: Any, state: dict[str, Any]) -> Any:
+    if not isinstance(text, str):
+        return text
+
+    # Braced dotted refs: {$path.to.value} and ${path.to.value}
+    def _repl_braced(match):
+        value = _resolve_interp_path(match.group(1), state)
+        return str(value) if value is not None else ""
+
+    text = re.sub(r'\{\$([a-zA-Z_][\w.]*)\}', _repl_braced, text)
+    text = re.sub(r'\$\{([a-zA-Z_][\w.]*)\}', _repl_braced, text)
+
+    # Bare refs: $name or $name.path
+    def _repl_bare(match):
+        value = _resolve_interp_path(match.group(1), state)
+        return str(value) if value is not None else match.group(0)
+
+    text = re.sub(r'(?<![\w{])\$([a-zA-Z_][\w.]*)', _repl_bare, text)
+    return text
+
+
 # ── Gateway Runtime ───────────────────────────────────────
 
 def _parse_messages(raw_messages: list, state: dict) -> list[dict]:
     """Parse YAML messages list into [{role, content}] with variable interpolation."""
-    import re
-
-    def _resolve(path, st):
-        parts = path.split(".")
-        val = st.get(parts[0])
-        for p in parts[1:]:
-            if val is None or not isinstance(val, dict):
-                return None
-            val = val.get(p)
-        return val
-
-    def _interp(text, st):
-        if not isinstance(text, str):
-            return text
-        text = re.sub(r'\{\$([a-zA-Z_][\w.]*)\}', lambda m: str(v) if (v := _resolve(m.group(1), st)) is not None else "", text)
-        for k, v in sorted(st.items(), key=lambda x: -len(x[0])):
-            text = text.replace(f"${k}", str(v) if v is not None else "")
-        return text
 
     result = []
     for m in raw_messages:
@@ -130,7 +154,10 @@ def _parse_messages(raw_messages: list, state: dict) -> list[dict]:
             role, content = "user", m
         else:
             continue
-        result.append({"role": str(role), "content": _interp(str(content), state)})
+        result.append({
+            "role": str(_interpolate_text(str(role), state)),
+            "content": _interpolate_text(str(content), state),
+        })
     return result
 
 
@@ -163,6 +190,7 @@ class GatewayRuntime:
 
         # Job templates (from YAML)
         self._templates: dict[str, dict] = {}
+        self._payload_templates: dict[str, dict] = {}
 
         # Payload functions (claims, table, etc.)
         from .workflow_dsl import build_default_builtins
@@ -216,7 +244,12 @@ class GatewayRuntime:
         self._ensure_dispatch_thread(worker)
 
         log.info("enqueued job %s → %s (priority=%s)", job.id, worker, job.priority)
-        self.on_thread("system", "gateway", f"enqueued: {job.id} → {worker}", {"job_id": job.id})
+        self.on_thread(
+            "system",
+            "gateway",
+            f"enqueued: {job.id} → {worker}",
+            {"job_id": job.id, "worker": worker, "worker_url": self.workers.get(worker, "")},
+        )
         return job.id
 
     def subscribe(self, sub: Subscription):
@@ -250,6 +283,7 @@ class GatewayRuntime:
         jobs = {
             jid: {
                 "id": j.id, "worker": j.worker, "status": j.status.value,
+                "worker_url": self.workers.get(j.worker, ""),
                 "priority": j.priority, "started_at": j.started_at,
                 "finished_at": j.finished_at, "error": j.error,
                 "result": j.result,
@@ -314,7 +348,12 @@ class GatewayRuntime:
             job = self._jobs[job_id]
             job.status = JobStatus.ACTIVE
             job.started_at = time.time()
-            self.on_thread("system", "gateway", f"active: {job.id}", {"job_id": job.id})
+            self.on_thread(
+                "system",
+                "gateway",
+                f"active: {job.id}",
+                {"job_id": job.id, "worker": worker, "worker_url": base_url},
+            )
 
             try:
                 with lock:
@@ -322,9 +361,10 @@ class GatewayRuntime:
                 job.result = result
                 job.status = JobStatus.DONE
                 job.finished_at = time.time()
-                # Store result in shared state
+                # Store result in shared state for both runtime snapshots and assembly handlers.
                 self.state[job.id] = result
                 self._wf_ctx.vars[job.id] = result
+                self._wf_ctx.state[job.id] = result
                 self._fire_event(GatewayEvent(job_id=job.id, event_type="done", result=result))
 
             except Exception as exc:
@@ -431,19 +471,39 @@ class GatewayRuntime:
             messages = [{"role": "user", "content": payload}]
 
         is_probe = job.mode in ("probe", "probe_continue")
-        result = self._wf_ctx.llm_call(
-            job.worker,
-            messages=messages,
-            mode=job.mode,
-            temperature=job.temp,
-            max_tokens=job.max_tokens,
-            grammar=job.grammar,
-            capture=job.capture,
-            no_think=job.no_think,
-            stop=job.stop,
-            max_continue=1 if is_probe else None,
-            tag=job.id,
-        )
+        try:
+            result = self._wf_ctx.llm_call(
+                job.worker,
+                messages=messages,
+                mode=job.mode,
+                temperature=job.temp,
+                max_tokens=job.max_tokens,
+                grammar=job.grammar,
+                capture=job.capture,
+                no_think=job.no_think,
+                stop=job.stop,
+                max_continue=1 if is_probe else None,
+                tag=job.id,
+            )
+        except Exception as exc:
+            debug_payload = {
+                "job_id": job.id,
+                "worker": job.worker,
+                "mode": job.mode,
+                "is_probe": is_probe,
+                "temperature": job.temp,
+                "max_tokens": job.max_tokens,
+                "stop": job.stop,
+                "grammar": bool(job.grammar),
+                "messages": messages,
+            }
+            log.error("LLM job failed: %s payload=%r error=%s", job.id, debug_payload, exc)
+            self.on_thread("system", "llm-debug", f"failed {job.id}", {
+                "job_id": job.id,
+                "error": str(exc),
+                "request": debug_payload,
+            })
+            raise
 
         # Coerce if specified
         if job.coerce and isinstance(result, str):
@@ -470,15 +530,27 @@ class GatewayRuntime:
 
         # Direct subscriptions: "job_id.done"
         event_key = f"{event.job_id}.{event.event_type}"
-        for sub in self._subs.get(event_key, []):
+        direct_subs = self._subs.get(event_key, [])
+        self.on_thread("system", "event-debug", f"direct {event_key}", {
+            "event_key": event_key, "count": len(direct_subs),
+        })
+        for sub in direct_subs:
             self._run_handler(sub, event)
 
         # Wildcard: "base_id.*.done" matches "base_id.entity_0.done"
         parts = event.job_id.rsplit(".", 1)
         if len(parts) == 2:
             wildcard_key = f"{parts[0]}.*.{event.event_type}"
-            for sub in self._subs.get(wildcard_key, []):
+            wildcard_subs = self._subs.get(wildcard_key, [])
+            self.on_thread("system", "event-debug", f"wildcard {wildcard_key}", {
+                "event_key": wildcard_key, "count": len(wildcard_subs),
+            })
+            for sub in wildcard_subs:
                 self._run_handler(sub, event)
+        elif not direct_subs:
+            self.on_thread("system", "event-debug", f"no-handler {event_key}", {
+                "event_key": event_key, "count": 0,
+            })
 
         # all_done subscriptions (fire once, then remove)
         fired = []
@@ -508,11 +580,16 @@ class GatewayRuntime:
         if not sub.handler_asm and not sub.then:
             return
 
+        parent_job = self._jobs.get(event.job_id)
         # Merge event context into vars
         self._wf_ctx.vars["_event"] = {
             "job_id": event.job_id, "type": event.event_type,
             "result": event.result, "error": event.error,
         }
+        # Parent job context is the main source for item/item_idx chains.
+        if parent_job and parent_job.context:
+            for k, v in parent_job.context.items():
+                self._wf_ctx.vars[k] = v
         # Merge subscription context
         for k, v in sub.context.items():
             self._wf_ctx.vars[k] = v
@@ -527,6 +604,15 @@ class GatewayRuntime:
                     self.state[k] = v
                     merged_keys.append(k)
                 self.on_thread("system", "handler", f"{sub.event}: merged {merged_keys}", {"asm_error": asm_result.error})
+                if "entity_nodes" in asm_result.state:
+                    entity_nodes = asm_result.state.get("entity_nodes")
+                    count = len(entity_nodes) if isinstance(entity_nodes, list) else None
+                    self.on_thread(
+                        "system",
+                        "handler-debug",
+                        f"{sub.event}: entity_nodes={count}",
+                        {"event": sub.event, "entity_nodes_count": count},
+                    )
                 if asm_result.error:
                     log.error("handler asm error for %s: %s", sub.event, asm_result.error)
                     self.on_thread("system", "handler", f"ERROR: {asm_result.error}", {})
@@ -553,7 +639,11 @@ class GatewayRuntime:
             for k, v in with_ctx.items():
                 if isinstance(v, str) and v.startswith("$"):
                     ref = v[1:]
-                    resolved_ctx[k] = inherited_ctx.get(ref) or self._resolve_path(ref) or v
+                    if ref in inherited_ctx:
+                        resolved_ctx[k] = inherited_ctx[ref]
+                    else:
+                        resolved = self._resolve_path(ref)
+                        resolved_ctx[k] = resolved if resolved is not None else v
                 else:
                     resolved_ctx[k] = v
 
@@ -567,9 +657,34 @@ class GatewayRuntime:
 
             if "for_each" in action:
                 items_key = action["for_each"]
-                items = self.state.get(items_key, [])
+                if isinstance(items_key, str):
+                    if items_key in merged_ctx:
+                        items = merged_ctx[items_key]
+                    else:
+                        items = self._resolve_path(items_key, merged_ctx)
+                        if items is None and items_key.startswith(("@", "$")):
+                            items = self._resolve_path(items_key[1:], merged_ctx)
+                else:
+                    items = items_key
                 if not isinstance(items, list):
+                    self.on_thread(
+                        "system",
+                        "then-debug",
+                        f"for_each {template_name} <- {items_key} (not-list)",
+                        {
+                            "template": template_name,
+                            "items_key": items_key,
+                            "resolved_type": type(items).__name__,
+                            "resolved_value": items,
+                        },
+                    )
                     items = []
+                self.on_thread(
+                    "system",
+                    "then-debug",
+                    f"for_each {template_name} <- {items_key} ({len(items)})",
+                    {"template": template_name, "items_key": items_key, "count": len(items)},
+                )
                 for idx, item_val in enumerate(items):
                     # for_each: item = current element, index = position
                     # with: adds explicit params for chaining (e.g. item_idx)
@@ -580,7 +695,12 @@ class GatewayRuntime:
                     if job:
                         self.enqueue(job)
             else:
-                job_id = template_name + parent_suffix if parent_suffix else template_name
+                if parent_suffix:
+                    job_id = template_name + parent_suffix
+                elif "item_idx" in merged_ctx:
+                    job_id = f"{template_name}.{merged_ctx['item_idx']}"
+                else:
+                    job_id = template_name
                 job = self._instantiate_template(template_name, job_id, merged_ctx)
                 if job:
                     self.enqueue(job)
@@ -592,6 +712,19 @@ class GatewayRuntime:
             log.warning("unknown job template: %s", name)
             return None
 
+        context = dict(context or {})
+        if "item" not in context and "item_idx" in context:
+            try:
+                item_idx = int(context["item_idx"])
+            except Exception:
+                item_idx = -1
+            items = self.state.get("items", [])
+            if isinstance(items, list) and 0 <= item_idx < len(items):
+                context["item"] = items[item_idx]
+            elif isinstance(items, list):
+                log.info("skip template %s: item_idx %s out of range", name, context.get("item_idx"))
+                return None
+
         # Resolve template field refs ($config.xxx)
         def tpl_resolve(val):
             if isinstance(val, str) and val.startswith("$"):
@@ -599,9 +732,28 @@ class GatewayRuntime:
                 return resolved if resolved is not None else val
             return val
 
+        payload = self._interpolate(tpl.get("payload", ""), context)
         messages = None
-        if "messages" in tpl:
+        payload_from = tpl.get("payload_from")
+        if payload_from:
+            payload_args = self._resolve_mapping_values(tpl.get("payload_args", {}), context)
+            payload, messages = self._build_payload_from_template(str(payload_from), payload_args, context)
+        elif "messages" in tpl:
             messages = _parse_messages(tpl["messages"], {**self.state, **context})
+
+        if name == "table":
+            self.on_thread(
+                "system",
+                "template-debug",
+                "table payload built",
+                {
+                    "template": name,
+                    "payload_from": payload_from,
+                    "payload_preview": str(payload)[:400],
+                    "messages": messages,
+                    "context": context,
+                },
+            )
 
         # Parse capture
         capture = tpl_resolve(tpl.get("capture"))
@@ -621,7 +773,7 @@ class GatewayRuntime:
         return GatewayJob(
             id=job_id,
             worker=tpl.get("worker", "generator"),
-            payload=self._interpolate(tpl.get("payload", ""), context),
+            payload=payload,
             mode=tpl.get("mode", "prompt"),
             temp=float(tpl.get("temp", tpl.get("temperature", 0.6))),
             max_tokens=int(tpl.get("max", tpl.get("max_tokens", 2048))),
@@ -653,21 +805,49 @@ class GatewayRuntime:
         return val
 
     def _interpolate(self, text: str, extra: dict | None = None) -> str:
-        """Replace {$var.path} and $var in text with state values."""
-        if not isinstance(text, str):
-            return text
-        import re
-        # First: {$path.to.value} — braced refs with dot paths
-        def _repl_braced(m):
-            path = m.group(1)
-            val = self._resolve_path(path, extra)
-            return str(val) if val is not None else ""
-        text = re.sub(r'\{\$([a-zA-Z_][\w.]*)\}', _repl_braced, text)
-        # Second: $path.to.value — bare refs (longest match first)
+        """Replace {$path}, ${path}, and $path in text with state values."""
         merged = {**self.state, **(extra or {})}
-        for k, v in sorted(merged.items(), key=lambda x: -len(x[0])):
-            text = text.replace(f"${k}", str(v) if v is not None else "")
-        return text
+        return str(_interpolate_text(text, merged))
+
+    def _resolve_value(self, val: Any, extra: dict | None = None) -> Any:
+        if isinstance(val, str):
+            if val.startswith("$"):
+                resolved = self._resolve_path(val[1:], extra)
+                return resolved if resolved is not None else val
+            fn_match = re.match(r'^(\w+)\((.+)\)$', val.strip())
+            if fn_match and fn_match.group(1) in self._payload_fns:
+                fn_name, arg_str = fn_match.group(1), fn_match.group(2).strip()
+                arg_val = self._resolve_value(arg_str, extra)
+                if isinstance(arg_val, str):
+                    arg_val = self._interpolate(arg_val, extra)
+                return self._payload_fns[fn_name](arg_val)
+        return val
+
+    def _resolve_mapping_values(self, data: Any, extra: dict | None = None) -> Any:
+        if isinstance(data, dict):
+            return {k: self._resolve_mapping_values(v, extra) for k, v in data.items()}
+        if isinstance(data, list):
+            return [self._resolve_mapping_values(v, extra) for v in data]
+        return self._resolve_value(data, extra)
+
+    def _build_payload_from_template(
+        self,
+        template_name: str,
+        args: dict[str, Any] | None = None,
+        extra: dict | None = None,
+    ) -> tuple[str, list[dict] | None]:
+        tpl = self._payload_templates.get(template_name)
+        if not tpl:
+            return "", None
+
+        merged = {**self.state, **(extra or {})}
+        if args:
+            merged.update(args)
+
+        mode = str(tpl.get("mode", "text") or "text").strip().lower()
+        if mode == "chat":
+            return "", _parse_messages(tpl.get("messages", []), merged)
+        return str(_interpolate_text(str(tpl.get("template", "")), merged)), None
 
     # ── v3 YAML Parser ────────────────────────────────────
 
@@ -689,6 +869,10 @@ class GatewayRuntime:
             runtime.state["config"] = spec["config"]
             runtime._wf_ctx.vars["config"] = spec["config"]
 
+        if "context" in spec:
+            runtime.state["context"] = spec["context"]
+            runtime._wf_ctx.vars["context"] = spec["context"]
+
         # Store input
         if "input" in spec:
             runtime.state["input"] = spec["input"]
@@ -697,40 +881,108 @@ class GatewayRuntime:
         # Register job templates
         for name, tpl in spec.get("job_templates", {}).items():
             runtime._templates[name] = tpl
+        for name, tpl in spec.get("payload_templates", {}).items():
+            runtime._payload_templates[name] = tpl
 
-        # Parse subscriptions (on:) — YAML parses bare `on` as boolean True
+        # Parse subscriptions (on:)
         on_section = spec.get("on") or spec.get(True) or {}
-        for event_key, handler_spec in on_section.items():
-            asm_code = handler_spec.get("do", "")
-            then_actions = handler_spec.get("then", [])
-            context = handler_spec.get("context", {})
+        if isinstance(on_section, list):
+            for handler_spec in on_section:
+                if not isinstance(handler_spec, dict):
+                    continue
+                asm_code = str(handler_spec.get("do", "") or "")
+                then_actions = handler_spec.get("then", [])
+                context = handler_spec.get("context", {})
 
-            # Parse "all_done: [a, b]" pattern
-            if event_key.startswith("all_done"):
-                # all_done: [claims, answer] → wait_for = ["claims", "answer"]
-                # The key format: "all_done: [a, b]" or value has wait_for list
-                wait_for = handler_spec.get("wait_for", [])
-                if not wait_for:
-                    # Try parsing from key: "all_done: [a, b]"
-                    if ":" in event_key:
+                if "all_done" in handler_spec:
+                    wait_for = handler_spec.get("all_done", []) or handler_spec.get("wait_for", [])
+                    if not isinstance(wait_for, list):
+                        wait_for = [str(wait_for)]
+                    sub = Subscription(
+                        event="all_done",
+                        handler_asm=asm_code,
+                        then=then_actions,
+                        wait_for=[str(x) for x in wait_for],
+                        context=context,
+                    )
+                    runtime.subscribe(sub)
+                    continue
+
+                event_key = str(handler_spec.get("event", "") or "").strip()
+                job_name = str(handler_spec.get("job", "") or "").strip()
+                if job_name and event_key:
+                    if job_name in runtime._templates:
+                        wildcard_event_key = f"{job_name}.*.{event_key}"
+                        direct_event_key = f"{job_name}.{event_key}"
+                        runtime.subscribe(Subscription(
+                            event=wildcard_event_key,
+                            handler_asm=asm_code,
+                            then=then_actions,
+                            context=context,
+                        ))
+                        runtime.subscribe(Subscription(
+                            event=direct_event_key,
+                            handler_asm=asm_code,
+                            then=then_actions,
+                            context=context,
+                        ))
+                        continue
+                    event_key = f"{job_name}.{event_key}"
+                if not event_key:
+                    continue
+                sub = Subscription(
+                    event=event_key,
+                    handler_asm=asm_code,
+                    then=then_actions,
+                    context=context,
+                )
+                runtime.subscribe(sub)
+
+        elif isinstance(on_section, dict):
+            for event_key, handler_spec in on_section.items():
+                asm_code = handler_spec.get("do", "")
+                then_actions = handler_spec.get("then", [])
+                context = handler_spec.get("context", {})
+
+                # Legacy dict-form parsing
+                if event_key.startswith("all_done"):
+                    wait_for = handler_spec.get("wait_for", [])
+                    if not wait_for and ":" in event_key:
                         list_part = event_key.split(":", 1)[1].strip()
                         if list_part.startswith("["):
                             wait_for = [s.strip().strip("\"'") for s in list_part.strip("[]").split(",")]
-                sub = Subscription(
-                    event=event_key, handler_asm=asm_code,
-                    then=then_actions, wait_for=wait_for, context=context,
-                )
-                runtime.subscribe(sub)
-            else:
-                sub = Subscription(
-                    event=event_key, handler_asm=asm_code,
-                    then=then_actions, context=context,
-                )
-                runtime.subscribe(sub)
+                    sub = Subscription(
+                        event=event_key, handler_asm=asm_code,
+                        then=then_actions, wait_for=wait_for, context=context,
+                    )
+                    runtime.subscribe(sub)
+                else:
+                    runtime.subscribe(Subscription(
+                        event=event_key, handler_asm=asm_code,
+                        then=then_actions, context=context,
+                    ))
+                    parts = event_key.rsplit(".", 1)
+                    if len(parts) == 2 and parts[0] in runtime._templates:
+                        runtime.subscribe(Subscription(
+                            event=f"{parts[0]}.*.{parts[1]}",
+                            handler_asm=asm_code,
+                            then=then_actions,
+                            context=context,
+                        ))
 
         # Create initial jobs
+        def job_resolve(val):
+            return runtime._resolve_value(val)
+
         for job_spec in spec.get("jobs", []):
-            payload = job_spec.get("payload", "")
+            payload = ""
+            messages = None
+            payload_from = job_spec.get("payload_from")
+            if payload_from:
+                payload_args = runtime._resolve_mapping_values(job_spec.get("payload_args", {}))
+                payload, messages = runtime._build_payload_from_template(str(payload_from), payload_args)
+            else:
+                payload = job_spec.get("payload", "")
             # Resolve payload functions: fn_name($var) or fn_name(literal)
             if isinstance(payload, str):
                 import re
@@ -739,30 +991,36 @@ class GatewayRuntime:
                     fn_name, arg_str = fn_match.group(1), fn_match.group(2).strip()
                     # Resolve arg: $input → state value, else literal
                     if arg_str.startswith("$"):
-                        arg_val = runtime.state.get(arg_str[1:], arg_str)
+                        arg_val = runtime._resolve_path(arg_str[1:])
+                        if arg_val is None:
+                            arg_val = arg_str
                     else:
                         arg_val = arg_str
                     payload = runtime._payload_fns[fn_name](arg_val)
-                elif "$input" in payload:
-                    inp = runtime.state.get("input", "")
-                    payload = payload.replace("$input", str(inp))
+                else:
+                    payload = runtime._interpolate(payload)
 
             # Parse messages if present
-            messages = None
-            if "messages" in job_spec:
+            if messages is None and "messages" in job_spec:
                 messages = _parse_messages(job_spec["messages"], runtime.state)
 
             # Parse capture: can be string or dict {regex, coerce}
-            capture = job_spec.get("capture")
-            coerce = job_spec.get("coerce")
+            capture = job_resolve(job_spec.get("capture"))
+            coerce = job_resolve(job_spec.get("coerce"))
             if isinstance(capture, dict):
-                coerce = capture.get("coerce", coerce)
-                capture = capture.get("regex", capture.get("pattern"))
+                coerce = job_resolve(capture.get("coerce", coerce))
+                capture = job_resolve(capture.get("regex", capture.get("pattern")))
+            if isinstance(capture, str):
+                capture = job_resolve(capture)
 
             # Parse stop: can be string or list
             stop = job_spec.get("stop")
             if isinstance(stop, str):
-                stop = [stop]
+                stop = [job_resolve(stop)]
+            elif isinstance(stop, list):
+                stop = [job_resolve(x) if isinstance(x, str) else x for x in stop]
+
+            grammar = job_resolve(job_spec.get("grammar"))
 
             job = GatewayJob(
                 id=job_spec["id"],
@@ -775,7 +1033,7 @@ class GatewayRuntime:
                 retry=int(job_spec.get("retry", 0)),
                 temp=float(job_spec.get("temp", job_spec.get("temperature", 0.6))),
                 max_tokens=int(job_spec.get("max", job_spec.get("max_tokens", 2048))),
-                grammar=job_spec.get("grammar"),
+                grammar=grammar,
                 capture=capture,
                 coerce=coerce,
                 no_think=bool(job_spec.get("no_think", False)),

@@ -168,6 +168,48 @@ class _PromptCaptureHttpClient:
         return None
 
 
+class _ListContentThenStopHttpClient:
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    class _Resp:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self.payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return self.payload
+
+    def post(self, _url: str, json: dict[str, Any]) -> "_ListContentThenStopHttpClient._Resp":
+        self.calls.append(json)
+        if len(self.calls) == 1:
+            return self._Resp(
+                {
+                    "choices": [
+                        {
+                            "message": {"content": [{"type": "text", "text": "partial"}]},
+                            "finish_reason": "length",
+                        }
+                    ]
+                }
+            )
+        return self._Resp(
+            {
+                "choices": [
+                    {
+                        "message": {"content": [{"type": "text", "text": " tail"}]},
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+        )
+
+    def close(self) -> None:
+        return None
+
+
 def test_prompt_mode_auto_continues_on_token_limit(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
@@ -210,6 +252,25 @@ def test_continue_mode_auto_continues_on_max_tokens(monkeypatch) -> None:
     import kobold_sandbox.workflow_dsl as workflow_dsl
 
     monkeypatch.setattr(workflow_dsl.httpx, "Client", _MaxTokensThenStopHttpClient)
+
+    ctx = workflow_dsl.WorkflowContext(workers={"analyzer": "http://fake-worker"})
+    result = ctx.llm_call(
+        "analyzer",
+        messages=[{"role": "user", "content": "continue"}],
+        mode="continue",
+        max_tokens=16,
+    )
+    http_client = ctx._http
+    ctx.close()
+
+    assert result == "partial tail"
+    assert len(http_client.calls) == 2
+
+
+def test_continue_mode_handles_list_chat_content(monkeypatch) -> None:
+    import kobold_sandbox.workflow_dsl as workflow_dsl
+
+    monkeypatch.setattr(workflow_dsl.httpx, "Client", _ListContentThenStopHttpClient)
 
     ctx = workflow_dsl.WorkflowContext(workers={"analyzer": "http://fake-worker"})
     result = ctx.llm_call(

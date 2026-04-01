@@ -132,14 +132,16 @@ textarea { resize:vertical; }
 
     <!-- YAML tab -->
     <div id="tab-yaml" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-      <textarea id="yamlEditor" spellcheck="false" style="flex:1;border:none;padding:8px;font-size:11px;line-height:1.3;min-height:0;resize:none;">workflow: demoness_v3
+      <textarea id="yamlEditor" spellcheck="false" style="flex:1;border:none;padding:8px;font-size:11px;line-height:1.3;min-height:0;resize:none;">workflow: behavior_case_v3
 version: 3
 
-input: >
-  написать 4 описания внешности демониц в разных образах
-  [проверить, что разные образы, разный цвет глаз,
-  разный цвет волос, разные позы,
-  стиль: аниме]
+context:
+  user_prompt: >
+    написать 4 описания внешности демониц в разных образах
+    [проверить, что разные образы, разный цвет глаз,
+    разный цвет волос, разные позы,
+    в описании должны быть элементы, по которым даже без указания расы понятно, что перед тобой демоница,
+    стиль: аниме, должен быть явно указан в описании]
 
 config:
   params_int:
@@ -157,11 +159,23 @@ config:
     capture: "[01]"
     coerce: int
 
-# === Phase 1: Bootstrap (parallel) ===
+payload_templates:
+  user_instruct:
+    mode: text
+    template: ${input}
+
+  user_chat:
+    mode: chat
+    messages:
+      - role: ${role}
+        content: ${input}
+
 jobs:
   - id: claims
     worker: analyzer
-    payload: claims($input)
+    payload_from: user_instruct
+    payload_args:
+      input: claims($context.user_prompt)
     priority: high
     temp: 0.1
     max: 2048
@@ -169,96 +183,137 @@ jobs:
 
   - id: answer
     worker: generator
-    payload: $input
+    payload_from: user_chat
+    payload_args:
+      role: user
+      input: $context.user_prompt
     temp: 0.7
     max: 2048
-    no_think: true
 
-# === Reactive handlers ===
 on:
-  claims.done:
+  - job: claims
+    event: done
     do: |
       CALL @parsed, parse_sections, @claims
       MOV @entities, @parsed.entities
       MOV @axioms, @parsed.axioms
       MOV @hypotheses, @parsed.hypotheses
 
-  answer.done:
+  - job: answer
+    event: done
     do: |
+      MOV @root.answer, @answer
       CALL @numbered_answer, numbered, @answer
-      CALL @indexed_answer, char_indexed, @answer
-
-  all_done:
-    wait_for: [claims, answer]
-    do: |
-      CALL @items, wrap_list, @entities, "name"
-      CALL @items, enrich_entities, @items, @answer
     then:
-      - for_each: items
-        enqueue: trim_probe
-        with: {item_idx: $index}
+      - enqueue: table
 
-  trim_probe.*.done:
+  - job: table
+    event: done
     do: |
-      CALL @item.answer, substr, @answer, @item.char_start, @_event.result
+      CALL @entity_nodes, parse_table_rows, @table
+      MOV @root.entities, @entity_nodes
+    then:
+      - enqueue: start_line_probe
+        for_each: entity_nodes
+
+  - job: start_line_probe
+    event: done
+    do: |
+      MOV @item._startNum, @_event.result
+      CALL @item._firstLine, slice_lines, @answer, @item._startNum, @item._startNum
+    then:
+      - enqueue: end_line_probe
+        for_each: entity_nodes
+
+  - job: end_line_probe
+    event: done
+    do: |
+      MOV @item.endLineNumber, @_event.result
+      CALL @item.answer, slice_lines, @answer, @item._startNum, @item.endLineNumber
     then:
       - enqueue: confirm_probe
-        with: {item_idx: $item_idx}
 
-  confirm_probe.*.done:
+  - job: confirm_probe
+    event: done
     do: |
       MOV @item.confirmed, @_event.result
     then:
       - enqueue: style_check
-        with: {item_idx: $item_idx}
 
-  style_check.*.done:
+  - job: style_check
+    event: done
     do: |
-      MOV @item.style_ok, @_event.result
+      MOV @item.style_check, @_event.result
     then:
       - enqueue: reaction_check
-        with: {item_idx: $item_idx}
 
-  reaction_check.*.done:
+  - job: reaction_check
+    event: done
     do: |
-      CALL @item.status, check_status, @_event.result
       MOV @item.reaction, @_event.result
+      CALL @item.reactionStatus, check_status, @_event.result
     then:
       - enqueue: comfyui_gen
-        with: {item_idx: $item_idx}
 
-# === Job templates ===
 job_templates:
-  trim_probe:
+  table:
+    worker: analyzer
+    payload_from: user_instruct
+    payload_args:
+      input: table($answer)
+    temp: 0.1
+    max: 2048
+    no_think: true
+
+  start_line_probe:
     worker: generator
-    mode: probe
+    mode: probe_continue
     grammar: $config.params_int.grammar
     capture:
       regex: $config.params_int.capture
       coerce: $config.params_int.coerce
     stop: [" ", "\n", "\""]
     messages:
-      - user: $indexed_answer
-      - assistant: |
+      - user: ${numbered_answer}
+      - assistant: |-
           <think>
-          Блок #${item.local_id} начинается с символа ${item.char_start}
-          и заканчивается на символе char_end:
+          I will split the text into blocks.
+          The description titled "${item._title}" starts at line number "
     temp: 0
-    max: 6
+    max: 4
+
+  end_line_probe:
+    worker: generator
+    mode: probe_continue
+    grammar: $config.params_int.grammar
+    capture:
+      regex: $config.params_int.capture
+      coerce: $config.params_int.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: ${numbered_answer}
+      - assistant: |-
+          <think>
+          Разделю текст на блоки.
+          Описание "${item._title}" начинается со строки
+          под номером "${item._startNum}" "${item._firstLine}"
+          и длится до строки под номером "line number:
+    temp: 0
+    max: 4
 
   confirm_probe:
     worker: generator
-    mode: probe
+    mode: probe_continue
     grammar: $config.params_binary.grammar
     capture:
       regex: $config.params_binary.capture
       coerce: $config.params_binary.coerce
     stop: [" ", "\n", "\""]
     messages:
-      - user: $numbered_answer
-      - assistant: |
+      - user: ${numbered_answer}
+      - assistant: |-
           <think>
-          Блок #${item.local_id}:
+          Описание "${item._title}":
           ${item.answer}
           ((answer generated) == true) ===
     temp: 0
@@ -266,15 +321,18 @@ job_templates:
 
   style_check:
     worker: analyzer
-    mode: probe
+    mode: probe_continue
     grammar: $config.params_binary.grammar
     capture:
       regex: $config.params_binary.capture
       coerce: $config.params_binary.coerce
     stop: [" ", "\n", "\""]
     messages:
-      - user: ${item.answer}
-      - assistant: |
+      - user: |
+          Описание:
+          ${item.answer}
+          Вопрос: Соответствует ли стиль "аниме"?
+      - assistant: |-
           <think>
           ((стиль аниме) == true) ===
     temp: 0
@@ -294,9 +352,9 @@ job_templates:
     worker: comfyui
     workflow: "C:/Users/vAiry/.lmstudio/models/Z-Image +LoRA.json"
     node: "6"
-    field: text
+    field: "text"
     payload: ${item.answer}
-    server: "http://localhost:8188"
+    server: "http://127.0.0.1:8188"
 </textarea>
       <div style="padding:4px 8px;display:flex;gap:4px;border-top:1px solid var(--border);flex-shrink:0;">
         <button class="btn sm primary" id="btnRun">Run</button>
