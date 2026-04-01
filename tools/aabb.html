@@ -67,6 +67,21 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
 .tv-dim { color:var(--text-dim); font-size:9px; }
 .tv-flags { color:var(--accent2); font-size:9px; }
 .tv-zone { color:var(--orange); font-size:9px; }
+
+/* props editor */
+#props-editor { flex-shrink:0; border-top:1px solid var(--border); padding:6px 8px; font-size:11px; max-height:220px; overflow-y:auto; background:var(--bg); }
+#props-editor.hidden { display:none; }
+#props-editor h4 { color:var(--accent); margin-bottom:4px; font-size:11px; display:flex; align-items:center; gap:6px; }
+#props-editor h4 button { font-size:9px; padding:1px 6px; color:var(--red); }
+#props-editor label { display:flex; align-items:center; gap:4px; margin-bottom:3px; color:var(--text-dim); font-size:10px; }
+#props-editor label span { min-width:50px; }
+#props-editor input, #props-editor select {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  padding:1px 4px; font-family:inherit; font-size:10px; border-radius:2px; outline:none; flex:1; min-width:0;
+}
+#props-editor input:focus { border-color:var(--accent); }
+#props-editor input[type="number"] { width:50px; flex:none; }
+#props-editor input[type="checkbox"] { flex:none; width:auto; }
 </style>
 </head>
 <body>
@@ -88,9 +103,12 @@ html, body { height:100%; background:var(--bg); color:var(--text); font-family:'
     <div id="side-panel">
       <div class="panel-header">
         <span id="side-title">Panels</span>
+        <button id="btn-add-panel">+Panel</button>
+        <button id="btn-add-zone">+Zone</button>
         <button id="btn-run">Run</button>
       </div>
       <div id="side-content"></div>
+      <div id="props-editor" class="hidden"></div>
       <textarea id="asm-editor" spellcheck="false"></textarea>
       <div id="asm-log"></div>
     </div>
@@ -444,18 +462,210 @@ function draw() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  CLIENT MINI-INTERPRETER — instant local actions
+//  CLIENT-SIDE ASSEMBLY INTERPRETER
+//  Opcodes: MOV, CALL, EACH, CMP, JIF, NOP
+//  Built-ins: write, clear, zone, zone_clear, dget, dset, dload, dsave,
+//             probe, add, len, push, splice, get, set, concat, fmt,
+//             status_color, log, draw, render, input_clear
 // ══════════════════════════════════════════════════════════════════════════
 
-const clientActions = {
-  panel_write(args) { panelWrite(args[0], +args[1], +args[2] || 0, args[3] || '', args[4] || ''); },
-  panel_clear(args) { panelClear(args[0]); },
-  zone_add(args)    { zoneAdd(args[0], +args[1], +args[2], +args[3], +args[4] || 1, args[5], args[6], args[7], args[8]); },
-  zone_clear(args)  { zoneClear(args[0]); },
-  data_set(args)    { Data.set(args[0], args.length > 2 ? args.slice(1) : args[1]); },
-  data_get(args)    { return Data.get(args[0]); },
-  draw()            { draw(); },
+function asmTokenize(line) {
+  const tokens = []; let i = 0;
+  while (i < line.length) {
+    if (line[i] === ' ' || line[i] === '\t' || line[i] === ',') { i++; continue; }
+    if (line[i] === ';') break; // comment
+    if (line[i] === '"' || line[i] === "'") {
+      const q = line[i]; i++; let s = '';
+      while (i < line.length && line[i] !== q) { s += line[i]; i++; }
+      if (i < line.length) i++;
+      tokens.push(s);
+    } else {
+      let s = '';
+      while (i < line.length && line[i] !== ' ' && line[i] !== '\t' && line[i] !== ',') { s += line[i]; i++; }
+      tokens.push(s);
+    }
+  }
+  return tokens;
+}
+
+function asmResolve(token, state) {
+  if (token === '_') return undefined;
+  if (token === 'true') return true;
+  if (token === 'false') return false;
+  // @ref — state variable, supports dot access: @w.url
+  if (token.startsWith('@')) {
+    const parts = token.slice(1).split('.');
+    let val = state[parts[0]];
+    for (let i = 1; i < parts.length; i++) {
+      if (val == null || typeof val !== 'object') return undefined;
+      val = val[parts[i]];
+    }
+    return val;
+  }
+  // +N offset
+  if (token.startsWith('+')) { const n = parseInt(token.slice(1)); return isNaN(n) ? token : n; }
+  // JSON object/array
+  if (token.startsWith('{') || token.startsWith('[')) {
+    try { return JSON.parse(token); } catch(_) {}
+  }
+  // Number
+  const n = Number(token);
+  if (!isNaN(n) && token !== '') return n;
+  return token;
+}
+
+function asmStore(state, ref, value) {
+  if (!ref || ref === '_') return;
+  const name = ref.startsWith('@') ? ref.slice(1) : ref;
+  // Support dot-path store: @w.status = "ok"
+  const parts = name.split('.');
+  if (parts.length === 1) { state[parts[0]] = value; return; }
+  let obj = state[parts[0]];
+  if (obj == null || typeof obj !== 'object') { state[parts[0]] = {}; obj = state[parts[0]]; }
+  for (let i = 1; i < parts.length - 1; i++) {
+    if (obj[parts[i]] == null || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {};
+    obj = obj[parts[i]];
+  }
+  obj[parts[parts.length - 1]] = value;
+}
+
+// Built-in functions
+const _builtins = {
+  // Panel rendering
+  write(args)      { panelWrite(args[0], +args[1], +args[2] || 0, String(args[3] ?? ''), args[4] || ''); },
+  clear(args)      { panelClear(args[0]); },
+  zone(args)       {
+    // zone panel y x w h type action [data] [dataPath]
+    const z = { x: +args[2], y: +args[1], w: +args[3] || 1, h: +args[4] || 1, type: args[5] || 'button', action: args[6] || '', data: args[7], style: '' };
+    if (args[8]) z.dataPath = args[8]; // for inputs
+    if (z.type === 'input') { z._value = Data.get(z.dataPath) || ''; z._panel = panels[args[0]]; }
+    const p = typeof args[0] === 'string' ? panels[args[0]] : args[0];
+    if (p) p.zones.push(z);
+  },
+  zone_clear(args) { zoneClear(args[0]); },
+  // Data layer
+  dget(args)       { return Data.get(args[0]); },
+  dset(args)       { Data.set(args[0], args[1]); },
+  dload(args)      { return Data.load(args[0], args[1]); },
+  dsave(args)      { Data.save(args[0], args[1]); },
+  // Utils
+  add(args)        { return (+args[0] || 0) + (+args[1] || 0); },
+  len(args)        { return Array.isArray(args[0]) ? args[0].length : 0; },
+  push(args)       { if (Array.isArray(args[0])) args[0].push(args[1]); },
+  splice(args)     { if (Array.isArray(args[0])) args[0].splice(+args[1], +args[2] || 1); },
+  get(args)        { return args[0] != null ? args[0][args[1]] : undefined; },
+  set(args)        { if (args[0] != null) args[0][args[1]] = args[2]; },
+  concat(args)     { return String(args[0] ?? '') + String(args[1] ?? ''); },
+  fmt(args)        {
+    let s = String(args[0] || '');
+    for (let i = 1; i < args.length; i++) s = s.replace(`{${i-1}}`, String(args[i] ?? ''));
+    return s;
+  },
+  status_color(args) {
+    const s = String(args[0] || '');
+    return s === 'ok' ? 'c-green' : s === 'fail' ? 'c-red' : 'c-yellow';
+  },
+  log(args)        { log(args.map(a => String(a ?? '')).join(' ')); },
+  draw()           { draw(); },
+  render(args)     {
+    // re-run panel's render assembly
+    const p = typeof args[0] === 'string' ? panels[args[0]] : args[0];
+    if (p && p.asm && p.asm.render) execAsm(p.asm.render);
+    draw();
+  },
+  input_clear(args) {
+    Data.set(args[0], '');
+    if (focusedZone && focusedZone.dataPath === args[0]) { focusedZone._value = ''; cursorPos = 0; }
+  },
+  async probe(args) {
+    const url = String(args[0] || '').replace(/\/+$/, '');
+    if (!url) return 'fail';
+    try {
+      const r = await fetch(url + '/v1/models', { signal: AbortSignal.timeout(3000) });
+      return r.ok ? 'ok' : 'fail';
+    } catch(_) { return 'fail'; }
+  },
 };
+
+async function execAsm(code, extraState) {
+  const state = { ...extraState };
+  const lines = code.split('\n');
+  let ip = 0;
+  const maxSteps = lines.length * 50;
+  let steps = 0;
+
+  while (ip < lines.length && steps < maxSteps) {
+    steps++;
+    const line = lines[ip].trim();
+    if (!line || line.startsWith(';')) { ip++; continue; }
+    const tokens = asmTokenize(line);
+    if (!tokens.length) { ip++; continue; }
+    const op = tokens[0];
+
+    if (op === 'MOV') {
+      // MOV @dst, value
+      const val = asmResolve(tokens[2], state);
+      asmStore(state, tokens[1], val);
+      ip++;
+
+    } else if (op === 'CALL') {
+      // CALL @dst, fn, args...
+      const dst = tokens[1];
+      const fn = tokens[2];
+      const args = tokens.slice(3).map(t => asmResolve(t, state));
+      const builtin = _builtins[fn];
+      if (builtin) {
+        let result = builtin(args);
+        if (result instanceof Promise) result = await result;
+        if (dst !== '_') asmStore(state, dst, result);
+      } else {
+        log(`[asm] unknown fn: ${fn}`, true);
+      }
+      ip++;
+
+    } else if (op === 'EACH') {
+      // EACH @item, @list, +bodyLen
+      const itemRef = tokens[1];
+      const list = asmResolve(tokens[2], state);
+      const bodyLen = asmResolve(tokens[3], state);
+      if (Array.isArray(list) && bodyLen > 0) {
+        const bodyLines = lines.slice(ip + 1, ip + 1 + bodyLen);
+        for (let idx = 0; idx < list.length; idx++) {
+          asmStore(state, itemRef, list[idx]);
+          state['each_idx'] = idx;
+          await execAsm(bodyLines.join('\n'), state);
+          // sync back mutations
+          list[idx] = asmResolve(itemRef, state);
+        }
+      }
+      ip += 1 + (bodyLen || 0);
+
+    } else if (op === 'CMP') {
+      // CMP @dst, op, @a, @b
+      const cmpOp = tokens[2];
+      const a = asmResolve(tokens[3], state);
+      const b = asmResolve(tokens[4], state);
+      let result = false;
+      if (cmpOp === 'eq') result = a == b;
+      else if (cmpOp === 'ne') result = a != b;
+      else if (cmpOp === 'gt') result = a > b;
+      else if (cmpOp === 'lt') result = a < b;
+      asmStore(state, tokens[1], result);
+      ip++;
+
+    } else if (op === 'JIF') {
+      // JIF @cond, +offset
+      const cond = asmResolve(tokens[1], state);
+      const offset = asmResolve(tokens[2], state);
+      if (cond) ip += (typeof offset === 'number' ? offset : 1);
+      else ip++;
+
+    } else {
+      ip++;
+    }
+  }
+  return state;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 //  TABS + IDE
@@ -481,7 +691,16 @@ function setTab(name) {
   sidePanel.classList.toggle('hidden', name === 'preview');
   asmEditor.style.display = name === 'assembly' ? 'block' : 'none';
   sideTitle.textContent = { panels: 'Panels', assembly: 'Assembly', inspect: 'Inspect', preview: '' }[name] || '';
+  document.getElementById('props-editor').classList.toggle('hidden', name !== 'panels');
+  document.getElementById('btn-add-panel').style.display = name === 'panels' ? '' : 'none';
+  document.getElementById('btn-add-zone').style.display = name === 'panels' ? '' : 'none';
   if (name === 'panels') renderPanelTree();
+  if (name === 'assembly') {
+    const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
+    if (p) showAsmEditor(p, null);
+    // Show action list in side content for picking
+    renderAsmActionList();
+  }
   if (name === 'inspect') renderInspect();
   if (name !== 'preview') { focusedZone = null; stopCursorBlink(); }
   drawOverlay();
@@ -540,10 +759,11 @@ function renderPanelTree() {
     if (z.data !== undefined) html += kv('data', JSON.stringify(z.data));
     if (z.dataPath) html += kv('dataPath', z.dataPath);
     if (z.style) html += kv('style', z.style);
-    // Show action handler source
-    if (z.action && _actionHandlers[z.action]) {
-      html += `<h3>Handler: ${escH(z.action)}</h3>`;
-      html += `<pre>${escH(_actionHandlers[z.action].toString())}</pre>`;
+    // Show action assembly source — find in parent panel
+    const ownerPanel = Object.values(panels).find(p => p.zones.includes(z));
+    if (z.action && ownerPanel && ownerPanel.asm && ownerPanel.asm.actions && ownerPanel.asm.actions[z.action]) {
+      html += `<h3>Assembly: ${escH(z.action)}</h3>`;
+      html += `<pre>${escH(ownerPanel.asm.actions[z.action])}</pre>`;
     }
     html += `</div>`;
   }
@@ -554,13 +774,13 @@ function renderPanelTree() {
       const panelName = row.dataset.panel;
       const zi = row.dataset.zone;
       if (zi !== undefined) {
-        // Zone clicked
         selectedPanel = panels[panelName] || null;
         selectedZone = selectedPanel ? selectedPanel.zones[+zi] : null;
+        showZoneProps(selectedZone, selectedPanel);
       } else {
-        // Panel clicked
         selectedPanel = panels[panelName] || null;
         selectedZone = null;
+        showPanelProps(selectedPanel);
       }
       renderPanelTree();
       drawOverlay();
@@ -595,24 +815,32 @@ function renderInspect(panel) {
       if (z.data !== undefined) html += `<div>data: ${escH(JSON.stringify(z.data))}</div>`;
       if (z.dataPath) html += `<div>dataPath: <span style="color:var(--accent3)">${escH(z.dataPath)}</span> = ${escH(JSON.stringify(Data.get(z.dataPath)))}</div>`;
       if (z._value !== undefined) html += `<div>value: "${escH(z._value)}"</div>`;
-      // Show handler source
-      if (z.action && _actionHandlers[z.action]) {
-        html += `<details><summary style="color:var(--text-dim);cursor:pointer;">handler source</summary>`;
-        html += `<pre style="margin:2px 0;font-size:9px;max-height:120px;">${escH(_actionHandlers[z.action].toString())}</pre>`;
+      // Show assembly code for action
+      if (z.action && panel.asm && panel.asm.actions && panel.asm.actions[z.action]) {
+        html += `<details><summary style="color:var(--text-dim);cursor:pointer;">assembly</summary>`;
+        html += `<pre style="margin:2px 0;font-size:9px;max-height:120px;">${escH(panel.asm.actions[z.action])}</pre>`;
         html += `</details>`;
       }
       html += `</div>`;
     }
   }
 
-  // Registered actions
-  const actions = Object.keys(_actionHandlers);
-  if (actions.length) {
-    html += `<h3>All Actions (${actions.length})</h3>`;
-    for (const name of actions) {
-      html += `<details><summary style="color:var(--green);cursor:pointer;">${escH(name)}</summary>`;
-      html += `<pre style="font-size:9px;max-height:150px;">${escH(_actionHandlers[name].toString())}</pre>`;
+  // Registered assembly actions
+  if (panel.asm) {
+    if (panel.asm.render) {
+      html += `<h3>Render Assembly</h3>`;
+      html += `<details open><summary style="color:var(--green);cursor:pointer;">render</summary>`;
+      html += `<pre style="font-size:9px;max-height:150px;">${escH(panel.asm.render)}</pre>`;
       html += `</details>`;
+    }
+    const actionNames = Object.keys(panel.asm.actions || {});
+    if (actionNames.length) {
+      html += `<h3>Actions (${actionNames.length})</h3>`;
+      for (const name of actionNames) {
+        html += `<details><summary style="color:var(--green);cursor:pointer;">${escH(name)}</summary>`;
+        html += `<pre style="font-size:9px;max-height:150px;">${escH(panel.asm.actions[name])}</pre>`;
+        html += `</details>`;
+      }
     }
   }
 
@@ -633,7 +861,11 @@ document.getElementById('canvas').addEventListener('click', (e) => {
   if (activeTab === 'panels' || activeTab === 'inspect') {
     selectedPanel = hit ? hit.panel : null;
     selectedZone = hit ? hit.zone : null;
-    if (activeTab === 'panels') renderPanelTree();
+    if (activeTab === 'panels') {
+      renderPanelTree();
+      if (selectedZone) showZoneProps(selectedZone, selectedPanel);
+      else showPanelProps(selectedPanel);
+    }
     if (activeTab === 'inspect') renderInspect(hit ? hit.panel : null);
     drawOverlay();
   }
@@ -725,9 +957,12 @@ document.addEventListener('paste', (e) => {
 async function runAction(action, data, panel) {
   const t0 = performance.now();
   log(`\u25b6 ${action}` + (data !== undefined ? ` data=${JSON.stringify(data)}` : '') + ` panel=${panel.name}`);
-  if (typeof _actionHandlers[action] === 'function') {
+
+  // Find assembly code for this action in the panel's asm.actions
+  const code = panel.asm && panel.asm.actions && panel.asm.actions[action];
+  if (code) {
     try {
-      await _actionHandlers[action](data, panel);
+      await execAsm(code, { action_data: data, panel_name: panel.name });
       const dt = (performance.now() - t0).toFixed(0);
       log(`\u2713 ${action} (${dt}ms)`);
     } catch (e) {
@@ -736,182 +971,365 @@ async function runAction(action, data, panel) {
     draw();
     return;
   }
-  log(`\u2717 no handler: ${action}`, true);
+  log(`\u2717 no asm for: ${action}`, true);
 }
 
-const _actionHandlers = {};
-function registerAction(name, fn) { _actionHandlers[name] = fn; }
+// ── Props editor ───────────────────────────────────────────────────────────
+const propsEditor = document.getElementById('props-editor');
 
-// ── Assembly tab buttons ───────────────────────────────────────────────────
+function showPanelProps(panel) {
+  if (!panel || panel === rootPanel) { propsEditor.classList.add('hidden'); return; }
+  propsEditor.classList.remove('hidden');
+  const pos = getPanelGlobalPos(panel);
+  const parentEntry = findParentEntry(panel);
+  propsEditor.innerHTML = `
+    <h4>\u25a0 ${escH(panel.name)} <button data-del-panel="${panel.name}">\u00d7 del</button></h4>
+    <label><span>name</span><input type="text" data-pp="name" value="${escH(panel.name)}"></label>
+    <label><span>label</span><input type="text" data-pp="label" value="${escH(panel.label || '')}"></label>
+    <label><span>w</span><input type="number" data-pp="w" value="${panel.w}" min="2"></label>
+    <label><span>h</span><input type="number" data-pp="h" value="${panel.h}" min="1"></label>
+    ${parentEntry ? `
+    <label><span>x</span><input type="number" data-pp="px" value="${parentEntry.x}" min="0"></label>
+    <label><span>y</span><input type="number" data-pp="py" value="${parentEntry.y}" min="0"></label>
+    ` : ''}
+    <label><span>border</span><input type="checkbox" data-pp="border" ${panel.border ? 'checked' : ''}></label>
+    <label><span>borderColor</span><input type="text" data-pp="borderColor" value="${escH(panel.borderColor || '#3b4261')}"></label>
+  `;
+  propsEditor.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const p = inp.dataset.pp;
+      if (p === 'name') { const old = panel.name; delete panels[old]; panel.name = inp.value; panels[inp.value] = panel; panel.label = panel.label === old ? inp.value : panel.label; }
+      else if (p === 'label') panel.label = inp.value;
+      else if (p === 'w') panel.w = +inp.value;
+      else if (p === 'h') panel.h = +inp.value;
+      else if (p === 'px' && parentEntry) parentEntry.x = +inp.value;
+      else if (p === 'py' && parentEntry) parentEntry.y = +inp.value;
+      else if (p === 'border') panel.border = inp.checked;
+      else if (p === 'borderColor') panel.borderColor = inp.value;
+      draw(); renderPanelTree();
+    });
+  });
+  propsEditor.querySelectorAll('[data-del-panel]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      deletePanel(panel);
+      selectedPanel = null; selectedZone = null;
+      propsEditor.classList.add('hidden');
+      draw(); renderPanelTree();
+    });
+  });
+}
+
+function showZoneProps(zone, panel) {
+  if (!zone || !panel) { propsEditor.classList.add('hidden'); return; }
+  propsEditor.classList.remove('hidden');
+  const typeIcon = zone.type === 'button' ? '\u25a3' : '\u25a1';
+  propsEditor.innerHTML = `
+    <h4>${typeIcon} zone <button data-del-zone="1">\u00d7 del</button></h4>
+    <label><span>type</span><select data-zp="type"><option ${zone.type==='button'?'selected':''}>button</option><option ${zone.type==='input'?'selected':''}>input</option><option ${zone.type==='link'?'selected':''}>link</option></select></label>
+    <label><span>x</span><input type="number" data-zp="x" value="${zone.x}" min="0"></label>
+    <label><span>y</span><input type="number" data-zp="y" value="${zone.y}" min="0"></label>
+    <label><span>w</span><input type="number" data-zp="w" value="${zone.w}" min="1"></label>
+    <label><span>h</span><input type="number" data-zp="h" value="${zone.h}" min="1"></label>
+    <label><span>action</span><input type="text" data-zp="action" value="${escH(zone.action || '')}"></label>
+    <label><span>data</span><input type="text" data-zp="data" value="${zone.data !== undefined ? escH(JSON.stringify(zone.data)) : ''}"></label>
+    <label><span>dataPath</span><input type="text" data-zp="dataPath" value="${escH(zone.dataPath || '')}"></label>
+    <label><span>style</span><input type="text" data-zp="style" value="${escH(zone.style || '')}"></label>
+  `;
+  propsEditor.querySelectorAll('input, select').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const p = inp.dataset.zp;
+      if (p === 'type') zone.type = inp.value;
+      else if (p === 'x') zone.x = +inp.value;
+      else if (p === 'y') zone.y = +inp.value;
+      else if (p === 'w') zone.w = +inp.value;
+      else if (p === 'h') zone.h = +inp.value;
+      else if (p === 'action') zone.action = inp.value || undefined;
+      else if (p === 'data') { try { zone.data = JSON.parse(inp.value); } catch(_) { zone.data = inp.value || undefined; } }
+      else if (p === 'dataPath') zone.dataPath = inp.value || undefined;
+      else if (p === 'style') zone.style = inp.value || undefined;
+      draw(); renderPanelTree();
+    });
+  });
+  propsEditor.querySelectorAll('[data-del-zone]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = panel.zones.indexOf(zone);
+      if (idx >= 0) panel.zones.splice(idx, 1);
+      selectedZone = null;
+      propsEditor.classList.add('hidden');
+      draw(); renderPanelTree();
+    });
+  });
+}
+
+function findParentEntry(panel) {
+  function search(p) {
+    for (const ch of p.children) {
+      if (ch.panel === panel) return ch;
+      const r = search(ch.panel);
+      if (r) return r;
+    }
+    return null;
+  }
+  return rootPanel ? search(rootPanel) : null;
+}
+
+function findParentPanel(panel) {
+  function search(p) {
+    for (const ch of p.children) {
+      if (ch.panel === panel) return p;
+      const r = search(ch.panel);
+      if (r) return r;
+    }
+    return null;
+  }
+  return rootPanel ? search(rootPanel) : null;
+}
+
+function deletePanel(panel) {
+  const parent = findParentPanel(panel);
+  if (parent) {
+    parent.children = parent.children.filter(ch => ch.panel !== panel);
+  }
+  delete panels[panel.name];
+}
+
+// ── Add Panel / Add Zone buttons ───────────────────────────────────────────
+let _addPanelCounter = 0;
+
+document.getElementById('btn-add-panel').addEventListener('click', () => {
+  if (activeTab !== 'panels') return;
+  const name = 'panel_' + (++_addPanelCounter);
+  const p = createPanel(name, 20, 10);
+  p.label = name;
+  // Add as child of selected panel or root
+  const parent = (selectedPanel && selectedPanel !== rootPanel) ? selectedPanel : rootPanel;
+  if (!parent) return;
+  // Find placement — offset from parent's children
+  const ox = parent.children.length * 2;
+  addChildPanel(parent, p, ox, 0, 20, 10);
+  selectedPanel = p;
+  selectedZone = null;
+  draw();
+  renderPanelTree();
+  showPanelProps(p);
+});
+
+document.getElementById('btn-add-zone').addEventListener('click', () => {
+  if (activeTab !== 'panels') return;
+  const panel = selectedPanel || rootPanel;
+  if (!panel) return;
+  const z = { x: 0, y: 0, w: 5, h: 1, type: 'button', action: '', style: '' };
+  panel.zones.push(z);
+  selectedZone = z;
+  draw();
+  renderPanelTree();
+  showZoneProps(z, panel);
+});
+
+// ── Assembly tab ───────────────────────────────────────────────────────────
+let asmEditingPanel = null;
+let asmEditingAction = null; // null = render, string = action name
+
+function showAsmEditor(panel, actionName) {
+  if (!panel) return;
+  asmEditingPanel = panel;
+  asmEditingAction = actionName || null;
+  if (!panel.asm) panel.asm = { render: '', actions: {} };
+  if (actionName) {
+    asmEditor.value = panel.asm.actions[actionName] || '';
+    sideTitle.textContent = `ASM: ${panel.name} → ${actionName}`;
+  } else {
+    asmEditor.value = panel.asm.render || '';
+    sideTitle.textContent = `ASM: ${panel.name} render`;
+  }
+}
+
+function saveAsmEditor() {
+  if (!asmEditingPanel) return;
+  if (!asmEditingPanel.asm) asmEditingPanel.asm = { render: '', actions: {} };
+  if (asmEditingAction) {
+    asmEditingPanel.asm.actions[asmEditingAction] = asmEditor.value;
+  } else {
+    asmEditingPanel.asm.render = asmEditor.value;
+  }
+}
+
 document.getElementById('btn-run').addEventListener('click', async () => {
   if (activeTab === 'assembly') {
+    saveAsmEditor();
     const code = asmEditor.value;
     if (!code.trim()) return;
     log('[asm] executing...');
     try {
-      const r = await fetch('/api/dsl/asm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, state: {}, workers: {} })
-      });
-      const result = await r.json();
-      if (result.error) log(`[asm] error: ${result.error}`, true);
-      else log(`[asm] done (${(result.log || []).length} steps)`);
+      await execAsm(code);
+      log('[asm] done');
     } catch (e) { log(`[asm] ${e}`, true); }
+    draw();
   }
 });
 
+asmEditor.addEventListener('input', () => { saveAsmEditor(); });
+
+function renderAsmActionList() {
+  if (!asmEditingPanel) { sideContent.innerHTML = ''; return; }
+  const p = asmEditingPanel;
+  let html = `<div style="margin-bottom:6px;">`;
+  // Panel picker
+  html += `<div style="margin-bottom:4px;">Panel: `;
+  for (const [name, panel] of Object.entries(panels)) {
+    if (panel === rootPanel) continue;
+    const sel = panel === p ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
+    html += `<span class="asm-panel-pick" data-p="${name}" style="${sel}cursor:pointer;margin-right:8px;">${escH(name)}</span>`;
+  }
+  html += `</div>`;
+  // Render button
+  const renderSel = !asmEditingAction ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
+  html += `<div class="asm-pick" data-action="" style="${renderSel}cursor:pointer;margin-bottom:2px;">\u25b6 render</div>`;
+  // Action buttons
+  const actions = (p.asm && p.asm.actions) ? Object.keys(p.asm.actions) : [];
+  for (const a of actions) {
+    const sel = asmEditingAction === a ? 'color:var(--orange);font-weight:700;' : 'color:var(--text-dim);';
+    html += `<div class="asm-pick" data-action="${escH(a)}" style="${sel}cursor:pointer;margin-bottom:2px;">\u25a3 ${escH(a)}</div>`;
+  }
+  // Add action button
+  html += `<div class="asm-add-action" style="color:var(--green);cursor:pointer;margin-top:4px;">+ new action</div>`;
+  html += `</div>`;
+  sideContent.innerHTML = html;
+
+  // Wire clicks
+  sideContent.querySelectorAll('.asm-panel-pick').forEach(el => {
+    el.addEventListener('click', () => {
+      const panel = panels[el.dataset.p];
+      if (panel) { showAsmEditor(panel, null); renderAsmActionList(); }
+    });
+  });
+  sideContent.querySelectorAll('.asm-pick').forEach(el => {
+    el.addEventListener('click', () => {
+      showAsmEditor(asmEditingPanel, el.dataset.action || null);
+      renderAsmActionList();
+    });
+  });
+  sideContent.querySelector('.asm-add-action')?.addEventListener('click', () => {
+    const name = prompt('Action name:');
+    if (!name) return;
+    if (!asmEditingPanel.asm) asmEditingPanel.asm = { render: '', actions: {} };
+    asmEditingPanel.asm.actions[name] = '; ' + name + ' action\n';
+    showAsmEditor(asmEditingPanel, name);
+    renderAsmActionList();
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════════
-//  DEMO: Workers Card
+//  INIT — panels + assembly (zero hardcode render/action functions)
 // ══════════════════════════════════════════════════════════════════════════
 
-function buildWorkersDemo() {
+function initDemo() {
+  calcGrid();
+
   // Data
   const workers = Data.load('workers', [{ url: 'http://localhost:5001', role: 'gen', status: 'unknown' }]);
   Data.set('workers.items', workers);
   Data.set('workers.draft_url', '');
 
-  // Root panel
+  // Root
   const root = createPanel('screen', COLS, ROWS);
   root.border = false;
   rootPanel = root;
 
-  // Workers panel
+  // Workers panel + assembly
   const wp = createPanel('workers', 34, 20);
   wp.label = 'workers';
+  wp.asm = {
+    render: `; ── workers render ──
+CALL @items, dget, "workers.items"
+CALL @draft, dget, "workers.draft_url"
+CALL _, clear, "workers"
+CALL _, zone_clear, "workers"
+CALL _, write, "workers", 0, 1, "WORKERS", "c-accent"
+CALL _, zone, "workers", 2, 1, 26, 1, "input", "workers_add", "", "workers.draft_url"
+CALL _, write, "workers", 2, 1, @draft, ""
+CALL _, zone, "workers", 2, 28, 3, 1, "button", "workers_add"
+CALL _, write, "workers", 2, 28, " + ", "c-green"
+EACH @w, @items, +8
+  CALL @row, add, 4, @each_idx
+  CALL @dot_cl, status_color, @w.status
+  CALL _, write, "workers", @row, 1, "\u25cf", @dot_cl
+  CALL _, write, "workers", @row, 3, @w.url, ""
+  CALL _, write, "workers", @row, 25, @w.role, "c-accent2"
+  CALL _, write, "workers", @row, 31, "\u00d7", "c-red"
+  CALL _, zone, "workers", @row, 1, 1, 1, "button", "workers_probe", @each_idx
+  CALL _, zone, "workers", @row, 31, 1, 1, "button", "workers_del", @each_idx`,
+    actions: {
+      workers_add: `; add worker from input
+CALL @url, dget, "workers.draft_url"
+CMP @empty, eq, @url, ""
+JIF @empty, +99
+CALL @items, dget, "workers.items"
+CALL @status, probe, @url
+MOV @w, {}
+CALL _, set, @w, "url", @url
+CALL _, set, @w, "role", "gen"
+CALL _, set, @w, "status", @status
+CALL _, push, @items, @w
+CALL _, dset, "workers.items", @items
+CALL _, dsave, "workers", @items
+CALL _, input_clear, "workers.draft_url"
+CALL _, log, "added worker"
+CALL _, render, "workers"`,
+      workers_del: `; delete worker by index
+CALL @items, dget, "workers.items"
+CALL _, splice, @items, @action_data, 1
+CALL _, dset, "workers.items", @items
+CALL _, dsave, "workers", @items
+CALL _, log, "removed worker"
+CALL _, render, "workers"`,
+      workers_probe: `; probe worker status
+CALL @items, dget, "workers.items"
+CALL @w, get, @items, @action_data
+CALL @url, get, @w, "url"
+CALL _, log, @url
+CALL @status, probe, @url
+CALL _, set, @w, "status", @status
+CALL _, dset, "workers.items", @items
+CALL _, dsave, "workers", @items
+CALL _, log, @status
+CALL _, render, "workers"`,
+    }
+  };
   addChildPanel(root, wp, 1, 1, 34, 20);
 
-  // Chat panel
+  // Chat panel + assembly
   const cp = createPanel('chat', 50, 20);
   cp.label = 'chat';
   cp.borderColor = '#565f89';
+  cp.asm = {
+    render: `; ── chat render ──
+CALL _, clear, "chat"
+CALL _, zone_clear, "chat"
+CALL _, write, "chat", 1, 1, "user: hello", "c-accent"
+CALL _, write, "chat", 2, 1, "bot: hi there!", "c-green"
+CALL _, write, "chat", 3, 1, "user: run extract", "c-accent"
+CALL _, write, "chat", 4, 1, "bot: done. 42 entities.", "c-green"
+CALL _, write, "chat", 17, 1, ">", "c-accent3"
+CALL _, zone, "chat", 17, 3, 45, 1, "input", "chat_send", "", "chat.input"`,
+    actions: {
+      chat_send: `; send chat message
+CALL @msg, dget, "chat.input"
+CALL _, log, @msg
+CALL _, input_clear, "chat.input"`,
+    }
+  };
   addChildPanel(root, cp, 37, 1, 50, 20);
 
-  renderWorkers();
-  renderChat();
+  // Run render assembly for each panel
+  execAsm(wp.asm.render);
+  execAsm(cp.asm.render);
+
+  draw();
+  renderPanelTree();
 }
 
-function renderWorkers() {
-  const wp = panels['workers'];
-  if (!wp) return;
-  panelClear(wp);
-  zoneClear(wp);
-
-  const items = Data.get('workers.items') || [];
-  const draftUrl = Data.get('workers.draft_url') || '';
-
-  // Title
-  panelWrite(wp, 0, 1, 'WORKERS', 'c-accent');
-
-  // URL input
-  const urlZone = { x: 1, y: 2, w: 26, h: 1, type: 'input', action: 'workers_add', dataPath: 'workers.draft_url', _value: draftUrl, style: '' };
-  wp.zones.push(urlZone);
-  panelWrite(wp, 2, 1, draftUrl || '', '');
-
-  // Add button
-  zoneAdd(wp, 2, 28, 3, 1, 'button', 'workers_add');
-  panelWrite(wp, 2, 28, ' + ', 'c-green');
-
-  // Worker cards
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const row = 4 + i;
-    const dot = '\u25cf';
-    const dotCl = item.status === 'ok' ? 'c-green' : item.status === 'fail' ? 'c-red' : 'c-yellow';
-
-    panelWrite(wp, row, 1, dot, dotCl);
-    panelWrite(wp, row, 3, item.url || '', '');
-    panelWrite(wp, row, 25, item.role || '', 'c-accent2');
-    panelWrite(wp, row, 31, '\u00d7', 'c-red');
-
-    zoneAdd(wp, row, 1, 1, 1, 'button', 'workers_probe', i);
-    zoneAdd(wp, row, 31, 1, 1, 'button', 'workers_del', i);
-  }
-}
-
-function renderChat() {
-  const cp = panels['chat'];
-  if (!cp) return;
-  panelClear(cp);
-  zoneClear(cp);
-
-  const lines = [
-    ['user: hello', 'c-accent'],
-    ['bot: hi there!', 'c-green'],
-    ['user: run extract', 'c-accent'],
-    ['bot: done. 42 entities.', 'c-green'],
-  ];
-  for (let i = 0; i < lines.length; i++) {
-    panelWrite(cp, 1 + i, 1, lines[i][0], lines[i][1]);
-  }
-  panelWrite(cp, 17, 1, '>', 'c-accent3');
-
-  const inputZone = { x: 3, y: 17, w: 45, h: 1, type: 'input', action: 'chat_send', dataPath: 'chat.input', _value: '', style: '' };
-  cp.zones.push(inputZone);
-}
-
-// ── Workers actions ────────────────────────────────────────────────────────
-registerAction('workers_add', async (data) => {
-  const url = (Data.get('workers.draft_url') || '').trim().replace(/\/+$/, '');
-  if (!url) return;
-  const items = Data.get('workers.items') || [];
-  if (items.find(w => w.url === url)) { log('duplicate url'); return; }
-  const w = { url, role: 'gen', status: 'unknown' };
-  // Probe
-  try {
-    const r = await fetch(url + '/v1/models', { signal: AbortSignal.timeout(3000) });
-    w.status = r.ok ? 'ok' : 'fail';
-  } catch (_) { w.status = 'fail'; }
-  items.push(w);
-  Data.set('workers.items', items);
-  Data.set('workers.draft_url', '');
-  Data.save('workers', items);
-  log(`added ${url} (${w.status})`);
-  // Update focused zone value
-  if (focusedZone && focusedZone.dataPath === 'workers.draft_url') {
-    focusedZone._value = '';
-    cursorPos = 0;
-  }
-  renderWorkers();
-});
-
-registerAction('workers_del', (idx) => {
-  const items = Data.get('workers.items') || [];
-  if (idx >= 0 && idx < items.length) {
-    log(`removed ${items[idx].url}`);
-    items.splice(idx, 1);
-    Data.set('workers.items', items);
-    Data.save('workers', items);
-    renderWorkers();
-  }
-});
-
-registerAction('workers_probe', async (idx) => {
-  const items = Data.get('workers.items') || [];
-  if (idx < 0 || idx >= items.length) return;
-  const w = items[idx];
-  log(`probing ${w.url}...`);
-  try {
-    const r = await fetch(w.url + '/v1/models', { signal: AbortSignal.timeout(3000) });
-    w.status = r.ok ? 'ok' : 'fail';
-  } catch (_) { w.status = 'fail'; }
-  Data.set('workers.items', items);
-  Data.save('workers', items);
-  log(`probe ${w.url}: ${w.status}`);
-  renderWorkers();
-});
-
-registerAction('chat_send', (text) => {
-  log(`chat: ${text}`);
-  // Could trigger assembly pipeline here
-});
-
-// ── Init ───────────────────────────────────────────────────────────────────
-calcGrid();
-buildWorkersDemo();
-draw();
-renderPanelTree();
-
+initDemo();
 window.addEventListener('resize', () => { draw(); if (activeTab === 'panels') renderPanelTree(); });
 
 </script>
