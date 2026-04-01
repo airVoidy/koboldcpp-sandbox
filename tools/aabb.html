@@ -567,10 +567,10 @@ const _builtins = {
   },
   log(args)        { log(args.map(a => String(a ?? '')).join(' ')); },
   draw()           { draw(); },
-  render(args)     {
+  async render(args) {
     // re-run panel's render assembly
     const p = typeof args[0] === 'string' ? panels[args[0]] : args[0];
-    if (p && p.asm && p.asm.render) execAsm(p.asm.render);
+    if (p && p.asm && p.asm.render) await execAsm(p.asm.render);
     draw();
   },
   input_clear(args) {
