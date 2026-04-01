@@ -258,7 +258,7 @@ job_templates:
       - user: $numbered_answer
       - assistant: |
           <think>
-          Описание "${item._title}":
+          Блок #${item.local_id}:
           ${item.answer}
           ((answer generated) == true) ===
     temp: 0
