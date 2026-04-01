@@ -30,13 +30,16 @@ class GitBackend:
         self.git = resolve_git()
 
     def run(self, *args: str, cwd: Path | None = None) -> str:
-        result = subprocess.run(
-            [self.git, *args],
+        import sys
+        kwargs: dict = dict(
             cwd=str(cwd or self.repo_dir),
             capture_output=True,
             text=True,
             check=False,
         )
+        if sys.platform == 'win32':
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        result = subprocess.run([self.git, *args], **kwargs)
         if result.returncode != 0:
             raise GitError(result.stderr.strip() or result.stdout.strip() or f"git {' '.join(args)} failed")
         return result.stdout.strip()
@@ -71,7 +74,13 @@ class GitBackend:
     def commit_all(self, worktree: Path, message: str) -> str:
         self.run("add", "-A", cwd=worktree)
         status = self.run("status", "--short", cwd=worktree)
-        if not status:
+        if not status.strip():
             return ""
-        self.run("commit", "-m", message, cwd=worktree)
+        try:
+            self.run("commit", "-m", message, cwd=worktree)
+        except GitError as e:
+            # "nothing to commit" is not a real error
+            if "nothing to commit" in str(e):
+                return ""
+            raise
         return self.run("rev-parse", "HEAD", cwd=worktree)
