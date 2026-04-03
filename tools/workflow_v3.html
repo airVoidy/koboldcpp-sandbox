@@ -35,7 +35,7 @@ textarea { resize:vertical; }
 .worker-dot { width:6px; height:6px; border-radius:50%; background:var(--green); flex-shrink:0; }
 .worker-dot.offline { background:var(--red); }
 
-/* Queue lanes */
+/* Queue lanes — chip view */
 .lane { margin-bottom:8px; }
 .lane-hdr { font-size:10px; color:var(--text-dim); margin-bottom:2px; }
 .job-chip { display:inline-flex; align-items:center; gap:3px; padding:2px 6px; border-radius:3px; font-size:10px; margin:1px 2px; }
@@ -44,6 +44,18 @@ textarea { resize:vertical; }
 .job-chip.done { background:var(--green); color:#000; }
 .job-chip.failed { background:var(--red); color:#fff; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+
+/* Timeline lanes */
+.timeline { width:100%; }
+.tl-lane { display:flex; align-items:center; gap:4px; margin-bottom:4px; }
+.tl-label { width:60px; font-size:10px; color:var(--text-dim); text-align:right; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tl-track { flex:1; height:16px; background:var(--surface2); border-radius:3px; position:relative; overflow:hidden; }
+.tl-bar { position:absolute; top:1px; bottom:1px; border-radius:2px; min-width:2px; display:flex; align-items:center; justify-content:center; font-size:8px; overflow:hidden; white-space:nowrap; }
+.tl-bar.pending { background:var(--border); color:var(--text-dim); }
+.tl-bar.active { background:var(--accent); color:#000; animation:pulse 1s infinite; }
+.tl-bar.done { background:var(--green); color:#000; }
+.tl-bar.failed { background:var(--red); color:#fff; }
+.tl-now { position:absolute; top:0; bottom:0; width:1px; background:var(--accent); opacity:.5; }
 
 /* Cards */
 .node { margin:4px 0; padding:0; border:1px solid var(--border); border-radius:4px; background:var(--surface); }
@@ -70,6 +82,86 @@ textarea { resize:vertical; }
 .slot-list-item { font-size:11px; padding:1px 0; }
 .slot-tags { display:flex; flex-wrap:wrap; gap:3px; }
 .slot-tag { font-size:10px; padding:1px 5px; border-radius:3px; background:var(--surface2); }
+.slot-image { margin:4px 0; }
+.slot-image img { max-height:200px; object-fit:contain; }
+
+/* Reactions */
+.slot-reactions { display:flex; flex-wrap:wrap; gap:4px; padding:4px 0; }
+.reaction { display:inline-flex; align-items:center; gap:3px; padding:2px 6px; border-radius:10px; background:var(--surface2); border:1px solid var(--border); font-size:10px; cursor:default; }
+.reaction.pass { border-color:var(--green); }
+.reaction.fail { border-color:var(--red); }
+.reaction.pending { border-color:var(--yellow); }
+.reaction-emoji { font-size:12px; }
+.reaction-who { max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); font-size:9px; }
+.reaction-who.pass { color:var(--green); }
+.reaction-who.fail { color:var(--red); }
+.reactions-summary { font-size:9px; color:var(--text-dim); padding:2px 4px; }
+.reactions-summary .count.ok { color:var(--green); }
+.reactions-summary .count.bad { color:var(--red); }
+
+/* Actions */
+.slot-actions { display:flex; gap:4px; padding:4px 0; justify-content:flex-end; }
+
+/* Thread */
+.slot-thread { margin:4px 0; }
+.slot-thread-hdr { font-size:10px; color:var(--text-dim); cursor:pointer; }
+.slot-thread-hdr:hover { color:var(--accent); }
+.slot-thread-body { padding-left:8px; }
+.slot-thread-body.open { display:block; }
+.tmsg { display:flex; align-items:flex-start; gap:6px; padding:3px 0; font-size:11px; }
+.tmsg-avatar { width:18px; height:18px; border-radius:50%; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; color:var(--accent); flex-shrink:0; }
+.tmsg-who { font-size:10px; font-weight:600; color:var(--text-dim); min-width:40px; }
+.tmsg-text { flex:1; white-space:pre-wrap; word-break:break-word; }
+
+/* Slot time */
+.slot-time { font-size:9px; color:var(--text-dim); margin-left:auto; }
+
+/* Table */
+.v3-table { width:100%; border-collapse:collapse; font-size:10px; }
+.v3-table th, .v3-table td { padding:2px 6px; border:1px solid var(--border); text-align:left; }
+.v3-table th { background:var(--surface2); color:var(--text-dim); font-weight:600; }
+
+/* Schema-render mode — each slot in labeled frame */
+.schema-card { margin:6px 0; border:1px dashed var(--border); border-radius:4px; background:var(--surface); }
+.schema-card .node-hdr { border-bottom:1px solid var(--border); }
+.schema-card .schema-body { padding:4px; }
+.schema-card .schema-body.collapsed { display:none; }
+.slot-frame { position:relative; margin:3px 2px; border:1px solid var(--border); border-radius:3px; min-height:18px; }
+.slot-frame:hover { border-color:var(--accent); }
+.slot-frame-label { position:absolute; top:-8px; left:6px; font-size:8px; padding:0 3px; background:var(--surface); color:var(--accent2); font-weight:600; letter-spacing:.5px; z-index:1; }
+.slot-frame-content { padding:4px 6px; }
+.slot-frame-content.sf-collapsed { display:none; }
+.slot-frame-empty { padding:4px 6px; font-size:10px; color:var(--text-dim); font-style:italic; }
+.slot-frame-toggle { position:absolute; top:-8px; right:6px; font-size:8px; padding:0 3px; background:var(--surface); color:var(--text-dim); cursor:pointer; z-index:1; }
+.slot-frame-toggle:hover { color:var(--accent); }
+
+/* Schema inspect overlay */
+.schema-inspect { position:relative; }
+.schema-inspect .slot-frame-label { color:var(--green); background:var(--surface2); }
+
+/* Views editor */
+.ve-section { margin-bottom:10px; }
+.ve-section-hdr { font-size:10px; color:var(--accent); font-weight:600; display:flex; align-items:center; gap:4px; padding:2px 0; border-bottom:1px solid var(--border); margin-bottom:4px; }
+.ve-section-hdr button { font-size:9px; padding:0 4px; margin-left:auto; }
+.ve-item { padding:4px; background:var(--surface2); border-radius:3px; margin-bottom:4px; }
+.ve-item-hdr { display:flex; align-items:center; gap:4px; font-size:11px; font-weight:600; cursor:pointer; }
+.ve-item-hdr:hover { color:var(--accent); }
+.ve-item-body { display:none; padding:4px 0 0 8px; }
+.ve-item-body.open { display:block; }
+.ve-row { display:flex; align-items:center; gap:3px; margin:2px 0; font-size:10px; }
+.ve-row label { color:var(--text-dim); min-width:50px; }
+.ve-row input, .ve-row select { font-size:10px; padding:1px 3px; flex:1; min-width:0; }
+.ve-row .ve-del { color:var(--red); cursor:pointer; padding:0 3px; font-size:11px; }
+.ve-row .ve-del:hover { color:#fff; }
+.ve-slot-row { display:flex; align-items:center; gap:3px; padding:2px 0; font-size:10px; border-bottom:1px solid var(--surface); }
+.ve-slot-row:last-child { border-bottom:none; }
+.ve-field-row { display:flex; align-items:center; gap:3px; font-size:9px; padding:1px 0; }
+.ve-field-row input { font-size:9px; padding:1px 2px; }
+.ve-mapping { width:100%; font-family:monospace; font-size:9px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px; padding:3px 5px; resize:vertical; line-height:1.3; }
+.ve-mapping:focus { border-color:var(--accent); outline:none; }
+
+/* View editor modal columns */
+.ve-col-hdr { font-size:12px; font-weight:600; color:var(--accent); margin-bottom:6px; }
 
 /* Event log */
 .event-item { font-size:10px; padding:2px 0; border-bottom:1px solid var(--surface2); }
@@ -82,7 +174,102 @@ textarea { resize:vertical; }
 .tab-bar { display:flex; gap:2px; padding:2px 8px; border-bottom:1px solid var(--border); flex-shrink:0; }
 .tab-btn { padding:3px 8px; font-size:11px; border:none; background:transparent; color:var(--text-dim); border-bottom:2px solid transparent; }
 .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+/* Top-level pages */
+.page-tabs { display:flex; gap:0; padding:0 12px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+.page-tab { padding:6px 16px; font-size:12px; font-weight:600; border:none; background:transparent; color:var(--text-dim); border-bottom:2px solid transparent; cursor:pointer; }
+.page-tab:hover { color:var(--text); }
+.page-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.page { display:none; flex:1; min-height:0; }
+.page.active { display:flex; }
+
+/* JSON inspector */
+.json-inspector { position:fixed; z-index:90; background:var(--bg); border:1px solid var(--accent); border-radius:4px; padding:0; max-width:500px; max-height:400px; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+.json-inspector-hdr { display:flex; align-items:center; padding:4px 8px; background:var(--surface); border-bottom:1px solid var(--border); font-size:10px; font-weight:600; color:var(--accent); }
+.json-inspector-hdr .ji-close { margin-left:auto; cursor:pointer; color:var(--text-dim); }
+.json-inspector-hdr .ji-close:hover { color:var(--text); }
+.json-inspector pre { padding:8px; font-size:10px; overflow:auto; max-height:360px; margin:0; color:var(--text); }
+
+/* Chat page */
+.chat-thread { flex:1; overflow-y:auto; padding:8px; }
+.chat-msg { margin:4px 0; padding:6px 10px; border-radius:6px; font-size:11px; max-width:80%; }
+.chat-msg.user { background:var(--accent); color:#000; margin-left:auto; }
+.chat-msg.assistant { background:var(--surface2); }
+.chat-input-bar { display:flex; gap:4px; padding:6px 8px; border-top:1px solid var(--border); flex-shrink:0; }
+.chat-input-bar textarea { flex:1; min-height:32px; max-height:120px; resize:vertical; font-size:11px; }
+
+/* Editor page */
+.editor-panels { flex:1; display:flex; min-height:0; }
+.editor-panel { flex:1; display:flex; flex-direction:column; min-height:0; overflow-y:auto; padding:8px; }
+.editor-panel + .editor-panel { border-left:1px solid var(--border); }
 </style>
+<script>
+/* v3_components.js — Component library (source: tools/v3_components.js) */
+(function(root) {
+'use strict';
+const _components = {};
+const _esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const _statusColors = { done:'green', active:'accent', pending:'text-dim', failed:'red', pass:'green', fail:'red' };
+function register(name, def) { _components[name] = { schema: def.schema||{}, fieldMap: def.fieldMap||{}, render: def.render||(()=>''), ascii: def.ascii||((p,w)=>['']) }; }
+function get(name) { return _components[name]||null; }
+function list() { return Object.keys(_components); }
+function schema(name) { return _components[name]?.schema||{}; }
+function resolve(name, rawData, overrides) {
+  const comp = _components[name]; if (!comp) return {};
+  const props = {}, fmap = { ...comp.fieldMap, ...(overrides||{}) };
+  for (const [k, fd] of Object.entries(comp.schema)) {
+    const paths = String(fmap[k]||k).split('|').map(s=>s.trim()); let val;
+    for (const p of paths) { val = _gp(rawData, p); if (val != null && val !== '') break; }
+    if (val == null && 'default' in fd) val = fd.default;
+    props[k] = val;
+  }
+  return props;
+}
+function _gp(o, p) { if (!o||!p) return; const pp=p.split('.'); let v=o; for (const s of pp) { if (v==null||typeof v!=='object') return; v=v[s]; } return v; }
+function render(name, props) { const c=_components[name]; return c ? c.render(props) : `<div>[?${_esc(name)}]</div>`; }
+function ascii(name, props, w) { const c=_components[name]; return c ? c.ascii(props, w||40) : [`[?${name}]`]; }
+function _pad(s, w) { return (s+' '.repeat(w)).slice(0,w); }
+function _truncate(s, m) { s=String(s??''); return s.length>m ? s.slice(0,m-1)+'…' : s; }
+function _box(lines, w) { const o=['┌'+'─'.repeat(w-2)+'┐']; for (const l of lines) o.push('│'+_pad(l,w-2)+'│'); o.push('└'+'─'.repeat(w-2)+'┘'); return o; }
+
+// ── Schema-view: universal JSON renderer (core, always available) ──
+register('schema', { schema: { data:{type:'object',default:{},doc:'Any JSON data'} }, fieldMap:{},
+  render(p) {
+    function rv(v, depth) {
+      if (v == null) return `<span style="color:var(--text-dim);font-style:italic;">(empty)</span>`;
+      if (typeof v === 'boolean') return `<span style="color:var(--${v?'green':'red'});">${v}</span>`;
+      if (typeof v === 'number') return `<span style="color:var(--accent3);">${v}</span>`;
+      if (typeof v === 'string') {
+        if (!v) return `<span style="color:var(--text-dim);font-style:italic;">""</span>`;
+        const s = v.length > 120 ? _esc(v.slice(0,117)) + '...' : _esc(v);
+        return `<span style="color:var(--text);">${s}</span>`;
+      }
+      if (Array.isArray(v)) {
+        if (!v.length) return `<span style="color:var(--text-dim);">[]</span>`;
+        if (depth > 2) return `<span style="color:var(--text-dim);">[${v.length}]</span>`;
+        return `<div style="padding-left:10px;">${v.map((x,i) => `<div style="margin:1px 0;"><span style="color:var(--text-dim);">${i}:</span> ${rv(x, depth+1)}</div>`).join('')}</div>`;
+      }
+      if (typeof v === 'object') {
+        const keys = Object.keys(v);
+        if (!keys.length) return `<span style="color:var(--text-dim);">{}</span>`;
+        if (depth > 2) return `<span style="color:var(--text-dim);">{${keys.length}}</span>`;
+        return `<div style="padding-left:10px;">${keys.map(k => `<div style="margin:1px 0;"><span style="color:var(--accent2);">${_esc(k)}</span>: ${rv(v[k], depth+1)}</div>`).join('')}</div>`;
+      }
+      return `<span>${_esc(String(v))}</span>`;
+    }
+    // Render all props as key-value pairs
+    const keys = Object.keys(p);
+    if (!keys.length) return `<div class="node-slot" style="font-size:9px;color:var(--text-dim);padding:4px 6px;">(no data)</div>`;
+    return `<div class="node-slot" style="font-size:9px;padding:4px 6px;">${keys.map(k => `<div style="margin:1px 0;"><span style="color:var(--accent2);font-weight:600;">${_esc(k)}</span>: ${rv(p[k], 0)}</div>`).join('')}</div>`;
+  },
+  ascii(p,w) { const keys=Object.keys(p); return keys.map(k=>` ${k}: ${_truncate(JSON.stringify(p[k]),w-k.length-4)}`); } });
+
+const V3C = { register, get, list, schema, resolve, render, ascii, _esc, _box, _pad, _truncate, _components };
+root.V3C = V3C;
+})(window);
+</script>
+<!-- Optional: JS component library (header, text, tags, etc.) — load for rich rendering -->
+<script src="/static/v3_components.js"></script>
 </head>
 <body>
 
@@ -90,11 +277,21 @@ textarea { resize:vertical; }
 <div class="top-bar">
   <h1>Workflow v3</h1>
   <span style="color:var(--text-dim);font-size:10px;">job-based reactive</span>
-  <span id="statusDot" style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);margin-left:auto;"></span>
+  <span style="flex:1;"></span>
+  <button class="btn sm" id="btnViewEditor">Views</button>
+  <span id="statusDot" style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);"></span>
   <span id="statusText" style="font-size:11px;color:var(--text-dim);">idle</span>
 </div>
 
-<div class="main">
+<!-- Page tabs -->
+<div class="page-tabs">
+  <button class="page-tab active" data-page="jobs">Jobs</button>
+  <button class="page-tab" data-page="chat">Chat</button>
+  <button class="page-tab" data-page="editor">Editor</button>
+</div>
+
+<!-- ═══ PAGE: Jobs ═══ -->
+<div class="page active" id="page-jobs" style="flex-direction:row;">
   <!-- Left: Workers + Job Queues -->
   <div class="panel panel-left">
     <div class="panel-hdr">WORKERS <button class="btn sm" id="btnImportV2" title="Import from v2" style="margin-left:auto;font-size:9px;">v2</button> <button class="btn sm" id="btnAddWorker">+</button></div>
@@ -117,7 +314,12 @@ textarea { resize:vertical; }
   <div class="panel panel-center">
     <div class="panel-hdr">
       CARDS
-      <span id="cardCount" style="color:var(--text-dim);font-size:10px;margin-left:auto;"></span>
+      <select id="renderMode" style="margin-left:auto;font-size:9px;padding:1px 3px;">
+        <option value="normal">Normal</option>
+        <option value="schema">Schema</option>
+        <option value="inspect">Inspect</option>
+      </select>
+      <span id="cardCount" style="color:var(--text-dim);font-size:10px;"></span>
     </div>
     <div class="panel-body" id="cards-panel"></div>
   </div>
@@ -128,6 +330,7 @@ textarea { resize:vertical; }
       <button class="tab-btn active" data-tab="yaml">YAML</button>
       <button class="tab-btn" data-tab="events">Events</button>
       <button class="tab-btn" data-tab="state">State</button>
+      <button class="tab-btn" data-tab="views">Views</button>
     </div>
 
     <!-- YAML tab -->
@@ -376,6 +579,75 @@ job_templates:
         <pre id="stateView" style="font-size:10px;white-space:pre-wrap;"></pre>
       </div>
     </div>
+
+    <!-- Views tab — read-only info -->
+    <div id="tab-views" style="flex:1;display:none;flex-direction:column;min-height:0;">
+      <div class="panel-body" id="views-info-panel" style="font-size:10px;"></div>
+    </div>
+
+  </div>
+</div><!-- /page-jobs -->
+
+<!-- ═══ PAGE: Chat ═══ -->
+<div class="page" id="page-chat" style="flex-direction:column;">
+  <div class="chat-thread" id="chat-thread">
+    <div style="font-size:11px;color:var(--text-dim);padding:20px;text-align:center;">
+      Chat with workers. Send prompts, see responses.<br>
+      <span style="font-size:10px;">Select a worker and type a message below.</span>
+    </div>
+  </div>
+  <div class="chat-input-bar">
+    <select id="chatWorkerSelect" style="width:100px;font-size:10px;padding:2px 4px;"></select>
+    <textarea id="chatInput" placeholder="Type a message..." rows="1"></textarea>
+    <button class="btn sm primary" id="btnChatSend">Send</button>
+  </div>
+</div>
+
+<!-- ═══ PAGE: Editor ═══ -->
+<div class="page" id="page-editor" style="flex-direction:column;">
+  <div class="editor-panels">
+    <!-- Left: Components list -->
+    <div class="editor-panel" id="editor-components-panel" style="max-width:200px;">
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">COMPONENTS</div>
+      <div id="editor-components-body"></div>
+    </div>
+    <!-- Center: Field Editor -->
+    <div class="editor-panel" id="editor-fields-panel">
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">FIELDS</div>
+      <div id="editor-fields-body" style="font-size:10px;color:var(--text-dim);">Select a component</div>
+    </div>
+    <!-- Right: Live Preview -->
+    <div class="editor-panel" id="editor-preview-panel">
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">PREVIEW</div>
+      <div id="editor-preview-body" style="font-size:10px;color:var(--text-dim);">Select a component to preview</div>
+    </div>
+  </div>
+</div>
+
+<!-- JSON Inspector (floating, created dynamically) -->
+<div id="jsonInspector" class="json-inspector" style="display:none;">
+  <div class="json-inspector-hdr">
+    <span id="jiTitle">slot.data</span>
+    <span class="ji-close" id="jiClose">&times;</span>
+  </div>
+  <pre id="jiContent"></pre>
+</div>
+
+<!-- View Editor Modal -->
+<div id="viewEditorModal" style="display:none;position:fixed;inset:0;z-index:100;">
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,.6);" data-modal-backdrop></div>
+  <div style="position:absolute;inset:30px;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
+      <span style="font-size:13px;font-weight:600;color:var(--accent);">View Editor</span>
+      <span style="font-size:10px;color:var(--text-dim);margin-left:8px;">Templates &bull; Views &bull; Slot Definitions</span>
+      <button class="btn sm" id="btnCloseViewEditor" style="margin-left:auto;">&times; Close</button>
+    </div>
+    <div style="flex:1;display:flex;min-height:0;">
+      <!-- Left column: Templates + Views -->
+      <div style="flex:1;overflow-y:auto;padding:8px;border-right:1px solid var(--border);" id="ve-col-left"></div>
+      <!-- Right column: Slot Definitions -->
+      <div style="flex:1;overflow-y:auto;padding:8px;" id="ve-col-right"></div>
+    </div>
   </div>
 </div>
 
@@ -513,6 +785,175 @@ function asmStore(state, ref, value) {
   obj[parts[parts.length - 1]] = value;
 }
 
+// ══════════════════════════════════════════════════════════
+//  SLOT SCHEMAS — lightweight docs: what each component expects
+//  No resolution chain, no transforms — just interface docs
+// ══════════════════════════════════════════════════════════
+const _slotSchemas = {
+  header:    { required: ['title'], optional: ['icon', 'status', 'time'] },
+  text:      { required: ['text'], optional: ['label'] },
+  tags:      { required: ['tags'], optional: [] },
+  status:    { required: ['value'], optional: ['label'] },
+  image:     { required: ['src'], optional: ['label'] },
+  list:      { required: ['items'], optional: ['label', 'color'] },
+  badge:     { required: ['text'], optional: ['cls'] },
+  button:    { required: ['label'], optional: ['action', 'color'] },
+  reactions: { required: ['items'], optional: [] },
+  actions:   { required: ['items'], optional: [] },
+  thread:    { required: ['items'], optional: ['label'] },
+  table:     { required: ['rows'], optional: ['headers', 'label'] },
+  schema:    { required: [], optional: ['(any)'] },
+};
+
+// ══════════════════════════════════════════════════════════
+//  RENDER COMPONENT — direct: slot.data → HTML via V3C
+//  No resolution chain. Component gets assembled JSON, returns HTML.
+// ══════════════════════════════════════════════════════════
+const _statusColors = { done:'green', active:'accent', pending:'text-dim', failed:'red', pass:'green', fail:'red' };
+
+function renderComponent(type, data, style) {
+  const comp = V3C.get(type) || V3C.get('schema');
+  if (!comp) return `<div class="node-slot">[no renderer]</div>`;
+  return comp.render(data || {}, style);
+}
+
+// ══════════════════════════════════════════════════════════
+//  CARD TEMPLATES — slot list + assembler per slot
+// ══════════════════════════════════════════════════════════
+const _cardTemplates = {
+  job: {
+    slots: [
+      { type: 'header', asm: 'CALL @title, default, @n.data.id, @n.id\nCALL @icon, default, @n.data.icon, "#"\nMOV @status, @n.data.status\nMOV @time, @n.data.time' },
+      { type: 'meta',   asm: 'MOV @tags.worker, @n.data.worker\nMOV @tags.priority, @n.data.priority' },
+      { type: 'result', asm: 'CALL @text, default, @n.data.answer, @n.data.result\nCALL @text, default, @text, ""\nMOV @label, "Result"' },
+    ],
+  },
+  entity: {
+    slots: [
+      { type: 'header',    asm: 'CALL @title, default, @n.data.name, @n.data.title\nCALL @title, default, @title, @n.id\nCALL @icon, default, @n.data.icon, "E"\nMOV @status, @n.data.status' },
+      { type: 'tags',      asm: 'CALL @tags, default, @n.data.tags, {}' },
+      { type: 'status',    asm: 'CALL @value, default, @n.data.status, ""\nMOV @label, "Status"' },
+      { type: 'answer',    asm: 'CALL @text, default, @n.data.answer, ""\nMOV @label, "Answer"' },
+      { type: 'reactions', asm: 'CALL @items, default, @n.data.reactions, []' },
+      { type: 'image',     asm: 'CALL @src, default, @n.data.image, ""' },
+      { type: 'thread',    asm: 'CALL @items, default, @n.children, []\nMOV @label, "Thread"' },
+    ],
+  },
+  message: {
+    slots: [
+      { type: 'header',  asm: 'CALL @title, default, @n.data.title, @n.id\nCALL @icon, default, @n.data.icon, "M"' },
+      { type: 'content', asm: 'CALL @text, default, @n.data.answer, @n.data.content\nCALL @text, default, @text, ""' },
+    ],
+  },
+};
+
+// ══════════════════════════════════════════════════════════
+//  VIEWS — template ref + per-slot-id assembler overrides
+// ══════════════════════════════════════════════════════════
+const _views = {
+  job:     { template: 'job' },
+  entity:  { template: 'entity' },
+  wiki: {
+    template: 'entity',
+    overrides: {
+      'header.1':    (n) => ({ title: n.data.name, icon: 'W', status: n.data.status }),
+      'answer.1':    (n) => ({ text: n.data.description || '', label: 'Description' }),
+      'tags.1':      (n) => ({ tags: n.data.metadata || {} }),
+      'reactions.1': (n) => ({ items: n.data.reviews || [] }),
+      'image.1':     (n) => ({ src: n.data.cover || '' }),
+      'thread.1':    (n) => ({ items: (n.children || []).map(c => ({ name: c.data?.author || 'anon', content: c.data?.text || '' })), label: 'Comments' }),
+    },
+  },
+};
+
+// ══════════════════════════════════════════════════════════
+//  ASSEMBLE SLOTS — data layer: Node → Slot[]
+//  Runs assembler per slot, auto-generates type.N ids
+// ══════════════════════════════════════════════════════════
+function assembleSlots(node, templateName, viewName) {
+  const tmpl = _cardTemplates[templateName];
+  if (!tmpl) return [];
+  const view = _views[viewName];
+  const overrides = view?.overrides || {};
+  const typeCounts = {};
+  return tmpl.slots.map(slotDef => {
+    const n = (typeCounts[slotDef.type] = (typeCounts[slotDef.type] || 0) + 1);
+    const id = slotDef.type + '.' + n;
+    const component = slotDef.component || undefined;
+    // Override assembler (fn) takes priority, then slot.asm (DSL text), then slot.assemble (legacy fn)
+    const overrideFn = overrides[id];
+    let data = {};
+    try {
+      if (overrideFn) {
+        data = overrideFn(node) || {};
+      } else if (slotDef.asm) {
+        const state = execAsm(slotDef.asm, { n: node });
+        // Extract all non-internal keys from state as slot data
+        for (const [k, v] of Object.entries(state)) { if (k !== 'n' && k !== 'each_idx') data[k] = v; }
+      } else if (slotDef.assemble) {
+        data = slotDef.assemble(node) || {};
+      }
+    } catch (e) { /* silent */ }
+    return { type: slotDef.type, component, id, data };
+  });
+}
+
+// ── Reassemble slots (called when node.data changes) ──
+function reassembleNode(nd) {
+  const viewName = nd._view || 'job';
+  const tplName = (_views[viewName]?.template) || viewName;
+  nd.slots = assembleSlots(nd, tplName, viewName);
+}
+
+// ── Get slot by id ──
+function getSlot(nd, slotId) {
+  return nd.slots?.find(s => s.id === slotId) || null;
+}
+
+// ══════════════════════════════════════════════════════════
+//  CHAR-GRID SLOT RENDERERS (ported from AABB pipeline)
+// ══════════════════════════════════════════════════════════
+function _truncateStr(s, max) { s = String(s ?? ''); return s.length > max ? s.slice(0, max - 1) + '\u2026' : s; }
+function _wordWrap(text, w) {
+  const lines = []; const words = text.split(/\s+/);
+  let line = '';
+  for (const word of words) {
+    if (line.length + word.length + 1 > w) { if (line) lines.push(line); line = word; }
+    else line = line ? line + ' ' + word : word;
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
+}
+
+const _charSlotRenderers = {
+  header(d, w) { const s = d.status ? '  ' + d.status.toUpperCase() : ''; return [{ text: _truncateStr(`${d.icon||'\u25cf'} ${d.title||''}`, w - s.length) + s.padStart(w - _truncateStr(`${d.icon||'\u25cf'} ${d.title||''}`, w - s.length).length), color: 'c-accent' }]; },
+  text(d, w) { const t = d.text || d.value || ''; if (!t) return [{ text: '  (empty)', color: 'c-dim' }]; return _wordWrap(t, w - 2).slice(0, 6).map(l => ({ text: '  ' + l, color: '' })).concat(_wordWrap(t, w-2).length > 6 ? [{ text: '  \u2026', color: 'c-dim' }] : []); },
+  tags(d, w) { const t = d.tags || {}; const e = Object.entries(t).filter(([k]) => !k.startsWith('_')); if (!e.length) return []; return [{ text: _truncateStr(e.map(([k, v]) => `${k}:${_truncateStr(String(v), 20)}`).join('  '), w), color: 'c-dim' }]; },
+  status(d, w) { const v = d.value || ''; const c = { done:'c-green', active:'c-accent', failed:'c-red', pass:'c-green', fail:'c-red' }[v.toLowerCase()] || 'c-dim'; return [{ text: ` ${d.label ? d.label + ': ' : ''}${v}`, color: c }]; },
+  reactions(d, w) { const i = d.items || []; if (!i.length) return []; const p = i.filter(r => r.status === 'pass').length; return [{ text: i.map(r => (r.emoji || '\u2605') + (r.status === 'pass' ? '\u2713' : '\u2717')).join(' ') + ` [${p}/${i.length}]`, color: p === i.length ? 'c-green' : 'c-red' }]; },
+  image(d, w) { return d.src ? [{ text: ` [IMG: ${_truncateStr(d.src, w - 8)}]`, color: 'c-dim' }] : []; },
+  thread(d, w) { const i = d.items || []; if (!i.length) return []; const lines = [{ text: `\u25b8 ${d.label || 'thread'} (${i.length})`, color: 'c-dim' }]; for (const t of i.slice(0, 4)) { const r = t.name || t.role || 'sys'; lines.push({ text: `  ${r[0].toUpperCase()}\u2502${_truncateStr(t.content || '', w - 6)}`, color: r === 'user' ? 'c-accent' : 'c-green' }); } if (i.length > 4) lines.push({ text: `  \u2026+${i.length - 4}`, color: 'c-dim' }); return lines; },
+  list(d, w) { const i = d.items || []; if (!i.length) return []; const l = []; if (d.label) l.push({ text: `\u25b8 ${d.label} (${i.length})`, color: 'c-accent2' }); for (const x of i.slice(0, 6)) { const t = typeof x === 'string' ? x : x.text || x.title || x.name || '...'; l.push({ text: `  \u2022 ${_truncateStr(t, w - 4)}`, color: '' }); } if (i.length > 6) l.push({ text: `  \u2026+${i.length - 6}`, color: 'c-dim' }); return l; },
+  table(d, w) { const r = d.rows || []; if (!r.length) return [{ text: '  (empty table)', color: 'c-dim' }]; const lines = []; if (d.headers) lines.push({ text: '  ' + d.headers.map(h => _truncateStr(String(h), 10).padEnd(10)).join(' ').slice(0, w - 2), color: 'c-dim' }); for (const row of r.slice(0, 6)) { lines.push({ text: '  ' + (Array.isArray(row) ? row : [row]).map(c => _truncateStr(String(c), 10).padEnd(10)).join(' ').slice(0, w - 2), color: '' }); } if (r.length > 6) lines.push({ text: `  \u2026+${r.length - 6} rows`, color: 'c-dim' }); return lines; },
+};
+
+function renderCardToLines(nd, width) {
+  if (!nd.slots || !nd.slots.length) {
+    return [{ text: _truncateStr(`\u25cf ${nd.data?.title || nd.id || '?'}`, width), color: 'c-accent' }];
+  }
+  const allLines = [];
+  for (const slot of nd.slots) {
+    const renderer = _charSlotRenderers[slot.type];
+    if (!renderer) continue;
+    allLines.push(...renderer(slot.data, width));
+  }
+  return allLines;
+}
+
+// Legacy
+const cardLayouts = {};
+
+
 // ── Render builtins: produce HTML from data ──
 const _builtins = {
   get(a) { return a[0] != null ? a[0][a[1]] : undefined; },
@@ -528,42 +969,38 @@ const _builtins = {
   json(a) { try { return JSON.stringify(a[0], null, 2); } catch(_) { return String(a[0]); } },
   slice(a) { return Array.isArray(a[0]) ? a[0].slice(+a[1]||0, a[2]!=null?+a[2]:undefined) : String(a[0]||'').slice(+a[1]||0, a[2]!=null?+a[2]:undefined); },
 
-  // HTML template builtins — produce component HTML
+  // tpl(type, ...args) — assembly access to component registry
   tpl(a) {
     const type = a[0];
+    if (type === 'raw') return String(a[1] ?? '');
+    // Build data from positional args based on type
+    const data = {};
     switch (type) {
-      case 'text': {
-        const val = String(a[1] ?? ''), label = String(a[2] ?? '');
-        const empty = val ? '' : ' empty';
-        return `<div class="node-slot slot-text">
-          <div class="slot-label">${esc(label)}</div>
-          <textarea readonly class="esc${empty}">${esc(val)}</textarea>
-        </div>`;
-      }
-      case 'list': {
-        const items = a[1] || [], label = String(a[2] ?? ''), color = a[3] || '';
-        if (!Array.isArray(items) || !items.length) return '';
-        const colorStyle = color ? `color:var(--${color})` : '';
-        return `<div class="node-slot">
-          <div class="slot-list-hdr" style="${colorStyle}">&#9654; ${esc(label)} <span style="opacity:.5">${items.length}</span></div>
-          <div class="slot-list-body open">${items.map(i => `<div class="slot-list-item" style="${colorStyle}">&#8226; ${esc(typeof i === 'string' ? i : i.text || i.title || i.name || JSON.stringify(i))}</div>`).join('')}</div>
-        </div>`;
-      }
-      case 'tags': {
-        const tags = a[1] || {};
-        if (typeof tags !== 'object') return '';
-        const keys = Array.isArray(tags) ? [] : Object.keys(tags);
-        if (!keys.length) return '';
-        return `<div class="node-slot slot-tags">${keys.map(k => `<span class="slot-tag">${esc(k)}: ${esc(String(tags[k]).slice(0,40))}</span>`).join('')}</div>`;
-      }
-      case 'badge': {
-        const text = String(a[1] ?? ''), cls = a[2] || '';
-        return `<span class="node-badge ${esc(cls)}">${esc(text)}</span>`;
-      }
-      case 'raw': return String(a[1] ?? '');
-      default: return `<div class="node-slot">[unknown tpl: ${esc(type)}]</div>`;
+      case 'header':    data.icon = a[1]; data.title = a[2]; data.status = a[3]; break;
+      case 'text':      data.text = a[1]; data.label = a[2]; break;
+      case 'tags':      data.tags = a[1]; break;
+      case 'list':      data.items = a[1]; data.label = a[2]; data.color = a[3]; break;
+      case 'badge':     data.text = a[1]; data.cls = a[2]; break;
+      case 'image':     data.src = a[1]; data.label = a[2]; break;
+      case 'status':    data.value = a[1]; data.label = a[2]; break;
+      case 'button':    data.label = a[1]; data.action = a[2]; data.color = a[3]; break;
+      case 'reactions': data.items = a[1]; break;
+      case 'actions':   data.items = a[1]; break;
+      case 'thread':    data.items = a[1]; data.label = a[2]; break;
+      case 'table':     data.rows = a[1]; data.headers = a[2]; break;
     }
+    return renderComponent(type, data);
   },
+
+  // card(template_name, node_data) — render through template assemblers
+  card(a) {
+    const tplName = typeof a[0] === 'string' ? a[0] : 'job';
+    const rawData = a[1] || {};
+    const node = { id: rawData.id || '', data: rawData, children: [] };
+    const slots = assembleSlots(node, tplName, tplName);
+    return slots.map(s => renderComponent(s.type, s.data)).join('');
+  },
+
   append(a) { return String(a[0] ?? '') + String(a[1] ?? ''); },
 };
 
@@ -621,56 +1058,166 @@ function execAsm(code, extraState) {
 }
 
 // ══════════════════════════════════════════════════════════
-//  CARD RENDERING (assembly-driven)
+//  CARD RENDERING (template-driven, replaces assembly strings)
 // ══════════════════════════════════════════════════════════
 
-// Default card render assembly — can be overridden per card type
-const DEFAULT_CARD_ASM = `; default card renderer
-CALL @_tags, tpl, "tags", @entity.tags
-CALL @_text, tpl, "text", @entity.answer, "Result"
-CALL @_html, append, @_tags, @_text
-`;
-
 let nodes = {};
-try { nodes = JSON.parse(localStorage.getItem('v3_nodes') || '{}'); } catch(_) {}
+try {
+  const raw = JSON.parse(localStorage.getItem('v3_nodes') || '{}');
+  // Migrate old flat nodes → new { data, children, slots, _ui } format
+  for (const [k, nd] of Object.entries(raw)) {
+    if (nd.data && nd.slots) {
+      // Already new format
+      nodes[k] = nd;
+      if (!nd._ui) nd._ui = { collapsed: false };
+      if (!nd.children) nd.children = [];
+    } else {
+      // Old flat format: { id, title, status, answer, tags, collapsed, ... }
+      const data = {};
+      for (const [f, v] of Object.entries(nd)) {
+        if (f !== 'collapsed' && f !== '_view' && f !== 'parentId') data[f] = v;
+      }
+      nodes[k] = {
+        id: nd.id || k,
+        data,
+        children: [],
+        slots: [],
+        _ui: { collapsed: nd.collapsed || false },
+        _view: nd._view || 'job',
+      };
+      reassembleNode(nodes[k]);
+    }
+  }
+} catch(_) {}
 function saveNodes() { localStorage.setItem('v3_nodes', JSON.stringify(nodes)); }
 
+let _renderMode = 'normal'; // 'normal' | 'schema' | 'inspect'
+
+// ── Schema-render: each slot in a labeled, collapsible frame ──
+function renderSlotFrame(slot, inspectMode) {
+  const compName = slot.component || 'schema';
+  const html = renderComponent(compName, slot.data);
+  const isEmpty = !html || html.trim() === '';
+  const extraCls = inspectMode ? ' schema-inspect' : '';
+
+  let content;
+  if (isEmpty) {
+    content = `<div class="slot-frame-empty">(empty)</div>`;
+  } else {
+    content = `<div class="slot-frame-content">${html}</div>`;
+  }
+
+  const compLabel = compName !== slot.type ? ` <span style="color:var(--text-dim);font-size:8px;">[${esc(compName)}]</span>` : '';
+  return `<div class="slot-frame${extraCls}" data-slot-type="${esc(slot.type)}" data-slot-id="${esc(slot.id)}">
+    <span class="slot-frame-label">${esc(slot.id)}${compLabel}</span>
+    <span class="slot-frame-toggle" data-sf-toggle>-</span>
+    ${content}
+  </div>`;
+}
+
+function renderCardSchema(nd, inspectMode) {
+  const slots = nd.slots || [];
+  const viewName = nd._view || 'job';
+  const templateName = (_views[viewName]?.template) || viewName;
+
+  const div = document.createElement('div');
+  div.className = 'schema-card' + (inspectMode ? ' schema-inspect' : '');
+  div.dataset.nodeId = nd.id;
+
+  const hdrSlot = slots.find(s => (s.component || 'schema') === 'header');
+  const hdrHtml = hdrSlot ? renderComponent('header', hdrSlot.data) : `<span class="node-title">${esc(nd.id)}</span>`;
+  const open = !(nd._ui?.collapsed);
+
+  // Body: each non-header slot in its own frame
+  let bodyHtml = '';
+  for (const slot of slots) {
+    if ((slot.component || 'schema') === 'header') continue;
+    bodyHtml += renderSlotFrame(slot, inspectMode);
+  }
+
+  // Info bar
+  const infoBar = `<div style="font-size:8px;color:var(--text-dim);padding:2px 6px;border-bottom:1px solid var(--surface2);">
+    <span style="color:var(--accent2);">view:</span>${esc(viewName)}
+    <span style="color:var(--accent2);margin-left:6px;">tpl:</span>${esc(templateName)}
+    <span style="color:var(--text-dim);margin-left:6px;">${slots.length} slots</span>
+  </div>`;
+
+  div.innerHTML = `
+    <div class="node-hdr" data-hdr="${esc(nd.id)}">
+      <span style="font-size:9px;${open ? 'transform:rotate(90deg);' : ''}">&#9654;</span>
+      ${hdrHtml}
+    </div>
+    ${infoBar}
+    <div class="schema-body${open ? '' : ' collapsed'}" data-body="${esc(nd.id)}">${bodyHtml}</div>`;
+
+  div.querySelector(`[data-hdr="${nd.id}"]`).addEventListener('click', () => {
+    if (!nd._ui) nd._ui = {};
+    nd._ui.collapsed = !nd._ui.collapsed;
+    saveNodes();
+    renderCards();
+  });
+
+  div.querySelectorAll('[data-sf-toggle]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const frame = btn.closest('.slot-frame');
+      const content = frame.querySelector('.slot-frame-content, .slot-frame-empty');
+      if (content) {
+        const collapsed = content.classList.toggle('sf-collapsed');
+        btn.textContent = collapsed ? '+' : '-';
+      }
+    });
+  });
+
+  return div;
+}
+
 function renderCard(nd) {
-  const asm = nd._renderAsm || DEFAULT_CARD_ASM;
-  const result = execAsm(asm, { entity: nd });
-  const bodyHtml = result._html || '';
+  const slots = nd.slots || [];
+  const hdrSlot = slots.find(s => (s.component || 'schema') === 'header');
+  const bodySlots = slots.filter(s => (s.component || 'schema') !== 'header');
+
+  const hdrHtml = hdrSlot ? renderComponent('header', hdrSlot.data) : `<span class="node-title">${esc(nd.id)}</span>`;
+  const bodyHtml = bodySlots.map(s => renderComponent(s.component || 'schema', s.data)).join('');
 
   const div = document.createElement('div');
   div.className = 'node';
   div.dataset.nodeId = nd.id;
 
-  const open = !nd.collapsed;
+  const open = !(nd._ui?.collapsed);
   div.innerHTML = `
-    <div class="node-hdr" data-hdr="${nd.id}">
+    <div class="node-hdr" data-hdr="${esc(nd.id)}">
       <span style="font-size:9px;${open ? 'transform:rotate(90deg);' : ''}">&#9654;</span>
-      <span class="node-icon">${esc(nd.icon || '#')}</span>
-      <span class="node-title">${esc(nd.title)}</span>
-      <span class="node-badge ${nd.status}">${esc(nd.status)}</span>
+      ${hdrHtml}
     </div>
-    <div class="node-body${open ? ' open' : ''}" data-body="${nd.id}">${bodyHtml}</div>`;
+    <div class="node-body${open ? ' open' : ''}" data-body="${esc(nd.id)}">${bodyHtml}</div>`;
 
   div.querySelector(`[data-hdr="${nd.id}"]`).addEventListener('click', () => {
-    nd.collapsed = !nd.collapsed;
+    if (!nd._ui) nd._ui = {};
+    nd._ui.collapsed = !nd._ui.collapsed;
     saveNodes();
     renderCards();
   });
   return div;
 }
 
+// renderCardToLines is available for AABB panel integration (char-grid output)
+
 function renderCards() {
   const panel = document.getElementById('cards-panel');
   panel.innerHTML = '';
   const roots = Object.values(nodes).filter(n => !n.parentId);
+
   if (!roots.length) {
     panel.innerHTML = '<div style="font-size:10px;color:var(--text-dim);">No cards yet. Run a v3 workflow.</div>';
-  }
-  for (const nd of roots) {
-    panel.appendChild(renderCard(nd));
+  } else if (_renderMode === 'schema' || _renderMode === 'inspect') {
+    for (const nd of roots) {
+      panel.appendChild(renderCardSchema(nd, _renderMode === 'inspect'));
+    }
+  } else {
+    for (const nd of roots) {
+      panel.appendChild(renderCard(nd));
+    }
   }
   document.getElementById('cardCount').textContent = Object.keys(nodes).length + ' nodes';
 }
@@ -714,7 +1261,7 @@ async function pollStatus() {
   try {
     const status = await get(`/api/workflow/v3/status?run_id=${_runId}`);
     if (status.error) return;
-    renderQueues(status.queues);
+    renderQueues(status.queues, status.jobs);
     renderEvents(status.events);
     renderState(status);
     updateCardsFromState(status);
@@ -731,21 +1278,66 @@ async function pollStatus() {
   } catch(_) {}
 }
 
-function renderQueues(queues) {
+function renderQueues(queues, jobs) {
   const el = document.getElementById('queues-panel');
   if (!queues || !Object.keys(queues).length) {
     el.innerHTML = '<div style="font-size:10px;color:var(--text-dim);">No queues</div>';
     return;
   }
+
+  // Chip view (compact queue list)
   let html = '';
-  for (const [worker, jobs] of Object.entries(queues)) {
+  for (const [worker, qJobs] of Object.entries(queues)) {
     html += `<div class="lane"><div class="lane-hdr">${esc(worker)}</div>`;
-    for (const j of jobs) {
+    for (const j of qJobs) {
       html += `<span class="job-chip ${j.status}">${esc(j.id)}</span>`;
     }
-    if (!jobs.length) html += `<span style="font-size:10px;color:var(--text-dim);">empty</span>`;
+    if (!qJobs.length) html += `<span style="font-size:10px;color:var(--text-dim);">empty</span>`;
     html += `</div>`;
   }
+
+  // Timeline view (horizontal bars with time)
+  if (jobs && Object.keys(jobs).length) {
+    const allJobs = Object.values(jobs);
+    const now = Date.now() / 1000;
+    let tMin = Infinity, tMax = -Infinity;
+    for (const j of allJobs) {
+      if (j.started_at && j.started_at < tMin) tMin = j.started_at;
+      if (j.finished_at && j.finished_at > tMax) tMax = j.finished_at;
+    }
+    if (tMin === Infinity) tMin = now - 1;
+    if (tMax === -Infinity || tMax < tMin + 1) tMax = now;
+    const span = tMax - tMin || 1;
+
+    // Group jobs by worker
+    const byWorker = {};
+    for (const j of allJobs) {
+      if (!byWorker[j.worker]) byWorker[j.worker] = [];
+      byWorker[j.worker].push(j);
+    }
+
+    html += `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:4px;">`;
+    html += `<div style="font-size:9px;color:var(--text-dim);margin-bottom:3px;">TIMELINE</div>`;
+    html += `<div class="timeline">`;
+    for (const [worker, wJobs] of Object.entries(byWorker)) {
+      html += `<div class="tl-lane"><div class="tl-label" title="${esc(worker)}">${esc(worker)}</div><div class="tl-track">`;
+      for (const j of wJobs) {
+        const s = j.started_at || tMin;
+        const e = j.finished_at || (j.status === 'active' ? now : s + 0.5);
+        const left = ((s - tMin) / span * 100).toFixed(1);
+        const width = Math.max(((e - s) / span * 100), 1).toFixed(1);
+        html += `<div class="tl-bar ${j.status}" style="left:${left}%;width:${width}%;" title="${esc(j.id)} (${j.status})">${esc(j.id)}</div>`;
+      }
+      // Now marker
+      const nowPct = ((now - tMin) / span * 100).toFixed(1);
+      if (nowPct > 0 && nowPct < 100) {
+        html += `<div class="tl-now" style="left:${nowPct}%;"></div>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `</div></div>`;
+  }
+
   el.innerHTML = html;
 }
 
@@ -766,43 +1358,429 @@ function renderState(status) {
 }
 
 function updateCardsFromState(status) {
-  // Create/update cards from job results
+  // Node = { id, data: {raw server JSON}, children: [], slots: [], _ui: {}, _view: string }
+  // Server data flows into node.data as-is; assemblers project it to slots for display
   let changed = false;
+
   for (const [jid, job] of Object.entries(status.jobs || {})) {
     if (!nodes[jid]) {
       nodes[jid] = {
-        id: jid, title: jid, status: job.status,
-        icon: job.status === 'done' ? 'J' : job.status === 'active' ? '>' : '?',
-        answer: job.result || '',
-        tags: { worker: job.worker, priority: job.priority },
-        collapsed: false,
+        id: jid,
+        data: { id: jid, status: job.status, answer: job.result || '', worker: job.worker, priority: job.priority, time: job.started_at ? new Date(job.started_at * 1000).toLocaleTimeString('en-GB', { hour12: false }) : '' },
+        children: [],
+        slots: [],
+        _ui: { collapsed: false },
+        _view: 'job',
       };
+      reassembleNode(nodes[jid]);
       changed = true;
     } else {
-      if (nodes[jid].status !== job.status) {
-        nodes[jid].status = job.status;
-        nodes[jid].icon = job.status === 'done' ? 'J' : job.status === 'active' ? '>' : '?';
-        if (job.result) nodes[jid].answer = job.result;
+      const nd = nodes[jid];
+      const oldStatus = nd.data.status, oldAnswer = nd.data.answer;
+      nd.data.status = job.status;
+      if (job.result) nd.data.answer = job.result;
+      nd.data.worker = job.worker;
+      nd.data.priority = job.priority;
+      if (nd.data.status !== oldStatus || nd.data.answer !== oldAnswer) {
+        reassembleNode(nd);
         changed = true;
       }
     }
   }
+
+  // Merge entity data from state (enriched entities, reactions, images)
+  const items = status.state?.items;
+  if (Array.isArray(items)) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const key = item._id || item.name || `entity.${i}`;
+      if (!nodes[key]) {
+        nodes[key] = {
+          id: key,
+          data: { ...item, id: key },
+          children: [],
+          slots: [],
+          _ui: { collapsed: false },
+          _view: 'entity',
+        };
+        reassembleNode(nodes[key]);
+        changed = true;
+      } else {
+        const nd = nodes[key];
+        let dataChanged = false;
+        for (const [k, v] of Object.entries(item)) {
+          if (k !== '_id' && v != null && nd.data[k] !== v) {
+            nd.data[k] = v;
+            dataChanged = true;
+          }
+        }
+        if (dataChanged) { reassembleNode(nd); changed = true; }
+      }
+    }
+  }
+
   if (changed) { saveNodes(); renderCards(); }
 }
 
 // ══════════════════════════════════════════════════════════
-//  TAB SWITCHING
+//  TAB SWITCHING (right panel sub-tabs)
 // ══════════════════════════════════════════════════════════
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    ['yaml', 'events', 'state'].forEach(t => {
+    ['yaml', 'events', 'state', 'views'].forEach(t => {
       const el = document.getElementById('tab-' + t);
       if (el) el.style.display = t === btn.dataset.tab ? 'flex' : 'none';
     });
   });
 });
+
+// ══════════════════════════════════════════════════════════
+//  PAGE SWITCHING (top-level: Jobs / Chat / Editor)
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.page-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.page-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const page = document.getElementById('page-' + btn.dataset.page);
+    if (page) page.classList.add('active');
+    // Lazy-init editor content
+    if (btn.dataset.page === 'editor') renderEditorPanels();
+    if (btn.dataset.page === 'chat') initChatWorkerSelect();
+  });
+});
+
+// ══════════════════════════════════════════════════════════
+//  JSON INSPECTOR — click slot frame to see raw slot.data
+// ══════════════════════════════════════════════════════════
+const jiEl = document.getElementById('jsonInspector');
+document.getElementById('jiClose').addEventListener('click', () => { jiEl.style.display = 'none'; });
+document.addEventListener('click', (e) => {
+  // Close inspector when clicking outside
+  if (jiEl.style.display !== 'none' && !jiEl.contains(e.target) && !e.target.closest('.slot-frame')) {
+    jiEl.style.display = 'none';
+  }
+});
+
+function showJsonInspector(title, data, x, y) {
+  jiEl.style.left = Math.min(x, window.innerWidth - 520) + 'px';
+  jiEl.style.top = Math.min(y, window.innerHeight - 420) + 'px';
+  document.getElementById('jiTitle').textContent = title;
+  document.getElementById('jiContent').textContent = JSON.stringify(data, null, 2);
+  jiEl.style.display = 'block';
+}
+
+// Right-click on card → show full node JSON (data + all slots)
+document.getElementById('cards-panel').addEventListener('contextmenu', (e) => {
+  const nodeEl = e.target.closest('[data-node-id]');
+  if (!nodeEl) return;
+  e.preventDefault();
+  const nd = nodes[nodeEl.dataset.nodeId];
+  if (!nd) return;
+  const dump = {
+    id: nd.id,
+    _view: nd._view,
+    data: nd.data,
+    slots: (nd.slots || []).map(s => ({ type: s.type, id: s.id, data: s.data })),
+    children: nd.children?.length || 0,
+  };
+  showJsonInspector(nd.id, dump, e.clientX, e.clientY);
+});
+
+// ══════════════════════════════════════════════════════════
+//  CHAT PAGE
+// ══════════════════════════════════════════════════════════
+let chatMessages = [];
+
+function initChatWorkerSelect() {
+  const sel = document.getElementById('chatWorkerSelect');
+  sel.innerHTML = workers.map((w, i) => `<option value="${i}">${esc(w.role)} (${esc(w.url.replace(/^https?:\/\//, ''))})</option>`).join('');
+}
+
+function renderChatThread() {
+  const el = document.getElementById('chat-thread');
+  if (!chatMessages.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:20px;text-align:center;">Chat with workers. Send prompts, see responses.</div>';
+    return;
+  }
+  el.innerHTML = chatMessages.map(m =>
+    `<div class="chat-msg ${esc(m.role)}">${esc(m.content)}</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('btnChatSend').addEventListener('click', async () => {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const wIdx = +document.getElementById('chatWorkerSelect').value;
+  const w = workers[wIdx];
+  if (!w) return;
+
+  chatMessages.push({ role: 'user', content: text });
+  input.value = '';
+  renderChatThread();
+
+  try {
+    const res = await post(w.url + '/api/v1/generate', {
+      prompt: text, max_length: 512, temperature: 0.7
+    });
+    const reply = res.results?.[0]?.text || '(no response)';
+    chatMessages.push({ role: 'assistant', content: reply });
+  } catch(e) {
+    chatMessages.push({ role: 'assistant', content: '(error: ' + e.message + ')' });
+  }
+  renderChatThread();
+});
+
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btnChatSend').click(); }
+});
+
+// ══════════════════════════════════════════════════════════
+//  EDITOR PAGE — Card Templates + Component Schemas
+// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+//  COMPONENT EDITOR — create/edit components, field schemas, live preview
+// ══════════════════════════════════════════════════════════
+const _customComponents = {};
+let _ceSelected = null; // currently selected component name
+let _ceSampleJson = '';
+
+// JS components that were loaded from v3_components.js (not schema, not custom)
+const _jsComponentNames = new Set();
+
+function _registerCustomComponent(name, fields) {
+  _customComponents[name] = { fields };
+  const schemaRenderer = V3C.get('schema');
+  V3C.register(name, {
+    schema: fields,
+    render(props) { return schemaRenderer.render(props); },
+    ascii(props, w) { return schemaRenderer.ascii(props, w); },
+  });
+}
+
+function _saveCustomComponents() {
+  localStorage.setItem('v3_custom_components', JSON.stringify(_customComponents));
+}
+
+function _generateSampleJson(compName) {
+  const schema = V3C.schema(compName);
+  const sample = {};
+  for (const [k, fd] of Object.entries(schema)) {
+    if ('default' in fd && fd.default !== '' && fd.default !== undefined) {
+      sample[k] = fd.default;
+    } else if (fd.type === 'number') sample[k] = 0;
+    else if (fd.type === 'boolean') sample[k] = false;
+    else if (fd.type === 'array') sample[k] = [];
+    else if (fd.type === 'object') sample[k] = {};
+    else sample[k] = '';
+  }
+  return JSON.stringify(sample, null, 2);
+}
+
+function _getComponentBadge(name) {
+  if (name === 'schema') return '<span style="color:var(--green);font-size:8px;">core</span>';
+  if (_customComponents[name]) return '<span style="color:var(--accent);font-size:8px;">custom</span>';
+  if (_jsComponentNames.has(name)) return '<span style="color:var(--text-dim);font-size:8px;">js</span>';
+  return '';
+}
+
+function _isCustom(name) { return !!_customComponents[name]; }
+
+function renderEditorPanels() {
+  renderComponentList();
+  renderFieldEditor();
+  renderComponentPreview();
+}
+
+function renderComponentList() {
+  const el = document.getElementById('editor-components-body');
+  if (!el) return;
+  let h = '';
+  for (const name of V3C.list()) {
+    const sel = name === _ceSelected ? 'background:var(--surface2);' : '';
+    const fieldCount = Object.keys(V3C.schema(name)).length;
+    h += `<div class="ve-item-hdr" data-ce-select="${esc(name)}" style="cursor:pointer;padding:3px 6px;margin:1px 0;border-radius:3px;${sel}">`;
+    h += `<span style="color:var(--accent);">${esc(name)}</span> `;
+    h += `<span style="color:var(--text-dim);font-size:8px;">${fieldCount}f</span> `;
+    h += _getComponentBadge(name);
+    h += `</div>`;
+  }
+  h += `<button class="btn sm" id="ce-add-btn" style="margin-top:6px;font-size:9px;width:100%;">+ New Component</button>`;
+  el.innerHTML = h;
+  // Wire
+  el.querySelectorAll('[data-ce-select]').forEach(row => {
+    row.addEventListener('click', () => {
+      _ceSelected = row.dataset.ceSelect;
+      _ceSampleJson = _generateSampleJson(_ceSelected);
+      renderEditorPanels();
+    });
+  });
+  document.getElementById('ce-add-btn')?.addEventListener('click', () => {
+    const name = prompt('Component name:');
+    if (!name || V3C.get(name)) { if (name && V3C.get(name)) alert('Already exists'); return; }
+    _registerCustomComponent(name, { data: { type: 'string', default: '', doc: 'Data' } });
+    _saveCustomComponents();
+    _ceSelected = name;
+    _ceSampleJson = _generateSampleJson(name);
+    renderEditorPanels();
+  });
+}
+
+function renderFieldEditor() {
+  const el = document.getElementById('editor-fields-body');
+  if (!el) return;
+  if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a component</div>'; return; }
+  const schema = V3C.schema(_ceSelected);
+  const fields = Object.entries(schema);
+  const editable = _isCustom(_ceSelected);
+  let h = '';
+  h += `<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">${esc(_ceSelected)} ${_getComponentBadge(_ceSelected)}</div>`;
+  // Field table
+  h += `<table style="width:100%;font-size:9px;border-collapse:collapse;">`;
+  h += `<tr style="color:var(--text-dim);border-bottom:1px solid var(--border);">`;
+  h += `<th style="text-align:left;padding:2px 4px;">name</th><th style="text-align:left;padding:2px 4px;">type</th><th style="text-align:left;padding:2px 4px;">default</th><th style="text-align:left;padding:2px 4px;">doc</th>`;
+  if (editable) h += `<th></th>`;
+  h += `</tr>`;
+  for (const [fname, fd] of fields) {
+    h += `<tr style="border-bottom:1px solid var(--surface);">`;
+    if (editable) {
+      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="name" value="${esc(fname)}" style="width:60px;font-size:9px;" /></td>`;
+      h += `<td style="padding:2px;"><select data-ce-field="${esc(fname)}" data-ce-prop="type" style="font-size:9px;">`;
+      for (const t of ['string','number','boolean','array','object']) h += `<option${t === fd.type ? ' selected' : ''}>${t}</option>`;
+      h += `</select></td>`;
+      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="default" value="${esc(JSON.stringify(fd.default ?? ''))}" style="width:50px;font-size:9px;" /></td>`;
+      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="doc" value="${esc(fd.doc || '')}" style="width:80px;font-size:9px;" /></td>`;
+      h += `<td style="padding:2px;"><span class="ve-del" data-ce-del="${esc(fname)}" style="cursor:pointer;">&times;</span></td>`;
+    } else {
+      h += `<td style="padding:2px 4px;color:var(--accent3);">${esc(fname)}</td>`;
+      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(fd.type || 'any')}</td>`;
+      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(JSON.stringify(fd.default ?? ''))}</td>`;
+      h += `<td style="padding:2px 4px;color:var(--text-dim);font-style:italic;">${esc(fd.doc || '')}</td>`;
+    }
+    h += `</tr>`;
+  }
+  h += `</table>`;
+  if (editable) {
+    h += `<div style="margin-top:4px;display:flex;gap:4px;">`;
+    h += `<button class="btn sm" id="ce-add-field" style="font-size:9px;">+ Field</button>`;
+    h += `<button class="btn sm" id="ce-del-comp" style="font-size:9px;color:var(--red);">Delete</button>`;
+    h += `</div>`;
+  }
+  el.innerHTML = h;
+  // Wire editable fields
+  if (editable) {
+    el.querySelectorAll('[data-ce-prop="name"]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const oldName = inp.dataset.ceField;
+        const newName = inp.value.trim();
+        if (!newName || newName === oldName) return;
+        const cc = _customComponents[_ceSelected];
+        cc.fields[newName] = cc.fields[oldName];
+        delete cc.fields[oldName];
+        _registerCustomComponent(_ceSelected, cc.fields);
+        _saveCustomComponents();
+        _ceSampleJson = _generateSampleJson(_ceSelected);
+        renderEditorPanels();
+      });
+    });
+    el.querySelectorAll('[data-ce-prop="type"]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        _customComponents[_ceSelected].fields[sel.dataset.ceField].type = sel.value;
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        _saveCustomComponents(); renderComponentPreview();
+      });
+    });
+    el.querySelectorAll('[data-ce-prop="default"]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        try { _customComponents[_ceSelected].fields[inp.dataset.ceField].default = JSON.parse(inp.value); }
+        catch(_) { _customComponents[_ceSelected].fields[inp.dataset.ceField].default = inp.value; }
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderComponentPreview();
+      });
+    });
+    el.querySelectorAll('[data-ce-prop="doc"]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        _customComponents[_ceSelected].fields[inp.dataset.ceField].doc = inp.value;
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        _saveCustomComponents();
+      });
+    });
+    el.querySelectorAll('[data-ce-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        delete _customComponents[_ceSelected].fields[btn.dataset.ceDel];
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
+      });
+    });
+    document.getElementById('ce-add-field')?.addEventListener('click', () => {
+      const name = prompt('Field name:');
+      if (!name || _customComponents[_ceSelected].fields[name]) return;
+      _customComponents[_ceSelected].fields[name] = { type: 'string', default: '', doc: '' };
+      _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+      _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
+    });
+    document.getElementById('ce-del-comp')?.addEventListener('click', () => {
+      if (!confirm(`Delete component "${_ceSelected}"?`)) return;
+      delete _customComponents[_ceSelected];
+      // Can't unregister from V3C, but it becomes orphaned
+      _saveCustomComponents(); _ceSelected = null; renderEditorPanels();
+    });
+  }
+}
+
+function renderComponentPreview() {
+  const el = document.getElementById('editor-preview-body');
+  if (!el) return;
+  if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a component to preview</div>'; return; }
+  // Only rebuild full HTML if structure changed (different component selected)
+  const existing = document.getElementById('ce-sample-json');
+  if (!existing || el.dataset.ceComp !== _ceSelected) {
+    el.dataset.ceComp = _ceSelected;
+    el.innerHTML = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Sample data:</div>`
+      + `<textarea id="ce-sample-json" class="ve-mapping" rows="8" spellcheck="false" style="margin-bottom:6px;font-size:9px;">${esc(_ceSampleJson)}</textarea>`
+      + `<div id="ce-render-output"></div>`;
+    document.getElementById('ce-sample-json')?.addEventListener('input', (e) => {
+      _ceSampleJson = e.target.value;
+      _updatePreviewRender();
+    });
+  }
+  _updatePreviewRender();
+}
+
+function _updatePreviewRender() {
+  const out = document.getElementById('ce-render-output');
+  if (!out) return;
+  let sampleData = {};
+  try { sampleData = JSON.parse(_ceSampleJson); } catch(_) {}
+  let h = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Rendered (schema-view):</div>`;
+  h += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px;">`;
+  h += renderComponent('schema', sampleData);
+  h += `</div>`;
+  if (_jsComponentNames.has(_ceSelected)) {
+    h += `<div style="font-size:9px;color:var(--text-dim);margin:6px 0 4px;">Rendered (${esc(_ceSelected)} JS):</div>`;
+    h += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px;">`;
+    h += renderComponent(_ceSelected, sampleData);
+    h += `</div>`;
+  }
+  out.innerHTML = h;
+}
+
+// ── Load custom components from localStorage ──
+try {
+  const cc = JSON.parse(localStorage.getItem('v3_custom_components'));
+  if (cc) for (const [name, def] of Object.entries(cc)) {
+    _registerCustomComponent(name, def.fields || {});
+  }
+} catch(_) {}
+
+// ── Track which components came from v3_components.js (loaded before this code) ──
+for (const name of V3C.list()) {
+  if (name !== 'schema' && !_customComponents[name]) _jsComponentNames.add(name);
+}
 
 // ══════════════════════════════════════════════════════════
 //  INIT
@@ -814,8 +1792,311 @@ document.getElementById('btnStop').addEventListener('click', () => {
   document.getElementById('statusText').textContent = 'stopped';
 });
 
+document.getElementById('renderMode').addEventListener('change', (e) => {
+  _renderMode = e.target.value;
+  renderCards();
+});
+
+// ── View Editor Modal ──
+document.getElementById('btnViewEditor').addEventListener('click', () => {
+  document.getElementById('viewEditorModal').style.display = 'block';
+  renderViewsTab();
+});
+function closeViewEditor() {
+  document.getElementById('viewEditorModal').style.display = 'none';
+  renderCards();
+  renderViewsInfo();
+}
+document.getElementById('btnCloseViewEditor').addEventListener('click', closeViewEditor);
+document.querySelector('[data-modal-backdrop]').addEventListener('click', closeViewEditor);
+
+// ══════════════════════════════════════════════════════════
+//  VIEWS TAB — interactive editor for Templates, Views, Slots
+// ══════════════════════════════════════════════════════════
+function _saveCustomData() {
+  // Serialize templates: slot type + component + assembler
+  const serTemplates = {};
+  for (const [k, t] of Object.entries(_cardTemplates)) {
+    serTemplates[k] = { slots: t.slots.map(s => ({ type: s.type, component: s.component, style: s.style, asm: s.asm || '' })) };
+  }
+  localStorage.setItem('v3_card_templates_v3', JSON.stringify(serTemplates));
+  // Serialize views
+  const serViews = {};
+  for (const [k, v] of Object.entries(_views)) {
+    serViews[k] = { template: v.template };
+  }
+  localStorage.setItem('v3_views_v3', JSON.stringify(serViews));
+}
+
+// Load saved custom templates/views
+try {
+  const ct = JSON.parse(localStorage.getItem('v3_card_templates_v3'));
+  if (ct) for (const [k, t] of Object.entries(ct)) {
+    if (_cardTemplates[k]) continue; // Don't overwrite built-in templates
+    _cardTemplates[k] = { slots: t.slots.map(s => {
+      return { type: s.type, component: s.component, style: s.style, asm: s.asm || '' };
+    }) };
+  }
+} catch(_) {}
+try {
+  const cv = JSON.parse(localStorage.getItem('v3_views_v3'));
+  if (cv) for (const [k, v] of Object.entries(cv)) {
+    if (_views[k]) continue; // Don't overwrite built-in views
+    _views[k] = { template: v.template };
+  }
+} catch(_) {}
+
+const _templateNames = () => Object.keys(_cardTemplates);
+
+function renderViewsTab() {
+  const elL = document.getElementById('ve-col-left');
+  const elR = document.getElementById('ve-col-right');
+  if (!elL || !elR) return;
+  let html = '';
+
+  // ── CARD TEMPLATES ──
+  html += `<div class="ve-section"><div class="ve-section-hdr">CARD TEMPLATES <button class="btn sm" data-ve="add-template">+</button></div>`;
+  for (const [name, tmpl] of Object.entries(_cardTemplates)) {
+    const typeCounts = {};
+    html += `<div class="ve-item" data-tpl-name="${esc(name)}">`;
+    html += `<div class="ve-item-hdr"><span style="color:var(--accent);">${esc(name)}</span> <span style="color:var(--text-dim);font-size:9px;">${tmpl.slots.length} slots</span><span class="ve-del" data-ve="del-template" data-name="${esc(name)}" style="margin-left:auto;">&times;</span></div>`;
+    html += `<div class="ve-item-body">`;
+    for (let i = 0; i < tmpl.slots.length; i++) {
+      const slot = tmpl.slots[i];
+      const n = (typeCounts[slot.type] = (typeCounts[slot.type] || 0) + 1);
+      const slotId = slot.type + '.' + n;
+      const hasAsm = !!slot.asm;
+      const asmSrc = slot.asm || '';
+      const asmRows = Math.max(2, asmSrc.split('\n').length);
+      html += `<div class="ve-slot-row" style="flex-wrap:wrap;align-items:flex-start;">`;
+      html += `<div style="display:flex;align-items:center;gap:4px;width:100%;">`;
+      html += `<span style="color:var(--accent2);font-size:9px;min-width:50px;">${esc(slotId)}</span>`;
+      html += `<input data-ve="slot-type-name" data-tpl="${esc(name)}" data-idx="${i}" value="${esc(slot.type)}" style="width:60px;font-size:9px;" placeholder="type" />`;
+      html += `<span class="btn sm" data-ve="toggle-asm" data-tpl="${esc(name)}" data-idx="${i}" style="font-size:8px;padding:1px 4px;cursor:pointer;color:${hasAsm ? 'var(--green)' : 'var(--text-dim)'};">asm</span>`;
+      html += `<span class="ve-del" data-ve="del-slot" data-tpl="${esc(name)}" data-idx="${i}">&times;</span>`;
+      if (i > 0) html += `<span style="cursor:pointer;color:var(--text-dim);font-size:9px;" data-ve="move-slot-up" data-tpl="${esc(name)}" data-idx="${i}">&uarr;</span>`;
+      html += `</div>`;
+      html += `<textarea class="ve-asm-editor" data-ve="slot-asm" data-tpl="${esc(name)}" data-idx="${i}" rows="${asmRows}" spellcheck="false" style="display:none;width:100%;font-family:monospace;font-size:8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px;margin-top:2px;resize:vertical;">${esc(asmSrc)}</textarea>`;
+      html += `</div>`;
+    }
+    html += `<button class="btn sm" data-ve="add-slot" data-tpl="${esc(name)}" style="margin-top:3px;font-size:9px;">+ slot</button>`;
+    html += `</div></div>`;
+  }
+  html += `</div>`;
+
+  // ── VIEWS ──
+  html += `<div class="ve-section"><div class="ve-section-hdr">VIEWS <button class="btn sm" data-ve="add-view">+</button></div>`;
+  for (const [name, view] of Object.entries(_views)) {
+    const tplName = view.template;
+    const tmpl = _cardTemplates[tplName];
+    html += `<div class="ve-item" data-view-name="${esc(name)}">`;
+    html += `<div class="ve-item-hdr"><span style="color:var(--green);">${esc(name)}</span> <span style="color:var(--text-dim);font-size:9px;">&rarr; ${esc(tplName)}</span><span class="ve-del" data-ve="del-view" data-name="${esc(name)}" style="margin-left:auto;">&times;</span></div>`;
+    html += `<div class="ve-item-body">`;
+    html += `<div class="ve-row"><label>template</label><select data-ve="view-tpl" data-view="${esc(name)}">${_templateNames().map(t => `<option${t === tplName ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`;
+    // Show per-slot-id overrides (read-only info)
+    if (tmpl) {
+      const ov = view.overrides || {};
+      const typeCounts = {};
+      html += `<div style="font-size:9px;color:var(--text-dim);margin:3px 0 1px;">slots:</div>`;
+      for (const slot of tmpl.slots) {
+        const n = (typeCounts[slot.type] = (typeCounts[slot.type] || 0) + 1);
+        const slotId = slot.type + '.' + n;
+        const hasOverride = typeof ov[slotId] === 'function';
+        html += `<div style="font-size:9px;padding-left:8px;margin:1px 0;">`;
+        html += `<span style="color:var(--accent2);">${esc(slotId)}</span>`;
+        html += hasOverride ? ` <span style="color:var(--green);">override fn</span>` : ` <span style="color:var(--text-dim);">(template)</span>`;
+        html += `</div>`;
+      }
+    }
+    html += `</div></div>`;
+  }
+  html += `</div>`;
+
+  elL.innerHTML = html;
+
+  // ── SLOT SCHEMAS (right column, read-only) ──
+  let htmlR = '';
+  htmlR += `<div class="ve-section"><div class="ve-section-hdr">COMPONENT SCHEMAS</div>`;
+  for (const [name, schema] of Object.entries(_slotSchemas)) {
+    const v3cSchema = V3C.schema(name);
+    const allFields = [...schema.required, ...schema.optional];
+    htmlR += `<div class="ve-item" data-slot-name="${esc(name)}">`;
+    htmlR += `<div class="ve-item-hdr"><span style="color:var(--accent2);">${esc(name)}</span> <span style="font-size:9px;color:var(--text-dim);">${allFields.length} fields</span></div>`;
+    htmlR += `<div class="ve-item-body">`;
+    for (const f of allFields) {
+      const fd = v3cSchema[f] || {};
+      const isReq = schema.required.includes(f);
+      const typeStr = fd.type || 'any';
+      const doc = fd.doc || '';
+      htmlR += `<div style="font-size:9px;margin:1px 0;">`;
+      htmlR += `<span style="color:${isReq ? 'var(--accent3)' : 'var(--text)'};">${esc(f)}</span>`;
+      htmlR += ` <span style="color:var(--text-dim);">${esc(typeStr)}</span>`;
+      if (doc) htmlR += ` <span style="color:var(--text-dim);font-style:italic;">${esc(doc)}</span>`;
+      htmlR += `</div>`;
+    }
+    htmlR += `</div></div>`;
+  }
+  htmlR += `</div>`;
+
+  // ── REGISTERED V3C COMPONENTS ──
+  htmlR += `<div class="ve-section"><div class="ve-section-hdr">V3C COMPONENTS</div>`;
+  htmlR += `<div style="font-size:9px;color:var(--text-dim);">${V3C.list().join(', ')}</div>`;
+  htmlR += `</div>`;
+
+  elR.innerHTML = htmlR;
+
+  // Wire both columns
+  _wireViewsTab(elL);
+  _wireViewsTab(elR);
+}
+
+function _wireViewsTab(el) {
+  // Toggle item bodies
+  el.querySelectorAll('.ve-item-hdr').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.classList.contains('ve-del')) return;
+      const body = hdr.nextElementSibling;
+      if (body) body.classList.toggle('open');
+    });
+  });
+
+  // ── TEMPLATE actions ──
+  el.querySelectorAll('[data-ve="add-template"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = prompt('Template name:');
+      if (!name || _cardTemplates[name]) return;
+      _cardTemplates[name] = { slots: [{ type: 'header' }] };
+      _saveCustomData(); renderViewsTab(); renderCards();
+    });
+  });
+
+  el.querySelectorAll('[data-ve="del-template"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      delete _cardTemplates[btn.dataset.name];
+      _saveCustomData(); renderViewsTab(); renderCards();
+    });
+  });
+
+  el.querySelectorAll('[data-ve="add-slot"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _cardTemplates[btn.dataset.tpl].slots.push({ type: 'data' });
+      _saveCustomData(); renderViewsTab(); renderCards();
+    });
+  });
+
+  el.querySelectorAll('[data-ve="del-slot"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _cardTemplates[btn.dataset.tpl].slots.splice(+btn.dataset.idx, 1);
+      _saveCustomData(); renderViewsTab(); renderCards();
+    });
+  });
+
+  el.querySelectorAll('[data-ve="move-slot-up"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const slots = _cardTemplates[btn.dataset.tpl].slots;
+      const i = +btn.dataset.idx;
+      if (i > 0) { [slots[i - 1], slots[i]] = [slots[i], slots[i - 1]]; }
+      _saveCustomData(); renderViewsTab(); renderCards();
+    });
+  });
+
+  // ── Slot type name (semantic, free text) ──
+  el.querySelectorAll('[data-ve="slot-type-name"]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const slot = _cardTemplates[inp.dataset.tpl].slots[+inp.dataset.idx];
+      slot.type = inp.value.trim() || 'data';
+      _saveCustomData(); renderViewsTab(); renderCards();
+    });
+  });
+
+  // ── Assembly toggle + editor ──
+  el.querySelectorAll('[data-ve="toggle-asm"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ta = el.querySelector(`textarea[data-ve="slot-asm"][data-tpl="${btn.dataset.tpl}"][data-idx="${btn.dataset.idx}"]`);
+      if (ta) ta.style.display = ta.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+  el.querySelectorAll('[data-ve="slot-asm"]').forEach(ta => {
+    ta.addEventListener('change', () => {
+      const slot = _cardTemplates[ta.dataset.tpl].slots[+ta.dataset.idx];
+      slot.asm = ta.value;
+      delete slot.assemble; // DSL replaces JS fn
+      ta.style.borderColor = ta.value.trim() ? 'var(--green)' : 'var(--border)';
+      _saveCustomData(); renderCards();
+    });
+  });
+
+  // ── VIEW actions ──
+  el.querySelectorAll('[data-ve="add-view"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = prompt('View name:');
+      if (!name || _views[name]) return;
+      _views[name] = { template: _templateNames()[0] || 'job' };
+      _saveCustomData(); renderViewsTab();
+    });
+  });
+
+  el.querySelectorAll('[data-ve="del-view"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      delete _views[btn.dataset.name];
+      _saveCustomData(); renderViewsTab();
+    });
+  });
+
+  el.querySelectorAll('[data-ve="view-tpl"]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      _views[sel.dataset.view].template = sel.value;
+      _saveCustomData(); renderCards();
+    });
+  });
+}
+
+// ── Read-only Views info panel (right sidebar) ──
+function renderViewsInfo() {
+  const el = document.getElementById('views-info-panel');
+  if (!el) return;
+  let h = '';
+
+  h += `<div style="color:var(--accent);font-weight:600;margin-bottom:4px;">TEMPLATES</div>`;
+  for (const [name, tmpl] of Object.entries(_cardTemplates)) {
+    const typeCounts = {};
+    h += `<div style="margin-bottom:4px;"><span style="color:var(--accent);font-weight:600;">${esc(name)}</span> <span style="color:var(--text-dim);">${tmpl.slots.length} slots</span></div>`;
+    h += `<div style="padding-left:8px;color:var(--text-dim);margin-bottom:2px;">`;
+    for (const s of tmpl.slots) {
+      const n = (typeCounts[s.type] = (typeCounts[s.type] || 0) + 1);
+      const slotId = s.type + '.' + n;
+      const comp = s.component || 'schema';
+      h += `<div>\u2022 <span style="color:var(--accent2);">${esc(slotId)}</span>`;
+      if (comp !== s.type) h += ` <span style="font-size:9px;color:var(--text-dim);">[${esc(comp)}]</span>`;
+      if (typeof s.assemble === 'function') h += ` <span style="font-size:9px;color:var(--green);">fn</span>`;
+      h += `</div>`;
+    }
+    h += `</div>`;
+  }
+
+  h += `<div style="color:var(--green);font-weight:600;margin:6px 0 4px;">VIEWS</div>`;
+  for (const [name, view] of Object.entries(_views)) {
+    h += `<div style="margin-bottom:2px;"><span style="color:var(--green);font-weight:600;">${esc(name)}</span> <span style="color:var(--text-dim);">\u2192 ${esc(view.template)}</span></div>`;
+    const ov = view.overrides;
+    if (ov && Object.keys(ov).length) {
+      h += `<div style="padding-left:8px;font-size:9px;color:var(--text-dim);">`;
+      for (const slotId of Object.keys(ov)) {
+        h += `<div>${esc(slotId)} \u2192 fn</div>`;
+      }
+      h += `</div>`;
+    }
+  }
+
+  h += `<div style="color:var(--accent2);font-weight:600;margin:6px 0 4px;">COMPONENT SCHEMAS</div>`;
+  h += `<div style="color:var(--text-dim);">${Object.keys(_slotSchemas).join(', ')}</div>`;
+
+  el.innerHTML = h;
+}
+
 renderWorkers();
 renderCards();
+renderViewsInfo();
 workers.forEach(w => checkWorker(w).then(renderWorkers));
 </script>
 </body>

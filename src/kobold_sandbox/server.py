@@ -3901,6 +3901,15 @@ def create_app(root: str) -> FastAPI:
         ok = runtime.cancel(job_id)
         return {"ok": ok}
 
+    @app.get("/static/{filename:path}")
+    def serve_static(filename: str):
+        from fastapi.responses import Response
+        file_path = Path(__file__).resolve().parents[2] / "tools" / filename
+        if not file_path.exists() or not file_path.is_file():
+            return Response(status_code=404, content="Not found")
+        ct = "application/javascript" if filename.endswith(".js") else "text/css" if filename.endswith(".css") else "text/plain"
+        return Response(content=file_path.read_text(encoding="utf-8"), media_type=ct)
+
     @app.get("/workflow-v3", response_class=HTMLResponse)
     def workflow_v3_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow_v3.html"
