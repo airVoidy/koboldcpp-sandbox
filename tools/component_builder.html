@@ -1183,10 +1183,14 @@ function renderCardPreview() {
   try { serverData = JSON.parse(_edServerJson); } catch(_) {}
   const slots = assembleCard(_selectedCard, serverData);
   let h = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Card: ${esc(_selectedCard)} (${slots.length} slots)</div>`;
-  // Per-slot trace
+  // Per-slot trace with clientSchema
   for (const s of slots) {
     h += `<div style="font-size:8px;color:var(--accent2);margin:4px 0 2px;">${esc(s.id)} → ${esc(s.component)}</div>`;
-    h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">data: ${esc(JSON.stringify(s.data).slice(0, 120))}</div>`;
+    h += `<div style="font-size:8px;color:var(--green);margin-bottom:1px;">schema: ${esc(Object.keys(s.clientSchema).join(', '))}</div>`;
+    h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:1px;">data: ${esc(JSON.stringify(s.data).slice(0, 120))}</div>`;
+    if (s.warnings.length) {
+      h += `<div style="font-size:8px;color:var(--orange);margin-bottom:2px;">${s.warnings.map(w => '⚠ ' + esc(w)).join('<br>')}</div>`;
+    }
   }
   // Rendered card
   h += `<div style="margin-top:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;padding:4px 8px;">`;
@@ -1298,6 +1302,14 @@ parseCmd = function(line) {
   if (c === 'slot_del') return { cmd: 'slot_del', index: +tokens[1] || 0 };
   if (c === 'slot_move') return { cmd: 'slot_move', from: +tokens[1] || 0, to: +tokens[2] || 0 };
   if (c === 'slot_asm') return { cmd: 'slot_asm', index: +tokens[1], code: tokens.length > 2 ? tokens.slice(2).join(' ') : null };
+  if (c === 'slot_schema') {
+    // Take raw JSON after "slot_schema <index> "
+    const idx = +tokens[1];
+    const jsonStart = line.indexOf(tokens[2] || '');
+    let schema = null;
+    if (jsonStart >= 0) { try { schema = JSON.parse(line.slice(jsonStart)); } catch(_) {} }
+    return { cmd: 'slot_schema', index: idx, schema };
+  }
   return _origParseCmd2(line);
 };
 
@@ -1353,12 +1365,22 @@ applyCommand = function(cmd) {
       const card = _cardTemplates[_selectedCard];
       const idx = cmd.index;
       if (idx < 0 || idx >= card.slots.length) { consoleLog('slot_asm: invalid index', 'err'); return; }
-      // If code provided, use it; else use the Slot ASM editor content
       const code = cmd.code || document.getElementById('edSlotAsm')?.value || '';
       card.slots[idx].asm = code;
       _saveCardTemplates();
       refreshPreview();
-      consoleLog(`slot ${idx} assembly set (${code.split('\\n').length} lines)`, 'ok');
+      consoleLog(`slot ${idx} assembly set (${code.split('\n').length} lines)`, 'ok');
+      return;
+    }
+    case 'slot_schema': {
+      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot_schema: select a card first', 'err'); return; }
+      const card = _cardTemplates[_selectedCard];
+      if (cmd.index < 0 || cmd.index >= card.slots.length) { consoleLog('slot_schema: invalid index', 'err'); return; }
+      card.slots[cmd.index].schema = cmd.schema;
+      _saveCardTemplates();
+      refreshPreview();
+      const fields = cmd.schema ? Object.keys(cmd.schema).join(', ') : '(cleared)';
+      consoleLog(`slot ${cmd.index} schema: ${fields}`, 'ok');
       return;
     }
     default:

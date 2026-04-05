@@ -467,7 +467,7 @@ try {
   if (ct) Object.assign(_cardTemplates, ct);
 } catch(_) {}
 
-// Assemble card: run assembly per slot, return [{type, id, data, html}]
+// Assemble card: run assembly per slot, return [{type, id, data, clientSchema, warnings, html}]
 function assembleCard(cardName, serverData) {
   const card = _cardTemplates[cardName];
   if (!card || !card.slots) return [];
@@ -476,6 +476,7 @@ function assembleCard(cardName, serverData) {
     const n = (typeCounts[slotDef.type] = (typeCounts[slotDef.type] || 0) + 1);
     const id = slotDef.type + '.' + n;
     let data = {};
+    let asmError = null;
     try {
       if (slotDef.asm) {
         const state = execAsm(slotDef.asm, { n: serverData });
@@ -483,10 +484,29 @@ function assembleCard(cardName, serverData) {
           if (k !== 'n' && k !== 'each_idx' && !k.startsWith('_')) data[k] = v;
         }
       }
-    } catch(_) {}
+    } catch(e) { asmError = e.message; }
     const comp = slotDef.component || slotDef.type;
+    // Client schema: auto-derive from assembly output, or use contract if set
+    const contract = slotDef.schema || null; // optional declared contract
+    const autoSchema = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (Array.isArray(v)) autoSchema[k] = 'array';
+      else if (v != null && typeof v === 'object') autoSchema[k] = 'object';
+      else if (typeof v === 'number') autoSchema[k] = 'number';
+      else if (typeof v === 'boolean') autoSchema[k] = 'boolean';
+      else autoSchema[k] = 'string';
+    }
+    const clientSchema = contract || autoSchema;
+    // Validate: warn on missing fields if contract is set
+    const warnings = [];
+    if (contract) {
+      for (const field of Object.keys(contract)) {
+        if (data[field] === undefined) warnings.push(`missing: ${field}`);
+      }
+    }
+    if (asmError) warnings.push(`asm error: ${asmError}`);
     const html = renderComponent(comp, data);
-    return { type: slotDef.type, component: comp, id, data, html };
+    return { type: slotDef.type, component: comp, id, data, clientSchema, warnings, html };
   });
 }
 
