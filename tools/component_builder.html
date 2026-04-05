@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Component Builder</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface2: #1c2129; --border: #30363d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff; --green: #3fb950;
+  --red: #f85149; --yellow: #d29922; --orange: #db6d28; --accent2: #bc8cff;
+  --accent3: #79c0ff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font:12px/1.4 'Cascadia Code','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+button { cursor:pointer; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:3px; font:inherit; }
+button:hover { background:var(--border); }
+.btn { padding:4px 10px; } .btn.sm { padding:2px 6px; font-size:11px; } .btn.primary { background:var(--accent); color:#000; border-color:var(--accent); }
+.btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+input, textarea, select { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px; font:inherit; padding:4px 6px; }
+textarea { resize:vertical; }
+
+/* Top bar */
+.top-bar { display:flex; align-items:center; gap:8px; padding:4px 12px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+.top-bar h1 { font-size:14px; font-weight:600; color:var(--accent); }
+
+/* Main layout: 2 panels */
+.main { flex:1; display:flex; min-height:0; }
+.panel { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.panel-editor { width:45%; border-right:1px solid var(--border); }
+.panel-preview { flex:1; }
+.panel-hdr { padding:4px 8px; font-size:11px; font-weight:600; color:var(--text-dim); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.panel-body { flex:1; overflow-y:auto; padding:8px; min-height:0; }
+
+/* Editor tabs */
+.editor-tabs { display:flex; gap:2px; padding:2px 8px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.editor-tab { font-size:10px; padding:2px 8px; }
+
+/* Pipeline sections */
+.pipe-section { margin-bottom:8px; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.pipe-hdr { display:flex; align-items:center; gap:6px; padding:3px 8px; background:var(--surface); cursor:pointer; font-size:10px; font-weight:600; }
+.pipe-hdr .pipe-num { color:var(--accent); min-width:14px; }
+.pipe-hdr .pipe-title { color:var(--text-dim); }
+.pipe-hdr .pipe-status { margin-left:auto; font-size:9px; font-weight:400; }
+.pipe-body { padding:6px 8px; font-size:9px; max-height:300px; overflow-y:auto; }
+.pipe-body.collapsed { display:none; }
+.pipe-body pre { white-space:pre-wrap; word-break:break-word; background:var(--surface); border:1px solid var(--border); border-radius:3px; padding:4px; font-size:9px; max-height:200px; overflow-y:auto; }
+
+/* Skeleton table (shared with workflow_v3) */
+.skel-table { width:100%; border-collapse:collapse; font-size:9px; }
+.skel-table td { border:1px solid var(--border); padding:2px 6px; vertical-align:top; }
+.skel-label { color:var(--accent2); font-size:8px; font-weight:600; margin-bottom:1px; }
+.skel-value { color:var(--text); font-size:9px; }
+.node-slot { font-size:9px; }
+
+/* Status bar */
+.status-bar { padding:2px 12px; font-size:9px; color:var(--text-dim); border-top:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text-dim); }
+
+/* Assembly trace */
+.asm-trace { font-size:9px; }
+.asm-trace .asm-var { margin:1px 0; }
+.asm-trace .asm-var-name { color:var(--accent); }
+.asm-trace .asm-var-val { color:var(--text); }
+
+/* Layout editor */
+.layout-row { display:flex; align-items:center; gap:4px; margin:2px 0; padding:2px 4px; background:var(--surface); border:1px solid var(--border); border-radius:3px; }
+.layout-row .layout-cell { background:var(--surface2); border:1px solid var(--border); border-radius:2px; padding:1px 6px; font-size:9px; color:var(--accent2); }
+.layout-row .layout-controls { margin-left:auto; display:flex; gap:2px; }
+
+/* Console */
+.console-log { font-size:9px; overflow-y:auto; flex:1; min-height:0; }
+.console-line { margin:1px 0; padding:1px 4px; }
+.console-line.cmd { color:var(--accent); }
+.console-line.ok { color:var(--green); }
+.console-line.err { color:var(--red); }
+.console-line.dim { color:var(--text-dim); }
+.cmd-bar { display:flex; gap:4px; padding:4px 8px; border-top:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+.cmd-bar input { flex:1; font-size:10px; padding:3px 6px; }
+.cmd-bar .cmd-prompt { color:var(--accent); font-size:11px; padding:3px 0; }
+
+/* Replay */
+.replay-entry { font-size:9px; padding:1px 4px; border-bottom:1px solid var(--border); }
+.replay-entry .replay-cmd { color:var(--accent); }
+.replay-entry .replay-ts { color:var(--text-dim); font-size:8px; margin-left:auto; }
+
+/* Card editor */
+.card-slot { display:flex; align-items:flex-start; gap:6px; margin:4px 0; padding:4px 6px; background:var(--surface); border:1px solid var(--border); border-radius:3px; }
+.card-slot .slot-num { color:var(--text-dim); font-size:8px; min-width:14px; padding-top:2px; }
+.card-slot .slot-type { color:var(--accent); font-size:10px; font-weight:600; min-width:70px; }
+.card-slot .slot-asm-preview { color:var(--text-dim); font-size:8px; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.card-slot .slot-controls { display:flex; gap:3px; margin-left:auto; flex-shrink:0; }
+
+/* Chat */
+.chat-list { display:flex; flex-direction:column; gap:2px; }
+.chat-card { border:1px solid var(--border); border-radius:6px; background:var(--surface); overflow:hidden; }
+.chat-card .card-body { padding:4px 8px; }
+.chat-card.reply { margin-left:24px; border-color:var(--surface2); }
+.chat-thread-toggle { font-size:9px; color:var(--accent); cursor:pointer; padding:2px 8px; }
+.chat-thread-toggle:hover { text-decoration:underline; }
+.chat-replies { display:none; }
+.chat-replies.open { display:block; }
+
+/* Preview mode tabs */
+.preview-modes { display:flex; gap:2px; }
+.preview-mode { font-size:9px; padding:1px 6px; }
+</style>
+<script src="/static/v3_core.js"></script>
+<script src="/static/v3_components.js"></script>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <h1>Component Builder</h1>
+  <span style="color:var(--text-dim);font-size:10px;">client view pipeline</span>
+  <span style="flex:1;"></span>
+  <select id="selComponent" style="font-size:10px;padding:2px 4px;min-width:120px;"></select>
+  <select id="selView" style="font-size:10px;padding:2px 4px;min-width:100px;"></select>
+  <button class="btn sm" id="btnNewView">+ View</button>
+  <button class="btn sm" id="btnNewComp">+ Component</button>
+  <span style="border-left:1px solid var(--border);height:16px;"></span>
+  <button class="btn sm" id="btnSave" style="color:var(--green);">Save</button>
+  <button class="btn sm" id="btnLoad">Load</button>
+  <button class="btn sm" id="btnExport">Export JSON</button>
+</div>
+
+<!-- Main: Editor + Preview -->
+<div class="main">
+  <!-- Left: Editor -->
+  <div class="panel panel-editor">
+    <div class="editor-tabs">
+      <button class="btn sm editor-tab active" data-tab="console">Console</button>
+      <button class="btn sm editor-tab" data-tab="server">Server Data</button>
+      <button class="btn sm editor-tab" data-tab="assembly">Assembly</button>
+      <button class="btn sm editor-tab" data-tab="schema">Client Schema</button>
+      <button class="btn sm editor-tab" data-tab="layout">Layout</button>
+      <button class="btn sm editor-tab" data-tab="card">Card</button>
+      <button class="btn sm editor-tab" data-tab="replay">Replay</button>
+    </div>
+    <!-- Tab: Console -->
+    <div class="panel-body tab-content" id="tab-console" style="display:flex;flex-direction:column;padding:0;">
+      <div class="console-log" id="consoleLog"></div>
+    </div>
+    <!-- Tab: Server Data -->
+    <div class="panel-body tab-content" id="tab-server" style="display:none;">
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Sample server data (JSON):</div>
+      <textarea id="edServerJson" rows="20" spellcheck="false" style="width:100%;font-size:10px;"></textarea>
+    </div>
+    <!-- Tab: Assembly -->
+    <div class="panel-body tab-content" id="tab-assembly" style="display:none;">
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Assembly DSL (server → client):</div>
+      <textarea id="edAssembly" rows="20" spellcheck="false" style="width:100%;font-size:10px;" placeholder="MOV @field, @server.field&#10;CALL @result, fn, @arg"></textarea>
+      <div style="font-size:8px;color:var(--text-dim);margin-top:4px;">
+        Opcodes: MOV, CALL, EACH, CMP, JIF &bull;
+        Refs: @server.field, @local &bull;
+        Fns: default, get, fmt, concat, len, pluck, keys, json, slice
+      </div>
+    </div>
+    <!-- Tab: Client Schema -->
+    <div class="panel-body tab-content" id="tab-schema" style="display:none;">
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Client JSON-template (field types):</div>
+      <textarea id="edClientSchema" rows="20" spellcheck="false" style="width:100%;font-size:10px;" placeholder='{"field": "string", "items": [{"sub": "string"}]}'></textarea>
+    </div>
+    <!-- Tab: Layout -->
+    <div class="panel-body tab-content" id="tab-layout" style="display:none;">
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Skeleton layout (rows × cells):</div>
+      <div id="layoutEditor"></div>
+      <button class="btn sm" id="btnAddRow" style="margin-top:4px;font-size:9px;">+ Row</button>
+    </div>
+    <!-- Tab: Card -->
+    <div class="panel-body tab-content" id="tab-card" style="display:none;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <span style="font-size:9px;color:var(--text-dim);">Card:</span>
+        <select id="selCard" style="font-size:10px;padding:2px 4px;min-width:100px;"></select>
+        <button class="btn sm" id="btnNewCard" style="font-size:8px;">+ New</button>
+        <button class="btn sm" id="btnDelCard" style="font-size:8px;color:var(--red);">Del</button>
+      </div>
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Slots (ordered):</div>
+      <div id="cardSlotList"></div>
+      <div style="display:flex;gap:4px;margin-top:6px;">
+        <select id="selSlotType" style="font-size:9px;padding:1px 4px;"></select>
+        <button class="btn sm" id="btnAddSlot" style="font-size:8px;">+ Add Slot</button>
+      </div>
+      <div style="margin-top:8px;">
+        <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">Slot assembly (select a slot above):</div>
+        <textarea id="edSlotAsm" rows="8" spellcheck="false" style="width:100%;font-size:9px;" placeholder="MOV @field, @n.slot.field"></textarea>
+        <button class="btn sm" id="btnSaveSlotAsm" style="font-size:8px;margin-top:2px;">Apply</button>
+      </div>
+    </div>
+    <!-- Tab: Replay -->
+    <div class="panel-body tab-content" id="tab-replay" style="display:none;">
+      <div style="display:flex;gap:4px;margin-bottom:4px;">
+        <button class="btn sm" id="btnReplayAll" style="font-size:9px;">Replay All</button>
+        <button class="btn sm" id="btnReplayClear" style="font-size:9px;color:var(--red);">Clear</button>
+        <button class="btn sm" id="btnReplayExport" style="font-size:9px;">Export</button>
+      </div>
+      <div id="replayLog" style="font-size:9px;"></div>
+    </div>
+    <!-- Command bar (always visible) -->
+    <div class="cmd-bar">
+      <span class="cmd-prompt">&gt;</span>
+      <input id="cmdInput" type="text" placeholder="comp message | row field1 field2 | ls | get" spellcheck="false" />
+    </div>
+  </div>
+
+  <!-- Right: Preview -->
+  <div class="panel panel-preview">
+    <div class="panel-hdr">
+      <div class="preview-modes">
+        <button class="btn sm preview-mode active" data-preview="pipeline">Pipeline</button>
+        <button class="btn sm preview-mode" data-preview="card">Card</button>
+        <button class="btn sm preview-mode" data-preview="chat">Chat</button>
+      </div>
+    </div>
+    <div class="panel-body" id="previewPipeline">
+      <div id="pipelineBody"></div>
+    </div>
+    <div class="panel-body" id="previewCard" style="display:none;"></div>
+    <div class="panel-body" id="previewChat" style="display:none;">
+      <div class="chat-list" id="chatList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar" id="statusBar">Ready</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let _selectedComp = null;
+let _selectedView = null; // null = "(base schema)", or "comp/viewname"
+let _activeTab = 'console';
+let _previewMode = 'pipeline'; // pipeline | card | chat
+
+// Editor state (persisted per view)
+let _edServerJson = '';
+let _edAssembly = '';
+let _edClientSchema = '';
+let _edLayout = { rows: [] };
+
+// Card state
+let _selectedCard = null;
+let _selectedSlotIdx = -1;
+
+// ══════════════════════════════════════════════════════════
+//  SELECTORS
+// ══════════════════════════════════════════════════════════
+function populateComponentSelect() {
+  const sel = document.getElementById('selComponent');
+  const names = V3C.list();
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}"${n === _selectedComp ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  if (!_selectedComp && names.length) _selectedComp = names[0];
+}
+
+function populateViewSelect() {
+  const sel = document.getElementById('selView');
+  let h = '<option value="">(base schema)</option>';
+  if (_selectedComp) {
+    const prefix = _selectedComp + '/';
+    for (const vname of Object.keys(_clientViews)) {
+      if (vname.startsWith(prefix)) {
+        const short = vname.slice(prefix.length);
+        h += `<option value="${esc(vname)}"${vname === _selectedView ? ' selected' : ''}>${esc(short)}</option>`;
+      }
+    }
+  }
+  sel.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════════
+//  LOAD / SAVE VIEW STATE
+// ══════════════════════════════════════════════════════════
+function loadViewState() {
+  if (!_selectedComp) return;
+  // Generate sample server data from component schema
+  _edServerJson = _generateSampleJson(_selectedComp);
+
+  if (_selectedView && _clientViews[_selectedView]) {
+    const view = _clientViews[_selectedView];
+    _edAssembly = view.assembly || '';
+    _edClientSchema = view.clientTemplate ? JSON.stringify(view.clientTemplate, null, 2) : '';
+    _edLayout = view.layout || { rows: [] };
+  } else {
+    // Base schema mode: auto-generate simple MOV assembly
+    const tpl = V3C.template(_selectedComp);
+    const fields = Object.keys(tpl);
+    _edAssembly = fields.map(f => `MOV @${f}, @server.${f}`).join('\n');
+    _edClientSchema = JSON.stringify(tpl, null, 2);
+    _edLayout = { rows: fields.map(f => ({ cells: [f] })) };
+  }
+
+  // Push to editors
+  document.getElementById('edServerJson').value = _edServerJson;
+  document.getElementById('edAssembly').value = _edAssembly;
+  document.getElementById('edClientSchema').value = _edClientSchema;
+  renderLayoutEditor();
+  runPipeline();
+}
+
+function saveViewState() {
+  if (!_selectedComp || !_selectedView) return;
+  const view = _clientViews[_selectedView];
+  if (!view) return;
+  view.assembly = _edAssembly;
+  try { view.clientTemplate = JSON.parse(_edClientSchema); } catch(_) {}
+  view.layout = _edLayout;
+  _saveClientViews();
+}
+
+// ══════════════════════════════════════════════════════════
+//  PIPELINE — run on every edit
+// ══════════════════════════════════════════════════════════
+function runPipeline() {
+  const el = document.getElementById('pipelineBody');
+  let serverData = {};
+  let parseError = null;
+  try { serverData = JSON.parse(_edServerJson); } catch(e) { parseError = e.message; }
+
+  // 1. Server Data
+  let h = renderPipeSection(1, 'Server Data', parseError ? 'error' : 'ok',
+    parseError
+      ? `<div style="color:var(--red);">${esc(parseError)}</div>`
+      : `<pre>${esc(JSON.stringify(serverData, null, 2))}</pre>`
+  );
+
+  // 2. Assembly Trace
+  let asmState = {};
+  let asmError = null;
+  if (!parseError && _edAssembly.trim()) {
+    try {
+      asmState = execAsm(_edAssembly, { server: serverData });
+    } catch(e) { asmError = e.message; }
+  }
+  const traceHtml = asmError
+    ? `<div style="color:var(--red);">${esc(asmError)}</div>`
+    : renderAsmTrace(asmState);
+  h += renderPipeSection(2, 'Assembly Trace', asmError ? 'error' : 'ok', traceHtml);
+
+  // 3. Client JSON
+  const clientData = {};
+  for (const [k, v] of Object.entries(asmState)) {
+    if (k !== 'server' && k !== 'each_idx' && !k.startsWith('_')) clientData[k] = v;
+  }
+  h += renderPipeSection(3, 'Client JSON', 'ok',
+    `<pre>${esc(JSON.stringify(clientData, null, 2))}</pre>`
+  );
+
+  // 4. Schema View (skeleton)
+  let schemaViewHtml = '';
+  try {
+    let clientSchema = null;
+    try { clientSchema = JSON.parse(_edClientSchema); } catch(_) {}
+    schemaViewHtml = renderSkeletonFromLayout(_edLayout, clientData, clientSchema);
+    if (!schemaViewHtml) schemaViewHtml = '<div style="color:var(--text-dim);">(empty — no matching fields in layout)</div>';
+  } catch(e) {
+    schemaViewHtml = `<div style="color:var(--red);">${esc(e.message)}</div>`;
+  }
+  h += renderPipeSection(4, 'Schema View', 'ok', schemaViewHtml);
+
+  // 5. V3C Render
+  const comp = V3C.get(_selectedComp);
+  const isJsComp = comp && _selectedComp !== 'schema' && !_customComponents[_selectedComp];
+  if (isJsComp) {
+    let v3cHtml = '';
+    try { v3cHtml = comp.render(clientData); } catch(e) { v3cHtml = `<div style="color:var(--red);">${esc(e.message)}</div>`; }
+    h += renderPipeSection(5, 'V3C Render (' + esc(_selectedComp) + ')', 'ok', v3cHtml);
+  } else {
+    h += renderPipeSection(5, 'V3C Render', 'dim', '<div style="color:var(--text-dim);">(no JS renderer — using schema view)</div>', true);
+  }
+
+  el.innerHTML = h;
+
+  // Wire collapse toggles
+  el.querySelectorAll('.pipe-hdr').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const body = hdr.nextElementSibling;
+      body.classList.toggle('collapsed');
+    });
+  });
+
+  // Update status
+  const fieldCount = Object.keys(clientData).length;
+  document.getElementById('statusBar').textContent = `${_selectedComp || '?'} → ${fieldCount} fields → ${_edLayout.rows.length} rows`;
+}
+
+function renderPipeSection(num, title, status, bodyHtml, startCollapsed) {
+  const statusColor = status === 'error' ? 'var(--red)' : status === 'dim' ? 'var(--text-dim)' : 'var(--green)';
+  const statusText = status === 'error' ? 'ERR' : status === 'dim' ? '—' : 'OK';
+  return `<div class="pipe-section">
+    <div class="pipe-hdr">
+      <span class="pipe-num">${num}</span>
+      <span class="pipe-title">${esc(title)}</span>
+      <span class="pipe-status" style="color:${statusColor};">${statusText}</span>
+    </div>
+    <div class="pipe-body${startCollapsed ? ' collapsed' : ''}">${bodyHtml}</div>
+  </div>`;
+}
+
+function renderAsmTrace(state) {
+  const keys = Object.keys(state).filter(k => k !== 'server' && k !== 'each_idx' && !k.startsWith('_'));
+  if (!keys.length) return '<div style="color:var(--text-dim);">(no output variables)</div>';
+  let h = '<div class="asm-trace">';
+  for (const k of keys) {
+    const v = state[k];
+    const vStr = typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
+    const vTrunc = vStr.length > 120 ? vStr.slice(0, 117) + '...' : vStr;
+    h += `<div class="asm-var"><span class="asm-var-name">@${esc(k)}</span> = <span class="asm-var-val">${esc(vTrunc)}</span></div>`;
+  }
+  h += '</div>';
+  return h;
+}
+
+// ══════════════════════════════════════════════════════════
+//  LAYOUT EDITOR (inline in Layout tab)
+// ══════════════════════════════════════════════════════════
+function renderLayoutEditor() {
+  const el = document.getElementById('layoutEditor');
+  if (!el) return;
+  let h = '';
+  for (let ri = 0; ri < _edLayout.rows.length; ri++) {
+    const row = _edLayout.rows[ri];
+    h += `<div class="layout-row">`;
+    h += `<span style="color:var(--text-dim);font-size:8px;min-width:14px;">${ri + 1}</span>`;
+    for (let ci = 0; ci < row.cells.length; ci++) {
+      h += `<span class="layout-cell">${esc(row.cells[ci])} <span style="cursor:pointer;color:var(--red);font-size:8px;" data-del-cell="${ri},${ci}">&times;</span></span>`;
+    }
+    h += `<div class="layout-controls">`;
+    h += `<button class="btn sm" data-add-cell="${ri}" style="font-size:8px;padding:0 4px;">+cell</button>`;
+    if (ri > 0) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-row-up="${ri}">&uarr;</span>`;
+    if (ri < _edLayout.rows.length - 1) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-row-down="${ri}">&darr;</span>`;
+    h += `<span style="cursor:pointer;font-size:9px;color:var(--red);" data-row-del="${ri}">&times;</span>`;
+    h += `</div></div>`;
+  }
+  el.innerHTML = h;
+
+  // Wire layout controls
+  el.querySelectorAll('[data-row-up]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.rowUp;
+      [_edLayout.rows[i-1], _edLayout.rows[i]] = [_edLayout.rows[i], _edLayout.rows[i-1]];
+      saveViewState(); renderLayoutEditor(); runPipeline();
+    });
+  });
+  el.querySelectorAll('[data-row-down]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.rowDown;
+      [_edLayout.rows[i], _edLayout.rows[i+1]] = [_edLayout.rows[i+1], _edLayout.rows[i]];
+      saveViewState(); renderLayoutEditor(); runPipeline();
+    });
+  });
+  el.querySelectorAll('[data-row-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _edLayout.rows.splice(+btn.dataset.rowDel, 1);
+      saveViewState(); renderLayoutEditor(); runPipeline();
+    });
+  });
+  el.querySelectorAll('[data-del-cell]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [ri, ci] = btn.dataset.delCell.split(',').map(Number);
+      _edLayout.rows[ri].cells.splice(ci, 1);
+      if (!_edLayout.rows[ri].cells.length) _edLayout.rows.splice(ri, 1);
+      saveViewState(); renderLayoutEditor(); runPipeline();
+    });
+  });
+  el.querySelectorAll('[data-add-cell]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ri = +btn.dataset.addCell;
+      const name = prompt('Field name:');
+      if (name && name.trim()) {
+        _edLayout.rows[ri].cells.push(name.trim());
+        saveViewState(); renderLayoutEditor(); runPipeline();
+      }
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  TAB SWITCHING
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.editor-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _activeTab = btn.dataset.tab;
+    document.querySelectorAll('.editor-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === _activeTab));
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + _activeTab).style.display = 'block';
+  });
+});
+
+// ══════════════════════════════════════════════════════════
+//  EDITOR INPUT HANDLERS
+// ══════════════════════════════════════════════════════════
+document.getElementById('edServerJson').addEventListener('input', (e) => {
+  _edServerJson = e.target.value;
+  runPipeline();
+});
+
+document.getElementById('edAssembly').addEventListener('input', (e) => {
+  _edAssembly = e.target.value;
+  saveViewState();
+  runPipeline();
+});
+
+document.getElementById('edClientSchema').addEventListener('input', (e) => {
+  _edClientSchema = e.target.value;
+  saveViewState();
+  runPipeline();
+});
+
+// ══════════════════════════════════════════════════════════
+//  COMPONENT / VIEW SELECTION
+// ══════════════════════════════════════════════════════════
+document.getElementById('selComponent').addEventListener('change', (e) => {
+  _selectedComp = e.target.value;
+  _selectedView = null;
+  populateViewSelect();
+  loadViewState();
+});
+
+document.getElementById('selView').addEventListener('change', (e) => {
+  _selectedView = e.target.value || null;
+  loadViewState();
+});
+
+document.getElementById('btnNewView').addEventListener('click', () => {
+  if (!_selectedComp) return;
+  const name = prompt('View name:');
+  if (!name || !name.trim()) return;
+  const vname = _selectedComp + '/' + name.trim();
+  if (_clientViews[vname]) return;
+  const tpl = V3C.template(_selectedComp);
+  const fields = Object.keys(tpl);
+  _clientViews[vname] = {
+    component: _selectedComp,
+    clientTemplate: tpl,
+    assembly: fields.map(f => `MOV @${f}, @server.${f}`).join('\n'),
+    layout: { rows: fields.map(f => ({ cells: [f] })) },
+  };
+  _saveClientViews();
+  _selectedView = vname;
+  populateViewSelect();
+  loadViewState();
+});
+
+document.getElementById('btnNewComp').addEventListener('click', () => {
+  const name = prompt('Component name:');
+  if (!name || !name.trim()) return;
+  if (V3C.get(name.trim())) return;
+  _registerCustomComponent(name.trim(), { data: 'string' });
+  _saveCustomComponents();
+  _selectedComp = name.trim();
+  _selectedView = null;
+  populateComponentSelect();
+  populateViewSelect();
+  loadViewState();
+});
+
+document.getElementById('btnAddRow').addEventListener('click', () => {
+  const name = prompt('Field name:');
+  if (name && name.trim()) {
+    _edLayout.rows.push({ cells: [name.trim()] });
+    saveViewState(); renderLayoutEditor(); runPipeline();
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+//  DSL INTERPRETER + REPLAY
+// ══════════════════════════════════════════════════════════
+const replay = [];
+const _cmdHistory = [];
+let _cmdHistIdx = -1;
+
+function consoleLog(text, cls) {
+  const el = document.getElementById('consoleLog');
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'console-line ' + (cls || '');
+  div.textContent = text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function exec(cmdStr) {
+  const raw = (cmdStr || '').trim();
+  if (!raw) return;
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith(';'));
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const tokens = asmTokenize(line);
+    // Block: slot_asm <index> ... end
+    if (tokens[0] === 'slot_asm' && tokens.length === 2) {
+      const idx = +tokens[1];
+      const body = [];
+      i++;
+      while (i < lines.length && lines[i] !== 'end') { body.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      const code = body.join('\n');
+      const fullRaw = `slot_asm ${idx}\n${code}\nend`;
+      const cmd = { cmd: 'slot_asm', index: idx, code };
+      replay.push({ _raw: fullRaw, ...cmd, _ts: Date.now() });
+      applyCommand(cmd);
+      continue;
+    }
+    // Block: asm ... end
+    if (tokens[0] === 'asm' && tokens.length === 1) {
+      const body = [];
+      i++;
+      while (i < lines.length && lines[i] !== 'end') { body.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      const code = body.join('\n');
+      const cmd = { cmd: 'asm', code, _ctx: _selectedComp };
+      replay.push({ _raw: `asm\n${code}\nend`, ...cmd, _ts: Date.now() });
+      applyCommand(cmd);
+      continue;
+    }
+    const cmd = parseCmd(line);
+    if (!cmd) { i++; continue; }
+    if (['get', 'ls'].includes(cmd.cmd)) {
+      runIntrospect(cmd);
+      i++; continue;
+    }
+    replay.push({ _raw: line, ...cmd, _ts: Date.now() });
+    applyCommand(cmd);
+    i++;
+  }
+  saveReplay();
+  runPipeline();
+  updateReplayView();
+}
+
+function parseCmd(line) {
+  const tokens = asmTokenize(line.trim());
+  if (!tokens.length) return null;
+  const c = tokens[0];
+  if (c === 'comp') return { cmd: 'comp', name: tokens[1], _ctx: _selectedComp };
+  if (c === 'schema') return { cmd: 'schema', _ctx: _selectedComp };
+  if (c === 'asm') return { cmd: 'asm', code: tokens.slice(1).join(' '), _ctx: _selectedComp };
+  if (c === 'view') return { cmd: 'view', name: tokens[1], _ctx: _selectedComp };
+  if (c === 'row') return { cmd: 'row', cells: tokens.slice(1), _ctx: _selectedComp };
+  if (c === 'row_del') return { cmd: 'row_del', index: +tokens[1] || 0, _ctx: _selectedComp };
+  if (c === 'row_move') return { cmd: 'row_move', from: +tokens[1] || 0, to: +tokens[2] || 0, _ctx: _selectedComp };
+  if (c === 'preview') return { cmd: 'preview', _ctx: _selectedComp };
+  if (c === 'del') return { cmd: 'del', _ctx: _selectedComp };
+  if (c === 'get') return { cmd: 'get', what: tokens[1] };
+  if (c === 'ls') return { cmd: 'ls' };
+  return null;
+}
+
+function applyCommand(cmd) {
+  switch (cmd.cmd) {
+    case 'comp': {
+      const name = cmd.name;
+      if (!name) { consoleLog('comp: name required', 'err'); return; }
+      if (!V3C.get(name)) {
+        _registerCustomComponent(name, { data: 'string' });
+        _saveCustomComponents();
+        consoleLog(`created component: ${name}`, 'ok');
+      } else {
+        consoleLog(`selected: ${name}`, 'dim');
+      }
+      _selectedComp = name;
+      _selectedView = null;
+      populateComponentSelect();
+      populateViewSelect();
+      loadViewState();
+      break;
+    }
+    case 'schema': {
+      // Apply current Schema tab content to component
+      if (!_selectedComp) { consoleLog('schema: select a component first', 'err'); return; }
+      try {
+        const tpl = JSON.parse(document.getElementById('edClientSchema').value);
+        _registerCustomComponent(_selectedComp, tpl);
+        _saveCustomComponents();
+        _edClientSchema = JSON.stringify(tpl, null, 2);
+        consoleLog(`schema applied to ${_selectedComp}: ${Object.keys(tpl).length} fields`, 'ok');
+      } catch(e) {
+        consoleLog(`schema parse error: ${e.message}`, 'err');
+      }
+      break;
+    }
+    case 'asm': {
+      // Apply assembly — if code provided use it, else use Assembly tab content
+      if (!_selectedComp) { consoleLog('asm: select a component first', 'err'); return; }
+      const code = cmd.code || document.getElementById('edAssembly').value;
+      _edAssembly = code;
+      document.getElementById('edAssembly').value = code;
+      if (_selectedView) {
+        saveViewState();
+        consoleLog(`assembly applied to view ${_selectedView}`, 'ok');
+      } else {
+        consoleLog(`assembly set (no view selected — not persisted)`, 'dim');
+      }
+      break;
+    }
+    case 'view': {
+      const name = cmd.name;
+      if (!name) { consoleLog('view: name required (comp/viewname)', 'err'); return; }
+      // If name doesn't contain /, prepend selected component
+      const vname = name.includes('/') ? name : (_selectedComp + '/' + name);
+      const comp = vname.split('/')[0];
+      if (!V3C.get(comp)) { consoleLog(`view: component ${comp} not found`, 'err'); return; }
+      if (!_clientViews[vname]) {
+        const tpl = V3C.template(comp);
+        const fields = Object.keys(tpl);
+        _clientViews[vname] = {
+          component: comp,
+          clientTemplate: tpl,
+          assembly: fields.map(f => `MOV @${f}, @server.${f}`).join('\n'),
+          layout: { rows: fields.map(f => ({ cells: [f] })) },
+        };
+        _saveClientViews();
+        consoleLog(`created view: ${vname}`, 'ok');
+      } else {
+        consoleLog(`selected view: ${vname}`, 'dim');
+      }
+      _selectedComp = comp;
+      _selectedView = vname;
+      populateComponentSelect();
+      populateViewSelect();
+      loadViewState();
+      break;
+    }
+    case 'row': {
+      if (!cmd.cells || !cmd.cells.length) { consoleLog('row: field names required', 'err'); return; }
+      _edLayout.rows.push({ cells: [...cmd.cells] });
+      saveViewState();
+      renderLayoutEditor();
+      consoleLog(`row added: ${cmd.cells.join(', ')}`, 'ok');
+      break;
+    }
+    case 'row_del': {
+      if (cmd.index < 0 || cmd.index >= _edLayout.rows.length) { consoleLog('row_del: invalid index', 'err'); return; }
+      _edLayout.rows.splice(cmd.index, 1);
+      saveViewState();
+      renderLayoutEditor();
+      consoleLog(`row ${cmd.index} deleted`, 'ok');
+      break;
+    }
+    case 'row_move': {
+      const rows = _edLayout.rows;
+      if (cmd.from < 0 || cmd.from >= rows.length || cmd.to < 0 || cmd.to >= rows.length) {
+        consoleLog('row_move: invalid indices', 'err'); return;
+      }
+      const [row] = rows.splice(cmd.from, 1);
+      rows.splice(cmd.to, 0, row);
+      saveViewState();
+      renderLayoutEditor();
+      consoleLog(`row moved: ${cmd.from} → ${cmd.to}`, 'ok');
+      break;
+    }
+    case 'preview': {
+      consoleLog('pipeline updated', 'dim');
+      break;
+    }
+    case 'del': {
+      if (_selectedView && _clientViews[_selectedView]) {
+        delete _clientViews[_selectedView];
+        _saveClientViews();
+        consoleLog(`deleted view: ${_selectedView}`, 'ok');
+        _selectedView = null;
+        populateViewSelect();
+        loadViewState();
+      } else if (_selectedComp && _customComponents[_selectedComp]) {
+        delete _customComponents[_selectedComp];
+        delete V3C._components[_selectedComp];
+        _saveCustomComponents();
+        consoleLog(`deleted component: ${_selectedComp}`, 'ok');
+        _selectedComp = null;
+        populateComponentSelect();
+        populateViewSelect();
+      } else {
+        consoleLog('del: nothing to delete (select a custom component or view)', 'err');
+      }
+      break;
+    }
+  }
+}
+
+function runIntrospect(cmd) {
+  if (cmd.cmd === 'ls') {
+    consoleLog('── Components ──', 'dim');
+    for (const name of V3C.list()) {
+      const fc = Object.keys(V3C.schema(name)).length;
+      const badge = _customComponents[name] ? 'custom' : name === 'schema' ? 'core' : 'js';
+      consoleLog(`  ${name} (${fc}f) [${badge}]`, name === _selectedComp ? 'cmd' : '');
+    }
+    const views = Object.keys(_clientViews);
+    if (views.length) {
+      consoleLog('── Views ──', 'dim');
+      for (const v of views) consoleLog(`  ${v}`, v === _selectedView ? 'cmd' : '');
+    }
+  } else if (cmd.cmd === 'get') {
+    if (!_selectedComp) { consoleLog('get: no component selected', 'err'); return; }
+    consoleLog(`comp: ${_selectedComp}`, 'cmd');
+    consoleLog(`schema: ${JSON.stringify(V3C.template(_selectedComp))}`, '');
+    if (_selectedView) {
+      const view = _clientViews[_selectedView];
+      consoleLog(`view: ${_selectedView}`, 'cmd');
+      consoleLog(`asm: ${(view?.assembly || '').split('\n').length} lines`, '');
+      consoleLog(`layout: ${(view?.layout?.rows || []).length} rows`, '');
+    } else {
+      consoleLog('view: (base schema)', 'dim');
+    }
+    consoleLog(`layout rows: ${_edLayout.rows.length}`, '');
+  }
+}
+
+function replayAll() {
+  const saved = [...replay];
+  // Clear state
+  for (const k of Object.keys(_customComponents)) {
+    delete _customComponents[k];
+    delete V3C._components[k];
+  }
+  for (const k of Object.keys(_clientViews)) delete _clientViews[k];
+  _saveCustomComponents();
+  _saveClientViews();
+  _selectedComp = null;
+  _selectedView = null;
+  replay.length = 0;
+  document.getElementById('consoleLog').innerHTML = '';
+  consoleLog('── replay start ──', 'dim');
+  for (const cmd of saved) {
+    consoleLog(`> ${cmd._raw}`, 'cmd');
+    replay.push(cmd);
+    applyCommand(cmd);
+  }
+  consoleLog(`── replay done: ${saved.length} commands ──`, 'dim');
+  saveReplay();
+  runPipeline();
+  populateComponentSelect();
+  populateViewSelect();
+  updateReplayView();
+}
+
+function saveReplay() {
+  localStorage.setItem('v3_builder_replay', JSON.stringify(replay));
+}
+
+function loadReplay() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('v3_builder_replay'));
+    if (saved && saved.length) {
+      replay.push(...saved);
+      updateReplayView();
+    }
+  } catch(_) {}
+}
+
+function updateReplayView() {
+  const el = document.getElementById('replayLog');
+  if (!el) return;
+  if (!replay.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);">(no commands recorded)</div>';
+    return;
+  }
+  let h = '';
+  for (let i = 0; i < replay.length; i++) {
+    const r = replay[i];
+    const ts = new Date(r._ts).toLocaleTimeString('en-GB', { hour12: false });
+    h += `<div class="replay-entry" style="display:flex;gap:6px;">`;
+    h += `<span style="color:var(--text-dim);min-width:16px;font-size:8px;">${i + 1}</span>`;
+    h += `<span class="replay-cmd" style="flex:1;white-space:pre-wrap;">${esc(r._raw)}</span>`;
+    h += `<span class="replay-ts">${ts}</span>`;
+    h += `</div>`;
+  }
+  el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════════
+//  COMMAND BAR
+// ══════════════════════════════════════════════════════════
+document.getElementById('cmdInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const input = e.target;
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    _cmdHistory.push(cmd);
+    _cmdHistIdx = _cmdHistory.length;
+    consoleLog(`> ${cmd}`, 'cmd');
+    exec(cmd);
+    input.value = '';
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (_cmdHistIdx > 0) { _cmdHistIdx--; e.target.value = _cmdHistory[_cmdHistIdx] || ''; }
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (_cmdHistIdx < _cmdHistory.length - 1) { _cmdHistIdx++; e.target.value = _cmdHistory[_cmdHistIdx] || ''; }
+    else { _cmdHistIdx = _cmdHistory.length; e.target.value = ''; }
+  }
+});
+
+// Replay buttons
+document.getElementById('btnReplayAll')?.addEventListener('click', replayAll);
+document.getElementById('btnReplayClear')?.addEventListener('click', () => {
+  replay.length = 0;
+  saveReplay();
+  updateReplayView();
+  document.getElementById('consoleLog').innerHTML = '';
+  consoleLog('replay cleared', 'dim');
+});
+document.getElementById('btnReplayExport')?.addEventListener('click', () => {
+  const text = replay.map(r => r._raw).join('\n');
+  navigator.clipboard.writeText(text).then(() => consoleLog('copied to clipboard', 'ok'));
+});
+
+// ══════════════════════════════════════════════════════════
+//  SAVE / LOAD / EXPORT
+// ══════════════════════════════════════════════════════════
+function buildBundle() {
+  return {
+    components: { ..._customComponents },
+    views: { ..._clientViews },
+    cards: { ..._cardTemplates },
+    replay: [...replay],
+    _saved: new Date().toISOString(),
+  };
+}
+
+function loadBundle(bundle) {
+  // Clear existing custom state
+  for (const k of Object.keys(_customComponents)) { delete _customComponents[k]; delete V3C._components[k]; }
+  for (const k of Object.keys(_clientViews)) delete _clientViews[k];
+  // Load components
+  if (bundle.components) {
+    for (const [name, def] of Object.entries(bundle.components)) {
+      const tpl = def.template || { data: 'string' };
+      _registerCustomComponent(name, tpl);
+    }
+  }
+  // Load views
+  if (bundle.views) Object.assign(_clientViews, bundle.views);
+  // Load cards
+  if (bundle.cards) Object.assign(_cardTemplates, bundle.cards);
+  _saveCardTemplates();
+  // Load replay
+  replay.length = 0;
+  if (bundle.replay) replay.push(...bundle.replay);
+  // Persist to localStorage
+  _saveCustomComponents();
+  _saveClientViews();
+  saveReplay();
+  // Refresh UI
+  _selectedComp = null;
+  _selectedView = null;
+  populateComponentSelect();
+  populateViewSelect();
+  if (_selectedComp) loadViewState();
+  updateReplayView();
+}
+
+async function saveToServer() {
+  try {
+    const bundle = buildBundle();
+    const r = await fetch('/api/component-builder/components', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bundle),
+    });
+    const res = await r.json();
+    if (res.ok) {
+      consoleLog(`saved: ${res.components} components, ${res.views} views, ${res.replay} replay steps`, 'ok');
+    } else {
+      consoleLog('save failed: ' + JSON.stringify(res), 'err');
+    }
+  } catch(e) { consoleLog('save error: ' + e.message, 'err'); }
+}
+
+async function loadFromServer() {
+  try {
+    const r = await fetch('/api/component-builder/components');
+    const bundle = await r.json();
+    const cc = Object.keys(bundle.components || {}).length;
+    const vc = Object.keys(bundle.views || {}).length;
+    const rc = (bundle.replay || []).length;
+    if (!cc && !vc && !rc) {
+      consoleLog('nothing saved on server', 'dim');
+      return;
+    }
+    loadBundle(bundle);
+    consoleLog(`loaded: ${cc} components, ${vc} views, ${rc} replay steps`, 'ok');
+  } catch(e) { consoleLog('load error: ' + e.message, 'err'); }
+}
+
+function exportBundle() {
+  const bundle = buildBundle();
+  const json = JSON.stringify(bundle, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'v3_components_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  consoleLog('exported to file', 'ok');
+}
+
+// Wire buttons
+document.getElementById('btnSave')?.addEventListener('click', saveToServer);
+document.getElementById('btnLoad')?.addEventListener('click', loadFromServer);
+document.getElementById('btnExport')?.addEventListener('click', exportBundle);
+
+// DSL commands: save, load, export
+function _extendParseCmd(line) {
+  const tokens = asmTokenize(line.trim());
+  if (!tokens.length) return null;
+  if (tokens[0] === 'save') return { cmd: 'save' };
+  if (tokens[0] === 'load') return { cmd: 'load' };
+  if (tokens[0] === 'export') return { cmd: 'export' };
+  return null;
+}
+// Patch exec to handle save/load/export
+const _origParseCmd = parseCmd;
+parseCmd = function(line) {
+  return _extendParseCmd(line) || _origParseCmd(line);
+};
+const _origApplyCommand = applyCommand;
+applyCommand = function(cmd) {
+  if (cmd.cmd === 'save') { saveToServer(); return; }
+  if (cmd.cmd === 'load') { loadFromServer(); return; }
+  if (cmd.cmd === 'export') { exportBundle(); return; }
+  _origApplyCommand(cmd);
+};
+
+// ══════════════════════════════════════════════════════════
+//  CARD EDITOR
+// ══════════════════════════════════════════════════════════
+function populateCardSelect() {
+  const sel = document.getElementById('selCard');
+  if (!sel) return;
+  const names = Object.keys(_cardTemplates);
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}"${n === _selectedCard ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  if (!_selectedCard && names.length) _selectedCard = names[0];
+}
+
+function populateSlotTypeSelect() {
+  const sel = document.getElementById('selSlotType');
+  if (!sel) return;
+  sel.innerHTML = V3C.list().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
+
+function renderCardSlotList() {
+  const el = document.getElementById('cardSlotList');
+  if (!el) return;
+  const card = _cardTemplates[_selectedCard];
+  if (!card || !card.slots.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">(no slots)</div>';
+    return;
+  }
+  let h = '';
+  for (let i = 0; i < card.slots.length; i++) {
+    const s = card.slots[i];
+    const sel = i === _selectedSlotIdx ? 'border-color:var(--accent);' : '';
+    const asmPreview = (s.asm || '').split('\n')[0] || '(no assembly)';
+    h += `<div class="card-slot" data-slot-idx="${i}" style="cursor:pointer;${sel}">`;
+    h += `<span class="slot-num">${i}</span>`;
+    h += `<span class="slot-type">${esc(s.type)}</span>`;
+    h += `<span class="slot-asm-preview">${esc(asmPreview)}</span>`;
+    h += `<div class="slot-controls">`;
+    if (i > 0) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-slot-up="${i}">&uarr;</span>`;
+    if (i < card.slots.length - 1) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-slot-down="${i}">&darr;</span>`;
+    h += `<span style="cursor:pointer;font-size:9px;color:var(--red);" data-slot-del="${i}">&times;</span>`;
+    h += `</div></div>`;
+  }
+  el.innerHTML = h;
+  // Wire
+  el.querySelectorAll('[data-slot-idx]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.dataset.slotUp || e.target.dataset.slotDown || e.target.dataset.slotDel) return;
+      _selectedSlotIdx = +row.dataset.slotIdx;
+      const s = card.slots[_selectedSlotIdx];
+      document.getElementById('edSlotAsm').value = s.asm || '';
+      renderCardSlotList();
+    });
+  });
+  el.querySelectorAll('[data-slot-up]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.slotUp;
+      [card.slots[i-1], card.slots[i]] = [card.slots[i], card.slots[i-1]];
+      if (_selectedSlotIdx === i) _selectedSlotIdx = i - 1;
+      _saveCardTemplates(); renderCardSlotList(); refreshPreview();
+    });
+  });
+  el.querySelectorAll('[data-slot-down]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.slotDown;
+      [card.slots[i], card.slots[i+1]] = [card.slots[i+1], card.slots[i]];
+      if (_selectedSlotIdx === i) _selectedSlotIdx = i + 1;
+      _saveCardTemplates(); renderCardSlotList(); refreshPreview();
+    });
+  });
+  el.querySelectorAll('[data-slot-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      card.slots.splice(+btn.dataset.slotDel, 1);
+      _selectedSlotIdx = -1;
+      _saveCardTemplates(); renderCardSlotList(); refreshPreview();
+    });
+  });
+}
+
+// Card tab button wiring
+document.getElementById('btnNewCard')?.addEventListener('click', () => {
+  const name = prompt('Card name:');
+  if (!name || !name.trim()) return;
+  if (_cardTemplates[name.trim()]) return;
+  _cardTemplates[name.trim()] = { slots: [] };
+  _saveCardTemplates();
+  _selectedCard = name.trim();
+  populateCardSelect(); renderCardSlotList();
+  consoleLog(`created card: ${name.trim()}`, 'ok');
+});
+document.getElementById('btnDelCard')?.addEventListener('click', () => {
+  if (!_selectedCard) return;
+  delete _cardTemplates[_selectedCard];
+  _saveCardTemplates();
+  consoleLog(`deleted card: ${_selectedCard}`, 'ok');
+  _selectedCard = null;
+  populateCardSelect(); renderCardSlotList();
+});
+document.getElementById('selCard')?.addEventListener('change', (e) => {
+  _selectedCard = e.target.value;
+  _selectedSlotIdx = -1;
+  renderCardSlotList(); refreshPreview();
+});
+document.getElementById('btnAddSlot')?.addEventListener('click', () => {
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) return;
+  const type = document.getElementById('selSlotType').value;
+  if (!type) return;
+  _cardTemplates[_selectedCard].slots.push({ type, asm: '' });
+  _saveCardTemplates();
+  renderCardSlotList(); refreshPreview();
+  consoleLog(`added slot: ${type} to ${_selectedCard}`, 'ok');
+});
+document.getElementById('btnSaveSlotAsm')?.addEventListener('click', () => {
+  if (!_selectedCard || _selectedSlotIdx < 0) return;
+  const card = _cardTemplates[_selectedCard];
+  if (!card || !card.slots[_selectedSlotIdx]) return;
+  card.slots[_selectedSlotIdx].asm = document.getElementById('edSlotAsm').value;
+  _saveCardTemplates();
+  refreshPreview();
+  consoleLog(`slot ${_selectedSlotIdx} assembly updated`, 'ok');
+});
+
+// ══════════════════════════════════════════════════════════
+//  PREVIEW MODES (Pipeline / Card / Chat)
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.preview-mode').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _previewMode = btn.dataset.preview;
+    document.querySelectorAll('.preview-mode').forEach(b => b.classList.toggle('active', b.dataset.preview === _previewMode));
+    document.getElementById('previewPipeline').style.display = _previewMode === 'pipeline' ? 'block' : 'none';
+    document.getElementById('previewCard').style.display = _previewMode === 'card' ? 'block' : 'none';
+    document.getElementById('previewChat').style.display = _previewMode === 'chat' ? 'block' : 'none';
+    refreshPreview();
+  });
+});
+
+function refreshPreview() {
+  if (_previewMode === 'pipeline') runPipeline();
+  else if (_previewMode === 'card') renderCardPreview();
+  else if (_previewMode === 'chat') renderChatPreview();
+}
+
+function renderCardPreview() {
+  const el = document.getElementById('previewCard');
+  if (!el) return;
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a card in the Card tab</div>';
+    return;
+  }
+  let serverData = {};
+  try { serverData = JSON.parse(_edServerJson); } catch(_) {}
+  const slots = assembleCard(_selectedCard, serverData);
+  let h = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Card: ${esc(_selectedCard)} (${slots.length} slots)</div>`;
+  // Per-slot trace
+  for (const s of slots) {
+    h += `<div style="font-size:8px;color:var(--accent2);margin:4px 0 2px;">${esc(s.id)} → ${esc(s.component)}</div>`;
+    h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">data: ${esc(JSON.stringify(s.data).slice(0, 120))}</div>`;
+  }
+  // Rendered card
+  h += `<div style="margin-top:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;padding:4px 8px;">`;
+  h += slots.map(s => s.html).join('');
+  h += `</div>`;
+  el.innerHTML = h;
+}
+
+function renderChatPreview() {
+  const el = document.getElementById('chatList');
+  if (!el) return;
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a card in the Card tab first</div>';
+    return;
+  }
+  const messages = _sampleChatMessages;
+  // Group by parent_id
+  const roots = messages.filter(m => !m.parent_id);
+  const replies = {};
+  for (const m of messages) {
+    if (m.parent_id) {
+      if (!replies[m.parent_id]) replies[m.parent_id] = [];
+      replies[m.parent_id].push(m);
+    }
+  }
+  let h = '';
+  for (const msg of roots) {
+    h += renderChatCard(msg, replies);
+  }
+  el.innerHTML = h;
+  // Wire thread toggles
+  el.querySelectorAll('.chat-thread-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const r = btn.nextElementSibling;
+      if (r) { r.classList.toggle('open'); btn.textContent = r.classList.contains('open') ? '▾ hide replies' : `▸ ${r.children.length} replies`; }
+    });
+  });
+}
+
+function renderChatCard(msg, replies) {
+  const cardHtml = renderCard(_selectedCard, msg);
+  let h = `<div class="chat-card" data-msg-id="${esc(msg.id)}">`;
+  h += `<div class="card-body">${cardHtml}</div>`;
+  const r = replies[msg.id];
+  if (r && r.length) {
+    h += `<div class="chat-thread-toggle">\u25b8 ${r.length} replies</div>`;
+    h += `<div class="chat-replies">`;
+    for (const reply of r) {
+      h += `<div class="chat-card reply"><div class="card-body">${renderCard(_selectedCard, reply)}</div></div>`;
+    }
+    h += `</div>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+// ══════════════════════════════════════════════════════════
+//  SAMPLE CHAT DATA
+// ══════════════════════════════════════════════════════════
+const _sampleChatMessages = [
+  {
+    id: "m1", parent_id: null, timestamp: "14:30",
+    header: { author: "Alice", icon: "A" },
+    content: { text: "Hey, has anyone looked at the new pipeline?", format: "plain" },
+    reactions: { items: [{emoji:"\ud83d\udc4d",user:"Bob",status:"pass"}] },
+    meta: { channel: "dev" }
+  },
+  {
+    id: "m2", parent_id: "m1", timestamp: "14:32",
+    header: { author: "Bob", icon: "B" },
+    content: { text: "Yeah, looks good! The assembly step is clean.", format: "plain" },
+    reactions: { items: [] },
+    meta: {}
+  },
+  {
+    id: "m3", parent_id: "m1", timestamp: "14:33",
+    header: { author: "Alice", icon: "A" },
+    content: { text: "Great, I'll merge it then.", format: "plain" },
+    reactions: { items: [] },
+    meta: {}
+  },
+  {
+    id: "m4", parent_id: null, timestamp: "14:35",
+    header: { author: "Carol", icon: "C" },
+    content: { text: "I pushed a fix for the schema validation. Can someone review?", format: "plain" },
+    reactions: { items: [{emoji:"\ud83d\udd25",user:"Alice",status:"pass"},{emoji:"\ud83d\udc4d",user:"Bob",status:"pass"}] },
+    meta: { channel: "dev" }
+  },
+  {
+    id: "m5", parent_id: null, timestamp: "14:40",
+    header: { author: "Dave", icon: "D" },
+    content: { text: "Heads up: deploying to staging in 10 min", format: "plain" },
+    reactions: { items: [{emoji:"\ud83d\udc40",user:"Alice",status:"pass"},{emoji:"\ud83d\udc40",user:"Bob",status:"pass"},{emoji:"\ud83d\udc40",user:"Carol",status:"pass"}] },
+    meta: { channel: "ops" }
+  }
+];
+
+// ══════════════════════════════════════════════════════════
+//  CARD DSL COMMANDS
+// ══════════════════════════════════════════════════════════
+// Extend parseCmd and applyCommand for card operations
+const _origParseCmd2 = parseCmd;
+parseCmd = function(line) {
+  const tokens = asmTokenize(line.trim());
+  if (!tokens.length) return null;
+  const c = tokens[0];
+  if (c === 'card') return { cmd: 'card', name: tokens[1] };
+  if (c === 'slot') return { cmd: 'slot', type: tokens[1], component: tokens[2] };
+  if (c === 'slot_del') return { cmd: 'slot_del', index: +tokens[1] || 0 };
+  if (c === 'slot_move') return { cmd: 'slot_move', from: +tokens[1] || 0, to: +tokens[2] || 0 };
+  if (c === 'slot_asm') return { cmd: 'slot_asm', index: +tokens[1], code: tokens.length > 2 ? tokens.slice(2).join(' ') : null };
+  return _origParseCmd2(line);
+};
+
+const _origApplyCommand2 = applyCommand;
+applyCommand = function(cmd) {
+  switch (cmd.cmd) {
+    case 'card': {
+      if (!cmd.name) { consoleLog('card: name required', 'err'); return; }
+      if (!_cardTemplates[cmd.name]) {
+        _cardTemplates[cmd.name] = { slots: [] };
+        _saveCardTemplates();
+        consoleLog(`created card: ${cmd.name}`, 'ok');
+      } else {
+        consoleLog(`selected card: ${cmd.name}`, 'dim');
+      }
+      _selectedCard = cmd.name;
+      _selectedSlotIdx = -1;
+      populateCardSelect(); renderCardSlotList(); refreshPreview();
+      return;
+    }
+    case 'slot': {
+      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot: select a card first', 'err'); return; }
+      if (!cmd.type) { consoleLog('slot: type required', 'err'); return; }
+      _cardTemplates[_selectedCard].slots.push({ type: cmd.type, component: cmd.component || undefined, asm: '' });
+      _saveCardTemplates();
+      renderCardSlotList(); refreshPreview();
+      consoleLog(`added slot: ${cmd.type}${cmd.component ? ' → ' + cmd.component : ''}`, 'ok');
+      return;
+    }
+    case 'slot_del': {
+      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot_del: select a card first', 'err'); return; }
+      const card = _cardTemplates[_selectedCard];
+      if (cmd.index < 0 || cmd.index >= card.slots.length) { consoleLog('slot_del: invalid index', 'err'); return; }
+      card.slots.splice(cmd.index, 1);
+      _saveCardTemplates();
+      renderCardSlotList(); refreshPreview();
+      consoleLog(`deleted slot ${cmd.index}`, 'ok');
+      return;
+    }
+    case 'slot_move': {
+      if (!_selectedCard || !_cardTemplates[_selectedCard]) return;
+      const card = _cardTemplates[_selectedCard];
+      if (cmd.from < 0 || cmd.from >= card.slots.length || cmd.to < 0 || cmd.to >= card.slots.length) return;
+      const [s] = card.slots.splice(cmd.from, 1);
+      card.slots.splice(cmd.to, 0, s);
+      _saveCardTemplates();
+      renderCardSlotList(); refreshPreview();
+      consoleLog(`slot moved: ${cmd.from} → ${cmd.to}`, 'ok');
+      return;
+    }
+    case 'slot_asm': {
+      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot_asm: select a card first', 'err'); return; }
+      const card = _cardTemplates[_selectedCard];
+      const idx = cmd.index;
+      if (idx < 0 || idx >= card.slots.length) { consoleLog('slot_asm: invalid index', 'err'); return; }
+      // If code provided, use it; else use the Slot ASM editor content
+      const code = cmd.code || document.getElementById('edSlotAsm')?.value || '';
+      card.slots[idx].asm = code;
+      _saveCardTemplates();
+      refreshPreview();
+      consoleLog(`slot ${idx} assembly set (${code.split('\\n').length} lines)`, 'ok');
+      return;
+    }
+    default:
+      _origApplyCommand2(cmd);
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+loadReplay();
+populateComponentSelect();
+populateViewSelect();
+populateCardSelect();
+populateSlotTypeSelect();
+renderCardSlotList();
+if (_selectedComp) loadViewState();
+consoleLog('Component Builder DSL', 'cmd');
+consoleLog('Commands: comp, schema, asm, view, row | card, slot, slot_asm, slot_del | save, load, export', 'dim');
+consoleLog('Preview modes: Pipeline (component) | Card (assembled) | Chat (messages)', 'dim');
+</script>
+</body>
+</html>
