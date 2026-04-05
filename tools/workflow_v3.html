@@ -666,8 +666,12 @@ job_templates:
       <div id="layout-aabb-body" style="display:none;font-size:10px;color:var(--text-dim);">AABB layout editor (coming soon)</div>
     </div>
     <div class="editor-panel" id="layout-preview-panel">
-      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">PREVIEW</div>
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;display:flex;gap:6px;align-items:center;">
+        <button class="btn sm layout-right-tab active" data-layout-right="preview" style="font-size:9px;padding:1px 6px;">Preview</button>
+        <button class="btn sm layout-right-tab" data-layout-right="schemas" style="font-size:9px;padding:1px 6px;">Schemas</button>
+      </div>
       <div id="layout-preview-body" style="font-size:10px;color:var(--text-dim);">Select a component to preview</div>
+      <div id="layout-schemas-body" style="display:none;font-size:9px;overflow-y:auto;"></div>
     </div>
   </div>
 </div>
@@ -1609,18 +1613,49 @@ function _saveCustomComponents() {
   localStorage.setItem('v3_custom_components', JSON.stringify(_customComponents));
 }
 
+function _generateSampleValue(name, prop, depth) {
+  if ('default' in prop && prop.default !== '' && prop.default !== undefined
+    && !(Array.isArray(prop.default) && prop.default.length === 0)
+    && !(typeof prop.default === 'object' && prop.default !== null && Object.keys(prop.default).length === 0)) return prop.default;
+  if (prop.type === 'number') return 42;
+  if (prop.type === 'boolean') return true;
+  if (prop.type === 'string') return name + '.sample';
+  if (prop.type === 'object') {
+    if (prop.properties && depth < 2) {
+      const o = {};
+      for (const [k, sp] of Object.entries(prop.properties)) o[k] = _generateSampleValue(k, sp, depth + 1);
+      return o;
+    }
+    return { key: name + '.sample' };
+  }
+  if (prop.type === 'array') {
+    const itemSchema = prop.items || {};
+    const items = [];
+    for (let i = 0; i < 3; i++) {
+      if (itemSchema.properties && depth < 2) {
+        const o = {};
+        for (const [k, sp] of Object.entries(itemSchema.properties)) {
+          const base = _generateSampleValue(k, sp, depth + 1);
+          o[k] = typeof base === 'string' ? `${base} ${i + 1}` : base;
+        }
+        items.push(o);
+      } else if (itemSchema.type === 'object') {
+        items.push({ name: `${name}.item ${i + 1}` });
+      } else {
+        items.push(`${name}.item ${i + 1}`);
+      }
+    }
+    return items;
+  }
+  return name + '.sample';
+}
+
 function _generateSampleJson(compName) {
   const js = V3C.jsonSchema(compName);
   const props = js.properties || {};
   const sample = {};
   for (const [k, p] of Object.entries(props)) {
-    if ('default' in p && p.default !== '' && p.default !== undefined) {
-      sample[k] = p.default;
-    } else if (p.type === 'number') sample[k] = 0;
-    else if (p.type === 'boolean') sample[k] = false;
-    else if (p.type === 'array') sample[k] = [];
-    else if (p.type === 'object') sample[k] = {};
-    else sample[k] = '';
+    sample[k] = _generateSampleValue(k, p, 0);
   }
   return JSON.stringify(sample, null, 2);
 }
@@ -2109,6 +2144,55 @@ document.querySelectorAll('[data-layout-mode]').forEach(btn => {
     document.getElementById('layout-aabb-body').style.display = mode === 'aabb' ? 'block' : 'none';
   });
 });
+// ── Right panel tabs (Preview / Schemas) ──
+document.querySelectorAll('[data-layout-right]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.layout-right-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.dataset.layoutRight;
+    document.getElementById('layout-preview-body').style.display = mode === 'preview' ? 'block' : 'none';
+    document.getElementById('layout-schemas-body').style.display = mode === 'schemas' ? 'block' : 'none';
+    if (mode === 'schemas') renderLayoutSchemas();
+  });
+});
+
+function renderLayoutSchemas() {
+  const el = document.getElementById('layout-schemas-body');
+  if (!el || !_ceSelected) { if (el) el.innerHTML = '<div style="color:var(--text-dim);">Select a component</div>'; return; }
+  const js = V3C.jsonSchema(_ceSelected);
+  let h = '';
+  // Server Schema (= component JSON Schema as defined)
+  h += `<div style="color:var(--accent);font-weight:600;margin-bottom:4px;">Server Schema</div>`;
+  h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Fields the server provides (assembly input)</div>`;
+  h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(js, null, 2))}</pre>`;
+  // Client Schema (= what the skeleton actually uses)
+  // For now, derive from layout + JSON Schema — each cell = a field the UI consumes
+  const layout = _getLayout(_ceSelected);
+  const clientFields = {};
+  for (const row of layout.rows) {
+    for (const field of row.cells) {
+      const serverProp = js.properties?.[field];
+      if (serverProp) {
+        clientFields[field] = { ...serverProp };
+      } else {
+        clientFields[field] = { type: 'string', description: '(extra UI element)' };
+      }
+    }
+  }
+  const clientSchema = { type: 'object', properties: clientFields, required: js.required || [] };
+  h += `<div style="color:var(--green);font-weight:600;margin:8px 0 4px;">Client Schema</div>`;
+  h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Fields the UI consumes (assembly output)</div>`;
+  h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(clientSchema, null, 2))}</pre>`;
+  // Diff: extra elements not in server schema
+  const extraFields = layout.rows.flatMap(r => r.cells).filter(f => !js.properties?.[f]);
+  if (extraFields.length) {
+    h += `<div style="color:var(--orange);font-weight:600;margin:8px 0 4px;">Extra UI Elements</div>`;
+    h += `<div style="font-size:9px;">${extraFields.map(f => `<span style="color:var(--orange);">${esc(f)}</span>`).join(', ')}</div>`;
+    h += `<div style="font-size:8px;color:var(--text-dim);">Not in server schema \u2014 user-added, optional</div>`;
+  }
+  el.innerHTML = h;
+}
+
 // Default active
 document.querySelector('[data-editor-tab="components"]')?.classList.add('active');
 
