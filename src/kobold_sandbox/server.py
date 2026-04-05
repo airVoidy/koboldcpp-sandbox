@@ -3920,6 +3920,11 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "component_builder.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/card-builder", response_class=HTMLResponse)
+    def card_builder_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "card_builder.html"
+        return html_path.read_text(encoding="utf-8")
+
     # ── Component Builder: save/load component bundles ──
 
     @app.get("/api/component-builder/components")

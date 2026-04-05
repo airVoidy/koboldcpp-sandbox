@@ -88,26 +88,7 @@ textarea { resize:vertical; }
 .replay-entry .replay-cmd { color:var(--accent); }
 .replay-entry .replay-ts { color:var(--text-dim); font-size:8px; margin-left:auto; }
 
-/* Card editor */
-.card-slot { display:flex; align-items:flex-start; gap:6px; margin:4px 0; padding:4px 6px; background:var(--surface); border:1px solid var(--border); border-radius:3px; }
-.card-slot .slot-num { color:var(--text-dim); font-size:8px; min-width:14px; padding-top:2px; }
-.card-slot .slot-type { color:var(--accent); font-size:10px; font-weight:600; min-width:70px; }
-.card-slot .slot-asm-preview { color:var(--text-dim); font-size:8px; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-.card-slot .slot-controls { display:flex; gap:3px; margin-left:auto; flex-shrink:0; }
-
-/* Chat */
-.chat-list { display:flex; flex-direction:column; gap:2px; }
-.chat-card { border:1px solid var(--border); border-radius:6px; background:var(--surface); overflow:hidden; }
-.chat-card .card-body { padding:4px 8px; }
-.chat-card.reply { margin-left:24px; border-color:var(--surface2); }
-.chat-thread-toggle { font-size:9px; color:var(--accent); cursor:pointer; padding:2px 8px; }
-.chat-thread-toggle:hover { text-decoration:underline; }
-.chat-replies { display:none; }
-.chat-replies.open { display:block; }
-
-/* Preview mode tabs */
-.preview-modes { display:flex; gap:2px; }
-.preview-mode { font-size:9px; padding:1px 6px; }
+/* Card/Chat → see /card-builder */
 </style>
 <script src="/static/v3_core.js"></script>
 <script src="/static/v3_components.js"></script>
@@ -139,7 +120,6 @@ textarea { resize:vertical; }
       <button class="btn sm editor-tab" data-tab="assembly">Assembly</button>
       <button class="btn sm editor-tab" data-tab="schema">Client Schema</button>
       <button class="btn sm editor-tab" data-tab="layout">Layout</button>
-      <button class="btn sm editor-tab" data-tab="card">Card</button>
       <button class="btn sm editor-tab" data-tab="replay">Replay</button>
     </div>
     <!-- Tab: Console -->
@@ -172,26 +152,6 @@ textarea { resize:vertical; }
       <div id="layoutEditor"></div>
       <button class="btn sm" id="btnAddRow" style="margin-top:4px;font-size:9px;">+ Row</button>
     </div>
-    <!-- Tab: Card -->
-    <div class="panel-body tab-content" id="tab-card" style="display:none;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-        <span style="font-size:9px;color:var(--text-dim);">Card:</span>
-        <select id="selCard" style="font-size:10px;padding:2px 4px;min-width:100px;"></select>
-        <button class="btn sm" id="btnNewCard" style="font-size:8px;">+ New</button>
-        <button class="btn sm" id="btnDelCard" style="font-size:8px;color:var(--red);">Del</button>
-      </div>
-      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Slots (ordered):</div>
-      <div id="cardSlotList"></div>
-      <div style="display:flex;gap:4px;margin-top:6px;">
-        <select id="selSlotType" style="font-size:9px;padding:1px 4px;"></select>
-        <button class="btn sm" id="btnAddSlot" style="font-size:8px;">+ Add Slot</button>
-      </div>
-      <div style="margin-top:8px;">
-        <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">Slot assembly (select a slot above):</div>
-        <textarea id="edSlotAsm" rows="8" spellcheck="false" style="width:100%;font-size:9px;" placeholder="MOV @field, @n.slot.field"></textarea>
-        <button class="btn sm" id="btnSaveSlotAsm" style="font-size:8px;margin-top:2px;">Apply</button>
-      </div>
-    </div>
     <!-- Tab: Replay -->
     <div class="panel-body tab-content" id="tab-replay" style="display:none;">
       <div style="display:flex;gap:4px;margin-bottom:4px;">
@@ -208,22 +168,10 @@ textarea { resize:vertical; }
     </div>
   </div>
 
-  <!-- Right: Preview -->
+  <!-- Right: Pipeline Preview -->
   <div class="panel panel-preview">
-    <div class="panel-hdr">
-      <div class="preview-modes">
-        <button class="btn sm preview-mode active" data-preview="pipeline">Pipeline</button>
-        <button class="btn sm preview-mode" data-preview="card">Card</button>
-        <button class="btn sm preview-mode" data-preview="chat">Chat</button>
-      </div>
-    </div>
-    <div class="panel-body" id="previewPipeline">
-      <div id="pipelineBody"></div>
-    </div>
-    <div class="panel-body" id="previewCard" style="display:none;"></div>
-    <div class="panel-body" id="previewChat" style="display:none;">
-      <div class="chat-list" id="chatList"></div>
-    </div>
+    <div class="panel-hdr">PIPELINE</div>
+    <div class="panel-body" id="pipelineBody"></div>
   </div>
 </div>
 
@@ -239,17 +187,12 @@ function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replac
 let _selectedComp = null;
 let _selectedView = null; // null = "(base schema)", or "comp/viewname"
 let _activeTab = 'console';
-let _previewMode = 'pipeline'; // pipeline | card | chat
 
 // Editor state (persisted per view)
 let _edServerJson = '';
 let _edAssembly = '';
 let _edClientSchema = '';
 let _edLayout = { rows: [] };
-
-// Card state
-let _selectedCard = null;
-let _selectedSlotIdx = -1;
 
 // ══════════════════════════════════════════════════════════
 //  SELECTORS
@@ -1033,374 +976,17 @@ applyCommand = function(cmd) {
   _origApplyCommand(cmd);
 };
 
-// ══════════════════════════════════════════════════════════
-//  CARD EDITOR
-// ══════════════════════════════════════════════════════════
-function populateCardSelect() {
-  const sel = document.getElementById('selCard');
-  if (!sel) return;
-  const names = Object.keys(_cardTemplates);
-  sel.innerHTML = names.map(n => `<option value="${esc(n)}"${n === _selectedCard ? ' selected' : ''}>${esc(n)}</option>`).join('');
-  if (!_selectedCard && names.length) _selectedCard = names[0];
-}
-
-function populateSlotTypeSelect() {
-  const sel = document.getElementById('selSlotType');
-  if (!sel) return;
-  sel.innerHTML = V3C.list().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-}
-
-function renderCardSlotList() {
-  const el = document.getElementById('cardSlotList');
-  if (!el) return;
-  const card = _cardTemplates[_selectedCard];
-  if (!card || !card.slots.length) {
-    el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">(no slots)</div>';
-    return;
-  }
-  let h = '';
-  for (let i = 0; i < card.slots.length; i++) {
-    const s = card.slots[i];
-    const sel = i === _selectedSlotIdx ? 'border-color:var(--accent);' : '';
-    const asmPreview = (s.asm || '').split('\n')[0] || '(no assembly)';
-    h += `<div class="card-slot" data-slot-idx="${i}" style="cursor:pointer;${sel}">`;
-    h += `<span class="slot-num">${i}</span>`;
-    h += `<span class="slot-type">${esc(s.type)}</span>`;
-    h += `<span class="slot-asm-preview">${esc(asmPreview)}</span>`;
-    h += `<div class="slot-controls">`;
-    if (i > 0) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-slot-up="${i}">&uarr;</span>`;
-    if (i < card.slots.length - 1) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-slot-down="${i}">&darr;</span>`;
-    h += `<span style="cursor:pointer;font-size:9px;color:var(--red);" data-slot-del="${i}">&times;</span>`;
-    h += `</div></div>`;
-  }
-  el.innerHTML = h;
-  // Wire
-  el.querySelectorAll('[data-slot-idx]').forEach(row => {
-    row.addEventListener('click', (e) => {
-      if (e.target.dataset.slotUp || e.target.dataset.slotDown || e.target.dataset.slotDel) return;
-      _selectedSlotIdx = +row.dataset.slotIdx;
-      const s = card.slots[_selectedSlotIdx];
-      document.getElementById('edSlotAsm').value = s.asm || '';
-      renderCardSlotList();
-    });
-  });
-  el.querySelectorAll('[data-slot-up]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = +btn.dataset.slotUp;
-      [card.slots[i-1], card.slots[i]] = [card.slots[i], card.slots[i-1]];
-      if (_selectedSlotIdx === i) _selectedSlotIdx = i - 1;
-      _saveCardTemplates(); renderCardSlotList(); refreshPreview();
-    });
-  });
-  el.querySelectorAll('[data-slot-down]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = +btn.dataset.slotDown;
-      [card.slots[i], card.slots[i+1]] = [card.slots[i+1], card.slots[i]];
-      if (_selectedSlotIdx === i) _selectedSlotIdx = i + 1;
-      _saveCardTemplates(); renderCardSlotList(); refreshPreview();
-    });
-  });
-  el.querySelectorAll('[data-slot-del]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      card.slots.splice(+btn.dataset.slotDel, 1);
-      _selectedSlotIdx = -1;
-      _saveCardTemplates(); renderCardSlotList(); refreshPreview();
-    });
-  });
-}
-
-// Card tab button wiring
-document.getElementById('btnNewCard')?.addEventListener('click', () => {
-  const name = prompt('Card name:');
-  if (!name || !name.trim()) return;
-  if (_cardTemplates[name.trim()]) return;
-  _cardTemplates[name.trim()] = { slots: [] };
-  _saveCardTemplates();
-  _selectedCard = name.trim();
-  populateCardSelect(); renderCardSlotList();
-  consoleLog(`created card: ${name.trim()}`, 'ok');
-});
-document.getElementById('btnDelCard')?.addEventListener('click', () => {
-  if (!_selectedCard) return;
-  delete _cardTemplates[_selectedCard];
-  _saveCardTemplates();
-  consoleLog(`deleted card: ${_selectedCard}`, 'ok');
-  _selectedCard = null;
-  populateCardSelect(); renderCardSlotList();
-});
-document.getElementById('selCard')?.addEventListener('change', (e) => {
-  _selectedCard = e.target.value;
-  _selectedSlotIdx = -1;
-  renderCardSlotList(); refreshPreview();
-});
-document.getElementById('btnAddSlot')?.addEventListener('click', () => {
-  if (!_selectedCard || !_cardTemplates[_selectedCard]) return;
-  const type = document.getElementById('selSlotType').value;
-  if (!type) return;
-  _cardTemplates[_selectedCard].slots.push({ type, asm: '' });
-  _saveCardTemplates();
-  renderCardSlotList(); refreshPreview();
-  consoleLog(`added slot: ${type} to ${_selectedCard}`, 'ok');
-});
-document.getElementById('btnSaveSlotAsm')?.addEventListener('click', () => {
-  if (!_selectedCard || _selectedSlotIdx < 0) return;
-  const card = _cardTemplates[_selectedCard];
-  if (!card || !card.slots[_selectedSlotIdx]) return;
-  card.slots[_selectedSlotIdx].asm = document.getElementById('edSlotAsm').value;
-  _saveCardTemplates();
-  refreshPreview();
-  consoleLog(`slot ${_selectedSlotIdx} assembly updated`, 'ok');
-});
-
-// ══════════════════════════════════════════════════════════
-//  PREVIEW MODES (Pipeline / Card / Chat)
-// ══════════════════════════════════════════════════════════
-document.querySelectorAll('.preview-mode').forEach(btn => {
-  btn.addEventListener('click', () => {
-    _previewMode = btn.dataset.preview;
-    document.querySelectorAll('.preview-mode').forEach(b => b.classList.toggle('active', b.dataset.preview === _previewMode));
-    document.getElementById('previewPipeline').style.display = _previewMode === 'pipeline' ? 'block' : 'none';
-    document.getElementById('previewCard').style.display = _previewMode === 'card' ? 'block' : 'none';
-    document.getElementById('previewChat').style.display = _previewMode === 'chat' ? 'block' : 'none';
-    refreshPreview();
-  });
-});
-
-function refreshPreview() {
-  if (_previewMode === 'pipeline') runPipeline();
-  else if (_previewMode === 'card') renderCardPreview();
-  else if (_previewMode === 'chat') renderChatPreview();
-}
-
-function renderCardPreview() {
-  const el = document.getElementById('previewCard');
-  if (!el) return;
-  if (!_selectedCard || !_cardTemplates[_selectedCard]) {
-    el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a card in the Card tab</div>';
-    return;
-  }
-  let serverData = {};
-  try { serverData = JSON.parse(_edServerJson); } catch(_) {}
-  const slots = assembleCard(_selectedCard, serverData);
-  let h = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Card: ${esc(_selectedCard)} (${slots.length} slots)</div>`;
-  // Per-slot trace with clientSchema
-  for (const s of slots) {
-    h += `<div style="font-size:8px;color:var(--accent2);margin:4px 0 2px;">${esc(s.id)} → ${esc(s.component)}</div>`;
-    h += `<div style="font-size:8px;color:var(--green);margin-bottom:1px;">schema: ${esc(Object.keys(s.clientSchema).join(', '))}</div>`;
-    h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:1px;">data: ${esc(JSON.stringify(s.data).slice(0, 120))}</div>`;
-    if (s.warnings.length) {
-      h += `<div style="font-size:8px;color:var(--orange);margin-bottom:2px;">${s.warnings.map(w => '⚠ ' + esc(w)).join('<br>')}</div>`;
-    }
-  }
-  // Rendered card
-  h += `<div style="margin-top:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;padding:4px 8px;">`;
-  h += slots.map(s => s.html).join('');
-  h += `</div>`;
-  el.innerHTML = h;
-}
-
-function renderChatPreview() {
-  const el = document.getElementById('chatList');
-  if (!el) return;
-  if (!_selectedCard || !_cardTemplates[_selectedCard]) {
-    el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a card in the Card tab first</div>';
-    return;
-  }
-  const messages = _sampleChatMessages;
-  // Group by parent_id
-  const roots = messages.filter(m => !m.parent_id);
-  const replies = {};
-  for (const m of messages) {
-    if (m.parent_id) {
-      if (!replies[m.parent_id]) replies[m.parent_id] = [];
-      replies[m.parent_id].push(m);
-    }
-  }
-  let h = '';
-  for (const msg of roots) {
-    h += renderChatCard(msg, replies);
-  }
-  el.innerHTML = h;
-  // Wire thread toggles
-  el.querySelectorAll('.chat-thread-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const r = btn.nextElementSibling;
-      if (r) { r.classList.toggle('open'); btn.textContent = r.classList.contains('open') ? '▾ hide replies' : `▸ ${r.children.length} replies`; }
-    });
-  });
-}
-
-function renderChatCard(msg, replies) {
-  const cardHtml = renderCard(_selectedCard, msg);
-  let h = `<div class="chat-card" data-msg-id="${esc(msg.id)}">`;
-  h += `<div class="card-body">${cardHtml}</div>`;
-  const r = replies[msg.id];
-  if (r && r.length) {
-    h += `<div class="chat-thread-toggle">\u25b8 ${r.length} replies</div>`;
-    h += `<div class="chat-replies">`;
-    for (const reply of r) {
-      h += `<div class="chat-card reply"><div class="card-body">${renderCard(_selectedCard, reply)}</div></div>`;
-    }
-    h += `</div>`;
-  }
-  h += `</div>`;
-  return h;
-}
-
-// ══════════════════════════════════════════════════════════
-//  SAMPLE CHAT DATA
-// ══════════════════════════════════════════════════════════
-const _sampleChatMessages = [
-  {
-    id: "m1", parent_id: null, timestamp: "14:30",
-    header: { author: "Alice", icon: "A" },
-    content: { text: "Hey, has anyone looked at the new pipeline?", format: "plain" },
-    reactions: { items: [{emoji:"\ud83d\udc4d",user:"Bob",status:"pass"}] },
-    meta: { channel: "dev" }
-  },
-  {
-    id: "m2", parent_id: "m1", timestamp: "14:32",
-    header: { author: "Bob", icon: "B" },
-    content: { text: "Yeah, looks good! The assembly step is clean.", format: "plain" },
-    reactions: { items: [] },
-    meta: {}
-  },
-  {
-    id: "m3", parent_id: "m1", timestamp: "14:33",
-    header: { author: "Alice", icon: "A" },
-    content: { text: "Great, I'll merge it then.", format: "plain" },
-    reactions: { items: [] },
-    meta: {}
-  },
-  {
-    id: "m4", parent_id: null, timestamp: "14:35",
-    header: { author: "Carol", icon: "C" },
-    content: { text: "I pushed a fix for the schema validation. Can someone review?", format: "plain" },
-    reactions: { items: [{emoji:"\ud83d\udd25",user:"Alice",status:"pass"},{emoji:"\ud83d\udc4d",user:"Bob",status:"pass"}] },
-    meta: { channel: "dev" }
-  },
-  {
-    id: "m5", parent_id: null, timestamp: "14:40",
-    header: { author: "Dave", icon: "D" },
-    content: { text: "Heads up: deploying to staging in 10 min", format: "plain" },
-    reactions: { items: [{emoji:"\ud83d\udc40",user:"Alice",status:"pass"},{emoji:"\ud83d\udc40",user:"Bob",status:"pass"},{emoji:"\ud83d\udc40",user:"Carol",status:"pass"}] },
-    meta: { channel: "ops" }
-  }
-];
-
-// ══════════════════════════════════════════════════════════
-//  CARD DSL COMMANDS
-// ══════════════════════════════════════════════════════════
-// Extend parseCmd and applyCommand for card operations
-const _origParseCmd2 = parseCmd;
-parseCmd = function(line) {
-  const tokens = asmTokenize(line.trim());
-  if (!tokens.length) return null;
-  const c = tokens[0];
-  if (c === 'card') return { cmd: 'card', name: tokens[1] };
-  if (c === 'slot') return { cmd: 'slot', type: tokens[1], component: tokens[2] };
-  if (c === 'slot_del') return { cmd: 'slot_del', index: +tokens[1] || 0 };
-  if (c === 'slot_move') return { cmd: 'slot_move', from: +tokens[1] || 0, to: +tokens[2] || 0 };
-  if (c === 'slot_asm') return { cmd: 'slot_asm', index: +tokens[1], code: tokens.length > 2 ? tokens.slice(2).join(' ') : null };
-  if (c === 'slot_schema') {
-    // Take raw JSON after "slot_schema <index> "
-    const idx = +tokens[1];
-    const jsonStart = line.indexOf(tokens[2] || '');
-    let schema = null;
-    if (jsonStart >= 0) { try { schema = JSON.parse(line.slice(jsonStart)); } catch(_) {} }
-    return { cmd: 'slot_schema', index: idx, schema };
-  }
-  return _origParseCmd2(line);
-};
-
-const _origApplyCommand2 = applyCommand;
-applyCommand = function(cmd) {
-  switch (cmd.cmd) {
-    case 'card': {
-      if (!cmd.name) { consoleLog('card: name required', 'err'); return; }
-      if (!_cardTemplates[cmd.name]) {
-        _cardTemplates[cmd.name] = { slots: [] };
-        _saveCardTemplates();
-        consoleLog(`created card: ${cmd.name}`, 'ok');
-      } else {
-        consoleLog(`selected card: ${cmd.name}`, 'dim');
-      }
-      _selectedCard = cmd.name;
-      _selectedSlotIdx = -1;
-      populateCardSelect(); renderCardSlotList(); refreshPreview();
-      return;
-    }
-    case 'slot': {
-      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot: select a card first', 'err'); return; }
-      if (!cmd.type) { consoleLog('slot: type required', 'err'); return; }
-      _cardTemplates[_selectedCard].slots.push({ type: cmd.type, component: cmd.component || undefined, asm: '' });
-      _saveCardTemplates();
-      renderCardSlotList(); refreshPreview();
-      consoleLog(`added slot: ${cmd.type}${cmd.component ? ' → ' + cmd.component : ''}`, 'ok');
-      return;
-    }
-    case 'slot_del': {
-      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot_del: select a card first', 'err'); return; }
-      const card = _cardTemplates[_selectedCard];
-      if (cmd.index < 0 || cmd.index >= card.slots.length) { consoleLog('slot_del: invalid index', 'err'); return; }
-      card.slots.splice(cmd.index, 1);
-      _saveCardTemplates();
-      renderCardSlotList(); refreshPreview();
-      consoleLog(`deleted slot ${cmd.index}`, 'ok');
-      return;
-    }
-    case 'slot_move': {
-      if (!_selectedCard || !_cardTemplates[_selectedCard]) return;
-      const card = _cardTemplates[_selectedCard];
-      if (cmd.from < 0 || cmd.from >= card.slots.length || cmd.to < 0 || cmd.to >= card.slots.length) return;
-      const [s] = card.slots.splice(cmd.from, 1);
-      card.slots.splice(cmd.to, 0, s);
-      _saveCardTemplates();
-      renderCardSlotList(); refreshPreview();
-      consoleLog(`slot moved: ${cmd.from} → ${cmd.to}`, 'ok');
-      return;
-    }
-    case 'slot_asm': {
-      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot_asm: select a card first', 'err'); return; }
-      const card = _cardTemplates[_selectedCard];
-      const idx = cmd.index;
-      if (idx < 0 || idx >= card.slots.length) { consoleLog('slot_asm: invalid index', 'err'); return; }
-      const code = cmd.code || document.getElementById('edSlotAsm')?.value || '';
-      card.slots[idx].asm = code;
-      _saveCardTemplates();
-      refreshPreview();
-      consoleLog(`slot ${idx} assembly set (${code.split('\n').length} lines)`, 'ok');
-      return;
-    }
-    case 'slot_schema': {
-      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot_schema: select a card first', 'err'); return; }
-      const card = _cardTemplates[_selectedCard];
-      if (cmd.index < 0 || cmd.index >= card.slots.length) { consoleLog('slot_schema: invalid index', 'err'); return; }
-      card.slots[cmd.index].schema = cmd.schema;
-      _saveCardTemplates();
-      refreshPreview();
-      const fields = cmd.schema ? Object.keys(cmd.schema).join(', ') : '(cleared)';
-      consoleLog(`slot ${cmd.index} schema: ${fields}`, 'ok');
-      return;
-    }
-    default:
-      _origApplyCommand2(cmd);
-  }
-};
-
+// Card Editor, Preview Modes, Chat → moved to /card-builder
+//
 // ══════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════
 loadReplay();
 populateComponentSelect();
 populateViewSelect();
-populateCardSelect();
-populateSlotTypeSelect();
-renderCardSlotList();
 if (_selectedComp) loadViewState();
 consoleLog('Component Builder DSL', 'cmd');
-consoleLog('Commands: comp, schema, asm, view, row | card, slot, slot_asm, slot_del | save, load, export', 'dim');
-consoleLog('Preview modes: Pipeline (component) | Card (assembled) | Chat (messages)', 'dim');
+consoleLog('Commands: comp, schema, asm, view, row, row_del | save, load, export | get, ls', 'dim');
 </script>
 </body>
 </html>
