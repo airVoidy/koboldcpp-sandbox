@@ -876,18 +876,19 @@ function renderSkeletonFromLayout(layout, data, schema) {
   return `<div class="node-slot">${html}</div>`;
 }
 
-function renderComponent(type, data, style) {
+function renderComponent(type, data, style, viewName) {
   const comp = V3C.get(type) || V3C.get('schema');
   if (!comp) return `<div class="node-slot">[no renderer]</div>`;
-  // Schema-based rendering: clientSchema + assemblySnippet + layout
-  if (comp.clientSchema && comp.assemblySnippet && comp.layout) {
-    const state = execAsm(comp.assemblySnippet, { server: data || {} });
-    // Extract client data (remove internals)
+  // Check for client view (type/viewname or type/default)
+  const vn = viewName || (type + '/default');
+  const view = _clientViews[vn];
+  if (view && view.assembly && view.layout) {
+    const state = execAsm(view.assembly, { server: data || {} });
     const clientData = {};
     for (const [k, v] of Object.entries(state)) {
       if (k !== 'server' && k !== 'each_idx' && !k.startsWith('_')) clientData[k] = v;
     }
-    return renderSkeletonFromLayout(comp.layout, clientData, comp.clientSchema);
+    return renderSkeletonFromLayout(view.layout, clientData, view.clientTemplate);
   }
   return comp.render(data || {}, style);
 }
@@ -1621,6 +1622,7 @@ document.getElementById('chatInput').addEventListener('keydown', (e) => {
 //  COMPONENT EDITOR — create/edit components, field schemas, live preview
 // ══════════════════════════════════════════════════════════
 const _customComponents = {};
+const _clientViews = {};  // "component/viewname" → { component, clientTemplate, assembly, layout }
 let _ceSelected = null; // currently selected component name
 let _ceSampleJson = '';
 
@@ -1654,9 +1656,6 @@ function _registerCustomComponent(name, tpl) {
   const schemaRenderer = V3C.get('schema');
   V3C.register(name, {
     schema: legacy,
-    clientSchema: cc.clientSchema || null,
-    assemblySnippet: cc.assemblySnippet || null,
-    layout: cc.layout || null,
     render(props) { return schemaRenderer.render(props); },
     ascii(props, w) { return schemaRenderer.ascii(props, w); },
   });
@@ -1664,6 +1663,10 @@ function _registerCustomComponent(name, tpl) {
 
 function _saveCustomComponents() {
   localStorage.setItem('v3_custom_components', JSON.stringify(_customComponents));
+}
+
+function _saveClientViews() {
+  localStorage.setItem('v3_client_views', JSON.stringify(_clientViews));
 }
 
 // Generate sample value from JSON-template value
@@ -1771,23 +1774,36 @@ function renderFieldEditor() {
     const schemaRows = Math.max(4, schemaJson.split('\n').length);
     h += `<div style="color:var(--accent2);font-weight:600;margin:4px 0;font-size:10px;">Component Schema</div>`;
     h += `<textarea id="ce-schema-json" class="ve-mapping" rows="${schemaRows}" spellcheck="false" style="font-size:9px;">${esc(schemaJson)}</textarea>`;
-    // Assembly snippet
-    const cc = _customComponents[_ceSelected];
-    const snippet = cc?.assemblySnippet || '';
-    const snippetRows = Math.max(3, snippet.split('\n').length);
-    h += `<div style="color:var(--green);font-weight:600;margin:8px 0 4px;font-size:10px;">Assembly (server → client)</div>`;
-    h += `<textarea id="ce-assembly-snippet" class="ve-mapping" rows="${snippetRows}" spellcheck="false" style="font-size:9px;" placeholder="; server→client transform&#10;MOV @field, @server.field">${esc(snippet)}</textarea>`;
-    // Client schema
-    const clientSchema = cc?.clientSchema;
-    const csText = clientSchema ? JSON.stringify(clientSchema, null, 2) : '';
-    const csRows = Math.max(3, (csText || '{}').split('\n').length);
-    h += `<div style="color:var(--accent);font-weight:600;margin:8px 0 4px;font-size:10px;">Client Schema</div>`;
-    h += `<textarea id="ce-client-schema" class="ve-mapping" rows="${csRows}" spellcheck="false" style="font-size:9px;" placeholder='{"header_label":"","items":[{"bullet":""}]}'>${esc(csText)}</textarea>`;
     // Delete
     h += `<div style="margin-top:8px;"><button class="btn sm" id="ce-del-comp" style="font-size:9px;color:var(--red);">Delete Component</button></div>`;
   } else {
     // Read-only: show JSON-template
     h += `<pre style="font-size:9px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;">${esc(JSON.stringify(tpl, null, 2))}</pre>`;
+  }
+  // ── Client Views for this component ──
+  {
+    const viewPrefix = _ceSelected + '/';
+    const views = Object.entries(_clientViews).filter(([k]) => k.startsWith(viewPrefix));
+    h += `<div style="color:var(--green);font-weight:600;margin:12px 0 4px;font-size:10px;">Client Views <button class="btn sm" id="ce-add-view" style="font-size:8px;padding:1px 4px;">+</button></div>`;
+    if (!views.length) {
+      h += `<div style="font-size:9px;color:var(--text-dim);">(no views — uses schema-view fallback)</div>`;
+    }
+    for (const [vname, view] of views) {
+      const shortName = vname.slice(viewPrefix.length);
+      h += `<div class="ve-item" style="margin:2px 0;">`;
+      h += `<div class="ve-item-hdr" style="cursor:pointer;"><span style="color:var(--green);">${esc(shortName)}</span><span class="ve-del" data-cv-del="${esc(vname)}" style="margin-left:auto;">&times;</span></div>`;
+      h += `<div class="ve-item-body">`;
+      // Client template
+      const ctText = view.clientTemplate ? JSON.stringify(view.clientTemplate, null, 2) : '';
+      h += `<div style="font-size:8px;color:var(--accent2);margin:2px 0;">Client Template</div>`;
+      h += `<textarea class="ve-mapping" data-cv-field="clientTemplate" data-cv-name="${esc(vname)}" rows="${Math.max(2, (ctText||'{}').split('\n').length)}" spellcheck="false" style="font-size:8px;">${esc(ctText)}</textarea>`;
+      // Assembly
+      h += `<div style="font-size:8px;color:var(--green);margin:4px 0 2px;">Assembly</div>`;
+      h += `<textarea class="ve-mapping" data-cv-field="assembly" data-cv-name="${esc(vname)}" rows="${Math.max(2, (view.assembly||'').split('\n').length)}" spellcheck="false" style="font-size:8px;">${esc(view.assembly || '')}</textarea>`;
+      // Layout (compact display)
+      h += `<div style="font-size:8px;color:var(--text-dim);margin:4px 0 2px;">Layout: ${view.layout ? view.layout.rows.length + ' rows' : '(none)'}</div>`;
+      h += `</div></div>`;
+    }
   }
   el.innerHTML = h;
   // Wire
@@ -1804,36 +1820,56 @@ function renderFieldEditor() {
         document.getElementById('ce-schema-json').style.borderColor = 'var(--red)';
       }
     });
-    // Assembly snippet
-    document.getElementById('ce-assembly-snippet')?.addEventListener('change', () => {
-      const cc = _customComponents[_ceSelected];
-      if (!cc) return;
-      cc.assemblySnippet = document.getElementById('ce-assembly-snippet').value;
-      const comp = V3C.get(_ceSelected);
-      if (comp) comp.assemblySnippet = cc.assemblySnippet;
-      _saveCustomComponents();
-    });
-    // Client schema
-    document.getElementById('ce-client-schema')?.addEventListener('change', () => {
-      const cc = _customComponents[_ceSelected];
-      if (!cc) return;
-      try {
-        cc.clientSchema = JSON.parse(document.getElementById('ce-client-schema').value);
-        const comp = V3C.get(_ceSelected);
-        if (comp) comp.clientSchema = cc.clientSchema;
-        document.getElementById('ce-client-schema').style.borderColor = 'var(--green)';
-      } catch (_) {
-        document.getElementById('ce-client-schema').style.borderColor = 'var(--red)';
-      }
-      _saveCustomComponents();
-    });
     // Delete
     document.getElementById('ce-del-comp')?.addEventListener('click', () => {
       if (!confirm(`Delete component "${_ceSelected}"?`)) return;
       delete _customComponents[_ceSelected];
-      _saveCustomComponents(); _ceSelected = null; renderEditorPanels();
+      // Also delete associated client views
+      for (const k of Object.keys(_clientViews)) { if (k.startsWith(_ceSelected + '/')) delete _clientViews[k]; }
+      _saveCustomComponents(); _saveClientViews(); _ceSelected = null; renderEditorPanels();
     });
   }
+  // ── Client view handlers ──
+  // Toggle view bodies
+  el.querySelectorAll('.ve-item-hdr').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.classList.contains('ve-del')) return;
+      const body = hdr.nextElementSibling;
+      if (body) body.classList.toggle('open');
+    });
+  });
+  // Add view
+  document.getElementById('ce-add-view')?.addEventListener('click', () => {
+    const name = prompt('View name (e.g. compact):');
+    if (!name) return;
+    const vname = _ceSelected + '/' + name;
+    if (_clientViews[vname]) { alert('View already exists'); return; }
+    _clientViews[vname] = { component: _ceSelected, clientTemplate: null, assembly: '', layout: { rows: [] } };
+    _saveClientViews(); renderFieldEditor();
+  });
+  // Delete view
+  el.querySelectorAll('[data-cv-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      delete _clientViews[btn.dataset.cvDel];
+      _saveClientViews(); renderFieldEditor();
+    });
+  });
+  // Edit view fields (clientTemplate, assembly)
+  el.querySelectorAll('[data-cv-field]').forEach(ta => {
+    ta.addEventListener('change', () => {
+      const view = _clientViews[ta.dataset.cvName];
+      if (!view) return;
+      const field = ta.dataset.cvField;
+      if (field === 'clientTemplate') {
+        try { view.clientTemplate = JSON.parse(ta.value); ta.style.borderColor = 'var(--green)'; }
+        catch (_) { ta.style.borderColor = 'var(--red)'; return; }
+      } else {
+        view[field] = ta.value;
+      }
+      _saveClientViews();
+    });
+  });
 }
 
 function renderComponentPreview() {
@@ -1877,14 +1913,24 @@ function _updatePreviewRender() {
 try {
   const cc = JSON.parse(localStorage.getItem('v3_custom_components'));
   if (cc) for (const [name, def] of Object.entries(cc)) {
-    // Support: template format, Draft 7 jsonSchema, legacy fields
     const tpl = def.template || def.jsonSchema || (def.fields ? Object.fromEntries(Object.entries(def.fields).map(([k,v]) => [k, v.type||'string'])) : { data: 'string' });
-    // Restore extra props before registering
-    if (def.assemblySnippet) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].assemblySnippet = def.assemblySnippet; }
-    if (def.clientSchema) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].clientSchema = def.clientSchema; }
-    if (def.layout) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].layout = def.layout; }
     _registerCustomComponent(name, tpl);
+    // Migrate old assemblySnippet/clientSchema/layout → client views
+    if (def.assemblySnippet || def.clientSchema || def.layout) {
+      _clientViews[name + '/default'] = {
+        component: name,
+        clientTemplate: def.clientSchema || def.clientTemplate || null,
+        assembly: def.assemblySnippet || '',
+        layout: def.layout || null,
+      };
+    }
   }
+} catch(_) {}
+
+// ── Load client views from localStorage ──
+try {
+  const cv = JSON.parse(localStorage.getItem('v3_client_views'));
+  if (cv) Object.assign(_clientViews, cv);
 } catch(_) {}
 
 // ── Track which components came from v3_components.js (loaded before this code) ──
