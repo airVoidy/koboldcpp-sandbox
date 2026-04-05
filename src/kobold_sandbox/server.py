@@ -18,6 +18,7 @@ import yaml
 from pydantic import BaseModel
 
 from .assertions import ClaimStatus, HypothesisTree
+from .models import PNode, PNodeStore, jpath, utc_now
 from .behavior_orchestrator import (
     BehaviorTree,
     build_character_description_reference_tree,
@@ -276,6 +277,12 @@ class ImageGenerateRequest(BaseModel):
 
 class ChatSessionCreateRequest(BaseModel):
     title: str | None = None
+
+
+class PChatSendRequest(BaseModel):
+    message: str = ""
+    parent_id: str | None = None
+    data: Any = None
 
 
 class BehaviorJsonUpdateRequest(BaseModel):
@@ -3941,6 +3948,11 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "dsl_pipeline_chat.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/pipeline-chat", response_class=HTMLResponse)
+    def pipeline_chat_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "pipeline_chat.html"
+        return html_path.read_text(encoding="utf-8")
+
     @app.get("/chat", response_class=HTMLResponse)
     def chat_page() -> str:
         return _chat_page_html()
@@ -4014,6 +4026,72 @@ def create_app(root: str) -> FastAPI:
         }
         session["chat_log"].append(entry)
         return entry
+
+    # ------------------------------------------------------------------
+    # Pipeline Chat — PNode-based
+    # ------------------------------------------------------------------
+
+    pchat_store = PNodeStore()
+
+    def _build_slots(slot_defs: list[tuple[str, dict]]) -> list[dict]:
+        """Build slots array: [0]=meta about slots, [1..N]=slot containers.
+        Each element: { "<id>": { slot data }, "json_data": serialized }
+        """
+        import json as _json
+        meta = {"0": {"count": len(slot_defs)}}
+        result = [meta]
+        for i, (slot_id, slot_data) in enumerate(slot_defs, start=1):
+            entry = {str(i): slot_data, "json_data": _json.dumps(slot_data, ensure_ascii=False, default=str)}
+            result.append(entry)
+        return result
+
+    @app.post("/api/pchat/node")
+    def pchat_create_node(req: PChatSendRequest) -> dict:
+        node_id = f"n-{uuid.uuid4().hex[:8]}"
+        ts = utc_now()
+        if req.data is not None:
+            data = req.data
+        else:
+            data = {
+                "kind": "message",
+                "content": req.message,
+                "slots": _build_slots([
+                    ("body", {"type": "body", "text": req.message}),
+                    ("meta", {"type": "meta", "kind": "message", "id": node_id, "parent_id": req.parent_id, "ts": ts}),
+                ]),
+            }
+        node = PNode(id=node_id, parent_id=req.parent_id, data=data, ts=ts)
+        pchat_store.put(node)
+        return {"node": pchat_store.to_dict(node)}
+
+    @app.get("/api/pchat/nodes")
+    def pchat_nodes(parent_id: str | None = None, kind: str | None = None) -> dict:
+        if parent_id:
+            nodes = pchat_store.children(parent_id)
+        elif kind:
+            nodes = pchat_store.query_data("kind", kind)
+        else:
+            nodes = pchat_store.all()
+        return {"nodes": [pchat_store.to_dict(n) for n in nodes]}
+
+    @app.get("/api/pchat/node/{node_id}")
+    def pchat_get_node(node_id: str) -> dict:
+        node = pchat_store.get(node_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="node not found")
+        return {"node": pchat_store.to_dict(node), "children": [pchat_store.to_dict(c) for c in pchat_store.children(node_id)]}
+
+    @app.delete("/api/pchat/node/{node_id}")
+    def pchat_delete_node(node_id: str) -> dict:
+        for child in pchat_store.children(node_id):
+            pchat_store.remove(child.id)
+        pchat_store.remove(node_id)
+        return {"ok": True}
+
+    @app.post("/api/pchat/reset")
+    def pchat_reset() -> dict:
+        pchat_store.clear()
+        return {"ok": True}
 
     @app.get("/api/imagegen/samplers")
     def get_image_samplers() -> dict:
