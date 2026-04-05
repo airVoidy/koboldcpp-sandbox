@@ -159,6 +159,14 @@ textarea { resize:vertical; }
 .ve-field-row input { font-size:9px; padding:1px 2px; }
 .ve-mapping { width:100%; font-family:monospace; font-size:9px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px; padding:3px 5px; resize:vertical; line-height:1.3; }
 .ve-mapping:focus { border-color:var(--accent); outline:none; }
+.skel-table { width:100%; border-collapse:collapse; }
+.skel-table td { border:1px solid var(--border); padding:4px 6px; vertical-align:top; font-size:9px; }
+.skel-label { color:var(--accent2); font-size:8px; font-weight:600; margin-bottom:2px; }
+.skel-value { color:var(--text); font-size:10px; min-height:14px; word-break:break-word; }
+.skel-table td.skel-empty { color:var(--text-dim); font-style:italic; opacity:.5; }
+.skel-table td.skel-highlight { border-color:var(--accent); background:var(--surface2); }
+.skel-row-controls { display:flex; gap:2px; align-items:center; margin:2px 0; }
+[data-editor-tab].active { color:var(--accent); border-bottom:2px solid var(--accent); }
 
 /* View editor modal columns */
 .ve-col-hdr { font-size:12px; font-weight:600; color:var(--accent); margin-bottom:6px; }
@@ -624,21 +632,42 @@ job_templates:
 
 <!-- ═══ PAGE: Editor ═══ -->
 <div class="page" id="page-editor" style="flex-direction:column;">
-  <div class="editor-panels">
-    <!-- Left: Components list -->
+  <div style="display:flex;gap:2px;padding:2px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+    <button class="btn sm" data-editor-tab="components" style="font-size:10px;">Components</button>
+    <button class="btn sm" data-editor-tab="layout" style="font-size:10px;">Layout</button>
+  </div>
+  <!-- Sub-tab: Components (fields + preview) -->
+  <div class="editor-panels" id="editor-sub-components">
     <div class="editor-panel" id="editor-components-panel" style="max-width:200px;">
       <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">COMPONENTS</div>
       <div id="editor-components-body"></div>
     </div>
-    <!-- Center: Field Editor -->
     <div class="editor-panel" id="editor-fields-panel">
       <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">FIELDS</div>
       <div id="editor-fields-body" style="font-size:10px;color:var(--text-dim);">Select a component</div>
     </div>
-    <!-- Right: Live Preview -->
     <div class="editor-panel" id="editor-preview-panel">
       <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">PREVIEW</div>
       <div id="editor-preview-body" style="font-size:10px;color:var(--text-dim);">Select a component to preview</div>
+    </div>
+  </div>
+  <!-- Sub-tab: Layout (skeleton editor) -->
+  <div class="editor-panels" id="editor-sub-layout" style="display:none;">
+    <div class="editor-panel" id="layout-cells-panel" style="max-width:200px;">
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">CELLS</div>
+      <div id="layout-cells-body"></div>
+    </div>
+    <div class="editor-panel" id="layout-skeleton-panel">
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;display:flex;gap:6px;align-items:center;">
+        <button class="btn sm layout-mode-btn active" data-layout-mode="skeleton" style="font-size:9px;padding:1px 6px;">Skeleton</button>
+        <button class="btn sm layout-mode-btn" data-layout-mode="aabb" style="font-size:9px;padding:1px 6px;">AABB</button>
+      </div>
+      <div id="layout-skeleton-body" style="font-size:10px;color:var(--text-dim);">Select a component first</div>
+      <div id="layout-aabb-body" style="display:none;font-size:10px;color:var(--text-dim);">AABB layout editor (coming soon)</div>
+    </div>
+    <div class="editor-panel" id="layout-preview-panel">
+      <div class="panel-hdr" style="border-bottom:1px solid var(--border);margin:-8px -8px 8px;padding:6px 8px;">PREVIEW</div>
+      <div id="layout-preview-body" style="font-size:10px;color:var(--text-dim);">Select a component to preview</div>
     </div>
   </div>
 </div>
@@ -1815,6 +1844,273 @@ try {
 for (const name of V3C.list()) {
   if (name !== 'schema' && !_customComponents[name]) _jsComponentNames.add(name);
 }
+
+// ══════════════════════════════════════════════════════════
+//  LAYOUT EDITOR — skeleton builder from JSON Schema
+// ══════════════════════════════════════════════════════════
+let _layoutEditorTab = 'components';
+const _layouts = {}; // name → { rows: [{cells: [fieldName]}] }
+let _layoutSampleJson = '';
+
+function _generateLayout(compName) {
+  const js = V3C.jsonSchema(compName);
+  const props = Object.keys(js.properties || {});
+  return { rows: props.map(f => ({ cells: [f] })) };
+}
+
+function _getLayout(compName) {
+  if (!compName) return { rows: [] };
+  // Custom components may store layout
+  if (_customComponents[compName]?.layout) return _customComponents[compName].layout;
+  if (!_layouts[compName]) _layouts[compName] = _generateLayout(compName);
+  return _layouts[compName];
+}
+
+function _saveLayout(compName, layout) {
+  _layouts[compName] = layout;
+  if (_customComponents[compName]) {
+    _customComponents[compName].layout = layout;
+    _saveCustomComponents();
+  }
+}
+
+function _renderSkeletonValue(val) {
+  if (val === undefined || val === null) return '<span style="color:var(--text-dim);font-style:italic;">(empty)</span>';
+  if (typeof val === 'boolean') return `<span style="color:var(--${val ? 'green' : 'red'});">${val}</span>`;
+  if (typeof val === 'number') return `<span style="color:var(--accent3);">${val}</span>`;
+  if (typeof val === 'string') return val ? esc(val.length > 80 ? val.slice(0, 77) + '...' : val) : '<span style="color:var(--text-dim);">""</span>';
+  if (Array.isArray(val)) return `<span style="color:var(--text-dim);">[${val.length}]</span>`;
+  if (typeof val === 'object') return `<span style="color:var(--text-dim);">{${Object.keys(val).join(', ')}}</span>`;
+  return esc(String(val));
+}
+
+function switchEditorTab(tab) {
+  _layoutEditorTab = tab;
+  document.querySelectorAll('[data-editor-tab]').forEach(b => b.classList.toggle('active', b.dataset.editorTab === tab));
+  document.getElementById('editor-sub-components').style.display = tab === 'components' ? 'flex' : 'none';
+  document.getElementById('editor-sub-layout').style.display = tab === 'layout' ? 'flex' : 'none';
+  if (tab === 'layout') renderLayoutPanels();
+}
+
+function renderLayoutPanels() {
+  renderLayoutCells();
+  renderLayoutSkeleton();
+  renderLayoutPreview();
+}
+
+function renderLayoutCells() {
+  const el = document.getElementById('layout-cells-body');
+  if (!el) return;
+  if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">Select a component in Components tab first</div>'; return; }
+  const js = V3C.jsonSchema(_ceSelected);
+  const props = js.properties || {};
+  const req = js.required || [];
+  let h = `<div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:4px;">${esc(_ceSelected)}</div>`;
+  for (const [fname, p] of Object.entries(props)) {
+    const isReq = req.includes(fname);
+    h += `<div style="font-size:9px;padding:2px 4px;margin:1px 0;cursor:pointer;border-radius:2px;" data-layout-cell="${esc(fname)}">`;
+    h += `<span style="color:${isReq ? 'var(--accent3)' : 'var(--text-dim)'};">${isReq ? '\u2605 ' : '  '}</span>`;
+    h += `<span style="color:var(--accent2);">${esc(fname)}</span> `;
+    h += `<span style="color:var(--text-dim);font-size:8px;">${esc(p.type || 'any')}</span>`;
+    h += `</div>`;
+  }
+  h += `<button class="btn sm" id="layout-add-extra" style="margin-top:6px;font-size:9px;width:100%;">+ Element</button>`;
+  el.innerHTML = h;
+  // Wire
+  el.querySelectorAll('[data-layout-cell]').forEach(row => {
+    row.addEventListener('click', () => {
+      el.querySelectorAll('[data-layout-cell]').forEach(r => r.style.background = '');
+      row.style.background = 'var(--surface2)';
+      // Highlight in skeleton
+      document.querySelectorAll('.skel-table td').forEach(td => td.classList.remove('skel-highlight'));
+      const td = document.querySelector(`.skel-table td[data-field="${row.dataset.layoutCell}"]`);
+      if (td) td.classList.add('skel-highlight');
+    });
+  });
+  document.getElementById('layout-add-extra')?.addEventListener('click', () => {
+    const name = prompt('Element name:');
+    if (!name) return;
+    const layout = _getLayout(_ceSelected);
+    layout.rows.push({ cells: [name] });
+    _saveLayout(_ceSelected, layout);
+    renderLayoutPanels();
+  });
+}
+
+function renderLayoutSkeleton() {
+  const el = document.getElementById('layout-skeleton-body');
+  if (!el) return;
+  if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">Select a component</div>'; return; }
+  const layout = _getLayout(_ceSelected);
+  const js = V3C.jsonSchema(_ceSelected);
+  const req = js.required || [];
+  let h = '';
+  for (let ri = 0; ri < layout.rows.length; ri++) {
+    const row = layout.rows[ri];
+    h += `<div class="skel-row-controls">`;
+    h += `<span style="color:var(--text-dim);font-size:8px;min-width:16px;">${ri + 1}</span>`;
+    if (ri > 0) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-layout-row-up="${ri}">\u2191</span>`;
+    if (ri < layout.rows.length - 1) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-layout-row-down="${ri}">\u2193</span>`;
+    h += `<span style="cursor:pointer;font-size:9px;color:var(--red);margin-left:auto;" data-layout-row-del="${ri}">\u00d7</span>`;
+    h += `</div>`;
+    h += `<table class="skel-table"><tr>`;
+    for (let ci = 0; ci < row.cells.length; ci++) {
+      const field = row.cells[ci];
+      const isReq = req.includes(field);
+      h += `<td data-field="${esc(field)}">`;
+      h += `<div class="skel-label">${isReq ? '\u2605' : ''} ${esc(field)}</div>`;
+      h += `<div class="skel-value" style="color:var(--text-dim);font-style:italic;">(data)</div>`;
+      h += `</td>`;
+    }
+    // Button to add cell to this row
+    h += `<td style="border:1px dashed var(--border);cursor:pointer;text-align:center;color:var(--text-dim);font-size:9px;width:20px;" data-layout-add-cell="${ri}">+</td>`;
+    h += `</tr></table>`;
+  }
+  h += `<button class="btn sm" id="layout-add-row" style="margin-top:4px;font-size:9px;">+ Row</button>`;
+  el.innerHTML = h;
+  // Wire
+  el.querySelectorAll('[data-layout-row-up]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.layoutRowUp;
+      const rows = layout.rows;
+      [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
+      _saveLayout(_ceSelected, layout); renderLayoutPanels();
+    });
+  });
+  el.querySelectorAll('[data-layout-row-down]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.layoutRowDown;
+      const rows = layout.rows;
+      [rows[i], rows[i + 1]] = [rows[i + 1], rows[i]];
+      _saveLayout(_ceSelected, layout); renderLayoutPanels();
+    });
+  });
+  el.querySelectorAll('[data-layout-row-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      layout.rows.splice(+btn.dataset.layoutRowDel, 1);
+      _saveLayout(_ceSelected, layout); renderLayoutPanels();
+    });
+  });
+  el.querySelectorAll('[data-layout-add-cell]').forEach(td => {
+    td.addEventListener('click', () => {
+      const name = prompt('Field name:');
+      if (!name) return;
+      layout.rows[+td.dataset.layoutAddCell].cells.push(name);
+      _saveLayout(_ceSelected, layout); renderLayoutPanels();
+    });
+  });
+  document.getElementById('layout-add-row')?.addEventListener('click', () => {
+    const name = prompt('Field name:');
+    if (!name) return;
+    layout.rows.push({ cells: [name] });
+    _saveLayout(_ceSelected, layout); renderLayoutPanels();
+  });
+}
+
+function renderLayoutPreview() {
+  const el = document.getElementById('layout-preview-body');
+  if (!el) return;
+  if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">Select a component</div>'; return; }
+  // Reuse sample JSON from component editor or generate
+  if (!_layoutSampleJson) _layoutSampleJson = _generateSampleJson(_ceSelected);
+  const existing = document.getElementById('layout-sample-json');
+  if (!existing || el.dataset.ceComp !== _ceSelected) {
+    el.dataset.ceComp = _ceSelected;
+    el.innerHTML = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Sample data:</div>`
+      + `<textarea id="layout-sample-json" class="ve-mapping" rows="6" spellcheck="false" style="margin-bottom:6px;font-size:9px;">${esc(_layoutSampleJson)}</textarea>`
+      + `<div id="layout-render-output"></div>`;
+    document.getElementById('layout-sample-json')?.addEventListener('input', (e) => {
+      _layoutSampleJson = e.target.value;
+      _updateLayoutPreview();
+    });
+  }
+  _updateLayoutPreview();
+}
+
+function _renderSkeletonCell(field, val, js) {
+  // Array → repeat block
+  if (Array.isArray(val)) {
+    const itemSchema = js?.properties?.[field]?.items?.properties || {};
+    const itemFields = Object.keys(itemSchema);
+    let h = `<td data-field="${esc(field)}" style="padding:0;">`;
+    h += `<div class="skel-label" style="padding:2px 6px;">${esc(field)} [${val.length}]</div>`;
+    if (val.length === 0) {
+      h += `<div class="skel-value" style="padding:2px 6px;color:var(--text-dim);font-style:italic;">(empty array)</div>`;
+    } else {
+      h += `<table class="skel-table" style="margin:0;">`;
+      for (let i = 0; i < val.length; i++) {
+        const item = val[i];
+        h += `<tr>`;
+        if (typeof item === 'object' && item !== null) {
+          const fields = itemFields.length ? itemFields : Object.keys(item);
+          for (const k of fields) {
+            h += `<td><div class="skel-label">${esc(k)}</div><div class="skel-value">${_renderSkeletonValue(item[k])}</div></td>`;
+          }
+        } else {
+          h += `<td><div class="skel-label">[${i}]</div><div class="skel-value">${_renderSkeletonValue(item)}</div></td>`;
+        }
+        h += `</tr>`;
+      }
+      h += `</table>`;
+    }
+    h += `</td>`;
+    return h;
+  }
+  // Object → nested key-value
+  if (typeof val === 'object' && val !== null) {
+    let h = `<td data-field="${esc(field)}">`;
+    h += `<div class="skel-label">${esc(field)}</div>`;
+    h += `<div class="skel-value">`;
+    for (const [k, v] of Object.entries(val)) {
+      h += `<div><span style="color:var(--accent2);font-size:8px;">${esc(k)}:</span> ${_renderSkeletonValue(v)}</div>`;
+    }
+    h += `</div></td>`;
+    return h;
+  }
+  // Primitive
+  return `<td data-field="${esc(field)}"><div class="skel-label">${esc(field)}</div><div class="skel-value">${_renderSkeletonValue(val)}</div></td>`;
+}
+
+function _updateLayoutPreview() {
+  const out = document.getElementById('layout-render-output');
+  if (!out || !_ceSelected) return;
+  const layout = _getLayout(_ceSelected);
+  const js = V3C.jsonSchema(_ceSelected);
+  const req = js.required || [];
+  let data = {};
+  try { data = JSON.parse(_layoutSampleJson); } catch (_) {}
+  let h = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Rendered skeleton:</div>`;
+  h += `<table class="skel-table">`;
+  for (const row of layout.rows) {
+    const visibleCells = row.cells.filter(f => data[f] !== undefined || req.includes(f));
+    if (!visibleCells.length) continue;
+    h += `<tr>`;
+    for (const field of visibleCells) {
+      h += _renderSkeletonCell(field, data[field], js);
+    }
+    h += `</tr>`;
+  }
+  h += `</table>`;
+  out.innerHTML = h;
+}
+
+// ── Sub-tab switching ──
+document.querySelectorAll('[data-editor-tab]').forEach(btn => {
+  btn.addEventListener('click', () => switchEditorTab(btn.dataset.editorTab));
+});
+
+// ── Layout mode switching (Skeleton / AABB) ──
+document.querySelectorAll('[data-layout-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.layout-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.dataset.layoutMode;
+    document.getElementById('layout-skeleton-body').style.display = mode === 'skeleton' ? 'block' : 'none';
+    document.getElementById('layout-aabb-body').style.display = mode === 'aabb' ? 'block' : 'none';
+  });
+});
+// Default active
+document.querySelector('[data-editor-tab="components"]')?.classList.add('active');
 
 // ══════════════════════════════════════════════════════════
 //  INIT
