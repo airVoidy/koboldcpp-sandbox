@@ -1838,6 +1838,7 @@ function renderFieldEditor() {
     document.getElementById('ce-del-comp')?.addEventListener('click', function() {
       if (this.dataset.confirm) {
         delete _customComponents[_ceSelected];
+        delete V3C._components[_ceSelected];
         for (const k of Object.keys(_clientViews)) { if (k.startsWith(_ceSelected + '/')) delete _clientViews[k]; }
         _saveCustomComponents(); _saveClientViews(); _ceSelected = null; renderEditorPanels();
       } else {
