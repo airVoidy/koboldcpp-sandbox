@@ -279,10 +279,9 @@ class ChatSessionCreateRequest(BaseModel):
     title: str | None = None
 
 
-class PChatSendRequest(BaseModel):
-    message: str = ""
-    parent_id: str | None = None
-    data: Any = None
+class PChatExecRequest(BaseModel):
+    asm: str
+    state: dict[str, Any] = {}
 
 
 class BehaviorJsonUpdateRequest(BaseModel):
@@ -4032,37 +4031,41 @@ def create_app(root: str) -> FastAPI:
     # ------------------------------------------------------------------
 
     pchat_store = PNodeStore()
+    _pchat_log_path = Path(root) / "pchat_log.jsonl"
 
-    def _build_slots(slot_defs: list[tuple[str, dict]]) -> list[dict]:
-        """Build slots array: [0]=meta about slots, [1..N]=slot containers.
-        Each element: { "<id>": { slot data }, "json_data": serialized }
-        """
-        import json as _json
-        meta = {"0": {"count": len(slot_defs)}}
-        result = [meta]
-        for i, (slot_id, slot_data) in enumerate(slot_defs, start=1):
-            entry = {str(i): slot_data, "json_data": _json.dumps(slot_data, ensure_ascii=False, default=str)}
-            result.append(entry)
-        return result
+    def _pchat_log_append(nodes: list[dict], asm: str) -> None:
+        """Append created nodes to the persistent log file."""
+        if not nodes:
+            return
+        line = json.dumps({"nodes": nodes, "asm": asm}, ensure_ascii=False, default=str)
+        with open(_pchat_log_path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
-    @app.post("/api/pchat/node")
-    def pchat_create_node(req: PChatSendRequest) -> dict:
-        node_id = f"n-{uuid.uuid4().hex[:8]}"
-        ts = utc_now()
-        if req.data is not None:
-            data = req.data
-        else:
-            data = {
-                "kind": "message",
-                "content": req.message,
-                "slots": _build_slots([
-                    ("body", {"type": "body", "text": req.message}),
-                    ("meta", {"type": "meta", "kind": "message", "id": node_id, "parent_id": req.parent_id, "ts": ts}),
-                ]),
-            }
-        node = PNode(id=node_id, parent_id=req.parent_id, data=data, ts=ts)
-        pchat_store.put(node)
-        return {"node": pchat_store.to_dict(node)}
+    def _pchat_replay() -> int:
+        """Replay log file to restore PNodeStore state. Returns node count."""
+        if not _pchat_log_path.exists():
+            return 0
+        count = 0
+        for line in _pchat_log_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                for nd in entry.get("nodes", []):
+                    pchat_store.put(PNode(
+                        id=nd["id"],
+                        parent_id=nd.get("parent_id"),
+                        data=nd.get("data"),
+                        ts=nd.get("ts", utc_now()),
+                    ))
+                    count += 1
+            except Exception:
+                continue
+        return count
+
+    # Replay on startup
+    _replayed = _pchat_replay()
 
     @app.get("/api/pchat/nodes")
     def pchat_nodes(parent_id: str | None = None, kind: str | None = None) -> dict:
@@ -4091,7 +4094,84 @@ def create_app(root: str) -> FastAPI:
     @app.post("/api/pchat/reset")
     def pchat_reset() -> dict:
         pchat_store.clear()
+        if _pchat_log_path.exists():
+            _pchat_log_path.write_text("", encoding="utf-8")
         return {"ok": True}
+
+    # ------------------------------------------------------------------
+    # Pipeline Chat — Assembly exec endpoint
+    # ------------------------------------------------------------------
+
+    from .assembly_dsl import asm_function, execute as asm_execute
+    from .workflow_dsl import WorkflowContext
+
+    @asm_function("send_message", params=["channel_id", "text", "user"], outputs=["result"])
+    def _asm_send_message(ctx, args, flags):
+        store = ctx.vars.get("_store")
+        if not store:
+            return {"ok": False, "error": "no store in context"}
+        channel_id = args[0] if args else None
+        text = args[1] if len(args) > 1 else ""
+        user = args[2] if len(args) > 2 else "anon"
+        node_id = f"n-{uuid.uuid4().hex[:8]}"
+        ts = utc_now()
+        node = PNode(id=node_id, parent_id=channel_id, data={
+            "kind": "message",
+            "content": text,
+            "user": user,
+        }, ts=ts)
+        store.put(node)
+        return {"ok": True, "node": store.to_dict(node)}
+
+    @asm_function("create_channel", params=["name"], outputs=["result"])
+    def _asm_create_channel(ctx, args, flags):
+        store = ctx.vars.get("_store")
+        if not store:
+            return {"ok": False, "error": "no store in context"}
+        name = args[0] if args else "unnamed"
+        node_id = f"n-{uuid.uuid4().hex[:8]}"
+        node = PNode(id=node_id, data={"kind": "channel", "name": name})
+        store.put(node)
+        return {"ok": True, "node": store.to_dict(node)}
+
+    @app.post("/api/pchat/exec")
+    def pchat_exec(req: PChatExecRequest) -> dict:
+        # Snapshot existing IDs to detect new nodes
+        ids_before = set(n.id for n in pchat_store.all())
+
+        ctx = WorkflowContext(workers={}, settings={})
+        ctx.vars = {**req.state, "_store": pchat_store}
+        try:
+            result = asm_execute(req.asm, ctx)
+        finally:
+            ctx.close()
+
+        # Collect new nodes (exclude log entries)
+        new_nodes = [
+            pchat_store.to_dict(n) for n in pchat_store.all()
+            if n.id not in ids_before and n.data.get("kind") != "log"
+        ]
+
+        # Persist to log file
+        _pchat_log_append(new_nodes, req.asm)
+
+        # Log entry (in-memory only, not persisted)
+        log_id = f"log-{uuid.uuid4().hex[:8]}"
+        clean_state = {k: v for k, v in result.state.items() if not k.startswith("_")}
+        pchat_store.put(PNode(id=log_id, data={
+            "kind": "log",
+            "asm": req.asm,
+            "input_state": req.state,
+            "output_state": clean_state,
+            "error": result.error,
+        }))
+
+        return {
+            "state": clean_state,
+            "log": result.log,
+            "log_id": log_id,
+            "error": result.error,
+        }
 
     @app.get("/api/imagegen/samplers")
     def get_image_samplers() -> dict:

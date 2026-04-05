@@ -50,7 +50,9 @@ textarea { resize:vertical; }
 .chat-msg .msg-id { font-size:9px; color:var(--accent); font-weight:600; }
 .chat-msg .msg-kind { font-size:9px; padding:0 3px; border-radius:2px; background:var(--surface2); color:var(--text-dim); }
 .chat-msg .msg-ts { font-size:9px; color:var(--text-dim); margin-left:auto; }
+.chat-msg .msg-user { color:var(--green); font-weight:600; margin-right:4px; }
 .chat-msg .msg-content { }
+.top-bar input { width:100px; font-size:11px; padding:2px 6px; }
 .chat-input-bar { display:flex; gap:4px; padding:6px 12px; border-top:1px solid var(--border); flex-shrink:0; }
 .chat-input-bar textarea { flex:1; min-height:32px; max-height:120px; resize:vertical; font-size:11px; }
 .chat-empty { padding:20px; color:var(--text-dim); font-style:italic; text-align:center; }
@@ -81,7 +83,7 @@ textarea { resize:vertical; }
 .view-item { padding:4px 8px; border-radius:3px; cursor:pointer; font-size:11px; }
 .view-item:hover { background:var(--surface2); }
 .view-item.active { background:var(--accent); color:#000; }
-.views-panels { flex:1; display:flex; min-height:0; }
+.views-panels { flex:1; display:flex; flex-direction:column; min-height:0; }
 .view-panel { flex:1; display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--border); }
 .view-panel:last-child { border-right:none; }
 .view-panel-hdr { padding:3px 8px; font-size:10px; font-weight:600; color:var(--text-dim); border-bottom:1px solid var(--border); background:var(--surface2); flex-shrink:0; }
@@ -106,6 +108,7 @@ textarea { resize:vertical; }
 <div class="top-bar">
   <h1>Pipeline Chat</h1>
   <span class="spacer"></span>
+  <input id="username-input" placeholder="username" value="">
   <button class="btn sm danger" onclick="resetAll()">Reset</button>
 </div>
 
@@ -146,22 +149,23 @@ textarea { resize:vertical; }
     <div class="views-sidebar">
       <div class="sidebar-hdr">Presets</div>
       <div class="sidebar-body" id="view-preset-list"></div>
+      <div class="sidebar-hdr" style="border-top:1px solid var(--border)">Sample</div>
+      <div style="padding:4px"><select id="view-sample-select" onchange="liveUpdateView()" style="width:100%;font-size:10px;padding:2px 4px;"></select></div>
     </div>
     <div class="views-panels" id="views-panels">
-      <div class="view-panel">
-        <div class="view-panel-hdr">Assembly Snippet</div>
+      <div class="view-panel" style="flex:0 0 auto;max-height:30%;">
+        <div class="view-panel-hdr">Assembly</div>
         <div class="view-panel-body"><textarea id="view-asm" spellcheck="false" oninput="liveUpdateView()"></textarea></div>
       </div>
-      <div class="view-panel">
-        <div class="view-panel-hdr">Assembled JSON</div>
-        <div class="view-sample-bar">
-          Sample: <select id="view-sample-select" onchange="liveUpdateView()"></select>
+      <div style="flex:1;display:flex;min-height:0;">
+        <div class="view-panel" style="flex:1;">
+          <div class="view-panel-hdr">Raw Node (before)</div>
+          <div class="view-panel-body"><pre id="view-raw"></pre></div>
         </div>
-        <div class="view-panel-body"><pre id="view-json"></pre></div>
-      </div>
-      <div class="view-panel">
-        <div class="view-panel-hdr">Rendered HTML</div>
-        <div class="view-panel-body"><div id="view-html" class="preview-frame"></div></div>
+        <div class="view-panel" style="flex:1;">
+          <div class="view-panel-hdr">After Assembly</div>
+          <div class="view-panel-body"><pre id="view-json"></pre></div>
+        </div>
       </div>
     </div>
   </div>
@@ -292,69 +296,21 @@ function execAsm(code, extraState) {
 const viewPresets = {
   'message/compact': {
     asm: [
-      '; slots.1.1 = body slot, slots.2.2 = meta slot',
-      'CALL @content, default, @n.data.slots.1.1.text, @n.data.content',
-      'CALL @content, default, @content, ""',
-      'MOV @time, @n.data.slots.2.2.ts',
-      'CALL @time, default, @time, @n.ts',
-      'MOV @id, @n.data.slots.2.2.id',
-      'CALL @id, default, @id, @n.id',
+      'CALL @content, default, @data.content, ""',
+      'CALL @user, default, @data.user, "anon"',
     ].join('\n'),
     render(j) {
-      const ts = j.time ? new Date(j.time).toLocaleTimeString() : '';
+      const ts = j.ts ? new Date(j.ts).toLocaleTimeString() : '';
       return `<div class="chat-msg">
-        <div class="msg-hdr"><span class="msg-id">${esc(j.id)}</span><span class="msg-ts">${esc(ts)}</span></div>
+        <div class="msg-hdr"><span class="msg-user">${esc(j.user)}</span><span class="msg-ts">${esc(ts)}</span></div>
         <div class="msg-content">${esc(j.content)}</div>
       </div>`;
     },
   },
-  'message/card': {
-    asm: [
-      '; slots.0.0 = slots meta, slots.1.1 = body, slots.2.2 = meta',
-      'CALL @content, default, @n.data.slots.1.1.text, @n.data.content',
-      'CALL @content, default, @content, ""',
-      'CALL @kind, default, @n.data.slots.2.2.kind, @n.data.kind',
-      'CALL @kind, default, @kind, "?"',
-      'CALL @id, default, @n.data.slots.2.2.id, @n.id',
-      'CALL @parent, default, @n.data.slots.2.2.parent_id, @n.parent_id',
-      'CALL @time, default, @n.data.slots.2.2.ts, @n.ts',
-      'CALL @slot_count, default, @n.data.slots.0.0.count, 0',
-      'CALL @raw, json, @n.data',
-    ].join('\n'),
-    render(j) {
-      const ts = j.time ? new Date(j.time).toLocaleTimeString() : '';
-      return `<div class="pnode">
-        <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
-          <span class="pnode-id">${esc(j.id)}</span>
-          <span class="pnode-kind">${esc(j.kind)}</span>
-          <span class="pnode-preview">${esc(String(j.content).slice(0, 60))}</span>
-          <span class="pnode-ts">${esc(ts)}</span>
-        </div>
-        <div class="pnode-body"><pre>${esc(j.raw)}</pre></div>
-      </div>`;
-    },
-  },
   'channel/item': {
-    asm: 'CALL @name, default, @n.data.name, @n.id',
+    asm: 'CALL @name, default, @data.name, @id',
     render(j) {
       return `<span class="ch-hash">#</span> ${esc(j.name)}`;
-    },
-  },
-  'channel/card': {
-    asm: [
-      'CALL @name, default, @n.data.name, @n.id',
-      'MOV @id, @n.id',
-      'CALL @raw, json, @n.data',
-    ].join('\n'),
-    render(j) {
-      return `<div class="pnode">
-        <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
-          <span class="pnode-id">${esc(j.id)}</span>
-          <span class="pnode-kind">channel</span>
-          <span class="pnode-preview"># ${esc(j.name)}</span>
-        </div>
-        <div class="pnode-body"><pre>${esc(j.raw)}</pre></div>
-      </div>`;
     },
   },
 };
@@ -362,10 +318,11 @@ const viewPresets = {
 function renderNode(node, presetName) {
   const preset = viewPresets[presetName];
   if (!preset) return `<div class="pnode"><pre>${esc(JSON.stringify(node, null, 2))}</pre></div>`;
-  const state = execAsm(preset.asm, { n: node });
+  // Node fields passed directly: @id, @parent_id, @data.content, @ts — matches raw JSON
+  const state = execAsm(preset.asm, { ...node });
   const json = {};
   for (const [k, v] of Object.entries(state)) {
-    if (k !== 'n' && k !== 'each_idx' && !k.startsWith('_')) json[k] = v;
+    if (!k.startsWith('_') && k !== 'each_idx') json[k] = v;
   }
   return preset.render(json);
 }
@@ -373,7 +330,7 @@ function renderNode(node, presetName) {
 function pickPreset(node, context) {
   const kind = jpath(node.data, 'kind', 'generic');
   if (context === 'chat') return kind === 'channel' ? 'channel/item' : 'message/compact';
-  return kind === 'channel' ? 'channel/card' : 'message/card';
+  return null; // Nodes tab uses raw render
 }
 
 // ══════════════════════════════════════════════════════════
@@ -408,6 +365,16 @@ async function api(method, path, body) {
   return data;
 }
 
+async function execServerAsm(asm, state = {}) {
+  const res = await api('POST', '/api/pchat/exec', { asm, state });
+  if (res.error) console.error('exec error:', res.error);
+  // Add log node to allNodes so Nodes tab sees it
+  if (res.log_id) {
+    allNodes.push({ id: res.log_id, parent_id: null, data: { kind: 'log', asm, input_state: state, output_state: res.state, error: res.error }, ts: new Date().toISOString() });
+  }
+  return res;
+}
+
 // ══════════════════════════════════════════════════════════
 //  Channels
 // ══════════════════════════════════════════════════════════
@@ -417,10 +384,13 @@ async function createChannel() {
   const name = input.value.trim();
   if (!name) return;
   input.value = '';
-  const res = await api('POST', '/api/pchat/node', { data: { kind: 'channel', name } });
-  allNodes.push(res.node);
-  selectChannel(res.node.id);
-  renderAll();
+  setStatus('Creating channel...', true);
+  try {
+    const res = await execServerAsm('CALL @result, create_channel, @name', { name });
+    const node = res.state?.result?.node;
+    if (node) { allNodes.push(node); selectChannel(node.id); renderAll(); }
+    setStatus('Ready — ' + allNodes.length + ' nodes');
+  } catch (e) { setStatus('Error: ' + e.message); }
 }
 
 function selectChannel(id) {
@@ -445,21 +415,29 @@ function renderChannelList() {
 //  Messages + Rendering
 // ══════════════════════════════════════════════════════════
 
+function getUsername() {
+  return document.getElementById('username-input').value.trim() || 'anon';
+}
+
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
   if (!msg) return;
   if (!activeChannel) {
-    const res = await api('POST', '/api/pchat/node', { data: { kind: 'channel', name: 'general' } });
-    allNodes.push(res.node);
-    selectChannel(res.node.id);
+    const res = await execServerAsm('CALL @result, create_channel, @name', { name: 'general' });
+    const ch = res.state?.result?.node;
+    if (ch) { allNodes.push(ch); selectChannel(ch.id); }
   }
   input.value = '';
   setStatus('Posting...', true);
   try {
-    const res = await api('POST', '/api/pchat/node', { message: msg, parent_id: activeChannel });
-    allNodes.push(res.node);
-    renderAll();
+    const user = getUsername();
+    const res = await execServerAsm(
+      'CALL @result, send_message, @channel_id, @text, @user',
+      { channel_id: activeChannel, text: msg, user }
+    );
+    const node = res.state?.result?.node;
+    if (node) { allNodes.push(node); renderAll(); }
     setStatus('Ready — ' + allNodes.length + ' nodes');
   } catch (e) {
     setStatus('Error: ' + e.message);
@@ -469,7 +447,7 @@ async function sendMessage() {
 function renderChat() {
   const el = document.getElementById('chat-thread');
   if (!activeChannel) { el.innerHTML = '<div class="chat-empty">No channel selected</div>'; return; }
-  const msgs = allNodes.filter(n => n.parent_id === activeChannel);
+  const msgs = allNodes.filter(n => n.parent_id === activeChannel && jpath(n.data, 'kind') === 'message');
   if (!msgs.length) { el.innerHTML = '<div class="chat-empty">No messages yet. Say something!</div>'; return; }
   el.innerHTML = msgs.map(n => renderNode(n, 'message/compact')).join('');
   el.scrollTop = el.scrollHeight;
@@ -478,13 +456,22 @@ function renderChat() {
 function renderNodeList() {
   const el = document.getElementById('node-list');
   if (!allNodes.length) { el.innerHTML = '<div class="empty" style="padding:12px">No nodes</div>'; return; }
-  el.innerHTML = allNodes.map(n => renderNode(n, pickPreset(n, 'nodes'))).join('');
+  el.innerHTML = allNodes.map(n => {
+    const kind = jpath(n.data, 'kind', '?');
+    return `<div class="pnode">
+      <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span class="pnode-id">${esc(n.id)}</span>
+        <span class="pnode-kind">${esc(kind)}</span>
+      </div>
+      <div class="pnode-body"><pre>${esc(JSON.stringify(n, null, 2))}</pre></div>
+    </div>`;
+  }).join('');
 }
 
 function renderRaw() {
   const el = document.getElementById('raw-view');
   if (!allNodes.length) { el.textContent = 'No nodes yet'; el.className = 'empty'; return; }
-  el.textContent = JSON.stringify(allNodes[allNodes.length - 1], null, 2);
+  el.textContent = JSON.stringify(allNodes, null, 2);
   el.className = '';
 }
 
@@ -567,27 +554,35 @@ function liveUpdateView() {
   const sampleId = sel.value;
   const sampleNode = allNodes.find(n => n.id === sampleId);
 
+  const rawEl = document.getElementById('view-raw');
+  const jsonEl = document.getElementById('view-json');
+
   if (!sampleNode) {
-    document.getElementById('view-json').textContent = '(no sample node selected)';
-    document.getElementById('view-html').innerHTML = '<span class="empty">(no sample)</span>';
+    rawEl.textContent = '(no sample node selected)';
+    jsonEl.textContent = '(no sample node selected)';
     return;
   }
 
+  // Left: raw node as server returns it
+  rawEl.textContent = JSON.stringify(sampleNode, null, 2);
+
   try {
-    const state = execAsm(asm, { n: sampleNode });
+    // Right: after assembly
+    const state = execAsm(asm, { ...sampleNode });
     const json = {};
     for (const [k, v] of Object.entries(state)) {
-      if (k !== 'n' && k !== 'each_idx' && !k.startsWith('_')) json[k] = v;
+      if (k !== 'each_idx' && !k.startsWith('_')) json[k] = v;
     }
-    document.getElementById('view-json').textContent = JSON.stringify(json, null, 2);
-
-    const preset = viewPresets[activePreset];
-    document.getElementById('view-html').innerHTML = preset.render(json);
+    jsonEl.textContent = JSON.stringify(json, null, 2);
   } catch (e) {
-    document.getElementById('view-json').textContent = 'Error: ' + e.message;
-    document.getElementById('view-html').innerHTML = '<span style="color:var(--red)">' + esc(e.message) + '</span>';
+    jsonEl.textContent = 'Error: ' + e.message;
   }
 }
+
+// Username persistence
+const _usernameInput = document.getElementById('username-input');
+_usernameInput.value = localStorage.getItem('pchat_user') || '';
+_usernameInput.addEventListener('input', () => localStorage.setItem('pchat_user', _usernameInput.value));
 
 loadNodes();
 </script>
