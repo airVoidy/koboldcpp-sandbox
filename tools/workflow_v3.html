@@ -1757,128 +1757,64 @@ function renderFieldEditor() {
   const editable = _isCustom(_ceSelected);
   let h = '';
   h += `<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">${esc(_ceSelected)} ${_getComponentBadge(_ceSelected)}</div>`;
-  h += `<table style="width:100%;font-size:9px;border-collapse:collapse;">`;
-  h += `<tr style="color:var(--text-dim);border-bottom:1px solid var(--border);">`;
-  h += `<th style="text-align:left;padding:2px 4px;">name</th><th style="text-align:left;padding:2px 4px;">type</th><th style="text-align:left;padding:2px 4px;">default</th><th style="text-align:left;padding:2px 4px;">doc</th><th style="text-align:center;padding:2px 4px;">req</th>`;
-  if (editable) h += `<th></th>`;
-  h += `</tr>`;
-  for (const [fname, p] of fields) {
-    const isReq = req.includes(fname);
-    h += `<tr style="border-bottom:1px solid var(--surface);">`;
-    if (editable) {
-      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="name" value="${esc(fname)}" style="width:60px;font-size:9px;" /></td>`;
-      h += `<td style="padding:2px;"><select data-ce-field="${esc(fname)}" data-ce-prop="type" style="font-size:9px;">`;
-      for (const t of ['string','number','boolean','array','object']) h += `<option${t === p.type ? ' selected' : ''}>${t}</option>`;
-      h += `</select></td>`;
-      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="default" value="${esc(JSON.stringify(p.default ?? ''))}" style="width:50px;font-size:9px;" /></td>`;
-      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="doc" value="${esc(p.description || '')}" style="width:80px;font-size:9px;" /></td>`;
-      h += `<td style="padding:2px;text-align:center;"><input type="checkbox" data-ce-field="${esc(fname)}" data-ce-prop="required" ${isReq ? 'checked' : ''} /></td>`;
-      h += `<td style="padding:2px;"><span class="ve-del" data-ce-del="${esc(fname)}" style="cursor:pointer;">&times;</span></td>`;
-    } else {
+  if (editable) {
+    // JSON Schema textarea — edit all fields at once
+    const schemaJson = JSON.stringify(js, null, 2);
+    const schemaRows = Math.max(4, schemaJson.split('\n').length);
+    h += `<div style="color:var(--accent2);font-weight:600;margin:4px 0;font-size:10px;">Server Schema (JSON)</div>`;
+    h += `<textarea id="ce-schema-json" class="ve-mapping" rows="${schemaRows}" spellcheck="false" style="font-size:9px;">${esc(schemaJson)}</textarea>`;
+    // Assembly snippet
+    const cc = _customComponents[_ceSelected];
+    const snippet = cc?.assemblySnippet || '';
+    const snippetRows = Math.max(3, snippet.split('\n').length);
+    h += `<div style="color:var(--green);font-weight:600;margin:8px 0 4px;font-size:10px;">Assembly (server → client)</div>`;
+    h += `<textarea id="ce-assembly-snippet" class="ve-mapping" rows="${snippetRows}" spellcheck="false" style="font-size:9px;" placeholder="; server→client transform&#10;MOV @field, @server.field">${esc(snippet)}</textarea>`;
+    // Client schema
+    const clientSchema = cc?.clientSchema;
+    const csText = clientSchema ? JSON.stringify(clientSchema, null, 2) : '';
+    const csRows = Math.max(3, (csText || '{}').split('\n').length);
+    h += `<div style="color:var(--accent);font-weight:600;margin:8px 0 4px;font-size:10px;">Client Schema</div>`;
+    h += `<textarea id="ce-client-schema" class="ve-mapping" rows="${csRows}" spellcheck="false" style="font-size:9px;" placeholder='{"header_label":"","items":[{"bullet":""}]}'>${esc(csText)}</textarea>`;
+    // Delete
+    h += `<div style="margin-top:8px;"><button class="btn sm" id="ce-del-comp" style="font-size:9px;color:var(--red);">Delete Component</button></div>`;
+  } else {
+    // Read-only table for JS components
+    h += `<table style="width:100%;font-size:9px;border-collapse:collapse;">`;
+    h += `<tr style="color:var(--text-dim);border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">name</th><th style="text-align:left;padding:2px 4px;">type</th><th style="text-align:left;padding:2px 4px;">default</th><th style="text-align:left;padding:2px 4px;">doc</th><th style="text-align:center;padding:2px 4px;">req</th></tr>`;
+    for (const [fname, p] of fields) {
+      const isReq = req.includes(fname);
+      h += `<tr style="border-bottom:1px solid var(--surface);">`;
       h += `<td style="padding:2px 4px;color:${isReq ? 'var(--accent3)' : 'var(--text)'};">${esc(fname)}</td>`;
       h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(p.type || 'any')}</td>`;
       h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(JSON.stringify(p.default ?? ''))}</td>`;
       h += `<td style="padding:2px 4px;color:var(--text-dim);font-style:italic;">${esc(p.description || '')}</td>`;
-      h += `<td style="padding:2px 4px;text-align:center;color:${isReq ? 'var(--accent3)' : 'var(--text-dim)'};">${isReq ? '★' : ''}</td>`;
+      h += `<td style="padding:2px 4px;text-align:center;color:${isReq ? 'var(--accent3)' : 'var(--text-dim)'};">${isReq ? '\u2605' : ''}</td>`;
+      h += `</tr>`;
     }
-    h += `</tr>`;
-  }
-  h += `</table>`;
-  if (editable) {
-    h += `<div style="margin-top:4px;display:flex;gap:4px;">`;
-    h += `<button class="btn sm" id="ce-add-field" style="font-size:9px;">+ Field</button>`;
-    h += `<button class="btn sm" id="ce-del-comp" style="font-size:9px;color:var(--red);">Delete</button>`;
-    h += `</div>`;
-    // Assembly snippet (server → client transform)
-    const cc = _customComponents[_ceSelected];
-    const snippet = cc?.assemblySnippet || '';
-    h += `<div style="color:var(--green);font-weight:600;margin:10px 0 4px;font-size:10px;">Assembly (server → client)</div>`;
-    h += `<textarea id="ce-assembly-snippet" class="ve-mapping" rows="${Math.max(3, snippet.split('\\n').length)}" spellcheck="false" style="font-size:9px;" placeholder="; server→client transform\nMOV @field, @server.field">${esc(snippet)}</textarea>`;
-    // Client schema (auto-generated or custom)
-    const clientSchema = cc?.clientSchema;
-    const csText = clientSchema ? JSON.stringify(clientSchema, null, 2) : '';
-    h += `<div style="color:var(--accent2);font-weight:600;margin:8px 0 4px;font-size:10px;">Client Schema <span style="font-weight:400;color:var(--text-dim);font-size:8px;">(auto from assembly output)</span></div>`;
-    h += `<textarea id="ce-client-schema" class="ve-mapping" rows="${Math.max(2, csText.split('\\n').length)}" spellcheck="false" style="font-size:8px;" placeholder='{"type":"object","properties":{...}}'>${esc(csText)}</textarea>`;
+    h += `</table>`;
   }
   el.innerHTML = h;
-  // Wire editable fields
+  // Wire
   if (editable) {
-    el.querySelectorAll('[data-ce-prop="name"]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const oldName = inp.dataset.ceField;
-        const newName = inp.value.trim();
-        if (!newName || newName === oldName) return;
-        const js = _customComponents[_ceSelected].jsonSchema;
-        js.properties[newName] = js.properties[oldName];
-        delete js.properties[oldName];
-        if (js.required) js.required = js.required.map(r => r === oldName ? newName : r);
-        _registerCustomComponent(_ceSelected, js);
-        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
-      });
-    });
-    el.querySelectorAll('[data-ce-prop="type"]').forEach(sel => {
-      sel.addEventListener('change', () => {
-        _customComponents[_ceSelected].jsonSchema.properties[sel.dataset.ceField].type = sel.value;
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].jsonSchema);
-        _saveCustomComponents(); renderComponentPreview();
-      });
-    });
-    el.querySelectorAll('[data-ce-prop="default"]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const p = _customComponents[_ceSelected].jsonSchema.properties[inp.dataset.ceField];
-        try { p.default = JSON.parse(inp.value); } catch(_) { p.default = inp.value; }
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].jsonSchema);
-        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderComponentPreview();
-      });
-    });
-    el.querySelectorAll('[data-ce-prop="doc"]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        _customComponents[_ceSelected].jsonSchema.properties[inp.dataset.ceField].description = inp.value;
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].jsonSchema);
-        _saveCustomComponents();
-      });
-    });
-    el.querySelectorAll('[data-ce-prop="required"]').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const js = _customComponents[_ceSelected].jsonSchema;
-        if (!js.required) js.required = [];
-        const fname = cb.dataset.ceField;
-        if (cb.checked && !js.required.includes(fname)) js.required.push(fname);
-        else js.required = js.required.filter(r => r !== fname);
-        _registerCustomComponent(_ceSelected, js);
-        _saveCustomComponents();
-      });
-    });
-    el.querySelectorAll('[data-ce-del]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const js = _customComponents[_ceSelected].jsonSchema;
-        delete js.properties[btn.dataset.ceDel];
-        if (js.required) js.required = js.required.filter(r => r !== btn.dataset.ceDel);
-        _registerCustomComponent(_ceSelected, js);
-        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
-      });
-    });
-    document.getElementById('ce-add-field')?.addEventListener('click', () => {
-      const name = prompt('Field name:');
-      const js = _customComponents[_ceSelected].jsonSchema;
-      if (!name || js.properties[name]) return;
-      js.properties[name] = { type: 'string', default: '', description: '' };
-      _registerCustomComponent(_ceSelected, js);
-      _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
-    });
-    document.getElementById('ce-del-comp')?.addEventListener('click', () => {
-      if (!confirm(`Delete component "${_ceSelected}"?`)) return;
-      delete _customComponents[_ceSelected];
-      _saveCustomComponents(); _ceSelected = null; renderEditorPanels();
+    // Server schema JSON
+    document.getElementById('ce-schema-json')?.addEventListener('change', () => {
+      try {
+        const newJs = JSON.parse(document.getElementById('ce-schema-json').value);
+        _registerCustomComponent(_ceSelected, newJs);
+        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected);
+        document.getElementById('ce-schema-json').style.borderColor = 'var(--green)';
+        renderComponentPreview();
+      } catch (_) {
+        document.getElementById('ce-schema-json').style.borderColor = 'var(--red)';
+      }
     });
     // Assembly snippet
     document.getElementById('ce-assembly-snippet')?.addEventListener('change', () => {
       const cc = _customComponents[_ceSelected];
       if (!cc) return;
       cc.assemblySnippet = document.getElementById('ce-assembly-snippet').value;
-      // Re-register with updated snippet
       const comp = V3C.get(_ceSelected);
-      if (comp) { comp.assemblySnippet = cc.assemblySnippet; }
+      if (comp) comp.assemblySnippet = cc.assemblySnippet;
       _saveCustomComponents();
     });
     // Client schema
@@ -1888,12 +1824,18 @@ function renderFieldEditor() {
       try {
         cc.clientSchema = JSON.parse(document.getElementById('ce-client-schema').value);
         const comp = V3C.get(_ceSelected);
-        if (comp) { comp.clientSchema = cc.clientSchema; }
+        if (comp) comp.clientSchema = cc.clientSchema;
         document.getElementById('ce-client-schema').style.borderColor = 'var(--green)';
       } catch (_) {
         document.getElementById('ce-client-schema').style.borderColor = 'var(--red)';
       }
       _saveCustomComponents();
+    });
+    // Delete
+    document.getElementById('ce-del-comp')?.addEventListener('click', () => {
+      if (!confirm(`Delete component "${_ceSelected}"?`)) return;
+      delete _customComponents[_ceSelected];
+      _saveCustomComponents(); _ceSelected = null; renderEditorPanels();
     });
   }
 }
