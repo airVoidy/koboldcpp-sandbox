@@ -1761,7 +1761,7 @@ function renderFieldEditor() {
     // JSON Schema textarea — edit all fields at once
     const schemaJson = JSON.stringify(js, null, 2);
     const schemaRows = Math.max(4, schemaJson.split('\n').length);
-    h += `<div style="color:var(--accent2);font-weight:600;margin:4px 0;font-size:10px;">Server Schema (JSON)</div>`;
+    h += `<div style="color:var(--accent2);font-weight:600;margin:4px 0;font-size:10px;">Component Schema</div>`;
     h += `<textarea id="ce-schema-json" class="ve-mapping" rows="${schemaRows}" spellcheck="false" style="font-size:9px;">${esc(schemaJson)}</textarea>`;
     // Assembly snippet
     const cc = _customComponents[_ceSelected];
@@ -2177,9 +2177,9 @@ function renderLayoutSchemas() {
   if (!el || !_ceSelected) { if (el) el.innerHTML = '<div style="color:var(--text-dim);">Select a component</div>'; return; }
   const js = V3C.jsonSchema(_ceSelected);
   let h = '';
-  // Server Schema (= component JSON Schema as defined)
-  h += `<div style="color:var(--accent);font-weight:600;margin-bottom:4px;">Server Schema</div>`;
-  h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Fields the server provides (assembly input)</div>`;
+  // Component Schema (what the component declares as its fields)
+  h += `<div style="color:var(--accent);font-weight:600;margin-bottom:4px;">Component Schema</div>`;
+  h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Fields the component declares</div>`;
   h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(js, null, 2))}</pre>`;
   // Client Schema (= what the skeleton actually uses)
   // For now, derive from layout + JSON Schema — each cell = a field the UI consumes
