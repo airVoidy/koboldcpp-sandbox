@@ -228,23 +228,29 @@ function register(name, def) {
 function get(name) { return _components[name]||null; }
 function list() { return Object.keys(_components); }
 function schema(name) { return _components[name]?.schema||{}; }
-function _legacyToJsonSchema(legacy) {
-  const props = {}, req = [];
+// JSON-template: {"field": "type", "items": [{"sub": "type"}]}
+// Types as string values: "string", "number", "boolean"
+// Arrays: [template_item], Objects: nested
+function _legacyToTemplate(legacy) {
+  const tpl = {};
   for (const [k, fd] of Object.entries(legacy)) {
-    const p = { type: fd.type || 'string' };
-    if (fd.doc) p.description = fd.doc;
-    if ('default' in fd) p.default = fd.default; else req.push(k);
-    props[k] = p;
+    const t = fd.type || 'string';
+    if (t === 'array') tpl[k] = [];
+    else if (t === 'object') tpl[k] = {};
+    else if (t === 'number') tpl[k] = 'number';
+    else if (t === 'boolean') tpl[k] = 'boolean';
+    else tpl[k] = 'string';
   }
-  return { type: 'object', properties: props, required: req };
+  return tpl;
 }
-function jsonSchema(name) {
-  const c = _components[name]; if (!c) return { type: 'object', properties: {}, required: [] };
-  if (c.jsonSchema) return c.jsonSchema;
-  // Auto-convert from legacy schema
-  c.jsonSchema = _legacyToJsonSchema(c.schema);
-  return c.jsonSchema;
+function template(name) {
+  const c = _components[name]; if (!c) return {};
+  if (c._template) return c._template;
+  c._template = _legacyToTemplate(c.schema);
+  return c._template;
 }
+// Keep jsonSchema for backward compat but delegate to template
+function jsonSchema(name) { return template(name); }
 function resolve(name, rawData, overrides) {
   const comp = _components[name]; if (!comp) return {};
   const props = {}, fmap = { ...comp.fieldMap, ...(overrides||{}) };
@@ -295,7 +301,7 @@ register('schema', { schema: { data:{type:'object',default:{},doc:'Any JSON data
   },
   ascii(p,w) { const keys=Object.keys(p); return keys.map(k=>` ${k}: ${_truncate(JSON.stringify(p[k]),w-k.length-4)}`); } });
 
-const V3C = { register, get, list, schema, jsonSchema, resolve, render, ascii, _esc, _box, _pad, _truncate, _components };
+const V3C = { register, get, list, schema, template, jsonSchema, resolve, render, ascii, _esc, _box, _pad, _truncate, _components };
 root.V3C = V3C;
 })(window);
 </script>
@@ -845,7 +851,7 @@ function asmStore(state, ref, value) {
 //  SLOT SCHEMAS — lightweight docs: what each component expects
 //  No resolution chain, no transforms — just interface docs
 // ══════════════════════════════════════════════════════════
-// _slotSchemas removed — use V3C.jsonSchema(name) instead
+// _slotSchemas removed — use V3C.template(name) instead
 
 // ══════════════════════════════════════════════════════════
 //  RENDER COMPONENT — direct: slot.data → HTML via V3C
@@ -856,10 +862,9 @@ const _statusColors = { done:'green', active:'accent', pending:'text-dim', faile
 // Render a skeleton layout from client JSON data
 function renderSkeletonFromLayout(layout, data, schema) {
   if (!layout || !layout.rows) return '';
-  const req = schema?.required || [];
   let html = '<table class="skel-table">';
   for (const row of layout.rows) {
-    const cells = row.cells.filter(f => data[f] !== undefined || req.includes(f));
+    const cells = row.cells.filter(f => data[f] !== undefined);
     if (!cells.length) continue;
     html += '<tr>';
     for (const field of cells) {
@@ -1622,22 +1627,33 @@ let _ceSampleJson = '';
 // JS components that were loaded from v3_components.js (not schema, not custom)
 const _jsComponentNames = new Set();
 
-function _registerCustomComponent(name, js) {
-  // js = JSON Schema object { type: 'object', properties: {...}, required: [...] }
+function _registerCustomComponent(name, tpl) {
+  // tpl = JSON-template: {"field": "type", "items": [{"sub": "type"}]}
+  // Also accepts legacy Draft 7 — auto-convert
+  if (tpl && tpl.type === 'object' && tpl.properties) {
+    // Convert Draft 7 → JSON-template
+    const converted = {};
+    for (const [k, p] of Object.entries(tpl.properties)) {
+      if (p.type === 'array') converted[k] = p.items?.properties ? [Object.fromEntries(Object.entries(p.items.properties).map(([sk,sv]) => [sk, sv.type || 'string']))] : [];
+      else if (p.type === 'object') converted[k] = {};
+      else converted[k] = p.type || 'string';
+    }
+    tpl = converted;
+  }
   const existing = _customComponents[name] || {};
-  _customComponents[name] = { ...existing, jsonSchema: js };
+  _customComponents[name] = { ...existing, template: tpl };
   const cc = _customComponents[name];
-  // Convert JSON Schema → legacy schema for V3C compatibility
+  // Convert template → legacy schema for V3C compatibility
   const legacy = {};
-  for (const [k, p] of Object.entries(js.properties || {})) {
-    legacy[k] = { type: p.type || 'string' };
-    if ('default' in p) legacy[k].default = p.default;
-    if (p.description) legacy[k].doc = p.description;
+  for (const [k, v] of Object.entries(tpl)) {
+    if (typeof v === 'string') legacy[k] = { type: v || 'string' };
+    else if (Array.isArray(v)) legacy[k] = { type: 'array' };
+    else if (typeof v === 'object') legacy[k] = { type: 'object' };
+    else legacy[k] = { type: 'string' };
   }
   const schemaRenderer = V3C.get('schema');
   V3C.register(name, {
     schema: legacy,
-    jsonSchema: js,
     clientSchema: cc.clientSchema || null,
     assemblySnippet: cc.assemblySnippet || null,
     layout: cc.layout || null,
@@ -1650,49 +1666,43 @@ function _saveCustomComponents() {
   localStorage.setItem('v3_custom_components', JSON.stringify(_customComponents));
 }
 
-function _generateSampleValue(name, prop, depth) {
-  if ('default' in prop && prop.default !== '' && prop.default !== undefined
-    && !(Array.isArray(prop.default) && prop.default.length === 0)
-    && !(typeof prop.default === 'object' && prop.default !== null && Object.keys(prop.default).length === 0)) return prop.default;
-  if (prop.type === 'number') return 42;
-  if (prop.type === 'boolean') return true;
-  if (prop.type === 'string') return name + '.sample';
-  if (prop.type === 'object') {
-    if (prop.properties && depth < 2) {
-      const o = {};
-      for (const [k, sp] of Object.entries(prop.properties)) o[k] = _generateSampleValue(k, sp, depth + 1);
-      return o;
-    }
-    return { key: name + '.sample' };
-  }
-  if (prop.type === 'array') {
-    const itemSchema = prop.items || {};
+// Generate sample value from JSON-template value
+// Template values: "string", "number", "boolean", [] (array), {} (object), [{...}] (array of objects)
+function _genSample(name, tplVal, depth) {
+  if (tplVal === 'string' || tplVal === '') return name + '.sample';
+  if (tplVal === 'number') return 42;
+  if (tplVal === 'boolean') return true;
+  if (Array.isArray(tplVal)) {
     const items = [];
+    const itemTpl = tplVal[0]; // first element = item template
     for (let i = 0; i < 3; i++) {
-      if (itemSchema.properties && depth < 2) {
+      if (itemTpl && typeof itemTpl === 'object' && depth < 2) {
         const o = {};
-        for (const [k, sp] of Object.entries(itemSchema.properties)) {
-          const base = _generateSampleValue(k, sp, depth + 1);
+        for (const [k, v] of Object.entries(itemTpl)) {
+          const base = _genSample(k, v, depth + 1);
           o[k] = typeof base === 'string' ? `${base}_${i + 1}` : base;
         }
         items.push(o);
-      } else if (itemSchema.type === 'object') {
-        items.push({ name: `${name}.item_${i + 1}` });
       } else {
         items.push(`${name}.item_${i + 1}`);
       }
     }
     return items;
   }
+  if (typeof tplVal === 'object' && tplVal !== null) {
+    if (depth >= 2) return { key: name + '.sample' };
+    const o = {};
+    for (const [k, v] of Object.entries(tplVal)) o[k] = _genSample(k, v, depth + 1);
+    return o;
+  }
   return name + '.sample';
 }
 
 function _generateSampleJson(compName) {
-  const js = V3C.jsonSchema(compName);
-  const props = js.properties || {};
+  const tpl = V3C.template(compName);
   const sample = {};
-  for (const [k, p] of Object.entries(props)) {
-    sample[k] = _generateSampleValue(k, p, 0);
+  for (const [k, v] of Object.entries(tpl)) {
+    sample[k] = _genSample(k, v, 0);
   }
   return JSON.stringify(sample, null, 2);
 }
@@ -1738,7 +1748,7 @@ function renderComponentList() {
   document.getElementById('ce-add-btn')?.addEventListener('click', () => {
     const name = prompt('Component name:');
     if (!name || V3C.get(name)) { if (name && V3C.get(name)) alert('Already exists'); return; }
-    _registerCustomComponent(name, { type: 'object', required: [], properties: { data: { type: 'string', default: '', description: 'Data' } } });
+    _registerCustomComponent(name, { data: 'string' });
     _saveCustomComponents();
     _ceSelected = name;
     _ceSampleJson = _generateSampleJson(name);
@@ -1750,16 +1760,14 @@ function renderFieldEditor() {
   const el = document.getElementById('editor-fields-body');
   if (!el) return;
   if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a component</div>'; return; }
-  const js = V3C.jsonSchema(_ceSelected);
-  const props = js.properties || {};
-  const req = js.required || [];
-  const fields = Object.entries(props);
+  const tpl = V3C.template(_ceSelected);
+  const fields = Object.entries(tpl);
   const editable = _isCustom(_ceSelected);
   let h = '';
   h += `<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">${esc(_ceSelected)} ${_getComponentBadge(_ceSelected)}</div>`;
   if (editable) {
     // JSON Schema textarea — edit all fields at once
-    const schemaJson = JSON.stringify(js, null, 2);
+    const schemaJson = JSON.stringify(tpl, null, 2);
     const schemaRows = Math.max(4, schemaJson.split('\n').length);
     h += `<div style="color:var(--accent2);font-weight:600;margin:4px 0;font-size:10px;">Component Schema</div>`;
     h += `<textarea id="ce-schema-json" class="ve-mapping" rows="${schemaRows}" spellcheck="false" style="font-size:9px;">${esc(schemaJson)}</textarea>`;
@@ -1778,20 +1786,8 @@ function renderFieldEditor() {
     // Delete
     h += `<div style="margin-top:8px;"><button class="btn sm" id="ce-del-comp" style="font-size:9px;color:var(--red);">Delete Component</button></div>`;
   } else {
-    // Read-only table for JS components
-    h += `<table style="width:100%;font-size:9px;border-collapse:collapse;">`;
-    h += `<tr style="color:var(--text-dim);border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">name</th><th style="text-align:left;padding:2px 4px;">type</th><th style="text-align:left;padding:2px 4px;">default</th><th style="text-align:left;padding:2px 4px;">doc</th><th style="text-align:center;padding:2px 4px;">req</th></tr>`;
-    for (const [fname, p] of fields) {
-      const isReq = req.includes(fname);
-      h += `<tr style="border-bottom:1px solid var(--surface);">`;
-      h += `<td style="padding:2px 4px;color:${isReq ? 'var(--accent3)' : 'var(--text)'};">${esc(fname)}</td>`;
-      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(p.type || 'any')}</td>`;
-      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(JSON.stringify(p.default ?? ''))}</td>`;
-      h += `<td style="padding:2px 4px;color:var(--text-dim);font-style:italic;">${esc(p.description || '')}</td>`;
-      h += `<td style="padding:2px 4px;text-align:center;color:${isReq ? 'var(--accent3)' : 'var(--text-dim)'};">${isReq ? '\u2605' : ''}</td>`;
-      h += `</tr>`;
-    }
-    h += `</table>`;
+    // Read-only: show JSON-template
+    h += `<pre style="font-size:9px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;">${esc(JSON.stringify(tpl, null, 2))}</pre>`;
   }
   el.innerHTML = h;
   // Wire
@@ -1881,13 +1877,13 @@ function _updatePreviewRender() {
 try {
   const cc = JSON.parse(localStorage.getItem('v3_custom_components'));
   if (cc) for (const [name, def] of Object.entries(cc)) {
-    // Support both new (jsonSchema) and legacy (fields) format
-    const js = def.jsonSchema || (def.fields ? { type: 'object', properties: Object.fromEntries(Object.entries(def.fields).map(([k,v]) => [k, { type: v.type||'string', default: v.default, description: v.doc }])), required: [] } : { type: 'object', properties: {}, required: [] });
+    // Support: template format, Draft 7 jsonSchema, legacy fields
+    const tpl = def.template || def.jsonSchema || (def.fields ? Object.fromEntries(Object.entries(def.fields).map(([k,v]) => [k, v.type||'string'])) : { data: 'string' });
     // Restore extra props before registering
     if (def.assemblySnippet) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].assemblySnippet = def.assemblySnippet; }
     if (def.clientSchema) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].clientSchema = def.clientSchema; }
     if (def.layout) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].layout = def.layout; }
-    _registerCustomComponent(name, js);
+    _registerCustomComponent(name, tpl);
   }
 } catch(_) {}
 
@@ -1904,8 +1900,8 @@ const _layouts = {}; // name → { rows: [{cells: [fieldName]}] }
 let _layoutSampleJson = '';
 
 function _generateLayout(compName) {
-  const js = V3C.jsonSchema(compName);
-  const props = Object.keys(js.properties || {});
+  const tpl = V3C.template(compName);
+  const props = Object.keys(tpl);
   return { rows: props.map(f => ({ cells: [f] })) };
 }
 
@@ -1953,16 +1949,13 @@ function renderLayoutCells() {
   const el = document.getElementById('layout-cells-body');
   if (!el) return;
   if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">Select a component in Components tab first</div>'; return; }
-  const js = V3C.jsonSchema(_ceSelected);
-  const props = js.properties || {};
-  const req = js.required || [];
+  const tpl = V3C.template(_ceSelected);
   let h = `<div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:4px;">${esc(_ceSelected)}</div>`;
-  for (const [fname, p] of Object.entries(props)) {
-    const isReq = req.includes(fname);
+  for (const [fname, v] of Object.entries(tpl)) {
+    const typeStr = Array.isArray(v) ? 'array' : typeof v === 'object' ? 'object' : String(v);
     h += `<div style="font-size:9px;padding:2px 4px;margin:1px 0;cursor:pointer;border-radius:2px;" data-layout-cell="${esc(fname)}">`;
-    h += `<span style="color:${isReq ? 'var(--accent3)' : 'var(--text-dim)'};">${isReq ? '\u2605 ' : '  '}</span>`;
     h += `<span style="color:var(--accent2);">${esc(fname)}</span> `;
-    h += `<span style="color:var(--text-dim);font-size:8px;">${esc(p.type || 'any')}</span>`;
+    h += `<span style="color:var(--text-dim);font-size:8px;">${esc(typeStr)}</span>`;
     h += `</div>`;
   }
   h += `<button class="btn sm" id="layout-add-extra" style="margin-top:6px;font-size:9px;width:100%;">+ Element</button>`;
@@ -1993,8 +1986,7 @@ function renderLayoutSkeleton() {
   if (!el) return;
   if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">Select a component</div>'; return; }
   const layout = _getLayout(_ceSelected);
-  const js = V3C.jsonSchema(_ceSelected);
-  const req = js.required || [];
+  const tpl = V3C.template(_ceSelected);
   let h = '';
   for (let ri = 0; ri < layout.rows.length; ri++) {
     const row = layout.rows[ri];
@@ -2007,9 +1999,9 @@ function renderLayoutSkeleton() {
     h += `<table class="skel-table"><tr>`;
     for (let ci = 0; ci < row.cells.length; ci++) {
       const field = row.cells[ci];
-      const isReq = req.includes(field);
+      const typeStr = tpl[field] ? (Array.isArray(tpl[field]) ? '[]' : typeof tpl[field] === 'object' ? '{}' : '') : '';
       h += `<td data-field="${esc(field)}">`;
-      h += `<div class="skel-label">${isReq ? '\u2605' : ''} ${esc(field)}</div>`;
+      h += `<div class="skel-label">${esc(field)}${typeStr ? ' <span style="color:var(--text-dim);font-size:7px;">' + typeStr + '</span>' : ''}</div>`;
       h += `<div class="skel-value" style="color:var(--text-dim);font-style:italic;">(data)</div>`;
       h += `</td>`;
     }
@@ -2126,18 +2118,17 @@ function _updateLayoutPreview() {
   const out = document.getElementById('layout-render-output');
   if (!out || !_ceSelected) return;
   const layout = _getLayout(_ceSelected);
-  const js = V3C.jsonSchema(_ceSelected);
-  const req = js.required || [];
+  const tpl = V3C.template(_ceSelected);
   let data = {};
   try { data = JSON.parse(_layoutSampleJson); } catch (_) {}
   let h = `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">Rendered skeleton:</div>`;
   h += `<table class="skel-table">`;
   for (const row of layout.rows) {
-    const visibleCells = row.cells.filter(f => data[f] !== undefined || req.includes(f));
+    const visibleCells = row.cells.filter(f => data[f] !== undefined);
     if (!visibleCells.length) continue;
     h += `<tr>`;
     for (const field of visibleCells) {
-      h += _renderSkeletonCell(field, data[field], js);
+      h += _renderSkeletonCell(field, data[field], tpl);
     }
     h += `</tr>`;
   }
@@ -2175,36 +2166,29 @@ document.querySelectorAll('[data-layout-right]').forEach(btn => {
 function renderLayoutSchemas() {
   const el = document.getElementById('layout-schemas-body');
   if (!el || !_ceSelected) { if (el) el.innerHTML = '<div style="color:var(--text-dim);">Select a component</div>'; return; }
-  const js = V3C.jsonSchema(_ceSelected);
+  const js = V3C.template(_ceSelected);
   let h = '';
   // Component Schema (what the component declares as its fields)
   h += `<div style="color:var(--accent);font-weight:600;margin-bottom:4px;">Component Schema</div>`;
   h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Fields the component declares</div>`;
-  h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(js, null, 2))}</pre>`;
-  // Client Schema (= what the skeleton actually uses)
-  // For now, derive from layout + JSON Schema — each cell = a field the UI consumes
+  h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(tpl, null, 2))}</pre>`;
+  // Client Schema — derived from layout cells
   const layout = _getLayout(_ceSelected);
-  const clientFields = {};
+  const clientTpl = {};
   for (const row of layout.rows) {
     for (const field of row.cells) {
-      const serverProp = js.properties?.[field];
-      if (serverProp) {
-        clientFields[field] = { ...serverProp };
-      } else {
-        clientFields[field] = { type: 'string', description: '(extra UI element)' };
-      }
+      clientTpl[field] = tpl[field] || 'string';
     }
   }
-  const clientSchema = { type: 'object', properties: clientFields, required: js.required || [] };
   h += `<div style="color:var(--green);font-weight:600;margin:8px 0 4px;">Client Schema</div>`;
   h += `<div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Fields the UI consumes (assembly output)</div>`;
-  h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(clientSchema, null, 2))}</pre>`;
-  // Diff: extra elements not in server schema
-  const extraFields = layout.rows.flatMap(r => r.cells).filter(f => !js.properties?.[f]);
+  h += `<pre style="font-size:8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px;white-space:pre-wrap;max-height:200px;overflow-y:auto;">${esc(JSON.stringify(clientTpl, null, 2))}</pre>`;
+  // Extra elements not in component template
+  const extraFields = layout.rows.flatMap(r => r.cells).filter(f => !(f in tpl));
   if (extraFields.length) {
     h += `<div style="color:var(--orange);font-weight:600;margin:8px 0 4px;">Extra UI Elements</div>`;
     h += `<div style="font-size:9px;">${extraFields.map(f => `<span style="color:var(--orange);">${esc(f)}</span>`).join(', ')}</div>`;
-    h += `<div style="font-size:8px;color:var(--text-dim);">Not in server schema \u2014 user-added, optional</div>`;
+    h += `<div style="font-size:8px;color:var(--text-dim);">Not in component template \u2014 user-added</div>`;
   }
   el.innerHTML = h;
 }
@@ -2348,20 +2332,17 @@ function renderViewsTab() {
   let htmlR = '';
   htmlR += `<div class="ve-section"><div class="ve-section-hdr">COMPONENT SCHEMAS</div>`;
   for (const name of V3C.list()) {
-    const js = V3C.jsonSchema(name);
-    const props = js.properties || {};
-    const req = js.required || [];
-    const allFields = Object.keys(props);
+    const tpl = V3C.template(name);
+    const allFields = Object.keys(tpl);
     htmlR += `<div class="ve-item" data-slot-name="${esc(name)}">`;
     htmlR += `<div class="ve-item-hdr"><span style="color:var(--accent2);">${esc(name)}</span> <span style="font-size:9px;color:var(--text-dim);">${allFields.length} fields</span></div>`;
     htmlR += `<div class="ve-item-body">`;
     for (const f of allFields) {
-      const p = props[f] || {};
-      const isReq = req.includes(f);
+      const v = tpl[f];
+      const typeStr = Array.isArray(v) ? 'array' : typeof v === 'object' ? 'object' : String(v);
       htmlR += `<div style="font-size:9px;margin:1px 0;">`;
-      htmlR += `<span style="color:${isReq ? 'var(--accent3)' : 'var(--text)'};">${esc(f)}</span>`;
-      htmlR += ` <span style="color:var(--text-dim);">${esc(p.type || 'any')}</span>`;
-      if (p.description) htmlR += ` <span style="color:var(--text-dim);font-style:italic;">${esc(p.description)}</span>`;
+      htmlR += `<span style="color:var(--accent2);">${esc(f)}</span>`;
+      htmlR += ` <span style="color:var(--text-dim);">${esc(typeStr)}</span>`;
       htmlR += `</div>`;
     }
     htmlR += `</div></div>`;
