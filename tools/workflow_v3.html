@@ -1636,13 +1636,13 @@ function _generateSampleValue(name, prop, depth) {
         const o = {};
         for (const [k, sp] of Object.entries(itemSchema.properties)) {
           const base = _generateSampleValue(k, sp, depth + 1);
-          o[k] = typeof base === 'string' ? `${base} ${i + 1}` : base;
+          o[k] = typeof base === 'string' ? `${base}_${i + 1}` : base;
         }
         items.push(o);
       } else if (itemSchema.type === 'object') {
-        items.push({ name: `${name}.item ${i + 1}` });
+        items.push({ name: `${name}.item_${i + 1}` });
       } else {
-        items.push(`${name}.item ${i + 1}`);
+        items.push(`${name}.item_${i + 1}`);
       }
     }
     return items;
