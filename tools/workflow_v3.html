@@ -1710,6 +1710,19 @@ function _generateSampleJson(compName) {
   return JSON.stringify(sample, null, 2);
 }
 
+function _inlinePrompt(btn, placeholder, callback) {
+  if (btn.nextElementSibling?.classList?.contains('inline-prompt')) return; // already open
+  const inp = document.createElement('input');
+  inp.className = 'inline-prompt';
+  inp.style.cssText = 'font-size:9px;width:100px;margin-left:4px;padding:1px 4px;background:var(--surface);color:var(--text);border:1px solid var(--accent);border-radius:2px;';
+  inp.placeholder = placeholder;
+  btn.after(inp);
+  inp.focus();
+  const finish = () => { const v = inp.value.trim(); inp.remove(); if (v) callback(v); };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(); if (e.key === 'Escape') inp.remove(); });
+  inp.addEventListener('blur', finish);
+}
+
 function _getComponentBadge(name) {
   if (name === 'schema') return '<span style="color:var(--green);font-size:8px;">core</span>';
   if (_customComponents[name]) return '<span style="color:var(--accent);font-size:8px;">custom</span>';
@@ -1748,14 +1761,15 @@ function renderComponentList() {
       renderEditorPanels();
     });
   });
-  document.getElementById('ce-add-btn')?.addEventListener('click', () => {
-    const name = prompt('Component name:');
-    if (!name || V3C.get(name)) { if (name && V3C.get(name)) alert('Already exists'); return; }
+  document.getElementById('ce-add-btn')?.addEventListener('click', function() {
+    _inlinePrompt(this, 'name', (name) => {
+    if (V3C.get(name)) return;
     _registerCustomComponent(name, { data: 'string' });
     _saveCustomComponents();
     _ceSelected = name;
     _ceSampleJson = _generateSampleJson(name);
     renderEditorPanels();
+    });
   });
 }
 
@@ -1839,13 +1853,13 @@ function renderFieldEditor() {
     });
   });
   // Add view
-  document.getElementById('ce-add-view')?.addEventListener('click', () => {
-    const name = prompt('View name (e.g. compact):');
-    if (!name) return;
+  document.getElementById('ce-add-view')?.addEventListener('click', function() {
+    _inlinePrompt(this, 'view name', (name) => {
     const vname = _ceSelected + '/' + name;
-    if (_clientViews[vname]) { alert('View already exists'); return; }
+    if (_clientViews[vname]) return;
     _clientViews[vname] = { component: _ceSelected, clientTemplate: null, assembly: '', layout: { rows: [] } };
     _saveClientViews(); renderFieldEditor();
+    });
   });
   // Delete view
   el.querySelectorAll('[data-cv-del]').forEach(btn => {
@@ -2017,13 +2031,13 @@ function renderLayoutCells() {
       if (td) td.classList.add('skel-highlight');
     });
   });
-  document.getElementById('layout-add-extra')?.addEventListener('click', () => {
-    const name = prompt('Element name:');
-    if (!name) return;
+  document.getElementById('layout-add-extra')?.addEventListener('click', function() {
+    _inlinePrompt(this, 'element', (name) => {
     const layout = _getLayout(_ceSelected);
     layout.rows.push({ cells: [name] });
     _saveLayout(_ceSelected, layout);
     renderLayoutPanels();
+    });
   });
 }
 
@@ -2081,18 +2095,18 @@ function renderLayoutSkeleton() {
     });
   });
   el.querySelectorAll('[data-layout-add-cell]').forEach(td => {
-    td.addEventListener('click', () => {
-      const name = prompt('Field name:');
-      if (!name) return;
+    td.addEventListener('click', function() {
+      _inlinePrompt(this, 'field', (name) => {
       layout.rows[+td.dataset.layoutAddCell].cells.push(name);
       _saveLayout(_ceSelected, layout); renderLayoutPanels();
+      });
     });
   });
-  document.getElementById('layout-add-row')?.addEventListener('click', () => {
-    const name = prompt('Field name:');
-    if (!name) return;
+  document.getElementById('layout-add-row')?.addEventListener('click', function() {
+    _inlinePrompt(this, 'field', (name) => {
     layout.rows.push({ cells: [name] });
     _saveLayout(_ceSelected, layout); renderLayoutPanels();
+    });
   });
 }
 
@@ -2419,11 +2433,12 @@ function _wireViewsTab(el) {
 
   // ── TEMPLATE actions ──
   el.querySelectorAll('[data-ve="add-template"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const name = prompt('Template name:');
-      if (!name || _cardTemplates[name]) return;
+    btn.addEventListener('click', function() {
+      _inlinePrompt(this, 'template name', (name) => {
+      if (_cardTemplates[name]) return;
       _cardTemplates[name] = { slots: [{ type: 'header' }] };
       _saveCustomData(); renderViewsTab(); renderCards();
+      });
     });
   });
 
@@ -2486,11 +2501,12 @@ function _wireViewsTab(el) {
 
   // ── VIEW actions ──
   el.querySelectorAll('[data-ve="add-view"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const name = prompt('View name:');
-      if (!name || _views[name]) return;
+    btn.addEventListener('click', function() {
+      _inlinePrompt(this, 'view name', (name) => {
+      if (_views[name]) return;
       _views[name] = { template: _templateNames()[0] || 'job' };
       _saveCustomData(); renderViewsTab();
+      });
     });
   });
 
