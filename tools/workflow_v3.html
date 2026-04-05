@@ -1835,12 +1835,17 @@ function renderFieldEditor() {
       }
     });
     // Delete
-    document.getElementById('ce-del-comp')?.addEventListener('click', () => {
-      if (!confirm(`Delete component "${_ceSelected}"?`)) return;
-      delete _customComponents[_ceSelected];
-      // Also delete associated client views
-      for (const k of Object.keys(_clientViews)) { if (k.startsWith(_ceSelected + '/')) delete _clientViews[k]; }
-      _saveCustomComponents(); _saveClientViews(); _ceSelected = null; renderEditorPanels();
+    document.getElementById('ce-del-comp')?.addEventListener('click', function() {
+      if (this.dataset.confirm) {
+        delete _customComponents[_ceSelected];
+        for (const k of Object.keys(_clientViews)) { if (k.startsWith(_ceSelected + '/')) delete _clientViews[k]; }
+        _saveCustomComponents(); _saveClientViews(); _ceSelected = null; renderEditorPanels();
+      } else {
+        this.dataset.confirm = '1';
+        this.textContent = 'Confirm Delete?';
+        this.style.color = '#fff'; this.style.background = 'var(--red)';
+        setTimeout(() => { this.dataset.confirm = ''; this.textContent = 'Delete Component'; this.style.color = 'var(--red)'; this.style.background = ''; }, 3000);
+      }
     });
   }
   // ── Client view handlers ──
