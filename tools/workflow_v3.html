@@ -210,10 +210,29 @@ textarea { resize:vertical; }
 const _components = {};
 const _esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const _statusColors = { done:'green', active:'accent', pending:'text-dim', failed:'red', pass:'green', fail:'red' };
-function register(name, def) { _components[name] = { schema: def.schema||{}, fieldMap: def.fieldMap||{}, render: def.render||(()=>''), ascii: def.ascii||((p,w)=>['']) }; }
+function register(name, def) {
+  _components[name] = { schema: def.schema||{}, jsonSchema: def.jsonSchema||null, fieldMap: def.fieldMap||{}, render: def.render||(()=>''), ascii: def.ascii||((p,w)=>['']) };
+}
 function get(name) { return _components[name]||null; }
 function list() { return Object.keys(_components); }
 function schema(name) { return _components[name]?.schema||{}; }
+function _legacyToJsonSchema(legacy) {
+  const props = {}, req = [];
+  for (const [k, fd] of Object.entries(legacy)) {
+    const p = { type: fd.type || 'string' };
+    if (fd.doc) p.description = fd.doc;
+    if ('default' in fd) p.default = fd.default; else req.push(k);
+    props[k] = p;
+  }
+  return { type: 'object', properties: props, required: req };
+}
+function jsonSchema(name) {
+  const c = _components[name]; if (!c) return { type: 'object', properties: {}, required: [] };
+  if (c.jsonSchema) return c.jsonSchema;
+  // Auto-convert from legacy schema
+  c.jsonSchema = _legacyToJsonSchema(c.schema);
+  return c.jsonSchema;
+}
 function resolve(name, rawData, overrides) {
   const comp = _components[name]; if (!comp) return {};
   const props = {}, fmap = { ...comp.fieldMap, ...(overrides||{}) };
@@ -264,7 +283,7 @@ register('schema', { schema: { data:{type:'object',default:{},doc:'Any JSON data
   },
   ascii(p,w) { const keys=Object.keys(p); return keys.map(k=>` ${k}: ${_truncate(JSON.stringify(p[k]),w-k.length-4)}`); } });
 
-const V3C = { register, get, list, schema, resolve, render, ascii, _esc, _box, _pad, _truncate, _components };
+const V3C = { register, get, list, schema, jsonSchema, resolve, render, ascii, _esc, _box, _pad, _truncate, _components };
 root.V3C = V3C;
 })(window);
 </script>
@@ -789,21 +808,7 @@ function asmStore(state, ref, value) {
 //  SLOT SCHEMAS — lightweight docs: what each component expects
 //  No resolution chain, no transforms — just interface docs
 // ══════════════════════════════════════════════════════════
-const _slotSchemas = {
-  header:    { required: ['title'], optional: ['icon', 'status', 'time'] },
-  text:      { required: ['text'], optional: ['label'] },
-  tags:      { required: ['tags'], optional: [] },
-  status:    { required: ['value'], optional: ['label'] },
-  image:     { required: ['src'], optional: ['label'] },
-  list:      { required: ['items'], optional: ['label', 'color'] },
-  badge:     { required: ['text'], optional: ['cls'] },
-  button:    { required: ['label'], optional: ['action', 'color'] },
-  reactions: { required: ['items'], optional: [] },
-  actions:   { required: ['items'], optional: [] },
-  thread:    { required: ['items'], optional: ['label'] },
-  table:     { required: ['rows'], optional: ['headers', 'label'] },
-  schema:    { required: [], optional: ['(any)'] },
-};
+// _slotSchemas removed — use V3C.jsonSchema(name) instead
 
 // ══════════════════════════════════════════════════════════
 //  RENDER COMPONENT — direct: slot.data → HTML via V3C
@@ -1552,11 +1557,20 @@ let _ceSampleJson = '';
 // JS components that were loaded from v3_components.js (not schema, not custom)
 const _jsComponentNames = new Set();
 
-function _registerCustomComponent(name, fields) {
-  _customComponents[name] = { fields };
+function _registerCustomComponent(name, js) {
+  // js = JSON Schema object { type: 'object', properties: {...}, required: [...] }
+  _customComponents[name] = { jsonSchema: js };
+  // Convert JSON Schema → legacy schema for V3C compatibility
+  const legacy = {};
+  for (const [k, p] of Object.entries(js.properties || {})) {
+    legacy[k] = { type: p.type || 'string' };
+    if ('default' in p) legacy[k].default = p.default;
+    if (p.description) legacy[k].doc = p.description;
+  }
   const schemaRenderer = V3C.get('schema');
   V3C.register(name, {
-    schema: fields,
+    schema: legacy,
+    jsonSchema: js,
     render(props) { return schemaRenderer.render(props); },
     ascii(props, w) { return schemaRenderer.ascii(props, w); },
   });
@@ -1567,15 +1581,16 @@ function _saveCustomComponents() {
 }
 
 function _generateSampleJson(compName) {
-  const schema = V3C.schema(compName);
+  const js = V3C.jsonSchema(compName);
+  const props = js.properties || {};
   const sample = {};
-  for (const [k, fd] of Object.entries(schema)) {
-    if ('default' in fd && fd.default !== '' && fd.default !== undefined) {
-      sample[k] = fd.default;
-    } else if (fd.type === 'number') sample[k] = 0;
-    else if (fd.type === 'boolean') sample[k] = false;
-    else if (fd.type === 'array') sample[k] = [];
-    else if (fd.type === 'object') sample[k] = {};
+  for (const [k, p] of Object.entries(props)) {
+    if ('default' in p && p.default !== '' && p.default !== undefined) {
+      sample[k] = p.default;
+    } else if (p.type === 'number') sample[k] = 0;
+    else if (p.type === 'boolean') sample[k] = false;
+    else if (p.type === 'array') sample[k] = [];
+    else if (p.type === 'object') sample[k] = {};
     else sample[k] = '';
   }
   return JSON.stringify(sample, null, 2);
@@ -1622,7 +1637,7 @@ function renderComponentList() {
   document.getElementById('ce-add-btn')?.addEventListener('click', () => {
     const name = prompt('Component name:');
     if (!name || V3C.get(name)) { if (name && V3C.get(name)) alert('Already exists'); return; }
-    _registerCustomComponent(name, { data: { type: 'string', default: '', doc: 'Data' } });
+    _registerCustomComponent(name, { type: 'object', required: [], properties: { data: { type: 'string', default: '', description: 'Data' } } });
     _saveCustomComponents();
     _ceSelected = name;
     _ceSampleJson = _generateSampleJson(name);
@@ -1634,32 +1649,36 @@ function renderFieldEditor() {
   const el = document.getElementById('editor-fields-body');
   if (!el) return;
   if (!_ceSelected) { el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a component</div>'; return; }
-  const schema = V3C.schema(_ceSelected);
-  const fields = Object.entries(schema);
+  const js = V3C.jsonSchema(_ceSelected);
+  const props = js.properties || {};
+  const req = js.required || [];
+  const fields = Object.entries(props);
   const editable = _isCustom(_ceSelected);
   let h = '';
   h += `<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">${esc(_ceSelected)} ${_getComponentBadge(_ceSelected)}</div>`;
-  // Field table
   h += `<table style="width:100%;font-size:9px;border-collapse:collapse;">`;
   h += `<tr style="color:var(--text-dim);border-bottom:1px solid var(--border);">`;
-  h += `<th style="text-align:left;padding:2px 4px;">name</th><th style="text-align:left;padding:2px 4px;">type</th><th style="text-align:left;padding:2px 4px;">default</th><th style="text-align:left;padding:2px 4px;">doc</th>`;
+  h += `<th style="text-align:left;padding:2px 4px;">name</th><th style="text-align:left;padding:2px 4px;">type</th><th style="text-align:left;padding:2px 4px;">default</th><th style="text-align:left;padding:2px 4px;">doc</th><th style="text-align:center;padding:2px 4px;">req</th>`;
   if (editable) h += `<th></th>`;
   h += `</tr>`;
-  for (const [fname, fd] of fields) {
+  for (const [fname, p] of fields) {
+    const isReq = req.includes(fname);
     h += `<tr style="border-bottom:1px solid var(--surface);">`;
     if (editable) {
       h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="name" value="${esc(fname)}" style="width:60px;font-size:9px;" /></td>`;
       h += `<td style="padding:2px;"><select data-ce-field="${esc(fname)}" data-ce-prop="type" style="font-size:9px;">`;
-      for (const t of ['string','number','boolean','array','object']) h += `<option${t === fd.type ? ' selected' : ''}>${t}</option>`;
+      for (const t of ['string','number','boolean','array','object']) h += `<option${t === p.type ? ' selected' : ''}>${t}</option>`;
       h += `</select></td>`;
-      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="default" value="${esc(JSON.stringify(fd.default ?? ''))}" style="width:50px;font-size:9px;" /></td>`;
-      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="doc" value="${esc(fd.doc || '')}" style="width:80px;font-size:9px;" /></td>`;
+      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="default" value="${esc(JSON.stringify(p.default ?? ''))}" style="width:50px;font-size:9px;" /></td>`;
+      h += `<td style="padding:2px;"><input data-ce-field="${esc(fname)}" data-ce-prop="doc" value="${esc(p.description || '')}" style="width:80px;font-size:9px;" /></td>`;
+      h += `<td style="padding:2px;text-align:center;"><input type="checkbox" data-ce-field="${esc(fname)}" data-ce-prop="required" ${isReq ? 'checked' : ''} /></td>`;
       h += `<td style="padding:2px;"><span class="ve-del" data-ce-del="${esc(fname)}" style="cursor:pointer;">&times;</span></td>`;
     } else {
-      h += `<td style="padding:2px 4px;color:var(--accent3);">${esc(fname)}</td>`;
-      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(fd.type || 'any')}</td>`;
-      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(JSON.stringify(fd.default ?? ''))}</td>`;
-      h += `<td style="padding:2px 4px;color:var(--text-dim);font-style:italic;">${esc(fd.doc || '')}</td>`;
+      h += `<td style="padding:2px 4px;color:${isReq ? 'var(--accent3)' : 'var(--text)'};">${esc(fname)}</td>`;
+      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(p.type || 'any')}</td>`;
+      h += `<td style="padding:2px 4px;color:var(--text-dim);">${esc(JSON.stringify(p.default ?? ''))}</td>`;
+      h += `<td style="padding:2px 4px;color:var(--text-dim);font-style:italic;">${esc(p.description || '')}</td>`;
+      h += `<td style="padding:2px 4px;text-align:center;color:${isReq ? 'var(--accent3)' : 'var(--text-dim)'};">${isReq ? '★' : ''}</td>`;
     }
     h += `</tr>`;
   }
@@ -1678,49 +1697,62 @@ function renderFieldEditor() {
         const oldName = inp.dataset.ceField;
         const newName = inp.value.trim();
         if (!newName || newName === oldName) return;
-        const cc = _customComponents[_ceSelected];
-        cc.fields[newName] = cc.fields[oldName];
-        delete cc.fields[oldName];
-        _registerCustomComponent(_ceSelected, cc.fields);
-        _saveCustomComponents();
-        _ceSampleJson = _generateSampleJson(_ceSelected);
-        renderEditorPanels();
+        const js = _customComponents[_ceSelected].jsonSchema;
+        js.properties[newName] = js.properties[oldName];
+        delete js.properties[oldName];
+        if (js.required) js.required = js.required.map(r => r === oldName ? newName : r);
+        _registerCustomComponent(_ceSelected, js);
+        _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
       });
     });
     el.querySelectorAll('[data-ce-prop="type"]').forEach(sel => {
       sel.addEventListener('change', () => {
-        _customComponents[_ceSelected].fields[sel.dataset.ceField].type = sel.value;
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        _customComponents[_ceSelected].jsonSchema.properties[sel.dataset.ceField].type = sel.value;
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].jsonSchema);
         _saveCustomComponents(); renderComponentPreview();
       });
     });
     el.querySelectorAll('[data-ce-prop="default"]').forEach(inp => {
       inp.addEventListener('change', () => {
-        try { _customComponents[_ceSelected].fields[inp.dataset.ceField].default = JSON.parse(inp.value); }
-        catch(_) { _customComponents[_ceSelected].fields[inp.dataset.ceField].default = inp.value; }
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        const p = _customComponents[_ceSelected].jsonSchema.properties[inp.dataset.ceField];
+        try { p.default = JSON.parse(inp.value); } catch(_) { p.default = inp.value; }
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].jsonSchema);
         _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderComponentPreview();
       });
     });
     el.querySelectorAll('[data-ce-prop="doc"]').forEach(inp => {
       inp.addEventListener('change', () => {
-        _customComponents[_ceSelected].fields[inp.dataset.ceField].doc = inp.value;
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        _customComponents[_ceSelected].jsonSchema.properties[inp.dataset.ceField].description = inp.value;
+        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].jsonSchema);
+        _saveCustomComponents();
+      });
+    });
+    el.querySelectorAll('[data-ce-prop="required"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const js = _customComponents[_ceSelected].jsonSchema;
+        if (!js.required) js.required = [];
+        const fname = cb.dataset.ceField;
+        if (cb.checked && !js.required.includes(fname)) js.required.push(fname);
+        else js.required = js.required.filter(r => r !== fname);
+        _registerCustomComponent(_ceSelected, js);
         _saveCustomComponents();
       });
     });
     el.querySelectorAll('[data-ce-del]').forEach(btn => {
       btn.addEventListener('click', () => {
-        delete _customComponents[_ceSelected].fields[btn.dataset.ceDel];
-        _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+        const js = _customComponents[_ceSelected].jsonSchema;
+        delete js.properties[btn.dataset.ceDel];
+        if (js.required) js.required = js.required.filter(r => r !== btn.dataset.ceDel);
+        _registerCustomComponent(_ceSelected, js);
         _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
       });
     });
     document.getElementById('ce-add-field')?.addEventListener('click', () => {
       const name = prompt('Field name:');
-      if (!name || _customComponents[_ceSelected].fields[name]) return;
-      _customComponents[_ceSelected].fields[name] = { type: 'string', default: '', doc: '' };
-      _registerCustomComponent(_ceSelected, _customComponents[_ceSelected].fields);
+      const js = _customComponents[_ceSelected].jsonSchema;
+      if (!name || js.properties[name]) return;
+      js.properties[name] = { type: 'string', default: '', description: '' };
+      _registerCustomComponent(_ceSelected, js);
       _saveCustomComponents(); _ceSampleJson = _generateSampleJson(_ceSelected); renderEditorPanels();
     });
     document.getElementById('ce-del-comp')?.addEventListener('click', () => {
@@ -1773,7 +1805,9 @@ function _updatePreviewRender() {
 try {
   const cc = JSON.parse(localStorage.getItem('v3_custom_components'));
   if (cc) for (const [name, def] of Object.entries(cc)) {
-    _registerCustomComponent(name, def.fields || {});
+    // Support both new (jsonSchema) and legacy (fields) format
+    const js = def.jsonSchema || (def.fields ? V3C._components.schema ? { type: 'object', properties: Object.fromEntries(Object.entries(def.fields).map(([k,v]) => [k, { type: v.type||'string', default: v.default, description: v.doc }])), required: [] } : { type: 'object', properties: {}, required: [] } : { type: 'object', properties: {}, required: [] });
+    _registerCustomComponent(name, js);
   }
 } catch(_) {}
 
@@ -1914,24 +1948,24 @@ function renderViewsTab() {
 
   elL.innerHTML = html;
 
-  // ── SLOT SCHEMAS (right column, read-only) ──
+  // ── COMPONENT SCHEMAS (right column, from V3C.jsonSchema) ──
   let htmlR = '';
   htmlR += `<div class="ve-section"><div class="ve-section-hdr">COMPONENT SCHEMAS</div>`;
-  for (const [name, schema] of Object.entries(_slotSchemas)) {
-    const v3cSchema = V3C.schema(name);
-    const allFields = [...schema.required, ...schema.optional];
+  for (const name of V3C.list()) {
+    const js = V3C.jsonSchema(name);
+    const props = js.properties || {};
+    const req = js.required || [];
+    const allFields = Object.keys(props);
     htmlR += `<div class="ve-item" data-slot-name="${esc(name)}">`;
     htmlR += `<div class="ve-item-hdr"><span style="color:var(--accent2);">${esc(name)}</span> <span style="font-size:9px;color:var(--text-dim);">${allFields.length} fields</span></div>`;
     htmlR += `<div class="ve-item-body">`;
     for (const f of allFields) {
-      const fd = v3cSchema[f] || {};
-      const isReq = schema.required.includes(f);
-      const typeStr = fd.type || 'any';
-      const doc = fd.doc || '';
+      const p = props[f] || {};
+      const isReq = req.includes(f);
       htmlR += `<div style="font-size:9px;margin:1px 0;">`;
       htmlR += `<span style="color:${isReq ? 'var(--accent3)' : 'var(--text)'};">${esc(f)}</span>`;
-      htmlR += ` <span style="color:var(--text-dim);">${esc(typeStr)}</span>`;
-      if (doc) htmlR += ` <span style="color:var(--text-dim);font-style:italic;">${esc(doc)}</span>`;
+      htmlR += ` <span style="color:var(--text-dim);">${esc(p.type || 'any')}</span>`;
+      if (p.description) htmlR += ` <span style="color:var(--text-dim);font-style:italic;">${esc(p.description)}</span>`;
       htmlR += `</div>`;
     }
     htmlR += `</div></div>`;
@@ -2088,8 +2122,8 @@ function renderViewsInfo() {
     }
   }
 
-  h += `<div style="color:var(--accent2);font-weight:600;margin:6px 0 4px;">COMPONENT SCHEMAS</div>`;
-  h += `<div style="color:var(--text-dim);">${Object.keys(_slotSchemas).join(', ')}</div>`;
+  h += `<div style="color:var(--accent2);font-weight:600;margin:6px 0 4px;">COMPONENTS</div>`;
+  h += `<div style="color:var(--text-dim);">${V3C.list().join(', ')}</div>`;
 
   el.innerHTML = h;
 }
