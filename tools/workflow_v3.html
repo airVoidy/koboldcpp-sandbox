@@ -219,7 +219,11 @@ const _components = {};
 const _esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const _statusColors = { done:'green', active:'accent', pending:'text-dim', failed:'red', pass:'green', fail:'red' };
 function register(name, def) {
-  _components[name] = { schema: def.schema||{}, jsonSchema: def.jsonSchema||null, fieldMap: def.fieldMap||{}, render: def.render||(()=>''), ascii: def.ascii||((p,w)=>['']) };
+  _components[name] = {
+    schema: def.schema||{}, jsonSchema: def.jsonSchema||null, fieldMap: def.fieldMap||{},
+    render: def.render||(()=>''), ascii: def.ascii||((p,w)=>['']),
+    clientSchema: def.clientSchema||null, assemblySnippet: def.assemblySnippet||null, layout: def.layout||null,
+  };
 }
 function get(name) { return _components[name]||null; }
 function list() { return Object.keys(_components); }
@@ -849,9 +853,37 @@ function asmStore(state, ref, value) {
 // ══════════════════════════════════════════════════════════
 const _statusColors = { done:'green', active:'accent', pending:'text-dim', failed:'red', pass:'green', fail:'red' };
 
+// Render a skeleton layout from client JSON data
+function renderSkeletonFromLayout(layout, data, schema) {
+  if (!layout || !layout.rows) return '';
+  const req = schema?.required || [];
+  let html = '<table class="skel-table">';
+  for (const row of layout.rows) {
+    const cells = row.cells.filter(f => data[f] !== undefined || req.includes(f));
+    if (!cells.length) continue;
+    html += '<tr>';
+    for (const field of cells) {
+      html += _renderSkeletonCell(field, data[field], schema);
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  return `<div class="node-slot">${html}</div>`;
+}
+
 function renderComponent(type, data, style) {
   const comp = V3C.get(type) || V3C.get('schema');
   if (!comp) return `<div class="node-slot">[no renderer]</div>`;
+  // Schema-based rendering: clientSchema + assemblySnippet + layout
+  if (comp.clientSchema && comp.assemblySnippet && comp.layout) {
+    const state = execAsm(comp.assemblySnippet, { server: data || {} });
+    // Extract client data (remove internals)
+    const clientData = {};
+    for (const [k, v] of Object.entries(state)) {
+      if (k !== 'server' && k !== 'each_idx' && !k.startsWith('_')) clientData[k] = v;
+    }
+    return renderSkeletonFromLayout(comp.layout, clientData, comp.clientSchema);
+  }
   return comp.render(data || {}, style);
 }
 
@@ -1592,7 +1624,9 @@ const _jsComponentNames = new Set();
 
 function _registerCustomComponent(name, js) {
   // js = JSON Schema object { type: 'object', properties: {...}, required: [...] }
-  _customComponents[name] = { jsonSchema: js };
+  const existing = _customComponents[name] || {};
+  _customComponents[name] = { ...existing, jsonSchema: js };
+  const cc = _customComponents[name];
   // Convert JSON Schema → legacy schema for V3C compatibility
   const legacy = {};
   for (const [k, p] of Object.entries(js.properties || {})) {
@@ -1604,6 +1638,9 @@ function _registerCustomComponent(name, js) {
   V3C.register(name, {
     schema: legacy,
     jsonSchema: js,
+    clientSchema: cc.clientSchema || null,
+    assemblySnippet: cc.assemblySnippet || null,
+    layout: cc.layout || null,
     render(props) { return schemaRenderer.render(props); },
     ascii(props, w) { return schemaRenderer.ascii(props, w); },
   });
@@ -1752,6 +1789,16 @@ function renderFieldEditor() {
     h += `<button class="btn sm" id="ce-add-field" style="font-size:9px;">+ Field</button>`;
     h += `<button class="btn sm" id="ce-del-comp" style="font-size:9px;color:var(--red);">Delete</button>`;
     h += `</div>`;
+    // Assembly snippet (server → client transform)
+    const cc = _customComponents[_ceSelected];
+    const snippet = cc?.assemblySnippet || '';
+    h += `<div style="color:var(--green);font-weight:600;margin:10px 0 4px;font-size:10px;">Assembly (server → client)</div>`;
+    h += `<textarea id="ce-assembly-snippet" class="ve-mapping" rows="${Math.max(3, snippet.split('\\n').length)}" spellcheck="false" style="font-size:9px;" placeholder="; server→client transform\nMOV @field, @server.field">${esc(snippet)}</textarea>`;
+    // Client schema (auto-generated or custom)
+    const clientSchema = cc?.clientSchema;
+    const csText = clientSchema ? JSON.stringify(clientSchema, null, 2) : '';
+    h += `<div style="color:var(--accent2);font-weight:600;margin:8px 0 4px;font-size:10px;">Client Schema <span style="font-weight:400;color:var(--text-dim);font-size:8px;">(auto from assembly output)</span></div>`;
+    h += `<textarea id="ce-client-schema" class="ve-mapping" rows="${Math.max(2, csText.split('\\n').length)}" spellcheck="false" style="font-size:8px;" placeholder='{"type":"object","properties":{...}}'>${esc(csText)}</textarea>`;
   }
   el.innerHTML = h;
   // Wire editable fields
@@ -1822,8 +1869,31 @@ function renderFieldEditor() {
     document.getElementById('ce-del-comp')?.addEventListener('click', () => {
       if (!confirm(`Delete component "${_ceSelected}"?`)) return;
       delete _customComponents[_ceSelected];
-      // Can't unregister from V3C, but it becomes orphaned
       _saveCustomComponents(); _ceSelected = null; renderEditorPanels();
+    });
+    // Assembly snippet
+    document.getElementById('ce-assembly-snippet')?.addEventListener('change', () => {
+      const cc = _customComponents[_ceSelected];
+      if (!cc) return;
+      cc.assemblySnippet = document.getElementById('ce-assembly-snippet').value;
+      // Re-register with updated snippet
+      const comp = V3C.get(_ceSelected);
+      if (comp) { comp.assemblySnippet = cc.assemblySnippet; }
+      _saveCustomComponents();
+    });
+    // Client schema
+    document.getElementById('ce-client-schema')?.addEventListener('change', () => {
+      const cc = _customComponents[_ceSelected];
+      if (!cc) return;
+      try {
+        cc.clientSchema = JSON.parse(document.getElementById('ce-client-schema').value);
+        const comp = V3C.get(_ceSelected);
+        if (comp) { comp.clientSchema = cc.clientSchema; }
+        document.getElementById('ce-client-schema').style.borderColor = 'var(--green)';
+      } catch (_) {
+        document.getElementById('ce-client-schema').style.borderColor = 'var(--red)';
+      }
+      _saveCustomComponents();
     });
   }
 }
@@ -1870,7 +1940,11 @@ try {
   const cc = JSON.parse(localStorage.getItem('v3_custom_components'));
   if (cc) for (const [name, def] of Object.entries(cc)) {
     // Support both new (jsonSchema) and legacy (fields) format
-    const js = def.jsonSchema || (def.fields ? V3C._components.schema ? { type: 'object', properties: Object.fromEntries(Object.entries(def.fields).map(([k,v]) => [k, { type: v.type||'string', default: v.default, description: v.doc }])), required: [] } : { type: 'object', properties: {}, required: [] } : { type: 'object', properties: {}, required: [] });
+    const js = def.jsonSchema || (def.fields ? { type: 'object', properties: Object.fromEntries(Object.entries(def.fields).map(([k,v]) => [k, { type: v.type||'string', default: v.default, description: v.doc }])), required: [] } : { type: 'object', properties: {}, required: [] });
+    // Restore extra props before registering
+    if (def.assemblySnippet) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].assemblySnippet = def.assemblySnippet; }
+    if (def.clientSchema) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].clientSchema = def.clientSchema; }
+    if (def.layout) { _customComponents[name] = _customComponents[name] || {}; _customComponents[name].layout = def.layout; }
     _registerCustomComponent(name, js);
   }
 } catch(_) {}
