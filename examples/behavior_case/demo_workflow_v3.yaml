@@ -1,0 +1,179 @@
+workflow: behavior_case_v3
+version: 3
+
+input: >
+  написать 4 описания внешности демониц в разных образах
+  [проверить, что разные образы, разный цвет глаз,
+  разный цвет волос, разные позы,
+  в описании должны быть элементы, по которым даже без указания расы понятно, что перед тобой демоница,
+  стиль: аниме, должен быть явно указан в описании]
+
+config:
+  params_int:
+    grammar: |
+      root ::= digits term
+      digits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]
+      term ::= " " | "\n" | "\""
+    capture: "[0-9]+"
+    coerce: int
+  params_binary:
+    grammar: |
+      root ::= digit term
+      digit ::= "0" | "1"
+      term ::= " " | "\n" | "\""
+    capture: "[01]"
+    coerce: int
+
+jobs:
+  - id: claims
+    worker: analyzer
+    payload: claims($input)
+    priority: high
+    temp: 0.1
+    max: 2048
+    no_think: true
+
+  - id: answer
+    worker: generator
+    payload: $input
+    temp: 0.7
+    max: 2048
+
+on:
+  - job: claims
+    event: done
+    do: |
+      CALL @parsed, parse_sections, @claims
+      MOV @entities, @parsed.entities
+      MOV @axioms, @parsed.axioms
+      MOV @hypotheses, @parsed.hypotheses
+
+  - job: answer
+    event: done
+    do: |
+      MOV @root.answer, @answer
+      CALL @numbered_answer, numbered, @answer
+      CALL @table_prompt, table, @answer
+    then:
+      - enqueue: table
+
+  - job: table
+    event: done
+    do: |
+      CALL @entity_nodes, parse_table, @table
+      MOV @root.entities, @entity_nodes
+    then:
+      - enqueue: end_line_probe
+        for_each: entity_nodes
+
+  - job: end_line_probe
+    event: done
+    do: |
+      MOV @item.endLineNumber, @_event.result
+      CALL @item.answer, slice_lines, @answer, @item._startNum, @item.endLineNumber
+    then:
+      - enqueue: confirm_probe
+
+  - job: confirm_probe
+    event: done
+    do: |
+      MOV @item.confirmed, @_event.result
+    then:
+      - enqueue: style_check
+
+  - job: style_check
+    event: done
+    do: |
+      MOV @item.style_check, @_event.result
+    then:
+      - enqueue: reaction_check
+
+  - job: reaction_check
+    event: done
+    do: |
+      MOV @item.reaction, @_event.result
+      CALL @item.reactionStatus, check_status, @_event.result
+    then:
+      - enqueue: comfyui_gen
+
+job_templates:
+  table:
+    worker: analyzer
+    payload: $table_prompt
+    temp: 0.1
+    max: 2048
+    no_think: true
+
+  end_line_probe:
+    worker: generator
+    mode: probe_continue
+    grammar: $config.params_int.grammar
+    capture:
+      regex: $config.params_int.capture
+      coerce: $config.params_int.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: $numbered_answer
+      - assistant: |-
+          <think>
+          Разделю текст на блоки.
+          Описание "${item._title}" начинается со строки
+          под номером "${item._startNum}" "${item._firstLine}"
+          и длится до строки под номером "line number:
+    temp: 0
+    max: 4
+
+  confirm_probe:
+    worker: generator
+    mode: probe_continue
+    grammar: $config.params_binary.grammar
+    capture:
+      regex: $config.params_binary.capture
+      coerce: $config.params_binary.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: $numbered_answer
+      - assistant: |-
+          <think>
+          Описание "${item._title}":
+          ${item.answer}
+          ((answer generated) == true) ===
+    temp: 0
+    max: 2
+
+  style_check:
+    worker: analyzer
+    mode: probe_continue
+    grammar: $config.params_binary.grammar
+    capture:
+      regex: $config.params_binary.capture
+      coerce: $config.params_binary.coerce
+    stop: [" ", "\n", "\""]
+    messages:
+      - user: |
+          Описание:
+          ${item.answer}
+          Вопрос: Соответствует ли стиль "аниме"?
+      - assistant: |-
+          <think>
+          ((стиль аниме) == true) ===
+    temp: 0
+    max: 2
+
+  reaction_check:
+    worker: analyzer
+    payload: |
+      Evaluate this text. Reply PASS if good, FAIL + reason if not.
+      ${item.answer}
+    temp: 0.2
+    max: 512
+    no_think: true
+
+  comfyui_gen:
+    type: comfyui
+    worker: comfyui
+    workflow: "C:/Users/vAiry/.lmstudio/models/Z-Image +LoRA.json"
+    node: "6"
+    field: "text"
+    payload: ${item.answer}
+    server: "http://127.0.0.1:8188"

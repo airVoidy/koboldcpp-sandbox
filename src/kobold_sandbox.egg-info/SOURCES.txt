@@ -98,6 +98,7 @@ tests/test_cli_continue_generate.py
 tests/test_dsl_fn_library.py
 tests/test_dsl_interpreter.py
 tests/test_event_dsl.py
+tests/test_gateway_runtime.py
 tests/test_hypothesis_api.py
 tests/test_hypothesis_checklist.py
 tests/test_hypothesis_runtime.py

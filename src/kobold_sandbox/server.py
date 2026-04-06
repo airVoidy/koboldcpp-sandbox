@@ -3921,6 +3921,39 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow_v3.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/component-builder", response_class=HTMLResponse)
+    def component_builder_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "component_builder.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/card-builder", response_class=HTMLResponse)
+    def card_builder_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "card_builder.html"
+        return html_path.read_text(encoding="utf-8")
+
+    # ── Component Builder: save/load component bundles ──
+
+    @app.get("/api/component-builder/components")
+    def get_component_bundle() -> dict:
+        """Load saved component bundle (components + views + replay)."""
+        import json
+        bundle_path = Path(__file__).resolve().parents[2] / "tools" / "v3_component_bundle.json"
+        if bundle_path.exists():
+            return json.loads(bundle_path.read_text(encoding="utf-8"))
+        return {"components": {}, "views": {}, "replay": []}
+
+    @app.post("/api/component-builder/components")
+    async def save_component_bundle(request: Request) -> dict:
+        """Save component bundle (components + views + replay)."""
+        import json
+        body = await request.json()
+        bundle_path = Path(__file__).resolve().parents[2] / "tools" / "v3_component_bundle.json"
+        bundle_path.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        comp_count = len(body.get("components", {}))
+        view_count = len(body.get("views", {}))
+        replay_count = len(body.get("replay", []))
+        return {"ok": True, "components": comp_count, "views": view_count, "replay": replay_count}
+
     @app.get("/aabb", response_class=HTMLResponse)
     def aabb_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "aabb.html"

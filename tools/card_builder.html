@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Card Builder</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface2: #1c2129; --border: #30363d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff; --green: #3fb950;
+  --red: #f85149; --yellow: #d29922; --orange: #db6d28; --accent2: #bc8cff;
+  --accent3: #79c0ff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font:12px/1.4 'Cascadia Code','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+button { cursor:pointer; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:3px; font:inherit; }
+button:hover { background:var(--border); }
+.btn { padding:4px 10px; } .btn.sm { padding:2px 6px; font-size:11px; } .btn.primary { background:var(--accent); color:#000; border-color:var(--accent); }
+.btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+input, textarea, select { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px; font:inherit; padding:4px 6px; }
+textarea { resize:vertical; }
+
+.top-bar { display:flex; align-items:center; gap:8px; padding:4px 12px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+.top-bar h1 { font-size:14px; font-weight:600; color:var(--accent); }
+.main { flex:1; display:flex; min-height:0; }
+.panel { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.panel-editor { width:45%; border-right:1px solid var(--border); display:flex; flex-direction:column; }
+.panel-preview { flex:1; display:flex; flex-direction:column; }
+.panel-hdr { padding:4px 8px; font-size:11px; font-weight:600; color:var(--text-dim); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.panel-body { flex:1; overflow-y:auto; padding:8px; min-height:0; }
+.status-bar { padding:2px 12px; font-size:9px; color:var(--text-dim); border-top:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+
+/* Slot list */
+.card-slot { display:flex; align-items:flex-start; gap:6px; margin:4px 0; padding:4px 6px; background:var(--surface); border:1px solid var(--border); border-radius:3px; cursor:pointer; }
+.card-slot.selected { border-color:var(--accent); }
+.card-slot .slot-num { color:var(--text-dim); font-size:8px; min-width:14px; padding-top:2px; }
+.card-slot .slot-type { color:var(--accent); font-size:10px; font-weight:600; min-width:70px; }
+.card-slot .slot-schema { color:var(--green); font-size:8px; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.card-slot .slot-controls { display:flex; gap:3px; margin-left:auto; flex-shrink:0; }
+
+/* Console */
+.console-log { font-size:9px; overflow-y:auto; flex:1; min-height:0; padding:4px 8px; }
+.console-line { margin:1px 0; }
+.console-line.cmd { color:var(--accent); }
+.console-line.ok { color:var(--green); }
+.console-line.err { color:var(--red); }
+.console-line.dim { color:var(--text-dim); }
+.cmd-bar { display:flex; gap:4px; padding:4px 8px; border-top:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+.cmd-bar input { flex:1; font-size:10px; padding:3px 6px; }
+.cmd-bar .cmd-prompt { color:var(--accent); font-size:11px; padding:3px 0; }
+
+/* Preview modes */
+.preview-modes { display:flex; gap:2px; }
+.preview-mode { font-size:9px; padding:1px 6px; }
+
+/* Card preview */
+.pipe-section { margin-bottom:6px; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.pipe-hdr { display:flex; align-items:center; gap:6px; padding:3px 8px; background:var(--surface); cursor:pointer; font-size:10px; font-weight:600; }
+.pipe-hdr .pipe-num { color:var(--accent); min-width:14px; }
+.pipe-hdr .pipe-title { color:var(--text-dim); }
+.pipe-hdr .pipe-status { margin-left:auto; font-size:9px; font-weight:400; }
+.pipe-body { padding:6px 8px; font-size:9px; max-height:300px; overflow-y:auto; }
+.pipe-body.collapsed { display:none; }
+.pipe-body pre { white-space:pre-wrap; word-break:break-word; background:var(--surface); border:1px solid var(--border); border-radius:3px; padding:4px; font-size:9px; max-height:200px; overflow-y:auto; }
+
+/* Chat */
+.chat-list { display:flex; flex-direction:column; gap:2px; }
+.chat-card { border:1px solid var(--border); border-radius:6px; background:var(--surface); overflow:hidden; }
+.chat-card .card-body { padding:4px 8px; }
+.chat-card.reply { margin-left:24px; border-color:var(--surface2); }
+.chat-thread-toggle { font-size:9px; color:var(--accent); cursor:pointer; padding:2px 8px; }
+.chat-thread-toggle:hover { text-decoration:underline; }
+.chat-replies { display:none; }
+.chat-replies.open { display:block; }
+
+/* Skeleton table */
+.skel-table { width:100%; border-collapse:collapse; font-size:9px; }
+.skel-table td { border:1px solid var(--border); padding:2px 6px; vertical-align:top; }
+.skel-label { color:var(--accent2); font-size:8px; font-weight:600; margin-bottom:1px; }
+.skel-value { color:var(--text); font-size:9px; }
+.node-slot { font-size:9px; }
+
+/* Existing V3C component styles */
+.node-icon { font-size:14px; margin-right:4px; }
+.node-title { font-weight:600; }
+.node-badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:9px; background:var(--surface2); margin-left:4px; }
+.slot-label { font-size:9px; color:var(--text-dim); margin-bottom:2px; }
+.slot-text { margin:4px 0; }
+.slot-text textarea { width:100%; min-height:40px; font-size:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px; padding:4px; }
+.slot-tags { display:flex; flex-wrap:wrap; gap:3px; padding:2px 0; }
+.slot-tag { background:var(--surface2); padding:1px 6px; border-radius:3px; font-size:9px; }
+.slot-time { font-size:9px; color:var(--text-dim); margin-left:auto; }
+.slot-reactions { display:flex; flex-wrap:wrap; gap:4px; padding:4px 0; }
+.reaction { display:inline-flex; align-items:center; gap:3px; padding:2px 6px; border-radius:10px; background:var(--surface2); border:1px solid var(--border); font-size:10px; }
+.reaction.pass { border-color:var(--green); } .reaction.fail { border-color:var(--red); } .reaction.pending { border-color:var(--yellow); }
+.reaction-emoji { font-size:12px; }
+.reaction-who { max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); font-size:9px; }
+.reactions-summary { font-size:9px; color:var(--text-dim); padding:2px 4px; }
+.reactions-summary .count.ok { color:var(--green); } .reactions-summary .count.bad { color:var(--red); }
+.slot-list-hdr { font-size:10px; cursor:pointer; padding:2px 0; }
+.slot-list-body { padding-left:8px; } .slot-list-body.open { display:block; }
+.slot-list-item { font-size:10px; padding:1px 0; }
+.slot-thread { margin:4px 0; } .slot-thread-hdr { font-size:10px; color:var(--text-dim); cursor:pointer; }
+.slot-thread-body { padding-left:8px; } .slot-thread-body.open { display:block; }
+.tmsg { display:flex; align-items:flex-start; gap:6px; padding:3px 0; font-size:11px; }
+.tmsg-avatar { width:18px; height:18px; border-radius:50%; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; color:var(--accent); flex-shrink:0; }
+.tmsg-who { font-size:10px; font-weight:600; color:var(--text-dim); min-width:40px; }
+.tmsg-text { flex:1; white-space:pre-wrap; word-break:break-word; }
+.slot-actions { display:flex; gap:4px; padding:4px 0; justify-content:flex-end; }
+
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text-dim); }
+</style>
+<script src="/static/v3_core.js"></script>
+<script src="/static/v3_components.js"></script>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <h1>Card Builder</h1>
+  <span style="color:var(--text-dim);font-size:10px;">card templates + data layer</span>
+  <span style="flex:1;"></span>
+  <select id="selCard" style="font-size:10px;padding:2px 4px;min-width:120px;"></select>
+  <button class="btn sm" id="btnNewCard">+ New</button>
+  <button class="btn sm" id="btnDelCard" style="color:var(--red);">Del</button>
+  <span style="border-left:1px solid var(--border);height:16px;"></span>
+  <button class="btn sm" id="btnSave" style="color:var(--green);">Save</button>
+  <button class="btn sm" id="btnLoad">Load</button>
+  <button class="btn sm" id="btnExport">Export</button>
+</div>
+
+<!-- Main: Editor + Preview -->
+<div class="main">
+  <!-- Left: Editor -->
+  <div class="panel panel-editor">
+    <!-- Slot list -->
+    <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <span style="font-size:9px;color:var(--text-dim);font-weight:600;">SLOTS</span>
+        <select id="selSlotType" style="font-size:9px;padding:1px 4px;margin-left:auto;"></select>
+        <button class="btn sm" id="btnAddSlot" style="font-size:8px;">+ Add</button>
+      </div>
+      <div id="slotList" style="max-height:150px;overflow-y:auto;"></div>
+    </div>
+    <!-- Slot editor -->
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+      <div style="padding:4px 8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <span id="slotEditorTitle" style="font-size:9px;color:var(--text-dim);">Select a slot to edit</span>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;padding:8px;overflow-y:auto;">
+        <div style="font-size:8px;color:var(--green);margin-bottom:2px;">Client Schema (contract):</div>
+        <textarea id="edSlotSchema" rows="3" spellcheck="false" style="width:100%;font-size:9px;margin-bottom:6px;" placeholder='{"field":"type"} or leave empty for auto'></textarea>
+        <div style="font-size:8px;color:var(--accent2);margin-bottom:2px;">Assembly:</div>
+        <textarea id="edSlotAsm" rows="8" spellcheck="false" style="width:100%;font-size:9px;flex:1;" placeholder="MOV @field, @n.data.field"></textarea>
+        <button class="btn sm" id="btnApplySlot" style="margin-top:4px;font-size:8px;align-self:flex-start;">Apply</button>
+      </div>
+    </div>
+    <!-- Data editor -->
+    <div style="border-top:1px solid var(--border);flex-shrink:0;max-height:200px;overflow-y:auto;padding:8px;">
+      <div style="font-size:8px;color:var(--text-dim);margin-bottom:2px;">Sample Data (JSON container):</div>
+      <textarea id="edSampleData" rows="6" spellcheck="false" style="width:100%;font-size:9px;"></textarea>
+    </div>
+    <!-- Console -->
+    <div style="border-top:1px solid var(--border);max-height:120px;overflow-y:auto;flex-shrink:0;">
+      <div class="console-log" id="consoleLog" style="max-height:80px;"></div>
+    </div>
+    <div class="cmd-bar">
+      <span class="cmd-prompt">&gt;</span>
+      <input id="cmdInput" type="text" placeholder="card msg | slot header | slot_asm 0 ... end | ls" spellcheck="false" />
+    </div>
+  </div>
+
+  <!-- Right: Preview -->
+  <div class="panel panel-preview">
+    <div class="panel-hdr">
+      <div class="preview-modes">
+        <button class="btn sm preview-mode active" data-preview="card">Card</button>
+        <button class="btn sm preview-mode" data-preview="chat">Chat</button>
+        <button class="btn sm preview-mode" data-preview="trace">Trace</button>
+      </div>
+    </div>
+    <div class="panel-body" id="previewCard"></div>
+    <div class="panel-body" id="previewChat" style="display:none;">
+      <div class="chat-list" id="chatList"></div>
+    </div>
+    <div class="panel-body" id="previewTrace" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="status-bar" id="statusBar">Ready</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+function esc(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let _selectedCard = null;
+let _selectedSlotIdx = -1;
+let _previewMode = 'card';
+let _sampleData = '';
+
+// ══════════════════════════════════════════════════════════
+//  SAMPLE CHAT DATA
+// ══════════════════════════════════════════════════════════
+const _sampleChatMessages = [
+  { id:"m1", parent_id:null, timestamp:"14:30", data:{ author:"Alice", icon:"A", text:"Hey, has anyone looked at the new pipeline?", reactions:[{emoji:"\ud83d\udc4d",user:"Bob",status:"pass"}], tags:{channel:"dev"} }},
+  { id:"m2", parent_id:"m1", timestamp:"14:32", data:{ author:"Bob", icon:"B", text:"Yeah, looks good! The assembly step is clean.", reactions:[], tags:{} }},
+  { id:"m3", parent_id:"m1", timestamp:"14:33", data:{ author:"Alice", icon:"A", text:"Great, I'll merge it then.", reactions:[], tags:{} }},
+  { id:"m4", parent_id:null, timestamp:"14:35", data:{ author:"Carol", icon:"C", text:"I pushed a fix for the schema validation. Can someone review?", reactions:[{emoji:"\ud83d\udd25",user:"Alice",status:"pass"},{emoji:"\ud83d\udc4d",user:"Bob",status:"pass"}], tags:{channel:"dev"} }},
+  { id:"m5", parent_id:null, timestamp:"14:40", data:{ author:"Dave", icon:"D", text:"Heads up: deploying to staging in 10 min", reactions:[{emoji:"\ud83d\udc40",user:"Alice",status:"pass"},{emoji:"\ud83d\udc40",user:"Bob",status:"pass"},{emoji:"\ud83d\udc40",user:"Carol",status:"pass"}], tags:{channel:"ops"} }}
+];
+
+// ══════════════════════════════════════════════════════════
+//  SELECTORS & RENDERING
+// ══════════════════════════════════════════════════════════
+function populateCardSelect() {
+  const sel = document.getElementById('selCard');
+  const names = Object.keys(_cardTemplates);
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}"${n === _selectedCard ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  if (!_selectedCard && names.length) _selectedCard = names[0];
+}
+
+function populateSlotTypeSelect() {
+  const sel = document.getElementById('selSlotType');
+  sel.innerHTML = V3C.list().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
+
+function renderSlotList() {
+  const el = document.getElementById('slotList');
+  const card = _cardTemplates[_selectedCard];
+  if (!card || !card.slots.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:9px;">(no slots — add one)</div>';
+    return;
+  }
+  let h = '';
+  for (let i = 0; i < card.slots.length; i++) {
+    const s = card.slots[i];
+    const sel = i === _selectedSlotIdx ? ' selected' : '';
+    const schemaKeys = s.schema ? Object.keys(s.schema).join(', ') : (s.asm ? '(auto)' : '');
+    h += `<div class="card-slot${sel}" data-slot-idx="${i}">`;
+    h += `<span class="slot-num">${i}</span>`;
+    h += `<span class="slot-type">${esc(s.type)}</span>`;
+    h += `<span class="slot-schema">${esc(schemaKeys)}</span>`;
+    h += `<div class="slot-controls">`;
+    if (i > 0) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-slot-up="${i}">\u2191</span>`;
+    if (i < card.slots.length - 1) h += `<span style="cursor:pointer;font-size:9px;color:var(--text-dim);" data-slot-down="${i}">\u2193</span>`;
+    h += `<span style="cursor:pointer;font-size:9px;color:var(--red);" data-slot-del="${i}">\u00d7</span>`;
+    h += `</div></div>`;
+  }
+  el.innerHTML = h;
+  wireSlotList(el, card);
+}
+
+function wireSlotList(el, card) {
+  el.querySelectorAll('[data-slot-idx]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.dataset.slotUp || e.target.dataset.slotDown || e.target.dataset.slotDel) return;
+      selectSlot(+row.dataset.slotIdx);
+    });
+  });
+  el.querySelectorAll('[data-slot-up]').forEach(btn => {
+    btn.addEventListener('click', () => { const i = +btn.dataset.slotUp; [card.slots[i-1], card.slots[i]] = [card.slots[i], card.slots[i-1]]; if (_selectedSlotIdx === i) _selectedSlotIdx = i-1; _saveCardTemplates(); renderSlotList(); refreshPreview(); });
+  });
+  el.querySelectorAll('[data-slot-down]').forEach(btn => {
+    btn.addEventListener('click', () => { const i = +btn.dataset.slotDown; [card.slots[i], card.slots[i+1]] = [card.slots[i+1], card.slots[i]]; if (_selectedSlotIdx === i) _selectedSlotIdx = i+1; _saveCardTemplates(); renderSlotList(); refreshPreview(); });
+  });
+  el.querySelectorAll('[data-slot-del]').forEach(btn => {
+    btn.addEventListener('click', () => { card.slots.splice(+btn.dataset.slotDel, 1); _selectedSlotIdx = -1; _saveCardTemplates(); renderSlotList(); refreshPreview(); clearSlotEditor(); });
+  });
+}
+
+function selectSlot(idx) {
+  _selectedSlotIdx = idx;
+  const card = _cardTemplates[_selectedCard];
+  if (!card || idx < 0 || idx >= card.slots.length) { clearSlotEditor(); return; }
+  const s = card.slots[idx];
+  document.getElementById('slotEditorTitle').textContent = `Slot ${idx}: ${s.type}`;
+  document.getElementById('edSlotSchema').value = s.schema ? JSON.stringify(s.schema, null, 2) : '';
+  document.getElementById('edSlotAsm').value = s.asm || '';
+  renderSlotList();
+}
+
+function clearSlotEditor() {
+  document.getElementById('slotEditorTitle').textContent = 'Select a slot to edit';
+  document.getElementById('edSlotSchema').value = '';
+  document.getElementById('edSlotAsm').value = '';
+}
+
+// ══════════════════════════════════════════════════════════
+//  PREVIEW
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.preview-mode').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _previewMode = btn.dataset.preview;
+    document.querySelectorAll('.preview-mode').forEach(b => b.classList.toggle('active', b.dataset.preview === _previewMode));
+    document.getElementById('previewCard').style.display = _previewMode === 'card' ? 'block' : 'none';
+    document.getElementById('previewChat').style.display = _previewMode === 'chat' ? 'block' : 'none';
+    document.getElementById('previewTrace').style.display = _previewMode === 'trace' ? 'block' : 'none';
+    refreshPreview();
+  });
+});
+
+function refreshPreview() {
+  if (_previewMode === 'card') renderCardPreview();
+  else if (_previewMode === 'chat') renderChatPreview();
+  else if (_previewMode === 'trace') renderTracePreview();
+  updateStatus();
+}
+
+function getSampleData() {
+  try { return JSON.parse(_sampleData); } catch(_) { return {}; }
+}
+
+function renderCardPreview() {
+  const el = document.getElementById('previewCard');
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;padding:20px;text-align:center;">Create a card template to begin</div>';
+    return;
+  }
+  const data = getSampleData();
+  const slots = assembleCard(_selectedCard, data);
+  let h = `<div style="border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;padding:6px 8px;margin-bottom:8px;">`;
+  h += slots.map(s => s.html).join('');
+  h += `</div>`;
+  // Per-slot summary
+  for (const s of slots) {
+    const warnHtml = s.warnings.length ? ` <span style="color:var(--orange);font-size:8px;">\u26a0 ${s.warnings.length}</span>` : '';
+    h += `<div style="font-size:8px;margin:2px 0;"><span style="color:var(--accent);">${esc(s.id)}</span> <span style="color:var(--green);">[${Object.keys(s.clientSchema).join(', ')}]</span>${warnHtml}</div>`;
+  }
+  el.innerHTML = h;
+}
+
+function renderChatPreview() {
+  const el = document.getElementById('chatList');
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:10px;padding:20px;text-align:center;">Select a card template first</div>';
+    return;
+  }
+  const messages = _sampleChatMessages;
+  const roots = messages.filter(m => !m.parent_id);
+  const replies = {};
+  for (const m of messages) { if (m.parent_id) { if (!replies[m.parent_id]) replies[m.parent_id] = []; replies[m.parent_id].push(m); } }
+  let h = '';
+  for (const msg of roots) {
+    const cardHtml = renderCard(_selectedCard, msg);
+    h += `<div class="chat-card" data-msg-id="${esc(msg.id)}"><div class="card-body">${cardHtml}</div>`;
+    const r = replies[msg.id];
+    if (r && r.length) {
+      h += `<div class="chat-thread-toggle">\u25b8 ${r.length} replies</div>`;
+      h += `<div class="chat-replies">`;
+      for (const reply of r) h += `<div class="chat-card reply"><div class="card-body">${renderCard(_selectedCard, reply)}</div></div>`;
+      h += `</div>`;
+    }
+    h += `</div>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll('.chat-thread-toggle').forEach(btn => {
+    btn.addEventListener('click', () => { const r = btn.nextElementSibling; if (r) { r.classList.toggle('open'); btn.textContent = r.classList.contains('open') ? '\u25be hide replies' : `\u25b8 ${r.children.length} replies`; } });
+  });
+}
+
+function renderTracePreview() {
+  const el = document.getElementById('previewTrace');
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) { el.innerHTML = ''; return; }
+  const data = getSampleData();
+  const slots = assembleCard(_selectedCard, data);
+  let h = '';
+  for (const s of slots) {
+    h += `<div class="pipe-section">`;
+    h += `<div class="pipe-hdr"><span class="pipe-num">${esc(s.id)}</span> <span class="pipe-title">${esc(s.component)}</span>`;
+    h += `<span class="pipe-status" style="color:${s.warnings.length ? 'var(--orange)' : 'var(--green)'};">${s.warnings.length ? s.warnings.length + ' warn' : 'OK'}</span></div>`;
+    h += `<div class="pipe-body">`;
+    h += `<div style="color:var(--green);font-size:8px;margin-bottom:2px;">schema: ${esc(JSON.stringify(s.clientSchema))}</div>`;
+    h += `<pre>${esc(JSON.stringify(s.data, null, 2))}</pre>`;
+    if (s.warnings.length) h += `<div style="color:var(--orange);font-size:8px;margin-top:2px;">${s.warnings.map(w => '\u26a0 ' + esc(w)).join('<br>')}</div>`;
+    h += `</div></div>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll('.pipe-hdr').forEach(hdr => { hdr.addEventListener('click', () => { hdr.nextElementSibling.classList.toggle('collapsed'); }); });
+}
+
+function updateStatus() {
+  const card = _cardTemplates[_selectedCard];
+  const slots = card?.slots?.length || 0;
+  document.getElementById('statusBar').textContent = `${_selectedCard || '(none)'} \u2022 ${slots} slots \u2022 preview: ${_previewMode}`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  UI WIRING
+// ══════════════════════════════════════════════════════════
+document.getElementById('selCard').addEventListener('change', (e) => {
+  _selectedCard = e.target.value; _selectedSlotIdx = -1;
+  renderSlotList(); clearSlotEditor(); refreshPreview();
+});
+document.getElementById('btnNewCard').addEventListener('click', () => {
+  const name = prompt('Card name:'); if (!name || !name.trim()) return;
+  if (_cardTemplates[name.trim()]) return;
+  _cardTemplates[name.trim()] = { slots: [] };
+  _saveCardTemplates(); _selectedCard = name.trim(); _selectedSlotIdx = -1;
+  populateCardSelect(); renderSlotList(); clearSlotEditor(); refreshPreview();
+  consoleLog(`created card: ${name.trim()}`, 'ok');
+});
+document.getElementById('btnDelCard').addEventListener('click', () => {
+  if (!_selectedCard) return;
+  delete _cardTemplates[_selectedCard]; _saveCardTemplates();
+  consoleLog(`deleted card: ${_selectedCard}`, 'ok');
+  _selectedCard = null; populateCardSelect(); renderSlotList(); clearSlotEditor(); refreshPreview();
+});
+document.getElementById('btnAddSlot').addEventListener('click', () => {
+  if (!_selectedCard || !_cardTemplates[_selectedCard]) return;
+  const type = document.getElementById('selSlotType').value; if (!type) return;
+  _cardTemplates[_selectedCard].slots.push({ type, asm: '', schema: null });
+  _saveCardTemplates(); renderSlotList(); refreshPreview();
+  consoleLog(`added slot: ${type}`, 'ok');
+});
+document.getElementById('btnApplySlot').addEventListener('click', () => {
+  if (!_selectedCard || _selectedSlotIdx < 0) return;
+  const card = _cardTemplates[_selectedCard];
+  const slot = card?.slots?.[_selectedSlotIdx]; if (!slot) return;
+  slot.asm = document.getElementById('edSlotAsm').value;
+  const schemaText = document.getElementById('edSlotSchema').value.trim();
+  slot.schema = schemaText ? (() => { try { return JSON.parse(schemaText); } catch(_) { return null; } })() : null;
+  _saveCardTemplates(); refreshPreview();
+  consoleLog(`slot ${_selectedSlotIdx} updated`, 'ok');
+});
+document.getElementById('edSampleData').addEventListener('input', (e) => {
+  _sampleData = e.target.value; refreshPreview();
+});
+
+// ══════════════════════════════════════════════════════════
+//  DSL CONSOLE
+// ══════════════════════════════════════════════════════════
+const replay = [];
+const _cmdHistory = [];
+let _cmdHistIdx = -1;
+
+function consoleLog(text, cls) {
+  const el = document.getElementById('consoleLog');
+  const div = document.createElement('div');
+  div.className = 'console-line ' + (cls || '');
+  div.textContent = text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function exec(cmdStr) {
+  const raw = (cmdStr || '').trim(); if (!raw) return;
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith(';'));
+  let i = 0;
+  while (i < lines.length) {
+    const tokens = asmTokenize(lines[i]);
+    // Block: slot_asm <index> ... end
+    if (tokens[0] === 'slot_asm' && tokens.length === 2) {
+      const idx = +tokens[1]; const body = []; i++;
+      while (i < lines.length && lines[i] !== 'end') { body.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      const code = body.join('\n');
+      replay.push({ _raw: `slot_asm ${idx}\n${code}\nend`, cmd: 'slot_asm', index: idx, code, _ts: Date.now() });
+      applyCommand({ cmd: 'slot_asm', index: idx, code });
+      continue;
+    }
+    const cmd = parseCmd(lines[i]);
+    if (!cmd) { i++; continue; }
+    if (['get', 'ls'].includes(cmd.cmd)) { runIntrospect(cmd); i++; continue; }
+    replay.push({ _raw: lines[i], ...cmd, _ts: Date.now() });
+    applyCommand(cmd);
+    i++;
+  }
+  refreshPreview();
+}
+
+function parseCmd(line) {
+  const tokens = asmTokenize(line.trim()); if (!tokens.length) return null;
+  const c = tokens[0];
+  if (c === 'card') return { cmd: 'card', name: tokens[1] };
+  if (c === 'slot') return { cmd: 'slot', type: tokens[1], component: tokens[2] };
+  if (c === 'slot_del') return { cmd: 'slot_del', index: +tokens[1] || 0 };
+  if (c === 'slot_move') return { cmd: 'slot_move', from: +tokens[1] || 0, to: +tokens[2] || 0 };
+  if (c === 'slot_asm') return { cmd: 'slot_asm', index: +tokens[1], code: tokens.length > 2 ? tokens.slice(2).join(' ') : null };
+  if (c === 'slot_schema') {
+    const idx = +tokens[1]; const jsonStart = line.indexOf(tokens[2] || '');
+    let schema = null; if (jsonStart >= 0) { try { schema = JSON.parse(line.slice(jsonStart)); } catch(_) {} }
+    return { cmd: 'slot_schema', index: idx, schema };
+  }
+  if (c === 'data') { const rest = line.slice(line.indexOf(tokens[1] || '')); try { return { cmd: 'data', value: JSON.parse(rest) }; } catch(_) { return { cmd: 'data', value: rest }; } }
+  if (c === 'preview') return { cmd: 'preview' };
+  if (c === 'chat') return { cmd: 'chat' };
+  if (c === 'save') return { cmd: 'save' };
+  if (c === 'load') return { cmd: 'load' };
+  if (c === 'export') return { cmd: 'export' };
+  if (c === 'del') return { cmd: 'del' };
+  if (c === 'get') return { cmd: 'get' };
+  if (c === 'ls') return { cmd: 'ls' };
+  return null;
+}
+
+function applyCommand(cmd) {
+  switch (cmd.cmd) {
+    case 'card': {
+      if (!cmd.name) { consoleLog('card: name required', 'err'); return; }
+      if (!_cardTemplates[cmd.name]) { _cardTemplates[cmd.name] = { slots: [] }; _saveCardTemplates(); consoleLog(`created: ${cmd.name}`, 'ok'); }
+      else consoleLog(`selected: ${cmd.name}`, 'dim');
+      _selectedCard = cmd.name; _selectedSlotIdx = -1;
+      populateCardSelect(); renderSlotList(); clearSlotEditor();
+      break;
+    }
+    case 'slot': {
+      if (!_selectedCard || !_cardTemplates[_selectedCard]) { consoleLog('slot: select card first', 'err'); return; }
+      if (!cmd.type) { consoleLog('slot: type required', 'err'); return; }
+      _cardTemplates[_selectedCard].slots.push({ type: cmd.type, component: cmd.component, asm: '', schema: null });
+      _saveCardTemplates(); renderSlotList();
+      consoleLog(`slot added: ${cmd.type}`, 'ok');
+      break;
+    }
+    case 'slot_del': {
+      const card = _cardTemplates[_selectedCard]; if (!card) return;
+      if (cmd.index < 0 || cmd.index >= card.slots.length) { consoleLog('invalid index', 'err'); return; }
+      card.slots.splice(cmd.index, 1); _selectedSlotIdx = -1;
+      _saveCardTemplates(); renderSlotList(); clearSlotEditor();
+      consoleLog(`slot ${cmd.index} deleted`, 'ok');
+      break;
+    }
+    case 'slot_move': {
+      const card = _cardTemplates[_selectedCard]; if (!card) return;
+      const [s] = card.slots.splice(cmd.from, 1); card.slots.splice(cmd.to, 0, s);
+      _saveCardTemplates(); renderSlotList();
+      consoleLog(`slot moved: ${cmd.from} \u2192 ${cmd.to}`, 'ok');
+      break;
+    }
+    case 'slot_asm': {
+      const card = _cardTemplates[_selectedCard]; if (!card) { consoleLog('select card first', 'err'); return; }
+      const slot = card.slots[cmd.index]; if (!slot) { consoleLog('invalid slot', 'err'); return; }
+      slot.asm = cmd.code || document.getElementById('edSlotAsm')?.value || '';
+      _saveCardTemplates();
+      consoleLog(`slot ${cmd.index} asm set`, 'ok');
+      break;
+    }
+    case 'slot_schema': {
+      const card = _cardTemplates[_selectedCard]; if (!card) return;
+      const slot = card.slots[cmd.index]; if (!slot) return;
+      slot.schema = cmd.schema;
+      _saveCardTemplates();
+      consoleLog(`slot ${cmd.index} schema: ${cmd.schema ? Object.keys(cmd.schema).join(', ') : '(cleared)'}`, 'ok');
+      break;
+    }
+    case 'data': {
+      _sampleData = typeof cmd.value === 'string' ? cmd.value : JSON.stringify(cmd.value, null, 2);
+      document.getElementById('edSampleData').value = _sampleData;
+      consoleLog('sample data loaded', 'ok');
+      break;
+    }
+    case 'chat': { document.querySelector('[data-preview="chat"]').click(); break; }
+    case 'preview': { break; }
+    case 'save': { saveToServer(); break; }
+    case 'load': { loadFromServer(); break; }
+    case 'export': { exportBundle(); break; }
+    case 'del': {
+      if (!_selectedCard) return;
+      delete _cardTemplates[_selectedCard]; _saveCardTemplates();
+      consoleLog(`deleted: ${_selectedCard}`, 'ok');
+      _selectedCard = null; populateCardSelect(); renderSlotList(); clearSlotEditor();
+      break;
+    }
+  }
+}
+
+function runIntrospect(cmd) {
+  if (cmd.cmd === 'ls') {
+    const names = Object.keys(_cardTemplates);
+    if (!names.length) { consoleLog('(no cards)', 'dim'); return; }
+    for (const n of names) {
+      const c = _cardTemplates[n];
+      consoleLog(`  ${n} (${c.slots.length} slots)${n === _selectedCard ? ' *' : ''}`, n === _selectedCard ? 'cmd' : '');
+    }
+  } else if (cmd.cmd === 'get') {
+    if (!_selectedCard) { consoleLog('no card selected', 'dim'); return; }
+    const card = _cardTemplates[_selectedCard];
+    consoleLog(`card: ${_selectedCard}`, 'cmd');
+    for (let i = 0; i < card.slots.length; i++) {
+      const s = card.slots[i];
+      const schema = s.schema ? Object.keys(s.schema).join(',') : '(auto)';
+      consoleLog(`  ${i}: ${s.type} [${schema}] asm:${(s.asm||'').split('\n').length}L`, '');
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  SAVE / LOAD / EXPORT
+// ══════════════════════════════════════════════════════════
+async function saveToServer() {
+  try {
+    const bundle = { cards: { ..._cardTemplates }, replay: [...replay], _saved: new Date().toISOString() };
+    const r = await fetch('/api/component-builder/components', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...bundle, components: { ..._customComponents }, views: { ..._clientViews } }),
+    });
+    const res = await r.json();
+    consoleLog(res.ok ? `saved (${Object.keys(_cardTemplates).length} cards)` : 'save failed', res.ok ? 'ok' : 'err');
+  } catch(e) { consoleLog('save error: ' + e.message, 'err'); }
+}
+
+async function loadFromServer() {
+  try {
+    const r = await fetch('/api/component-builder/components');
+    const bundle = await r.json();
+    if (bundle.cards) { Object.assign(_cardTemplates, bundle.cards); _saveCardTemplates(); }
+    consoleLog(`loaded ${Object.keys(bundle.cards || {}).length} cards`, 'ok');
+    _selectedCard = null; _selectedSlotIdx = -1;
+    populateCardSelect(); renderSlotList(); clearSlotEditor(); refreshPreview();
+  } catch(e) { consoleLog('load error: ' + e.message, 'err'); }
+}
+
+function exportBundle() {
+  const bundle = { cards: _cardTemplates, replay, _saved: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'card_templates_' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+  URL.revokeObjectURL(url);
+  consoleLog('exported', 'ok');
+}
+
+// ══════════════════════════════════════════════════════════
+//  COMMAND BAR
+// ══════════════════════════════════════════════════════════
+document.getElementById('cmdInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const cmd = e.target.value.trim(); if (!cmd) return;
+    _cmdHistory.push(cmd); _cmdHistIdx = _cmdHistory.length;
+    consoleLog(`> ${cmd}`, 'cmd');
+    exec(cmd); e.target.value = '';
+  }
+  if (e.key === 'ArrowUp') { e.preventDefault(); if (_cmdHistIdx > 0) { _cmdHistIdx--; e.target.value = _cmdHistory[_cmdHistIdx] || ''; } }
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (_cmdHistIdx < _cmdHistory.length - 1) { _cmdHistIdx++; e.target.value = _cmdHistory[_cmdHistIdx] || ''; } else { _cmdHistIdx = _cmdHistory.length; e.target.value = ''; } }
+});
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+populateCardSelect();
+populateSlotTypeSelect();
+renderSlotList();
+// Default sample data
+_sampleData = JSON.stringify(_sampleChatMessages[0], null, 2);
+document.getElementById('edSampleData').value = _sampleData;
+refreshPreview();
+consoleLog('Card Builder', 'cmd');
+consoleLog('DSL: card, slot, slot_asm, slot_schema, slot_del, slot_move, data, chat, save, load, ls, get', 'dim');
+</script>
+</body>
+</html>
