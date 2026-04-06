@@ -3922,6 +3922,11 @@ def create_app(root: str) -> FastAPI:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow_v3.html"
         return html_path.read_text(encoding="utf-8")
 
+    @app.get("/workflow-v3-compact", response_class=HTMLResponse)
+    def workflow_v3_compact_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow_v3_compact.html"
+        return html_path.read_text(encoding="utf-8")
+
     @app.get("/component-builder", response_class=HTMLResponse)
     def component_builder_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "component_builder.html"
