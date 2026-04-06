@@ -55,7 +55,6 @@ class GitBackend:
         readme.write_text("# Sandbox Root\n\nShared git history for hypothesis branches.\n", encoding="utf-8")
         self.run("add", "README.md")
         self.run("commit", "-m", "Initial sandbox commit")
-        self.run("checkout", "--detach")
 
     def current_branch(self) -> str:
         return self.run("branch", "--show-current")

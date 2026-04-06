@@ -1,14 +1,7 @@
 {
-  "fields": {
-    "name": "str"
-  },
-  "commands": [
-    "post",
-    "select",
-    "rename"
-  ],
-  "panels": [
-    "panel_sidebar"
-  ],
-  "renders": []
+  "type": "channel",
+  "description": "Chat channel — contains messages",
+  "fields": {"name": "str"},
+  "inherits": "cards",
+  "commands": []
 }

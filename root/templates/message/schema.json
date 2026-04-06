@@ -1,12 +1,7 @@
 {
-  "fields": {
-    "content": "str"
-  },
-  "commands": [
-    "edit"
-  ],
-  "panels": [
-    "panel_compact"
-  ],
-  "renders": []
+  "type": "message",
+  "description": "Chat message — content + metadata",
+  "fields": {"content": "str"},
+  "inherits": "card",
+  "commands": []
 }

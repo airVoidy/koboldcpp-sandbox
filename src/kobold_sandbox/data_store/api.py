@@ -292,6 +292,19 @@ def create_datastore_router(datastore_root: Path) -> APIRouter:
     def git_current_branch():
         return {"branch": store.current_branch()}
 
+    @router.get("/git/graph")
+    def git_graph(limit: int = 40):
+        """Return git log --all --oneline --graph as text."""
+        try:
+            raw = store._git.git.run(
+                "log", "--all", "--oneline", "--graph",
+                f"-{limit}", "--decorate=short",
+                cwd=store._git.workspace,
+            )
+            return {"graph": raw}
+        except Exception as e:
+            return {"graph": str(e)}
+
     # ------------------------------------------------------------------
     # Contracts — semantic templates (Schema workscope)
     # ------------------------------------------------------------------

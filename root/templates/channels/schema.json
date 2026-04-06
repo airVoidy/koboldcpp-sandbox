@@ -1,8 +1,7 @@
 {
+  "type": "channels",
+  "description": "Channel list container",
   "fields": {},
-  "commands": [
-    "add_channel"
-  ],
-  "panels": [],
-  "renders": []
+  "inherits": "cards",
+  "commands": []
 }

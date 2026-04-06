@@ -594,9 +594,32 @@ async function loadNamespaces() {
 }
 
 async function loadGitLog() {
+  const log = document.getElementById('gitLog');
+  try {
+    // Try graph view first
+    const graphData = await api('/git/graph?limit=40');
+    if (graphData.graph) {
+      const lines = graphData.graph.split('\n').map(line => {
+        // Escape HTML first, then colorize
+        let safe = esc(line);
+        // Hashes in orange, clickable for diff
+        safe = safe.replace(/([0-9a-f]{7,})/g, '<span class="graph-hash" data-hash="$1" style="color:#ff9e64;cursor:pointer;text-decoration:underline">$1</span>');
+        // Branch refs in purple
+        safe = safe.replace(/\(([^)]+)\)/g, '<span style="color:#bb9af7">($1)</span>');
+        return safe;
+      });
+      log.innerHTML = `<pre style="font-family:var(--mono);font-size:11px;line-height:1.6;margin:0;padding:8px;overflow-x:auto;white-space:pre;color:#565f89">${lines.join('\n')}</pre>`;
+      // Click delegation for hashes
+      log.addEventListener('click', e => {
+        const t = e.target.closest('.graph-hash');
+        if (t) showDiff(t.dataset.hash);
+      });
+      return;
+    }
+  } catch {}
+  // Fallback to flat log
   try {
     const data = await api('/git/log?limit=30');
-    const log = document.getElementById('gitLog');
     if (!data.commits.length) {
       log.innerHTML = '<div class="empty-state" style="height:auto;padding:40px 0"><p>No commits yet</p></div>';
       return;
@@ -609,7 +632,7 @@ async function loadGitLog() {
       </div>
     `).join('');
   } catch (e) {
-    document.getElementById('gitLog').innerHTML = '<div class="empty-state" style="height:auto;padding:40px 0"><p>Git not available</p></div>';
+    log.innerHTML = '<div class="empty-state" style="height:auto;padding:40px 0"><p>Git not available</p></div>';
   }
 }
 

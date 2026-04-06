@@ -3938,6 +3938,18 @@ def create_app(root: str) -> FastAPI:
         ct = "application/javascript" if filename.endswith(".js") else "text/css" if filename.endswith(".css") else "text/plain"
         return Response(content=file_path.read_text(encoding="utf-8"), media_type=ct)
 
+    @app.get("/tpl/{filename:path}")
+    def serve_template_file(filename: str):
+        """Serve files from root/templates/ — views, schemas, JS."""
+        from fastapi.responses import Response
+        file_path = Path(root) / "root" / "templates" / filename
+        if not file_path.exists() or not file_path.is_file():
+            return Response(status_code=404, content="Not found")
+        ext = file_path.suffix.lower()
+        ct_map = {".js": "application/javascript", ".css": "text/css", ".html": "text/html", ".json": "application/json"}
+        ct = ct_map.get(ext, "text/plain")
+        return Response(content=file_path.read_text(encoding="utf-8"), media_type=ct)
+
     @app.get("/workflow-v3", response_class=HTMLResponse)
     def workflow_v3_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "workflow_v3.html"
@@ -4021,6 +4033,64 @@ def create_app(root: str) -> FastAPI:
     def pipeline_chat_page() -> str:
         html_path = Path(__file__).resolve().parents[2] / "tools" / "pipeline_chat.html"
         return html_path.read_text(encoding="utf-8")
+
+    @app.get("/data-store", response_class=HTMLResponse)
+    def data_store_page() -> str:
+        html_path = Path(__file__).resolve().parents[2] / "tools" / "data_store" / "index.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.get("/atomic-wiki", response_class=HTMLResponse)
+    def atomic_wiki_page() -> str:
+        """Inline wiki viewer — lists pages from /api/atomic-wiki/pages."""
+        return """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Atomic Wiki</title>
+<style>
+:root { --bg:#1a1b26; --surface:#24283b; --border:#3b3d57; --text:#c0caf5; --dim:#565f89; --accent:#7aa2f7; --green:#9ece6a; --mono:'Cascadia Code','Fira Code',monospace; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font:13px/1.5 var(--mono); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+.topbar { display:flex; align-items:center; gap:12px; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border); }
+.topbar h1 { font-size:16px; color:var(--accent); }
+.topbar .count { font-size:12px; color:var(--dim); }
+.main { flex:1; display:flex; min-height:0; }
+.sidebar { width:240px; border-right:1px solid var(--border); overflow-y:auto; padding:8px; }
+.page-item { padding:6px 8px; border-radius:4px; cursor:pointer; font-size:12px; margin:2px 0; }
+.page-item:hover { background:var(--surface); }
+.page-item.active { background:var(--accent); color:#000; }
+.page-item .kind { font-size:10px; color:var(--dim); }
+.page-item.active .kind { color:rgba(0,0,0,.5); }
+.content { flex:1; overflow-y:auto; padding:16px; }
+.content h2 { color:var(--accent); margin-bottom:8px; }
+.content .meta { font-size:11px; color:var(--dim); margin-bottom:12px; }
+.content pre { background:var(--surface); padding:12px; border-radius:6px; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.5; }
+.empty { color:var(--dim); font-style:italic; padding:40px; text-align:center; }
+</style></head><body>
+<div class="topbar"><h1>Atomic Wiki</h1><span class="count" id="count"></span></div>
+<div class="main">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="content" id="content"><div class="empty">Select a page</div></div>
+</div>
+<script>
+let pages = [];
+async function load() {
+  const r = await fetch('/api/atomic-wiki/pages');
+  const d = await r.json();
+  pages = d.pages || [];
+  document.getElementById('count').textContent = pages.length + ' pages';
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = pages.map((p,i) => `<div class="page-item" onclick="show(${i})"><div>${p.title || p.slug}</div><div class="kind">${p.item_kind} / ${p.page_kind}</div></div>`).join('');
+}
+async function show(i) {
+  document.querySelectorAll('.page-item').forEach((el,j) => el.classList.toggle('active', j===i));
+  const slug = pages[i].slug;
+  const r = await fetch('/api/atomic-wiki/pages/' + slug);
+  const p = await r.json();
+  const c = document.getElementById('content');
+  const tags = (p.tags||[]).map(t => '<span style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">'+t+'</span>').join('');
+  c.innerHTML = '<h2>'+esc(p.title||p.slug)+'</h2><div class="meta">'+esc(p.item_kind)+' / '+esc(p.page_kind)+' '+tags+'</div><pre>'+esc(p.message?.text||JSON.stringify(p.blocks,null,2))+'</pre>';
+}
+function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML;}
+load();
+</script></body></html>"""
 
     @app.get("/chat", response_class=HTMLResponse)
     def chat_page() -> str:
@@ -4127,7 +4197,7 @@ def create_app(root: str) -> FastAPI:
             }
 
     class PChatWorkspace:
-        """Filesystem-backed chat workspace with shell commands."""
+        """Filesystem-backed chat workspace with shell commands + git versioning."""
 
         def __init__(self, fs_root: Path):
             self.root = fs_root / "root"
@@ -4138,6 +4208,11 @@ def create_app(root: str) -> FastAPI:
             self.pchat_dir.mkdir(exist_ok=True)
             self.log_path = self.root / "log.jsonl"
             self.scopes: dict[str, ConsoleScope] = {}
+
+            # Git versioning for pchat FS
+            from .data_store.git_history import DataStoreGit
+            self._git = DataStoreGit(self.pchat_dir, self.pchat_dir)
+            self._git.init()
 
             # Root _meta.json
             root_meta = self.root / "_meta.json"
@@ -4154,6 +4229,11 @@ def create_app(root: str) -> FastAPI:
 
             # Default templates
             self._init_templates()
+
+            # Precompile + preload all template commands
+            import compileall
+            compileall.compile_dir(str(self.templates_dir), quiet=2)
+            self._preload_commands()
 
         def _dump_tree(self):
             """Serialize full FS tree to root/tree.json."""
@@ -4184,8 +4264,75 @@ def create_app(root: str) -> FastAPI:
                 self.scopes[name] = ConsoleScope(name, self.root, redo=redo)
             return self.scopes[name]
 
+        def _resolve_template_cmd(self, command: str, scope: "ConsoleScope"):
+            """Find a command .py file by walking the template inheritance chain.
+            Returns loaded module's execute function, or None."""
+            # Determine type of current node
+            meta = self._read_meta(scope.cwd)
+            node_type = (meta or {}).get("type", "")
+            if not node_type:
+                return None
+
+            # Walk inheritance: node_type -> schema.inherits -> ... -> None
+            visited = set()
+            current_type = node_type
+            while current_type and current_type not in visited:
+                visited.add(current_type)
+                cmd_path = self.templates_dir / current_type / "commands" / f"{command}.py"
+                if cmd_path.is_file():
+                    return self._load_cmd_module(cmd_path)
+                # Follow inheritance
+                schema_path = self.templates_dir / current_type / "schema.json"
+                if schema_path.is_file():
+                    try:
+                        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+                        current_type = schema.get("inherits", "")
+                    except Exception:
+                        break
+                else:
+                    break
+            return None
+
+        _cmd_cache: dict[str, tuple] = {}  # path_str -> (execute_fn, mtime)
+
+        def _preload_commands(self):
+            """Load all template command .py files into cache at startup."""
+            count = 0
+            for tpl_dir in self.templates_dir.iterdir():
+                if not tpl_dir.is_dir():
+                    continue
+                cmd_dir = tpl_dir / "commands"
+                if not cmd_dir.is_dir():
+                    continue
+                for py_file in cmd_dir.glob("*.py"):
+                    if self._load_cmd_module(py_file):
+                        count += 1
+            return count
+
+        def _load_cmd_module(self, path: Path):
+            """Load a .py command file. Hot-reloads if mtime changed."""
+            key = str(path)
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                return None
+            cached = self._cmd_cache.get(key)
+            if cached and cached[1] >= mtime:
+                return cached[0]
+            # (Re)load
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(f"cmd_{path.stem}_{id(self)}", str(path))
+            if spec is None or spec.loader is None:
+                return None
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            fn = getattr(mod, "execute", None)
+            self._cmd_cache[key] = (fn, mtime)
+            return fn
+
         def exec_cmd(self, cmd_str: str, user: str = "anon", log: bool = True, scope_name: str = "CMD") -> dict:
-            """Parse and execute a shell command in a named scope."""
+            """Parse and execute a shell command in a named scope.
+            Resolution order: template command .py (by inheritance) -> hardcoded cmd_* method."""
             try:
                 parts = shlex.split(cmd_str)
             except ValueError as e:
@@ -4195,14 +4342,26 @@ def create_app(root: str) -> FastAPI:
             command = parts[0].lstrip("/").lower()
             args = parts[1:]
             scope = self.get_scope(scope_name)
-            handler = getattr(self, f"cmd_{command}", None)
-            if not handler:
-                return {"error": f"unknown command: /{command}"}
-            result = handler(args, user, scope)
+
+            # 1. Try template command (from .py files)
+            tpl_execute = self._resolve_template_cmd(command, scope)
+            if tpl_execute:
+                result = tpl_execute(args, user, scope, self)
+            else:
+                # 2. Fallback to hardcoded handler
+                handler = getattr(self, f"cmd_{command}", None)
+                if not handler:
+                    return {"error": f"unknown command: /{command}"}
+                result = handler(args, user, scope)
+
             # Record in scope log + global audit log
-            if log and command not in ("dir", "cat", "query", "ls"):
+            if log and command not in ("dir", "cat", "query", "ls", "list"):
                 scope.record(cmd_str, user, result)
                 self._log(cmd_str, user)
+                try:
+                    self._git.commit_all(f"{user}: {cmd_str}")
+                except Exception:
+                    pass
             return result
 
         def _log(self, cmd: str, user: str):

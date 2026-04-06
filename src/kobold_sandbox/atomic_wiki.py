@@ -328,4 +328,65 @@ def create_atomic_wiki_router(store: DataStore) -> APIRouter:
         store.tag(req.name)
         return {"tagged": req.name}
 
+    @router.get("/export")
+    def wiki_export():
+        """Export all pages as compact JSON — one file, loadable back via /import."""
+        pages = {}
+        for slug in store.list_keys(WIKI_NAMESPACE):
+            entry = store.get(WIKI_NAMESPACE, slug)
+            if entry is None:
+                continue
+            p = entry.value
+            compact: dict[str, Any] = {
+                "title": p.get("title", slug),
+                "kind": p.get("item_kind", "text"),
+                "page_kind": p.get("page_kind", "config_page"),
+                "text": p.get("message", {}).get("text", ""),
+                "tags": p.get("tags", []),
+            }
+            if p.get("aliases"):
+                compact["aliases"] = p["aliases"]
+            blocks = p.get("blocks", [])
+            if len(blocks) == 1 and blocks[0].get("kind") == "table":
+                compact["headers"] = blocks[0].get("headers", [])
+                compact["rows"] = blocks[0].get("rows", [])
+            elif len(blocks) > 1:
+                compact["blocks"] = blocks
+            pages[slug] = compact
+        return {"pages": pages, "count": len(pages)}
+
+    class WikiImportRequest(BaseModel):
+        pages: dict[str, dict[str, Any]]
+        auto_commit: bool = True
+        replace_existing: bool = True
+
+    @router.post("/import")
+    def wiki_import(req: WikiImportRequest):
+        """Import pages from compact JSON format (from /export or root/wiki.json)."""
+        imported = []
+        skipped = []
+        existing = set(store.list_keys(WIKI_NAMESPACE))
+        for slug, data in req.pages.items():
+            if slug in existing and not req.replace_existing:
+                skipped.append(slug)
+                continue
+            page_req = UpsertWikiPageRequest(
+                title=data.get("title", slug),
+                page_kind=data.get("page_kind", "config_page"),
+                item_kind=data.get("kind", "text"),
+                text=data.get("text", ""),
+                headers=data.get("headers", []),
+                rows=data.get("rows", []),
+                tags=data.get("tags", []),
+                aliases=data.get("aliases", []),
+                auto_commit=False,
+            )
+            page = _build_page(slug, page_req)
+            _save_page(slug, page, "wiki_import")
+            imported.append(slug)
+        commit_hash = None
+        if req.auto_commit and imported:
+            commit_hash = store.commit(f"Wiki import: {len(imported)} pages") or None
+        return {"imported": imported, "skipped": skipped, "commit": commit_hash}
+
     return router

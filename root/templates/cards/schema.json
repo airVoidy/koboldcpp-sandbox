@@ -1,0 +1,7 @@
+{
+  "type": "cards",
+  "description": "Base type: list/container of objects",
+  "fields": {},
+  "inherits": "card",
+  "commands": ["list", "mk", "post"]
+}
