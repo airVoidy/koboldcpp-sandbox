@@ -285,6 +285,18 @@ class PChatExecRequest(BaseModel):
     log: bool = True  # set False for read-only operations (skip logging)
 
 
+class PChatBatchRequest(BaseModel):
+    cmds: list[str]
+    user: str = "anon"
+    log: bool = True
+
+
+class PChatStateRequest(BaseModel):
+    channel: str | None = None
+    msg_limit: int = 50
+    user: str = "anon"
+
+
 class BehaviorJsonUpdateRequest(BaseModel):
     payload: dict[str, Any]
     expected_revision: int | None = None
@@ -4310,6 +4322,52 @@ def create_app(root: str) -> FastAPI:
                 self.log_path.write_text("", encoding="utf-8")
             return {"ok": True}
 
+        def cmd_query(self, args: list[str], user: str) -> dict:
+            """Read node by absolute path (relative to root). No cwd mutation.
+            Usage: /query <path> [--depth=1] [--limit=50]
+            Returns node meta+data and children up to depth/limit."""
+            if not args:
+                return {"error": "usage: /query <path> [--depth=1] [--limit=50]"}
+            path_str = args[0]
+            depth = 1
+            limit = 50
+            for a in args[1:]:
+                if a.startswith("--depth="):
+                    depth = int(a.split("=", 1)[1])
+                elif a.startswith("--limit="):
+                    limit = int(a.split("=", 1)[1])
+            target = self.root / Path(path_str)
+            if not target.is_dir():
+                return {"error": f"not found: {path_str}"}
+            return self._read_tree(target, depth, limit)
+
+        def _read_tree(self, path: Path, depth: int, limit: int) -> dict:
+            """Read a node and its children recursively up to depth/limit."""
+            node: dict[str, Any] = {"path": self._rel_path(path), "name": path.name}
+            meta = self._read_meta(path)
+            if meta:
+                node["meta"] = meta
+            data = self._read_data(path)
+            if data:
+                node["data"] = data
+            if depth > 0:
+                children = []
+                count = 0
+                for d in sorted(path.iterdir(), key=lambda p: p.name):
+                    if not d.is_dir() or d.name.startswith("_"):
+                        continue
+                    if count >= limit:
+                        node["truncated"] = True
+                        break
+                    children.append(self._read_tree(d, depth - 1, limit))
+                    count += 1
+                node["children"] = children
+            return node
+
+        def cmd_session(self, args: list[str], user: str) -> dict:
+            """Start a user session. Logs 'user joined' as a system event."""
+            return {"ok": True, "user": user, "ts": utc_now(), "event": "session_start"}
+
         def replay(self) -> int:
             """Replay log to restore state."""
             if not self.log_path.exists():
@@ -4343,10 +4401,59 @@ def create_app(root: str) -> FastAPI:
     def pchat_exec(req: PChatExecRequest) -> dict:
         return workspace.exec_cmd(req.cmd, req.user, log=req.log)
 
+    @app.post("/api/pchat/batch")
+    def pchat_batch(req: PChatBatchRequest) -> dict:
+        """Execute multiple commands in one HTTP request. Returns list of results."""
+        results = []
+        for cmd in req.cmds:
+            results.append(workspace.exec_cmd(cmd, req.user, log=req.log))
+        return {"results": results}
+
+    @app.post("/api/pchat/view")
+    def pchat_view(req: PChatStateRequest) -> dict:
+        """Return full chat state in one request: channels + messages for active channel."""
+        return _pchat_build_state(req.channel, req.msg_limit, req.user)
+
     @app.get("/api/pchat/state")
-    def pchat_state() -> dict:
-        """Return current workspace state — cwd, channels, etc."""
-        return workspace.cmd_ls([], "system")
+    def pchat_state_get(channel: str | None = None, msg_limit: int = 50) -> dict:
+        """GET variant — returns channels + optional channel messages."""
+        return _pchat_build_state(channel, msg_limit, "anon")
+
+    def _pchat_build_state(channel: str | None, msg_limit: int, user: str) -> dict:
+        channels_dir = workspace.pchat_dir / "channels"
+        channels = []
+        if channels_dir.is_dir():
+            for d in sorted(channels_dir.iterdir(), key=lambda p: p.name):
+                if d.is_dir() and not d.name.startswith("_"):
+                    meta = workspace._read_meta(d)
+                    entry = {"name": d.name, "path": workspace._rel_path(d)}
+                    if meta:
+                        entry["meta"] = meta
+                    channels.append(entry)
+
+        messages = []
+        if channel:
+            ch_dir = channels_dir / channel
+            if ch_dir.is_dir():
+                msg_dirs = [d for d in ch_dir.iterdir() if d.is_dir() and not d.name.startswith("_")]
+                msg_dirs.sort(key=lambda d: d.name)
+                for d in msg_dirs[-msg_limit:]:
+                    meta = workspace._read_meta(d)
+                    data = workspace._read_data(d)
+                    entry = {"name": d.name, "path": workspace._rel_path(d)}
+                    if meta:
+                        entry["meta"] = meta
+                    if data:
+                        entry["data"] = data
+                    messages.append(entry)
+
+        return {
+            "channels": channels,
+            "messages": messages,
+            "active_channel": channel,
+            "user": user,
+            "ts": utc_now(),
+        }
 
     @app.get("/api/imagegen/samplers")
     def get_image_samplers() -> dict:

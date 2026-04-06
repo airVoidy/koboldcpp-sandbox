@@ -167,9 +167,9 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt
 //  State
 // ══════════════════════════════════════════════════════════
 
-let activeChannelPath = null;  // e.g. "pchat/channels/lobby"
-let activeChannelName = null;
+let activeChannelName = localStorage.getItem('pchat_channel') || null;
 let cmdLog = [];  // shell history for Raw tab
+const LS_KEY = 'pchat_state';  // localStorage cache
 
 document.querySelectorAll('.page-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -196,8 +196,32 @@ async function api(method, path, body) {
   return data;
 }
 
+function getUsername() {
+  return document.getElementById('username-input').value.trim() || 'anon';
+}
+
 // ══════════════════════════════════════════════════════════
-//  Shell exec — all commands go through /api/pchat/exec
+//  Core: one-request state fetch
+// ══════════════════════════════════════════════════════════
+
+async function fetchState(channel) {
+  return api('POST', '/api/pchat/view', {
+    channel: channel || null,
+    user: getUsername(),
+    msg_limit: 50,
+  });
+}
+
+function cacheState(state) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+}
+
+function loadCachedState() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { return null; }
+}
+
+// ══════════════════════════════════════════════════════════
+//  Shell exec — for Shell tab and mutations
 // ══════════════════════════════════════════════════════════
 
 async function shellExec(cmd, log = true) {
@@ -205,6 +229,33 @@ async function shellExec(cmd, log = true) {
   const res = await api('POST', '/api/pchat/exec', { cmd, user, log });
   cmdLog.push({ cmd, user, result: res, ts: new Date().toISOString() });
   return res;
+}
+
+async function shellBatch(cmds, log = true) {
+  const user = getUsername();
+  const res = await api('POST', '/api/pchat/batch', { cmds, user, log });
+  for (let i = 0; i < cmds.length; i++) {
+    cmdLog.push({ cmd: cmds[i], user, result: res.results[i], ts: new Date().toISOString() });
+  }
+  return res.results;
+}
+
+// ══════════════════════════════════════════════════════════
+//  Render from state object
+// ══════════════════════════════════════════════════════════
+
+function renderFromState(state) {
+  renderChannelList(state.channels || []);
+  if (state.active_channel) {
+    activeChannelName = state.active_channel;
+    localStorage.setItem('pchat_channel', activeChannelName);
+    document.getElementById('channel-label').innerHTML = '# <strong>' + esc(activeChannelName) + '</strong>';
+    renderMessages(state.messages || []);
+  } else {
+    document.getElementById('channel-label').textContent = 'Select or create a channel';
+    document.getElementById('chat-thread').innerHTML = '<div class="chat-empty">No channel selected</div>';
+  }
+  cacheState(state);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -218,41 +269,20 @@ async function createChannel() {
   input.value = '';
   setStatus('Creating channel...', true);
   try {
-    // Navigate to pchat/channels first, then create
-    await shellExec('/select pchat');
-    const mkRes = await shellExec('/select channels');
-    if (mkRes.error) {
-      // channels dir might not exist, create it
-      await shellExec('/mk channels channels');
-      await shellExec('/select channels');
-    }
-    await shellExec(`/mk channel ${name}`);
-    // Go back to pchat for consistent state
-    await shellExec('/up');
-    await shellExec('/up');
-    await loadChannels();
-    selectChannel(name);
+    // Batch: navigate, ensure channels dir, create node, navigate back
+    await shellBatch([
+      '/select pchat',
+      '/mk channels channels',
+      '/select channels',
+      `/mk channel ${name}`,
+      '/up',
+      '/up',
+    ]);
+    // Fetch fresh state with new channel selected
+    const state = await fetchState(name);
+    renderFromState(state);
     setStatus('Ready');
   } catch (e) { setStatus('Error: ' + e.message); }
-}
-
-async function loadChannels() {
-  try {
-    // Navigate to channels dir and list (read-only, no log)
-    await shellExec('/select pchat', false);
-    const selRes = await shellExec('/select channels', false);
-    if (selRes.error) {
-      await shellExec('/up', false);
-      renderChannelList([]);
-      return;
-    }
-    const ls = await shellExec('/ls', false);
-    await shellExec('/up', false);
-    await shellExec('/up', false);
-    renderChannelList(ls.children || []);
-  } catch (e) {
-    renderChannelList([]);
-  }
 }
 
 function renderChannelList(channels) {
@@ -267,63 +297,47 @@ function renderChannelList(channels) {
 
 async function selectChannel(name) {
   activeChannelName = name;
-  activeChannelPath = `pchat/channels/${name}`;
+  localStorage.setItem('pchat_channel', name);
   document.getElementById('channel-label').innerHTML = '# <strong>' + esc(name) + '</strong>';
-  await loadMessages();
-  // Re-render channel list to highlight active
-  await loadChannels();
+  setStatus('Loading...', true);
+  try {
+    const state = await fetchState(name);
+    renderFromState(state);
+    setStatus('Ready');
+  } catch (e) { setStatus('Error: ' + e.message); }
 }
 
 // ══════════════════════════════════════════════════════════
 //  Messages
 // ══════════════════════════════════════════════════════════
 
-function getUsername() {
-  return document.getElementById('username-input').value.trim() || 'anon';
-}
-
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
   if (!msg) return;
   if (!activeChannelName) {
-    // Auto-create general channel
     document.getElementById('new-ch-input').value = 'general';
     await createChannel();
   }
   input.value = '';
   setStatus('Posting...', true);
   try {
-    // Navigate to channel, post, come back
-    await shellExec('/select pchat');
-    await shellExec('/select channels');
-    await shellExec(`/select ${activeChannelName}`);
-    await shellExec(`/post ${msg}`);
-    // Get updated message list
-    const ls = await shellExec('/ls --sort=date');
-    await shellExec('/up');
-    await shellExec('/up');
-    await shellExec('/up');
-    renderMessages(ls.children || []);
+    // Batch: navigate to channel, post, navigate back — one HTTP request
+    await shellBatch([
+      '/select pchat',
+      '/select channels',
+      `/select ${activeChannelName}`,
+      `/post ${msg}`,
+      '/up',
+      '/up',
+      '/up',
+    ]);
+    // Fetch updated state — one more request
+    const state = await fetchState(activeChannelName);
+    renderFromState(state);
     setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
-  }
-}
-
-async function loadMessages() {
-  if (!activeChannelName) return;
-  try {
-    await shellExec('/select pchat', false);
-    await shellExec('/select channels', false);
-    await shellExec(`/select ${activeChannelName}`, false);
-    const ls = await shellExec('/ls --sort=date', false);
-    await shellExec('/up', false);
-    await shellExec('/up', false);
-    await shellExec('/up', false);
-    renderMessages(ls.children || []);
-  } catch (e) {
-    renderMessages([]);
   }
 }
 
@@ -413,8 +427,9 @@ function renderRaw() {
 async function resetAll() {
   await shellExec('/reset');
   cmdLog = [];
-  activeChannelPath = null;
   activeChannelName = null;
+  localStorage.removeItem('pchat_channel');
+  localStorage.removeItem(LS_KEY);
   document.getElementById('channel-label').textContent = 'Select or create a channel';
   document.getElementById('chat-thread').innerHTML = '<div class="chat-empty">No channel selected</div>';
   renderChannelList([]);
@@ -438,7 +453,27 @@ document.querySelectorAll('.page-tab').forEach(btn => {
   });
 });
 
-loadChannels().then(() => setStatus('Ready'));
+// Boot: show cached state immediately, then refresh from server
+(async () => {
+  // 1. Render from localStorage cache (instant)
+  const cached = loadCachedState();
+  if (cached) {
+    renderFromState(cached);
+    setStatus('Cached — refreshing...', true);
+  }
+
+  // 2. Fetch fresh state from server (one request)
+  try {
+    // Session start
+    await shellExec(`/session`, true);
+    const state = await fetchState(activeChannelName);
+    renderFromState(state);
+    setStatus('Ready');
+  } catch (e) {
+    if (!cached) setStatus('Server unavailable');
+    else setStatus('Using cached data (server unavailable)');
+  }
+})();
 </script>
 </body>
 </html>
