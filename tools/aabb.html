@@ -2,1368 +2,702 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AABB v2</title>
+<title>AABB</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-:root {
-  --bg: #1a1b26; --surface: #24283b; --surface2: #2f3349;
-  --border: #3b4261; --text: #c0caf5; --text-dim: #565f89;
-  --accent: #7aa2f7; --accent2: #bb9af7; --accent3: #7dcfff;
-  --green: #9ece6a; --red: #f7768e; --orange: #ff9e64; --yellow: #e0af68;
+html, body { height:100%; background:#0a0a0a; color:#b0b0b0; font-family:'Consolas','Courier New',monospace; overflow:hidden; }
+
+#shell { display:flex; height:100%; flex-direction:column; }
+#main { display:flex; flex:1; min-height:0; }
+
+/* ── Left: renderer ── */
+#scr {
+  flex:1; min-width:0;
+  font: 13px/15px 'Consolas','Courier New',monospace;
+  white-space:pre; cursor:default; user-select:none; overflow:auto;
+  padding:2px; outline:none;
 }
-html, body { height:100%; background:var(--bg); color:var(--text); font-family:'Consolas','Monaco','Courier New',monospace; font-size:14px; overflow:hidden; }
 
-#app { display:flex; flex-direction:column; height:100%; }
-
-/* tab bar */
-#tab-bar { display:flex; align-items:center; height:32px; flex-shrink:0; background:var(--surface); border-bottom:1px solid var(--border); padding:0 8px; }
-#tab-bar button { background:none; border:none; border-bottom:2px solid transparent; color:var(--text-dim); padding:6px 16px; font-family:inherit; font-size:12px; cursor:pointer; }
-#tab-bar button:hover { color:var(--text); }
-#tab-bar button.active { color:var(--accent); border-bottom-color:var(--accent); }
-#tab-bar .spacer { flex:1; }
-#tab-bar .info { font-size:10px; color:var(--text-dim); padding-right:8px; }
-
-/* workspace */
-#workspace { display:flex; flex:1; min-height:0; }
-#canvas { flex:1; position:relative; overflow:hidden; min-width:0; }
-#text-layer { position:absolute; top:0; left:0; white-space:pre; line-height:1.25; user-select:none; z-index:1; }
-#svg-layer { position:absolute; top:0; left:0; pointer-events:none; z-index:2; }
-#overlay-svg { position:absolute; top:0; left:0; pointer-events:none; z-index:3; }
-
-/* side panel */
-#side-panel { width:400px; flex-shrink:0; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-#side-panel.hidden { display:none; }
-.panel-header { display:flex; align-items:center; padding:4px 8px; gap:6px; border-bottom:1px solid var(--border); flex-shrink:0; }
-.panel-header span { font-size:11px; color:var(--accent); font-weight:600; }
-.panel-header button { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:2px 8px; font-family:inherit; font-size:10px; border-radius:3px; cursor:pointer; }
-.panel-header button:hover { background:var(--border); }
-
-/* text colors */
-.c-dim { color:var(--text-dim); } .c-accent { color:var(--accent); } .c-accent2 { color:var(--accent2); }
-.c-accent3 { color:var(--accent3); } .c-green { color:var(--green); } .c-red { color:var(--red); }
-.c-orange { color:var(--orange); } .c-yellow { color:var(--yellow); }
-.c-cursor { background:var(--accent); color:var(--bg); }
-
-/* side panel content */
-#side-content { flex:1; overflow-y:auto; padding:8px; font-size:11px; }
-#side-content h3 { color:var(--accent); font-size:12px; margin:8px 0 4px; }
-#side-content h3:first-child { margin-top:0; }
-#side-content pre { background:var(--bg); border:1px solid var(--border); padding:4px; margin:4px 0; font-size:10px; max-height:200px; overflow:auto; white-space:pre-wrap; }
-#side-content .kv { display:flex; gap:6px; margin-bottom:2px; }
-#side-content .kv .k { color:var(--text-dim); min-width:60px; flex-shrink:0; }
-#side-content .kv .v { color:var(--text); word-break:break-all; }
-#side-content .empty { color:var(--text-dim); font-style:italic; padding:20px 0; text-align:center; }
-
-/* assembly editor */
-#asm-editor { flex:1; background:var(--bg); color:var(--text); border:none; outline:none; font:12px/1.4 Consolas,Monaco,"Courier New",monospace; padding:6px 8px; resize:none; tab-size:2; display:none; }
-#asm-log { height:60px; flex-shrink:0; overflow-y:auto; padding:4px 8px; border-top:1px solid var(--border); font-size:10px; color:var(--text-dim); background:var(--bg); }
-
-/* tree view */
-.tv-row { display:flex; align-items:center; gap:3px; padding:1px 4px; cursor:pointer; white-space:nowrap; border-left:2px solid transparent; }
-.tv-row:hover { background:var(--surface2); }
-.tv-row.sel { background:var(--surface2); border-left-color:var(--accent); }
-.tv-arrow { width:10px; text-align:center; font-size:9px; color:var(--text-dim); }
-.tv-name { font-weight:500; }
-.tv-dim { color:var(--text-dim); font-size:9px; }
-.tv-flags { color:var(--accent2); font-size:9px; }
-.tv-zone { color:var(--orange); font-size:9px; }
-
-/* props editor */
-#props-editor { flex-shrink:0; border-top:1px solid var(--border); padding:6px 8px; font-size:11px; max-height:220px; overflow-y:auto; background:var(--bg); }
-#props-editor.hidden { display:none; }
-#props-editor h4 { color:var(--accent); margin-bottom:4px; font-size:11px; display:flex; align-items:center; gap:6px; }
-#props-editor h4 button { font-size:9px; padding:1px 6px; color:var(--red); }
-#props-editor label { display:flex; align-items:center; gap:4px; margin-bottom:3px; color:var(--text-dim); font-size:10px; }
-#props-editor label span { min-width:50px; }
-#props-editor input, #props-editor select {
-  background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  padding:1px 4px; font-family:inherit; font-size:10px; border-radius:2px; outline:none; flex:1; min-width:0;
+/* ── Right: DSL editor ── */
+#editor {
+  width:420px; min-width:200px; border-left:1px solid #222;
+  display:flex; flex-direction:column; background:#0d0d0d;
 }
-#props-editor input:focus { border-color:var(--accent); }
-#props-editor input[type="number"] { width:50px; flex:none; }
-#props-editor input[type="checkbox"] { flex:none; width:auto; }
+#editor header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 8px; border-bottom:1px solid #222; font-size:11px; color:#666;
+}
+#editor header button {
+  background:none; border:1px solid #333; color:#888; font:11px/14px monospace;
+  padding:2px 8px; cursor:pointer;
+}
+#editor header button:hover { color:#ccc; border-color:#555; }
+#dsl-src {
+  flex:1; resize:none; border:none; outline:none;
+  background:#0a0a0a; color:#b0b0b0;
+  font:12px/16px 'Consolas','Courier New',monospace;
+  padding:8px; tab-size:2;
+}
+#dsl-err { color:#f85149; font-size:11px; padding:4px 8px; min-height:18px; }
+
+/* ── Status bar ── */
+#status {
+  height:18px; border-top:1px solid #222; padding:0 8px;
+  font:11px/18px monospace; color:#555; display:flex; gap:16px;
+}
+#status .sep { color:#333; }
+
+/* ── Colors ── */
+span.h { color:#58a6ff; } span.d { color:#333; } span.b { color:#383838; }
+span.g { color:#3fb950; } span.r { color:#f85149; } span.y { color:#d29922; }
+span.w { color:#b0b0b0; } span.i { background:#58a6ff; color:#000; }
+span.sel { background:#1a3a5c; }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="tab-bar">
-    <button data-tab="panels" class="active">Panels</button>
-    <button data-tab="assembly">Assembly</button>
-    <button data-tab="inspect">Inspect</button>
-    <button data-tab="preview">Preview</button>
-    <div class="spacer"></div>
-    <div class="info" id="status-info"></div>
+<div id="shell">
+  <div id="main">
+    <div id="scr" tabindex="0"></div>
+    <div id="editor">
+      <header>
+        <span>DSL</span>
+        <div>
+          <button id="btn-apply">Apply</button>
+          <button id="btn-reset">Reset</button>
+        </div>
+      </header>
+      <textarea id="dsl-src" spellcheck="false"></textarea>
+      <div id="dsl-err"></div>
+    </div>
   </div>
-  <div id="workspace">
-    <div id="canvas">
-      <div id="text-layer"></div>
-      <svg id="svg-layer" xmlns="http://www.w3.org/2000/svg"></svg>
-      <svg id="overlay-svg" xmlns="http://www.w3.org/2000/svg"></svg>
-    </div>
-    <div id="side-panel">
-      <div class="panel-header">
-        <span id="side-title">Panels</span>
-        <button id="btn-add-panel">+Panel</button>
-        <button id="btn-add-zone">+Zone</button>
-        <button id="btn-run">Run</button>
-        <button id="btn-save">Save</button>
-      </div>
-      <div id="side-content"></div>
-      <div id="props-editor" class="hidden"></div>
-      <textarea id="asm-editor" spellcheck="false"></textarea>
-      <div id="asm-log"></div>
-    </div>
+  <div id="status">
+    <span id="st-pos">-</span>
+    <span class="sep">|</span>
+    <span id="st-inst">-</span>
+    <span class="sep">|</span>
+    <span id="st-edit">-</span>
   </div>
 </div>
 
 <script>
-'use strict';
+// ══════════════════════════════════════════════════════
+// AABB Engine — Step 2: Data + Binds + Interactivity
+// ══════════════════════════════════════════════════════
 
-/* ════════════════════════════════════════════════════════════════════════════
-   AABB v2 — Panel VTerm + Hot Zones + Data Layer + Assembly
-   ════════════════════════════════════════════════════════════════════════════ */
+let CW = 8, CH = 15;
+let BW = 120, BH = 50;
+let G = [];
 
-// ── Char size ──────────────────────────────────────────────────────────────
-const _m = document.createElement('span');
-_m.style.cssText = 'position:absolute;left:-9999px;font:14px/1.25 Consolas,Monaco,"Courier New",monospace;white-space:pre;';
-_m.textContent = 'X';
-document.body.appendChild(_m);
-const CW = _m.getBoundingClientRect().width, CH = _m.getBoundingClientRect().height;
-document.body.removeChild(_m);
-
-// ══════════════════════════════════════════════════════════════════════════
-//  DATA LAYER — scoped store with change events
-// ══════════════════════════════════════════════════════════════════════════
-
-const _data = {};
-const _dataListeners = {}; // path → Set<callback>
-
-const Data = {
-  set(path, value) {
-    const parts = path.split('.');
-    let obj = _data;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!(parts[i] in obj) || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {};
-      obj = obj[parts[i]];
-    }
-    obj[parts[parts.length - 1]] = value;
-    this._notify(path);
-  },
-
-  get(path) {
-    const parts = path.split('.');
-    let obj = _data;
-    for (const p of parts) {
-      if (obj == null || typeof obj !== 'object') return undefined;
-      obj = obj[p];
-    }
-    return obj;
-  },
-
-  watch(path, fn) {
-    if (!_dataListeners[path]) _dataListeners[path] = new Set();
-    _dataListeners[path].add(fn);
-    return () => _dataListeners[path].delete(fn);
-  },
-
-  _notify(path) {
-    // Notify exact match + parent paths
-    for (const [p, fns] of Object.entries(_dataListeners)) {
-      if (path === p || path.startsWith(p + '.') || p.startsWith(path + '.')) {
-        for (const fn of fns) fn(path);
-      }
-    }
-  },
-
-  dump() {
-    return JSON.parse(JSON.stringify(_data));
-  },
-
-  load(key, fallback) {
-    try {
-      const raw = localStorage.getItem('aabb_' + key);
-      if (raw) return JSON.parse(raw);
-    } catch (_) {}
-    return fallback;
-  },
-
-  save(key, value) {
-    try { localStorage.setItem('aabb_' + key, JSON.stringify(value)); } catch (_) {}
-  }
-};
-
-// ══════════════════════════════════════════════════════════════════════════
-//  PANEL MODEL — virtual terminal + hot zones
-// ══════════════════════════════════════════════════════════════════════════
-
-const panels = {};  // name → Panel
-
-function createPanel(name, w, h) {
-  const buf = [];
-  for (let r = 0; r < h; r++) {
-    const row = [];
-    for (let c = 0; c < w; c++) row.push({ ch: ' ', cl: '' });
-    buf.push(row);
-  }
-  const panel = {
-    name, w, h, buf,
-    scrollX: 0, scrollY: 0,
-    zones: [],           // runtime zones (from asm.render + authored)
-    authoredZones: [],   // persisted zones (created via GUI, first-class)
-    children: [],        // { panel, x, y, w, h } — child panel placements
-    border: true,
-    borderColor: '#3b4261',
-    label: name,
-    // view state
-    collapsed: false,
-    // assembly
-    asm: '',
-    asmActions: {},
-  };
-  panels[name] = panel;
-  return panel;
+// Measure real character cell size from the font
+function measureCell() {
+  const scr = document.getElementById('scr');
+  const span = document.createElement('span');
+  span.textContent = 'X';
+  span.style.font = getComputedStyle(scr).font;
+  span.style.whiteSpace = 'pre';
+  scr.appendChild(span);
+  const r = span.getBoundingClientRect();
+  CW = r.width;
+  CH = r.height;
+  span.remove();
 }
 
-function panelWrite(panel, row, col, text, cl) {
-  if (typeof panel === 'string') panel = panels[panel];
-  if (!panel) return;
-  // Grow buffer if needed
-  while (panel.buf.length <= row) {
-    const r = [];
-    for (let c = 0; c < panel.w; c++) r.push({ ch: ' ', cl: '' });
-    panel.buf.push(r);
-  }
-  const r = panel.buf[row];
-  for (let i = 0; i < text.length; i++) {
-    const c = col + i;
-    if (c < 0) continue;
-    while (r.length <= c) r.push({ ch: ' ', cl: '' });
-    r[c] = { ch: text[i], cl: cl || '' };
-  }
-}
-
-function panelClear(panel) {
-  if (typeof panel === 'string') panel = panels[panel];
-  if (!panel) return;
-  for (let r = 0; r < panel.buf.length; r++)
-    for (let c = 0; c < panel.buf[r].length; c++)
-      panel.buf[r][c] = { ch: ' ', cl: '' };
-}
-
-function zoneAdd(panel, y, x, w, h, type, action, data, style) {
-  if (typeof panel === 'string') panel = panels[panel];
-  if (!panel) return;
-  panel.zones.push({ x, y, w: w || 1, h: h || 1, type, action, data, style });
-}
-
-function zoneClear(panel) {
-  if (typeof panel === 'string') panel = panels[panel];
-  if (!panel) return;
-  // Clear render-created zones, keep authored zones
-  panel.zones = panel.authoredZones.map(z => ({ ...z }));
-}
-
-function addChildPanel(parent, child, x, y, w, h) {
-  if (typeof parent === 'string') parent = panels[parent];
-  if (typeof child === 'string') child = panels[child];
-  if (!parent || !child) return;
-  parent.children.push({ panel: child, x, y, w: w || child.w, h: h || child.h });
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  GLOBAL GRID + RENDERER
-// ══════════════════════════════════════════════════════════════════════════
-
-let COLS = 0, ROWS = 0, G = [];
-const textLayer = document.getElementById('text-layer');
-const svgLayer = document.getElementById('svg-layer');
-const overlaySvg = document.getElementById('overlay-svg');
-
-function calcGrid() {
-  const r = document.getElementById('canvas').getBoundingClientRect();
-  COLS = Math.floor(r.width / CW);
-  ROWS = Math.floor(r.height / CH);
-}
-
-function initGrid() {
+// ── Grid primitives ─────────────────────────────────
+function clear() {
   G = [];
-  for (let r = 0; r < ROWS; r++) {
-    const row = [];
-    for (let c = 0; c < COLS; c++) row.push({ ch: ' ', cl: '' });
-    G.push(row);
+  for (let r = 0; r < BH; r++) { G[r] = []; for (let c = 0; c < BW; c++) G[r][c] = { ch:' ', cl:'' }; }
+}
+function put(r, c, ch, cl) { if (r >= 0 && r < BH && c >= 0 && c < BW) G[r][c] = { ch, cl:cl||'' }; }
+function str(r, c, s, cl, max) {
+  s = String(s || '');
+  const n = max != null ? Math.min(s.length, max) : s.length;
+  for (let i = 0; i < n; i++) put(r, c+i, s[i], cl);
+}
+function box(y, x, w, h, cl) {
+  if (h < 2 || w < 2) return;
+  put(y,x,'┌',cl); put(y,x+w-1,'┐',cl); put(y+h-1,x,'└',cl); put(y+h-1,x+w-1,'┘',cl);
+  for (let i=1;i<w-1;i++){put(y,x+i,'─',cl);put(y+h-1,x+i,'─',cl);}
+  for (let i=1;i<h-1;i++){put(y+i,x,'│',cl);put(y+i,x+w-1,'│',cl);}
+}
+function flush() {
+  let o = '';
+  for (let r = 0; r < BH; r++) {
+    for (let c = 0; c < BW; c++) {
+      const {ch,cl} = G[r][c];
+      const e = ch==='<'?'&lt;':ch==='>'?'&gt;':ch==='&'?'&amp;':ch;
+      o += cl ? `<span class="${cl}">${e}</span>` : e;
+    }
+    o += '\n';
   }
+  document.getElementById('scr').innerHTML = o;
 }
 
-function compositePanel(panel, gx, gy, vw, vh) {
-  const buf = panel.buf;
-  const sy = panel.scrollY, sx = panel.scrollX;
-  for (let r = 0; r < vh; r++) {
-    const srcR = sy + r;
-    if (srcR < 0 || srcR >= buf.length) continue;
-    const srcRow = buf[srcR];
-    for (let c = 0; c < vw; c++) {
-      const srcC = sx + c;
-      if (srcC < 0 || srcC >= srcRow.length) continue;
-      const dx = gx + c, dy = gy + r;
-      if (dx >= 0 && dx < COLS && dy >= 0 && dy < ROWS) {
-        G[dy][dx] = srcRow[srcC];
+// ── DSL Parser ──────────────────────────────────────
+function parseDSL(text) {
+  const s = { layout:[], data:{}, bind:{}, events:[] };
+  let cur = null, curEv = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    if (t === 'layout:')  { cur='layout'; curEv=null; continue; }
+    if (t === 'data:')    { cur='data';   curEv=null; continue; }
+    if (t === 'bind:')    { cur='bind';   curEv=null; continue; }
+    if (t.startsWith('on ')) { cur='events'; curEv={trigger:t.slice(3).trim().replace(/:$/,''),actions:[]}; s.events.push(curEv); continue; }
+    const indent = line.length - line.trimStart().length;
+    if (cur==='layout') s.layout.push({indent,line:t});
+    else if (cur==='data') { const m=t.match(/^(\w+)(?:\(([^)]*)\))?:\s*(.+)$/); if(m) s.data[m[1]]={args:m[2]||null,def:m[3]}; }
+    else if (cur==='bind') { const m=t.match(/^([\w.]+)\s*<-\s*(.+)$/); if(m) s.bind[m[1]]=m[2].trim(); }
+    else if (cur==='events'&&curEv) curEv.actions.push(t);
+  }
+  return s;
+}
+
+function parseLayoutLine(line) {
+  const m = line.match(/^(\w+)\s+(\w+)\s+\[([^\]]+)\]:?$/);
+  if (!m) return null;
+  return { type:m[1], name:m[2], rect: m[3].split(',').map(s => { s=s.trim(); return s==='auto'?'auto':parseInt(s); }) };
+}
+
+function buildLayoutTree(lines) {
+  const root = { children:[] };
+  const stack = [{ node:root, indent:-1 }];
+  for (const {indent,line} of lines) {
+    const p = parseLayoutLine(line);
+    if (!p) continue;
+    const node = { ...p, children:[] };
+    while (stack.length>1 && stack[stack.length-1].indent>=indent) stack.pop();
+    stack[stack.length-1].node.children.push(node);
+    stack.push({ node, indent });
+  }
+  return root.children;
+}
+
+// ── Data Layer ──────────────────────────────────────
+let DS = {};       // dataStore
+let DF = {};       // data functions
+let storageKeys = {};
+
+function initData(dataDefs) {
+  DS = {}; DF = {}; storageKeys = {};
+  for (const [name, def] of Object.entries(dataDefs)) {
+    if (def.args !== null) {
+      DF[name] = def;
+    } else {
+      // "local <storage_key>" — load from localStorage
+      const localM = def.def.match(/^local\s+(\S+)$/);
+      if (localM) {
+        storageKeys[name] = localM[1];
+        try { DS[name] = JSON.parse(localStorage.getItem(localM[1]) || '[]'); } catch(_) { DS[name] = []; }
+        continue;
       }
-    }
-  }
-  // Recurse into child panels
-  for (const ch of panel.children) {
-    compositePanel(ch.panel, gx + ch.x, gy + ch.y, ch.w, ch.h);
-  }
-}
-
-function flushGrid() {
-  let html = '';
-  for (let r = 0; r < ROWS; r++) {
-    let c = 0;
-    while (c < COLS) {
-      const cl = G[r][c].cl;
-      let run = '';
-      while (c < COLS && G[r][c].cl === cl) { run += escH(G[r][c].ch); c++; }
-      html += cl ? `<span class="${cl}">${run}</span>` : run;
-    }
-    html += '\n';
-  }
-  textLayer.innerHTML = html;
-}
-
-function escH(s) { return s === '<' ? '&lt;' : s === '>' ? '&gt;' : s === '&' ? '&amp;' : s; }
-
-// ── SVG borders ────────────────────────────────────────────────────────────
-function drawBorders() {
-  let svg = '';
-  function walkPanel(panel, gx, gy, vw, vh) {
-    if (panel.border) {
-      const x = gx * CW, y = gy * CH, w = vw * CW, h = vh * CH;
-      svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${panel.borderColor}" stroke-width="1" rx="2"/>`;
-      if (panel.label) {
-        svg += `<text x="${x + 8}" y="${y - 3}" fill="${panel.borderColor}" font-size="10" font-family="Consolas,monospace">${escH(panel.label)}</text>`;
-      }
-    }
-    for (const ch of panel.children) {
-      walkPanel(ch.panel, gx + ch.x, gy + ch.y, ch.w, ch.h);
-    }
-  }
-  if (rootPanel) walkPanel(rootPanel, 0, 0, COLS, ROWS);
-  svgLayer.setAttribute('width', COLS * CW);
-  svgLayer.setAttribute('height', ROWS * CH);
-  svgLayer.innerHTML = svg;
-}
-
-// ── Overlay ────────────────────────────────────────────────────────────────
-let selectedZone = null; // for inspect/panels tabs
-
-function drawOverlay() {
-  let svg = '';
-  overlaySvg.setAttribute('width', COLS * CW);
-  overlaySvg.setAttribute('height', ROWS * CH);
-
-  // Highlight selected panel
-  if (selectedPanel && selectedPanel !== rootPanel) {
-    const pos = getPanelGlobalPos(selectedPanel);
-    if (pos) {
-      const x = pos.gx * CW, y = pos.gy * CH, w = pos.vw * CW, h = pos.vh * CH;
-      svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#e0af68" stroke-width="2" stroke-dasharray="4,2" rx="2"/>`;
-    }
-  }
-
-  // Show hot zones on canvas (all tabs except preview)
-  if (activeTab !== 'preview') {
-    function walkZones(panel, gx, gy) {
-      for (const z of panel.zones) {
-        const zx = (gx + z.x) * CW, zy = (gy + z.y) * CH;
-        const zw = z.w * CW, zh = z.h * CH;
-        const isSel = z === selectedZone;
-        if (z.type === 'button') {
-          svg += `<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="${isSel ? 'rgba(255,158,100,0.15)' : 'rgba(255,158,100,0.06)'}" stroke="${isSel ? '#ff9e64' : '#ff9e6440'}" stroke-width="${isSel ? 1.5 : 0.5}" rx="1"/>`;
-        } else if (z.type === 'input') {
-          svg += `<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="${isSel ? 'rgba(122,162,247,0.15)' : 'rgba(122,162,247,0.06)'}" stroke="${isSel ? '#7aa2f7' : '#7aa2f740'}" stroke-width="${isSel ? 1.5 : 0.5}" rx="1"/>`;
+      // "GET <url> -> <storage_key>" — fetch + persist
+      const getM = def.def.match(/^GET\s+(\S+)(?:\s*->\s*(\S+))?$/);
+      if (getM) {
+        const skey = getM[2] || null;
+        storageKeys[name] = skey;
+        if (skey) {
+          try { DS[name] = JSON.parse(localStorage.getItem(skey) || '[]'); } catch(_) { DS[name] = []; }
         } else {
-          svg += `<rect x="${zx}" y="${zy}" width="${zw}" height="${zh}" fill="rgba(125,207,255,0.05)" stroke="#7dcfff30" stroke-width="0.5" rx="1"/>`;
-        }
-        // Label
-        if (z.action) {
-          svg += `<text x="${zx + 1}" y="${zy - 2}" fill="${z.type === 'button' ? '#ff9e64' : '#7aa2f7'}" font-size="8" font-family="Consolas,monospace" opacity="0.7">${escH(z.action)}</text>`;
+          DS[name] = [];
         }
       }
-      for (const ch of panel.children) walkZones(ch.panel, gx + ch.x, gy + ch.y);
-    }
-    if (rootPanel) walkZones(rootPanel, 0, 0);
-  }
-
-  // Focused input underline (preview)
-  if (activeTab === 'preview' && focusedZone) {
-    const pos = getPanelGlobalPos(focusedZone._panel);
-    if (pos) {
-      const x = (pos.gx + focusedZone.x) * CW;
-      const y = (pos.gy + focusedZone.y + focusedZone.h) * CH - 1;
-      const w = focusedZone.w * CW;
-      svg += `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y}" stroke="var(--accent)" stroke-width="1"/>`;
     }
   }
-
-  overlaySvg.innerHTML = svg;
 }
 
-// ── Hit test: pixel → panel + zone ─────────────────────────────────────────
-function hitTestPanel(px, py, panel, gx, gy, vw, vh) {
-  // Check children first (deeper = higher priority)
-  for (let i = panel.children.length - 1; i >= 0; i--) {
-    const ch = panel.children[i];
-    const cx = gx + ch.x, cy = gy + ch.y;
-    if (px >= cx && px < cx + ch.w && py >= cy && py < cy + ch.h) {
-      const r = hitTestPanel(px, py, ch.panel, cx, cy, ch.w, ch.h);
-      if (r) return r;
-    }
+function saveDS(name) {
+  if (storageKeys[name]) localStorage.setItem(storageKeys[name], JSON.stringify(DS[name] || []));
+}
+
+async function probe(url) {
+  try {
+    const r = await fetch(url + '/v1/models', { signal: AbortSignal.timeout(3000) });
+    return r.ok ? 'ok' : 'fail';
+  } catch(_) { return 'fail'; }
+}
+
+// ── Bind resolver ───────────────────────────────────
+function parseColorMap(mapStr) {
+  // "ok=g fail=r ?=y" → { ok:'g', fail:'r', '?':'y' }
+  const map = {};
+  for (const pair of mapStr.trim().split(/\s+/)) {
+    const [k, v] = pair.split('=');
+    if (k && v) map[k] = v;
   }
-  // Check zones in this panel
-  const localX = px - gx + panel.scrollX;
-  const localY = py - gy + panel.scrollY;
-  for (let i = panel.zones.length - 1; i >= 0; i--) {
-    const z = panel.zones[i];
-    if (localX >= z.x && localX < z.x + z.w && localY >= z.y && localY < z.y + z.h) {
-      return { panel, zone: z, localX, localY, gx, gy };
-    }
+  return map;
+}
+
+function resolveBind(expr, item) {
+  // split off color map: "... :: ok=g fail=r ?=y"
+  let colorMap = null;
+  const ccIdx = expr.indexOf('::');
+  if (ccIdx !== -1) {
+    colorMap = parseColorMap(expr.slice(ccIdx + 2));
+    expr = expr.slice(0, ccIdx).trim();
   }
-  // Return panel itself
-  if (px >= gx && px < gx + vw && py >= gy && py < gy + vh) {
-    return { panel, zone: null, localX, localY, gx, gy };
+
+  if (expr.startsWith('"') && expr.endsWith('"')) return { value: expr.slice(1,-1), colorMap };
+  const eM = expr.match(/^each\s+data\.(\w+)\s+as\s+(\w+)$/);
+  if (eM) return { each: eM[1], as: eM[2], colorMap };
+  if (expr.includes('|')) {
+    const [field, fn] = expr.split('|').map(s=>s.trim());
+    return { field, transform: fn, item, colorMap };
+  }
+  if (expr.startsWith('item.') && item) return { value: item[expr.slice(5)], colorMap };
+  return { value: expr, colorMap };
+}
+
+function getBound(binds, path, item) {
+  // exact match first
+  if (binds[path] !== undefined) return resolveBind(binds[path], item);
+  // suffix match: bind key matches end of instance path
+  for (const [k, v] of Object.entries(binds)) {
+    if (path.endsWith('.'+k) || path.endsWith('.'+k.split('.').pop())) {
+      return resolveBind(v, item);
+    }
   }
   return null;
 }
 
-function getPanelGlobalPos(panel) {
-  if (panel === rootPanel) return { gx: 0, gy: 0, vw: COLS, vh: ROWS };
-  // Search tree
-  function find(p, gx, gy) {
-    for (const ch of p.children) {
-      if (ch.panel === panel) return { gx: gx + ch.x, gy: gy + ch.y, vw: ch.w, vh: ch.h };
-      const r = find(ch.panel, gx + ch.x, gy + ch.y);
-      if (r) return r;
+// find which data field an input is bound to (from DSL bind like "item.role")
+function findBoundField(inst) {
+  if (!_dsl) return null;
+  // search binds for one that targets this instance's name
+  for (const [k, v] of Object.entries(_dsl.bind)) {
+    if (k.endsWith('.'+inst.name) || k === inst.id) {
+      // v should be like "item.role"
+      if (v.startsWith('item.')) return v.slice(5);
     }
-    return null;
   }
-  return rootPanel ? find(rootPanel, 0, 0) : null;
+  return inst.name; // fallback: use the element name as field name
 }
 
-// ── Full draw ──────────────────────────────────────────────────────────────
-let rootPanel = null;
+// ── Instance Resolution ─────────────────────────────
+let instances = []; // { id, type, name, x, y, w, h, value, parentId, item, idx }
+let editState = { id:null, buf:'', cur:0 };
+let selId = null;
+
+function resolveInstances(tree, binds) {
+  instances = [];
+
+  function walk(nodes, px, py, parentPath, item) {
+    let autoY = 0;
+    for (const node of nodes) {
+      let [rx, ry, rw, rh] = node.rect;
+      if (ry === 'auto') ry = autoY;
+      const ax = px + (rx === 'auto' ? 0 : rx);
+      const ay = py + ry;
+      const path = parentPath ? parentPath+'.'+node.name : node.name;
+
+      if (node.type === 'template') {
+        // check for "each" bind
+        const b = getBound(binds, path, null);
+        if (b && b.each) {
+          const list = DS[b.each] || [];
+          list.forEach((dataItem, i) => {
+            const iPath = path+'_'+i;
+            const iy = ay + i * rh;
+            instances.push({ id:iPath, type:'card', name:node.name, x:ax, y:iy, w:rw, h:rh, value:'', parentId:parentPath, item:dataItem, idx:i });
+            walk(node.children, ax, iy, iPath, dataItem);
+          });
+          autoY = ry + list.length * rh;
+        } else {
+          // static template — single ghost
+          if (rh === 'auto') rh = 4;
+          instances.push({ id:path, type:'template', name:node.name, x:ax, y:ay, w:rw, h:rh, value:'', parentId:parentPath, item:null });
+          walk(node.children, ax, ay, path, null);
+          autoY = ry + rh;
+        }
+        continue;
+      }
+
+      if (rh === 'auto') rh = 3;
+
+      // resolve value from binds
+      let value = '';
+      const b = getBound(binds, path, item);
+      if (b) {
+        if (b.value !== undefined) value = String(b.value ?? '');
+        if (b.transform) value = '?'; // async, resolved later
+      }
+
+      instances.push({ id:path, type:node.type, name:node.name, x:ax, y:ay, w:rw, h:rh, value, parentId:parentPath, item, transform:b?.transform, transformField:b?.field });
+
+      if (node.type === 'panel') {
+        // panel: render children, measure auto height
+        const childAutoY = walk(node.children, ax, ay, path, item);
+        // fix panel height if auto
+        const inst = instances.find(i => i.id === path);
+        if (node.rect[3] === 'auto' && inst) {
+          inst.h = Math.max(rh, childAutoY + 1);
+        }
+        autoY = ry + inst.h;
+        continue;
+      }
+
+      if (node.children.length) walk(node.children, ax, ay, path, item);
+      autoY = ry + rh;
+    }
+    return autoY;
+  }
+
+  walk(tree, 0, 0, '', null);
+
+  // resolve async transforms (probe)
+  for (const inst of instances) {
+    if (inst.transform && inst.item) {
+      const field = inst.transformField;
+      let val = '';
+      if (field.startsWith('item.') && inst.item) val = inst.item[field.slice(5)] || '';
+      probe(val).then(r => { inst.value = r; draw(); });
+    }
+  }
+}
+
+// ── Draw ────────────────────────────────────────────
+let _dsl = null;
+let _tree = [];
 
 function draw() {
-  if (!rootPanel) return;
-  calcGrid();
-  initGrid();
-  compositePanel(rootPanel, 0, 0, COLS, ROWS);
-  flushGrid();
-  drawBorders();
-  drawOverlay();
-  const pc = Object.keys(panels).length;
-  const zc = Object.values(panels).reduce((s, p) => s + p.zones.length, 0);
-  document.getElementById('status-info').textContent = `${COLS}x${ROWS} | ${pc} panels | ${zc} zones`;
-}
+  clear();
+  // bg dots
+  for (let r = 0; r < BH; r += 4) for (let c = 0; c < BW; c += 4) put(r, c, '·', 'd');
 
-// ══════════════════════════════════════════════════════════════════════════
-//  CLIENT-SIDE ASSEMBLY INTERPRETER
-//  Opcodes: MOV, CALL, EACH, CMP, JIF, NOP
-//  Built-ins: write, clear, zone, zone_clear, dget, dset, dload, dsave,
-//             probe, add, len, push, splice, get, set, concat, fmt,
-//             status_color, log, draw, render, input_clear
-// ══════════════════════════════════════════════════════════════════════════
+  for (const inst of instances) {
+    const { id, type, x, y, w, h, value, name } = inst;
+    const isSel = selId === id;
+    const bc = isSel ? 'h' : 'b';
 
-function asmTokenize(line) {
-  const tokens = []; let i = 0;
-  while (i < line.length) {
-    if (line[i] === ' ' || line[i] === '\t' || line[i] === ',') { i++; continue; }
-    if (line[i] === ';') break; // comment
-    if (line[i] === '"' || line[i] === "'") {
-      const q = line[i]; i++; let s = '';
-      while (i < line.length && line[i] !== q) { s += line[i]; i++; }
-      if (i < line.length) i++;
-      tokens.push(s);
-    } else {
-      let s = '';
-      while (i < line.length && line[i] !== ' ' && line[i] !== '\t' && line[i] !== ',') { s += line[i]; i++; }
-      tokens.push(s);
-    }
-  }
-  return tokens;
-}
-
-function asmResolve(token, state) {
-  if (token === '_') return undefined;
-  if (token === 'true') return true;
-  if (token === 'false') return false;
-  // @ref — state variable, supports dot access: @w.url
-  if (token.startsWith('@')) {
-    const parts = token.slice(1).split('.');
-    let val = state[parts[0]];
-    for (let i = 1; i < parts.length; i++) {
-      if (val == null || typeof val !== 'object') return undefined;
-      val = val[parts[i]];
-    }
-    return val;
-  }
-  // +N offset
-  if (token.startsWith('+')) { const n = parseInt(token.slice(1)); return isNaN(n) ? token : n; }
-  // JSON object/array
-  if (token.startsWith('{') || token.startsWith('[')) {
-    try { return JSON.parse(token); } catch(_) {}
-  }
-  // Number
-  const n = Number(token);
-  if (!isNaN(n) && token !== '') return n;
-  return token;
-}
-
-function asmStore(state, ref, value) {
-  if (!ref || ref === '_') return;
-  const name = ref.startsWith('@') ? ref.slice(1) : ref;
-  // Support dot-path store: @w.status = "ok"
-  const parts = name.split('.');
-  if (parts.length === 1) { state[parts[0]] = value; return; }
-  let obj = state[parts[0]];
-  if (obj == null || typeof obj !== 'object') { state[parts[0]] = {}; obj = state[parts[0]]; }
-  for (let i = 1; i < parts.length - 1; i++) {
-    if (obj[parts[i]] == null || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {};
-    obj = obj[parts[i]];
-  }
-  obj[parts[parts.length - 1]] = value;
-}
-
-// Built-in functions
-const _builtins = {
-  // Panel rendering
-  write(args)      { panelWrite(args[0], +args[1], +args[2] || 0, String(args[3] ?? ''), args[4] || ''); },
-  clear(args)      { panelClear(args[0]); },
-  zone(args)       {
-    // zone panel y x w h type action [data] [dataPath]
-    const z = { x: +args[2], y: +args[1], w: +args[3] || 1, h: +args[4] || 1, type: args[5] || 'button', action: args[6] || '', data: args[7], style: '' };
-    if (args[8]) z.dataPath = args[8]; // for inputs
-    if (z.type === 'input') { z._value = Data.get(z.dataPath) || ''; z._panel = panels[args[0]]; }
-    const p = typeof args[0] === 'string' ? panels[args[0]] : args[0];
-    if (p) p.zones.push(z);
-  },
-  zone_clear(args) { zoneClear(args[0]); },
-  // Data layer
-  dget(args)       { return Data.get(args[0]); },
-  dset(args)       { Data.set(args[0], args[1]); },
-  dload(args)      { return Data.load(args[0], args[1]); },
-  dsave(args)      { Data.save(args[0], args[1]); },
-  // Utils
-  add(args)        { return (+args[0] || 0) + (+args[1] || 0); },
-  len(args)        { return Array.isArray(args[0]) ? args[0].length : 0; },
-  push(args)       { if (Array.isArray(args[0])) args[0].push(args[1]); },
-  splice(args)     { if (Array.isArray(args[0])) args[0].splice(+args[1], +args[2] || 1); },
-  get(args)        { return args[0] != null ? args[0][args[1]] : undefined; },
-  set(args)        { if (args[0] != null) args[0][args[1]] = args[2]; },
-  concat(args)     { return String(args[0] ?? '') + String(args[1] ?? ''); },
-  fmt(args)        {
-    let s = String(args[0] || '');
-    for (let i = 1; i < args.length; i++) s = s.replace(`{${i-1}}`, String(args[i] ?? ''));
-    return s;
-  },
-  status_color(args) {
-    const s = String(args[0] || '');
-    return s === 'ok' ? 'c-green' : s === 'fail' ? 'c-red' : 'c-yellow';
-  },
-  log(args)        { log(args.map(a => String(a ?? '')).join(' ')); },
-  draw()           { draw(); },
-  async render(args) {
-    // re-run panel's render assembly
-    const p = typeof args[0] === 'string' ? panels[args[0]] : args[0];
-    if (p && p.asm && p.asm.render) await execAsm(p.asm.render);
-    draw();
-  },
-  input_clear(args) {
-    Data.set(args[0], '');
-    if (focusedZone && focusedZone.dataPath === args[0]) { focusedZone._value = ''; cursorPos = 0; }
-  },
-  async http(args) {
-    // http method url [body] [timeout_ms]
-    const method = String(args[0] || 'GET').toUpperCase();
-    const url = String(args[1] || '');
-    if (!url) return { ok: false, status: 0, error: 'no url' };
-    const timeout = +args[3] || 10000;
-    const opts = { method, signal: AbortSignal.timeout(timeout) };
-    if (args[2] && method !== 'GET') {
-      opts.headers = { 'Content-Type': 'application/json' };
-      opts.body = typeof args[2] === 'string' ? args[2] : JSON.stringify(args[2]);
-    }
-    try {
-      const r = await fetch(url, opts);
-      let body = null;
-      try { body = await r.json(); } catch(_) { try { body = await r.text(); } catch(_) {} }
-      return { ok: r.ok, status: r.status, body };
-    } catch(e) {
-      return { ok: false, status: 0, error: String(e) };
-    }
-  },
-};
-
-async function execAsm(code, extraState) {
-  const state = { ...extraState };
-  const lines = code.split('\n');
-  // Pre-scan labels: :name → line index
-  const labels = {};
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i].trim();
-    if (l.startsWith(':')) labels[l] = i;
-  }
-  let ip = 0;
-  const maxSteps = lines.length * 50;
-  let steps = 0;
-
-  while (ip < lines.length && steps < maxSteps) {
-    steps++;
-    const line = lines[ip].trim();
-    if (!line || line.startsWith(';') || line.startsWith(':')) { ip++; continue; }
-    const tokens = asmTokenize(line);
-    if (!tokens.length) { ip++; continue; }
-    const op = tokens[0];
-
-    if (op === 'MOV') {
-      asmStore(state, tokens[1], asmResolve(tokens[2], state));
-      ip++;
-    } else if (op === 'CALL') {
-      const dst = tokens[1], fn = tokens[2], args = tokens.slice(3).map(t => asmResolve(t, state));
-      const builtin = _builtins[fn];
-      if (builtin) {
-        let result = builtin(args);
-        if (result instanceof Promise) result = await result;
-        if (dst !== '_') asmStore(state, dst, result);
-      } else { log(`[asm] unknown fn: ${fn}`, true); }
-      ip++;
-    } else if (op === 'EACH') {
-      const itemRef = tokens[1], list = asmResolve(tokens[2], state), bodyLen = asmResolve(tokens[3], state);
-      if (Array.isArray(list) && bodyLen > 0) {
-        const bodyLines = lines.slice(ip + 1, ip + 1 + bodyLen);
-        for (let idx = 0; idx < list.length; idx++) {
-          asmStore(state, itemRef, list[idx]); state['each_idx'] = idx;
-          await execAsm(bodyLines.join('\n'), state);
-          list[idx] = asmResolve(itemRef, state);
-        }
-      }
-      ip += 1 + (bodyLen || 0);
-    } else if (op === 'CMP') {
-      const cmpOp = tokens[2], a = asmResolve(tokens[3], state), b = asmResolve(tokens[4], state);
-      let result = false;
-      if (cmpOp === 'eq') result = a == b; else if (cmpOp === 'ne') result = a != b;
-      else if (cmpOp === 'gt') result = a > b; else if (cmpOp === 'lt') result = a < b;
-      asmStore(state, tokens[1], result); ip++;
-    } else if (op === 'JIF') {
-      const cond = asmResolve(tokens[1], state);
-      const target = tokens[2];
-      if (cond) {
-        if (target.startsWith(':') && labels[target] !== undefined) {
-          ip = labels[target];
+    if (type === 'panel' || type === 'card') {
+      box(y, x, w, h, bc);
+    } else if (type === 'template') {
+      box(y, x, w, h, 'd');
+      str(y, x+1, ' tpl:'+name+' ', 'd');
+    } else if (type === 'label') {
+      str(y, x, value || name, 'h', w);
+    } else if (type === 'input') {
+      const isEditing = editState.id === id;
+      if (h >= 3) {
+        // boxed input
+        box(y, x, w, h, isEditing ? 'h' : bc);
+        const ty = y + 1;
+        if (isEditing) {
+          str(ty, x+1, editState.buf, '', w-2);
+          const cc = x + 1 + editState.cur;
+          if (cc < x+w-1) put(ty, cc, G[ty]?.[cc]?.ch || ' ', 'i');
         } else {
-          ip += (typeof asmResolve(target, state) === 'number' ? asmResolve(target, state) : 1);
+          str(ty, x+1, value, value ? '' : 'd', w-2);
         }
-      } else { ip++; }
-    } else { ip++; }
-  }
-  return state;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  TABS + IDE
-// ══════════════════════════════════════════════════════════════════════════
-
-let activeTab = 'panels';
-let selectedPanel = null;
-let focusedZone = null;
-let cursorPos = 0;
-let cursorVisible = true;
-let cursorInterval = null;
-
-const tabBtns = document.querySelectorAll('#tab-bar button[data-tab]');
-const sidePanel = document.getElementById('side-panel');
-const sideContent = document.getElementById('side-content');
-const sideTitle = document.getElementById('side-title');
-const asmEditor = document.getElementById('asm-editor');
-const asmLog = document.getElementById('asm-log');
-
-function setTab(name) {
-  activeTab = name;
-  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  sidePanel.classList.toggle('hidden', name === 'preview');
-  asmEditor.style.display = name === 'assembly' ? 'block' : 'none';
-  sideTitle.textContent = { panels: 'Panels', assembly: 'Assembly', inspect: 'Inspect', preview: '' }[name] || '';
-  document.getElementById('props-editor').classList.toggle('hidden', name !== 'panels');
-  document.getElementById('btn-add-panel').style.display = name === 'panels' ? '' : 'none';
-  document.getElementById('btn-add-zone').style.display = name === 'panels' ? '' : 'none';
-  if (name === 'panels') renderPanelTree();
-  if (name === 'assembly') {
-    const p = selectedPanel || (rootPanel && rootPanel.children.length ? rootPanel.children[0].panel : null);
-    if (p) showAsmEditor(p, null);
-    // Show action list in side content for picking
-    renderAsmActionList();
-  }
-  if (name === 'inspect') renderInspect();
-  if (name !== 'preview') { focusedZone = null; stopCursorBlink(); }
-  drawOverlay();
-}
-
-tabBtns.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
-
-function log(msg, err) {
-  const d = document.createElement('div');
-  d.textContent = msg;
-  if (err) d.style.color = 'var(--red)';
-  asmLog.appendChild(d);
-  asmLog.scrollTop = asmLog.scrollHeight;
-}
-
-// ── Panels tab: tree view ──────────────────────────────────────────────────
-function renderPanelTree() {
-  if (!rootPanel) { sideContent.innerHTML = '<div class="empty">No panels</div>'; return; }
-  let html = '';
-  let zoneIdx = 0;
-  function walk(panel, depth) {
-    const sel = selectedPanel === panel ? ' sel' : '';
-    const flags = [panel.border ? 'B' : ''].filter(Boolean).join(' ');
-    html += `<div class="tv-row${sel}" data-panel="${panel.name}" style="padding-left:${depth * 12 + 4}px">`;
-    html += `<span class="tv-arrow">${(panel.children.length || panel.zones.length) ? '\u25be' : '\u00b7'}</span>`;
-    html += `<span class="tv-name">${escH(panel.name)}</span>`;
-    html += `<span class="tv-dim">${panel.w}\u00d7${panel.h}</span>`;
-    if (flags) html += `<span class="tv-flags">${flags}</span>`;
-    html += `</div>`;
-    // Zones under panel
-    for (let i = 0; i < panel.zones.length; i++) {
-      const z = panel.zones[i];
-      const zSel = z === selectedZone ? ' sel' : '';
-      const icon = z.type === 'button' ? '\u25a3' : z.type === 'input' ? '\u25a1' : '\u25c7';
-      const color = z.type === 'button' ? 'c-orange' : z.type === 'input' ? 'c-accent' : 'c-accent3';
-      const origin = z._authored ? '\u2022' : '\u25e6'; // ● authored, ○ rendered
-      html += `<div class="tv-row${zSel}" data-panel="${panel.name}" data-zone="${i}" style="padding-left:${(depth + 1) * 12 + 4}px">`;
-      html += `<span class="tv-arrow ${color}">${icon}</span>`;
-      html += `<span class="tv-name ${color}">${z.type}</span>`;
-      html += `<span class="tv-dim">[${z.x},${z.y} ${z.w}\u00d7${z.h}]</span>`;
-      if (z.action) html += `<span class="tv-zone">\u2192 ${escH(z.action)}</span>`;
-      html += `<span class="tv-dim">${origin}</span>`;
-      html += `</div>`;
-    }
-    for (const ch of panel.children) walk(ch.panel, depth + 1);
-  }
-  walk(rootPanel, 0);
-
-  // Zone detail editor (if a zone is selected)
-  if (selectedZone) {
-    const z = selectedZone;
-    html += `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">`;
-    html += `<h3>Zone: ${z.type}</h3>`;
-    html += kv('pos', `[${z.x}, ${z.y}]`);
-    html += kv('size', `${z.w} \u00d7 ${z.h}`);
-    html += kv('type', z.type);
-    html += kv('action', z.action || '(none)');
-    if (z.data !== undefined) html += kv('data', JSON.stringify(z.data));
-    if (z.dataPath) html += kv('dataPath', z.dataPath);
-    if (z.style) html += kv('style', z.style);
-    // Show action assembly source — find in parent panel
-    const ownerPanel = Object.values(panels).find(p => p.zones.includes(z));
-    if (z.action && ownerPanel && ownerPanel.asm && ownerPanel.asm.actions && ownerPanel.asm.actions[z.action]) {
-      html += `<h3>Assembly: ${escH(z.action)}</h3>`;
-      html += `<pre>${escH(ownerPanel.asm.actions[z.action])}</pre>`;
-    }
-    html += `</div>`;
-  }
-
-  sideContent.innerHTML = html;
-  sideContent.querySelectorAll('.tv-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const panelName = row.dataset.panel;
-      const zi = row.dataset.zone;
-      if (zi !== undefined) {
-        selectedPanel = panels[panelName] || null;
-        selectedZone = selectedPanel ? selectedPanel.zones[+zi] : null;
-        showZoneProps(selectedZone, selectedPanel);
       } else {
-        selectedPanel = panels[panelName] || null;
-        selectedZone = null;
-        showPanelProps(selectedPanel);
+        // inline input (h:1) — no box, just text on the line
+        if (isEditing) {
+          str(y, x, editState.buf, '', w);
+          const cc = x + editState.cur;
+          if (cc < x+w) put(y, cc, G[y]?.[cc]?.ch || ' ', 'i');
+        } else {
+          str(y, x, value, value ? '' : 'd', w);
+        }
       }
-      renderPanelTree();
-      drawOverlay();
-    });
-  });
-}
-
-// ── Inspect tab ────────────────────────────────────────────────────────────
-function kv(k, v) { return `<div class="kv"><span class="k">${escH(k)}</span><span class="v">${escH(String(v))}</span></div>`; }
-
-function renderInspect(panel) {
-  panel = panel || selectedPanel;
-  if (!panel) {
-    sideContent.innerHTML = '<div class="empty">Click a panel to inspect</div>';
-    return;
-  }
-  let html = `<h3>${escH(panel.name)}</h3>`;
-  html += kv('size', `${panel.w} x ${panel.h}`);
-  html += kv('buf rows', panel.buf.length);
-  html += kv('scroll', `x:${panel.scrollX} y:${panel.scrollY}`);
-  html += kv('zones', panel.zones.length);
-  html += kv('children', panel.children.length);
-
-  if (panel.zones.length) {
-    html += `<h3>Zones (${panel.zones.length})</h3>`;
-    for (const z of panel.zones) {
-      const icon = z.type === 'button' ? '\u25a3' : z.type === 'input' ? '\u25a1' : '\u25c7';
-      const color = z.type === 'button' ? 'color:var(--orange)' : 'color:var(--accent)';
-      html += `<div style="margin:4px 0; padding:4px; background:var(--bg); border:1px solid var(--border); border-radius:3px; font-size:10px;">`;
-      html += `<div style="${color}; font-weight:600;">${icon} ${z.type} [${z.x},${z.y} ${z.w}\u00d7${z.h}]</div>`;
-      if (z.action) html += `<div>action: <span style="color:var(--green)">${escH(z.action)}</span></div>`;
-      if (z.data !== undefined) html += `<div>data: ${escH(JSON.stringify(z.data))}</div>`;
-      if (z.dataPath) html += `<div>dataPath: <span style="color:var(--accent3)">${escH(z.dataPath)}</span> = ${escH(JSON.stringify(Data.get(z.dataPath)))}</div>`;
-      if (z._value !== undefined) html += `<div>value: "${escH(z._value)}"</div>`;
-      // Show assembly code for action
-      if (z.action && panel.asm && panel.asm.actions && panel.asm.actions[z.action]) {
-        html += `<details><summary style="color:var(--text-dim);cursor:pointer;">assembly</summary>`;
-        html += `<pre style="margin:2px 0;font-size:9px;max-height:120px;">${escH(panel.asm.actions[z.action])}</pre>`;
-        html += `</details>`;
-      }
-      html += `</div>`;
-    }
-  }
-
-  // Registered assembly actions
-  if (panel.asm) {
-    if (panel.asm.render) {
-      html += `<h3>Render Assembly</h3>`;
-      html += `<details open><summary style="color:var(--green);cursor:pointer;">render</summary>`;
-      html += `<pre style="font-size:9px;max-height:150px;">${escH(panel.asm.render)}</pre>`;
-      html += `</details>`;
-    }
-    const actionNames = Object.keys(panel.asm.actions || {});
-    if (actionNames.length) {
-      html += `<h3>Actions (${actionNames.length})</h3>`;
-      for (const name of actionNames) {
-        html += `<details><summary style="color:var(--green);cursor:pointer;">${escH(name)}</summary>`;
-        html += `<pre style="font-size:9px;max-height:150px;">${escH(panel.asm.actions[name])}</pre>`;
-        html += `</details>`;
-      }
-    }
-  }
-
-  html += `<h3>Data Layer</h3><pre>${escH(JSON.stringify(Data.dump(), null, 2))}</pre>`;
-  sideContent.innerHTML = html;
-}
-
-// ── Canvas interaction ─────────────────────────────────────────────────────
-function canvasToChar(e) {
-  const r = document.getElementById('canvas').getBoundingClientRect();
-  return { col: Math.floor((e.clientX - r.left) / CW), row: Math.floor((e.clientY - r.top) / CH) };
-}
-
-document.getElementById('canvas').addEventListener('click', (e) => {
-  const { col, row } = canvasToChar(e);
-  const hit = rootPanel ? hitTestPanel(col, row, rootPanel, 0, 0, COLS, ROWS) : null;
-
-  if (activeTab === 'panels' || activeTab === 'inspect') {
-    selectedPanel = hit ? hit.panel : null;
-    selectedZone = hit ? hit.zone : null;
-    if (activeTab === 'panels') {
-      renderPanelTree();
-      if (selectedZone) showZoneProps(selectedZone, selectedPanel);
-      else showPanelProps(selectedPanel);
-    }
-    if (activeTab === 'inspect') renderInspect(hit ? hit.panel : null);
-    drawOverlay();
-  }
-
-  if (activeTab === 'preview' && hit) {
-    if (hit.zone) {
-      if (hit.zone.type === 'input') {
-        focusInput(hit.zone, hit.panel, hit.localX - hit.zone.x);
-      } else if (hit.zone.type === 'button' && hit.zone.action) {
-        runAction(hit.zone.action, hit.zone.data, hit.panel);
-      }
-    } else {
-      focusedZone = null;
-      stopCursorBlink();
-      drawOverlay();
-    }
-  }
-});
-
-// ── Editable input ─────────────────────────────────────────────────────────
-function focusInput(zone, panel, clickCol) {
-  zone._panel = panel;
-  focusedZone = zone;
-  const val = zone._value || '';
-  cursorPos = Math.min(Math.max(0, clickCol), val.length);
-  startCursorBlink();
-  renderInputZone();
-  drawOverlay();
-}
-
-function startCursorBlink() { stopCursorBlink(); cursorVisible = true; cursorInterval = setInterval(() => { cursorVisible = !cursorVisible; renderInputZone(); }, 530); }
-function stopCursorBlink() { if (cursorInterval) { clearInterval(cursorInterval); cursorInterval = null; } cursorVisible = false; }
-
-function renderInputZone() {
-  if (!focusedZone || focusedZone.type !== 'input') return;
-  const z = focusedZone, p = z._panel;
-  const val = z._value || '';
-  // Write value into panel buf at zone position
-  for (let c = 0; c < z.w; c++) {
-    const ch = c < val.length ? val[c] : ' ';
-    const cl = (c === cursorPos && cursorVisible) ? 'c-cursor' : (z.style || '');
-    panelWrite(p, z.y, z.x + c, ch, cl);
-  }
-  // Cursor block at end
-  if (cursorPos === val.length && cursorPos < z.w && cursorVisible) {
-    panelWrite(p, z.y, z.x + cursorPos, '\u2588', 'c-cursor');
-  }
-  draw();
-}
-
-document.addEventListener('keydown', (e) => {
-  if (!focusedZone || focusedZone.type !== 'input' || activeTab !== 'preview') return;
-  const z = focusedZone;
-  let val = z._value || '';
-
-  if (e.key === 'Backspace') { if (cursorPos > 0) { val = val.slice(0, cursorPos - 1) + val.slice(cursorPos); cursorPos--; } }
-  else if (e.key === 'Delete') { if (cursorPos < val.length) val = val.slice(0, cursorPos) + val.slice(cursorPos + 1); }
-  else if (e.key === 'ArrowLeft') { if (cursorPos > 0) cursorPos--; }
-  else if (e.key === 'ArrowRight') { if (cursorPos < val.length) cursorPos++; }
-  else if (e.key === 'Home') cursorPos = 0;
-  else if (e.key === 'End') cursorPos = val.length;
-  else if (e.key === 'Enter') { if (z.action) runAction(z.action, val, z._panel); return; }
-  else if (e.key === 'Escape') { focusedZone = null; stopCursorBlink(); drawOverlay(); return; }
-  else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { val = val.slice(0, cursorPos) + e.key + val.slice(cursorPos); cursorPos++; }
-  else return;
-
-  e.preventDefault();
-  z._value = val;
-  if (z.dataPath) Data.set(z.dataPath, val);
-  cursorVisible = true;
-  renderInputZone();
-});
-
-document.addEventListener('paste', (e) => {
-  if (!focusedZone || focusedZone.type !== 'input' || activeTab !== 'preview') return;
-  e.preventDefault();
-  const text = (e.clipboardData || window.clipboardData).getData('text');
-  if (!text) return;
-  let val = focusedZone._value || '';
-  val = val.slice(0, cursorPos) + text + val.slice(cursorPos);
-  cursorPos += text.length;
-  focusedZone._value = val;
-  if (focusedZone.dataPath) Data.set(focusedZone.dataPath, val);
-  cursorVisible = true;
-  renderInputZone();
-});
-
-// ── Actions ────────────────────────────────────────────────────────────────
-async function runAction(action, data, panel) {
-  const t0 = performance.now();
-  log(`\u25b6 ${action}` + (data !== undefined ? ` data=${JSON.stringify(data)}` : '') + ` panel=${panel.name}`);
-
-  // Find assembly code for this action in the panel's asm.actions
-  const code = panel.asm && panel.asm.actions && panel.asm.actions[action];
-  if (code) {
-    try {
-      await execAsm(code, { action_data: data, panel_name: panel.name });
-      const dt = (performance.now() - t0).toFixed(0);
-      log(`\u2713 ${action} (${dt}ms)`);
-    } catch (e) {
-      log(`\u2717 ${action}: ${e}`, true);
-    }
-    draw();
-    return;
-  }
-  log(`\u2717 no asm for: ${action}`, true);
-}
-
-// ── Props editor ───────────────────────────────────────────────────────────
-const propsEditor = document.getElementById('props-editor');
-
-function showPanelProps(panel) {
-  if (!panel || panel === rootPanel) { propsEditor.classList.add('hidden'); return; }
-  propsEditor.classList.remove('hidden');
-  const pos = getPanelGlobalPos(panel);
-  const parentEntry = findParentEntry(panel);
-  propsEditor.innerHTML = `
-    <h4>\u25a0 ${escH(panel.name)} <button data-del-panel="${panel.name}">\u00d7 del</button></h4>
-    <label><span>name</span><input type="text" data-pp="name" value="${escH(panel.name)}"></label>
-    <label><span>label</span><input type="text" data-pp="label" value="${escH(panel.label || '')}"></label>
-    <label><span>w</span><input type="number" data-pp="w" value="${panel.w}" min="2"></label>
-    <label><span>h</span><input type="number" data-pp="h" value="${panel.h}" min="1"></label>
-    ${parentEntry ? `
-    <label><span>x</span><input type="number" data-pp="px" value="${parentEntry.x}" min="0"></label>
-    <label><span>y</span><input type="number" data-pp="py" value="${parentEntry.y}" min="0"></label>
-    ` : ''}
-    <label><span>border</span><input type="checkbox" data-pp="border" ${panel.border ? 'checked' : ''}></label>
-    <label><span>borderColor</span><input type="text" data-pp="borderColor" value="${escH(panel.borderColor || '#3b4261')}"></label>
-  `;
-  propsEditor.querySelectorAll('input').forEach(inp => {
-    inp.addEventListener('change', () => {
-      const p = inp.dataset.pp;
-      if (p === 'name') { const old = panel.name; delete panels[old]; panel.name = inp.value; panels[inp.value] = panel; panel.label = panel.label === old ? inp.value : panel.label; }
-      else if (p === 'label') panel.label = inp.value;
-      else if (p === 'w') panel.w = +inp.value;
-      else if (p === 'h') panel.h = +inp.value;
-      else if (p === 'px' && parentEntry) parentEntry.x = +inp.value;
-      else if (p === 'py' && parentEntry) parentEntry.y = +inp.value;
-      else if (p === 'border') panel.border = inp.checked;
-      else if (p === 'borderColor') panel.borderColor = inp.value;
-      draw(); renderPanelTree();
-    });
-  });
-  propsEditor.querySelectorAll('[data-del-panel]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      deletePanel(panel);
-      selectedPanel = null; selectedZone = null;
-      propsEditor.classList.add('hidden');
-      draw(); renderPanelTree();
-    });
-  });
-}
-
-function showZoneProps(zone, panel) {
-  if (!zone || !panel) { propsEditor.classList.add('hidden'); return; }
-  propsEditor.classList.remove('hidden');
-  const typeIcon = zone.type === 'button' ? '\u25a3' : '\u25a1';
-  propsEditor.innerHTML = `
-    <h4>${typeIcon} zone <button data-del-zone="1">\u00d7 del</button></h4>
-    <label><span>type</span><select data-zp="type"><option ${zone.type==='button'?'selected':''}>button</option><option ${zone.type==='input'?'selected':''}>input</option><option ${zone.type==='link'?'selected':''}>link</option></select></label>
-    <label><span>x</span><input type="number" data-zp="x" value="${zone.x}" min="0"></label>
-    <label><span>y</span><input type="number" data-zp="y" value="${zone.y}" min="0"></label>
-    <label><span>w</span><input type="number" data-zp="w" value="${zone.w}" min="1"></label>
-    <label><span>h</span><input type="number" data-zp="h" value="${zone.h}" min="1"></label>
-    <label><span>action</span><input type="text" data-zp="action" value="${escH(zone.action || '')}"></label>
-    <label><span>data</span><input type="text" data-zp="data" value="${zone.data !== undefined ? escH(JSON.stringify(zone.data)) : ''}"></label>
-    <label><span>dataPath</span><input type="text" data-zp="dataPath" value="${escH(zone.dataPath || '')}"></label>
-    <label><span>style</span><input type="text" data-zp="style" value="${escH(zone.style || '')}"></label>
-  `;
-  propsEditor.querySelectorAll('input, select').forEach(inp => {
-    inp.addEventListener('change', () => {
-      const p = inp.dataset.zp;
-      if (p === 'type') zone.type = inp.value;
-      else if (p === 'x') zone.x = +inp.value;
-      else if (p === 'y') zone.y = +inp.value;
-      else if (p === 'w') zone.w = +inp.value;
-      else if (p === 'h') zone.h = +inp.value;
-      else if (p === 'action') zone.action = inp.value || undefined;
-      else if (p === 'data') { try { zone.data = JSON.parse(inp.value); } catch(_) { zone.data = inp.value || undefined; } }
-      else if (p === 'dataPath') zone.dataPath = inp.value || undefined;
-      else if (p === 'style') zone.style = inp.value || undefined;
-      draw(); renderPanelTree();
-    });
-  });
-  propsEditor.querySelectorAll('[data-del-zone]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = panel.zones.indexOf(zone);
-      if (idx >= 0) panel.zones.splice(idx, 1);
-      const aidx = panel.authoredZones.indexOf(zone);
-      if (aidx >= 0) panel.authoredZones.splice(aidx, 1);
-      selectedZone = null;
-      propsEditor.classList.add('hidden');
-      draw(); renderPanelTree();
-    });
-  });
-}
-
-function findParentEntry(panel) {
-  function search(p) {
-    for (const ch of p.children) {
-      if (ch.panel === panel) return ch;
-      const r = search(ch.panel);
-      if (r) return r;
-    }
-    return null;
-  }
-  return rootPanel ? search(rootPanel) : null;
-}
-
-function findParentPanel(panel) {
-  function search(p) {
-    for (const ch of p.children) {
-      if (ch.panel === panel) return p;
-      const r = search(ch.panel);
-      if (r) return r;
-    }
-    return null;
-  }
-  return rootPanel ? search(rootPanel) : null;
-}
-
-function deletePanel(panel) {
-  const parent = findParentPanel(panel);
-  if (parent) {
-    parent.children = parent.children.filter(ch => ch.panel !== panel);
-  }
-  delete panels[panel.name];
-}
-
-// ── Add Panel / Add Zone buttons ───────────────────────────────────────────
-let _addPanelCounter = 0;
-
-document.getElementById('btn-add-panel').addEventListener('click', () => {
-  if (activeTab !== 'panels') return;
-  const name = 'panel_' + (++_addPanelCounter);
-  const p = createPanel(name, 20, 10);
-  p.label = name;
-  // Add as child of selected panel or root
-  const parent = (selectedPanel && selectedPanel !== rootPanel) ? selectedPanel : rootPanel;
-  if (!parent) return;
-  // Find placement — offset from parent's children
-  const ox = parent.children.length * 2;
-  addChildPanel(parent, p, ox, 0, 20, 10);
-  selectedPanel = p;
-  selectedZone = null;
-  draw();
-  renderPanelTree();
-  showPanelProps(p);
-});
-
-document.getElementById('btn-add-zone').addEventListener('click', () => {
-  if (activeTab !== 'panels') return;
-  const panel = selectedPanel || rootPanel;
-  if (!panel) return;
-  const z = { x: 0, y: 0, w: 5, h: 1, type: 'button', action: '', style: '', _authored: true };
-  panel.authoredZones.push(z);
-  panel.zones.push(z);
-  selectedZone = z;
-  draw();
-  renderPanelTree();
-  showZoneProps(z, panel);
-});
-
-// ── Assembly tab ───────────────────────────────────────────────────────────
-let asmEditingPanel = null;
-let asmEditingAction = null; // null = render, string = action name
-
-function showAsmEditor(panel, actionName) {
-  if (!panel) return;
-  asmEditingPanel = panel;
-  asmEditingAction = actionName || null;
-  if (!panel.asm) panel.asm = { render: '', actions: {} };
-  if (actionName) {
-    asmEditor.value = panel.asm.actions[actionName] || '';
-    sideTitle.textContent = `ASM: ${panel.name} → ${actionName}`;
-  } else {
-    asmEditor.value = panel.asm.render || '';
-    sideTitle.textContent = `ASM: ${panel.name} render`;
-  }
-}
-
-function saveAsmEditor() {
-  if (!asmEditingPanel) return;
-  if (!asmEditingPanel.asm) asmEditingPanel.asm = { render: '', actions: {} };
-  if (asmEditingAction) {
-    asmEditingPanel.asm.actions[asmEditingAction] = asmEditor.value;
-  } else {
-    asmEditingPanel.asm.render = asmEditor.value;
-  }
-}
-
-document.getElementById('btn-run').addEventListener('click', async () => {
-  if (activeTab === 'assembly') {
-    saveAsmEditor();
-    const code = asmEditor.value;
-    if (!code.trim()) return;
-    log('[asm] executing...');
-    try {
-      await execAsm(code);
-      log('[asm] done');
-    } catch (e) { log(`[asm] ${e}`, true); }
-    draw();
-  }
-});
-
-asmEditor.addEventListener('input', () => { saveAsmEditor(); });
-
-document.getElementById('btn-save').addEventListener('click', async () => {
-  const project = exportProject();
-  try {
-    const r = await fetch('/api/aabb/project', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(project)
-    });
-    const result = await r.json();
-    log(result.ok ? 'project saved' : 'save failed');
-  } catch (e) { log('save error: ' + e, true); }
-});
-
-function renderAsmActionList() {
-  if (!asmEditingPanel) { sideContent.innerHTML = ''; return; }
-  const p = asmEditingPanel;
-  let html = `<div style="margin-bottom:6px;">`;
-  // Panel picker
-  html += `<div style="margin-bottom:4px;">Panel: `;
-  for (const [name, panel] of Object.entries(panels)) {
-    if (panel === rootPanel) continue;
-    const sel = panel === p ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
-    html += `<span class="asm-panel-pick" data-p="${name}" style="${sel}cursor:pointer;margin-right:8px;">${escH(name)}</span>`;
-  }
-  html += `</div>`;
-  // Render button
-  const renderSel = !asmEditingAction ? 'color:var(--accent);font-weight:700;' : 'color:var(--text-dim);';
-  html += `<div class="asm-pick" data-action="" style="${renderSel}cursor:pointer;margin-bottom:2px;">\u25b6 render</div>`;
-  // Action buttons
-  const actions = (p.asm && p.asm.actions) ? Object.keys(p.asm.actions) : [];
-  for (const a of actions) {
-    const sel = asmEditingAction === a ? 'color:var(--orange);font-weight:700;' : 'color:var(--text-dim);';
-    html += `<div class="asm-pick" data-action="${escH(a)}" style="${sel}cursor:pointer;margin-bottom:2px;">\u25a3 ${escH(a)}</div>`;
-  }
-  // Add action inline form
-  html += `<div style="margin-top:4px;display:flex;gap:4px;align-items:center;">`;
-  html += `<input id="asm-new-action-name" type="text" placeholder="action name" style="flex:1;font-size:10px;padding:1px 4px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;border-radius:2px;">`;
-  html += `<button id="asm-add-action-btn" style="font-size:10px;padding:1px 6px;color:var(--green);background:var(--surface2);border:1px solid var(--border);cursor:pointer;border-radius:2px;">+</button>`;
-  html += `</div>`;
-  html += `</div>`;
-  sideContent.innerHTML = html;
-
-  // Wire clicks
-  sideContent.querySelectorAll('.asm-panel-pick').forEach(el => {
-    el.addEventListener('click', () => {
-      const panel = panels[el.dataset.p];
-      if (panel) { showAsmEditor(panel, null); renderAsmActionList(); }
-    });
-  });
-  sideContent.querySelectorAll('.asm-pick').forEach(el => {
-    el.addEventListener('click', () => {
-      showAsmEditor(asmEditingPanel, el.dataset.action || null);
-      renderAsmActionList();
-    });
-  });
-  const addBtn = document.getElementById('asm-add-action-btn');
-  const addInput = document.getElementById('asm-new-action-name');
-  function doAddAction() {
-    const name = (addInput.value || '').trim();
-    if (!name || !asmEditingPanel) return;
-    if (!asmEditingPanel.asm) asmEditingPanel.asm = { render: '', actions: {} };
-    asmEditingPanel.asm.actions[name] = '; ' + name + ' action\n';
-    showAsmEditor(asmEditingPanel, name);
-    renderAsmActionList();
-  }
-  if (addBtn) addBtn.addEventListener('click', doAddAction);
-  if (addInput) addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAddAction(); });
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  PROJECT LOADER — generic, no hardcoded panels/actions
-// ══════════════════════════════════════════════════════════════════════════
-
-async function loadProject(project) {
-  calcGrid();
-
-  // 1. Seed data layer
-  if (project.data) {
-    for (const [path, spec] of Object.entries(project.data)) {
-      if (spec && typeof spec === 'object' && spec._load) {
-        // Load from localStorage with fallback
-        Data.set(path, Data.load(spec._load, spec._default));
+    } else if (type === 'button') {
+      if (h >= 3) {
+        box(y, x, w, h, bc);
+        str(y+1, x+1, value || name, 'h', w-2);
       } else {
-        Data.set(path, spec);
+        // inline button (h:1) — just colored text
+        str(y, x, value || name, 'h', w);
       }
+    } else if (type === 'dot') {
+      const cl = value === 'ok' ? 'g' : value === 'fail' ? 'r' : 'y';
+      str(y, x, '●', cl);
+    } else if (type === 'text') {
+      const display = String(value || '').replace(/^https?:\/\//, '');
+      str(y, x, display || name, display ? '' : 'd', w);
     }
   }
-
-  // 2. Build panel tree
-  const root = createPanel('screen', COLS, ROWS);
-  root.border = false;
-  rootPanel = root;
-
-  function buildPanels(defs, parent) {
-    for (const def of defs) {
-      const p = createPanel(def.name, def.w, def.h);
-      if (def.label !== undefined) p.label = def.label;
-      if (def.border !== undefined) p.border = def.border;
-      if (def.borderColor) p.borderColor = def.borderColor;
-      if (def.asm) p.asm = { render: def.asm.render || '', actions: { ...def.asm.actions } };
-      if (def.zones) {
-        p.authoredZones = def.zones.map(z => ({ ...z, _authored: true }));
-        p.zones = p.authoredZones.map(z => ({ ...z }));
-      }
-      addChildPanel(parent, p, def.x, def.y, def.w, def.h);
-      if (def.children) buildPanels(def.children, p);
-    }
-  }
-  if (project.panels) buildPanels(project.panels, root);
-
-  // 3. Run render assembly for all panels
-  for (const p of Object.values(panels)) {
-    if (p.asm && p.asm.render && p !== root) {
-      await execAsm(p.asm.render);
-    }
-  }
-
-  draw();
-  renderPanelTree();
+  flush();
 }
 
-// Export current state as project JSON (for save/load)
-function exportProject() {
-  function serializePanel(panel, parent) {
-    const entry = parent ? parent.children.find(ch => ch.panel === panel) : null;
-    const def = {
-      name: panel.name,
-      x: entry ? entry.x : 0, y: entry ? entry.y : 0,
-      w: panel.w, h: panel.h,
-      label: panel.label || panel.name,
-    };
-    if (panel.border) def.border = true;
-    if (panel.borderColor && panel.borderColor !== '#3b4261') def.borderColor = panel.borderColor;
-    if (panel.asm && (panel.asm.render || Object.keys(panel.asm.actions || {}).length)) {
-      def.asm = { render: panel.asm.render || '' };
-      if (panel.asm.actions && Object.keys(panel.asm.actions).length) {
-        def.asm.actions = { ...panel.asm.actions };
-      }
-    }
-    if (panel.authoredZones && panel.authoredZones.length) {
-      def.zones = panel.authoredZones.map(z => {
-        const { _authored, _panel, _value, ...rest } = z;
-        return rest;
-      });
-    }
-    if (panel.children.length) {
-      def.children = panel.children.map(ch => serializePanel(ch.panel, panel));
-    }
-    return def;
-  }
+// ── Click handling ──────────────────────────────────
+const $scr = document.getElementById('scr');
+
+function cell(e) {
+  const rect = $scr.getBoundingClientRect();
+  const pad = parseFloat(getComputedStyle($scr).paddingLeft) || 0;
   return {
-    data: Data.dump(),
-    panels: rootPanel ? rootPanel.children.map(ch => serializePanel(ch.panel, rootPanel)) : []
+    c: Math.floor((e.clientX - rect.left - pad + $scr.scrollLeft) / CW),
+    r: Math.floor((e.clientY - rect.top - pad + $scr.scrollTop) / CH)
   };
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-//  INIT — load project from external JSON file
-// ══════════════════════════════════════════════════════════════════════════
+function instAt(r, c) {
+  let found = null;
+  for (const inst of instances) {
+    const h = Math.max(1, inst.h);
+    if (c >= inst.x && c < inst.x + inst.w && r >= inst.y && r < inst.y + h) found = inst;
+  }
+  return found;
+}
 
-async function init() {
-  try {
-    const r = await fetch('/api/aabb/project');
-    if (r.ok) {
-      const project = await r.json();
-      await loadProject(project);
-      log('project loaded from server');
-    } else {
-      log('no project on server, starting empty', true);
-      calcGrid();
-      rootPanel = createPanel('screen', COLS, ROWS);
-      rootPanel.border = false;
-      draw();
-      renderPanelTree();
-    }
-  } catch (e) {
-    log('failed to load project: ' + e, true);
-    calcGrid();
-    rootPanel = createPanel('screen', COLS, ROWS);
-    rootPanel.border = false;
+// click item context for event actions
+let _clickItem = null;
+
+$scr.addEventListener('mousedown', (e) => {
+  $scr.focus();
+  const {r,c} = cell(e);
+  const inst = instAt(r, c);
+
+  // commit any active edit — flush buf into inst.value so read() can pick it up
+  if (editState.id) {
+    const prev = instances.find(i => i.id === editState.id);
+    if (prev) prev.value = editState.buf;
+    editState.id = null;
+  }
+
+  if (!inst) { selId = null; draw(); return; }
+
+  selId = inst.id;
+  _clickItem = inst.item || null;
+
+  if (inst.type === 'button') {
+    fireButton(inst);
     draw();
-    renderPanelTree();
+    return;
+  }
+
+  if (inst.type === 'input') {
+    const curVal = inst.value || (inst.item ? (inst.item.role||'') : '');
+    editState = { id: inst.id, buf: curVal, cur: curVal.length };
+    draw();
+    return;
+  }
+
+  draw();
+});
+
+// ── Cursor tracking for status bar ──────────────────
+$scr.addEventListener('mousemove', (e) => {
+  const {r,c} = cell(e);
+  document.getElementById('st-pos').textContent = `r:${r} c:${c}`;
+  const inst = instAt(r, c);
+  document.getElementById('st-inst').textContent = inst ? `${inst.type}:${inst.id} [${inst.x},${inst.y},${inst.w},${inst.h}]` : '-';
+});
+
+// ── Keyboard ────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  // only capture when canvas is focused
+  if (document.activeElement !== $scr) return;
+
+  if (!editState.id) return;
+  if (e.key === 'Escape') { editState.id = null; draw(); return; }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const inst = instances.find(i => i.id === editState.id);
+    if (inst) {
+      // store typed value into instance for read() to pick up
+      inst.value = editState.buf;
+      // if item-bound input, write back to the bound field
+      if (inst.item && inst.transformField) {
+        const field = inst.transformField.startsWith('item.') ? inst.transformField.slice(5) : inst.name;
+        inst.item[field] = editState.buf;
+        for (const [n, v] of Object.entries(DS)) { if (Array.isArray(v) && v.includes(inst.item)) { saveDS(n); break; } }
+      } else if (inst.item) {
+        // find which field this input is bound to via DSL bind
+        const bindField = findBoundField(inst);
+        if (bindField) { inst.item[bindField] = editState.buf; }
+        for (const [n, v] of Object.entries(DS)) { if (Array.isArray(v) && v.includes(inst.item)) { saveDS(n); break; } }
+      }
+      // fire on input_name.enter if defined
+      const enterTriggers = [inst.id+'.enter', inst.name+'.enter'];
+      if (inst.parentId) {
+        const parent = instances.find(p => p.id === inst.parentId);
+        if (parent) enterTriggers.push(parent.name+'.'+inst.name+'.enter');
+      }
+      for (const t of enterTriggers) {
+        const ev = _dsl?.events.find(e => e.trigger === t);
+        if (ev) { for (const a of ev.actions) execAction(a); break; }
+      }
+    }
+    editState.id = null;
+    draw();
+    return;
+  }
+  if (e.key === 'Backspace') { e.preventDefault(); if (editState.cur>0) { editState.buf=editState.buf.slice(0,editState.cur-1)+editState.buf.slice(editState.cur); editState.cur--; } draw(); return; }
+  if (e.key === 'Delete') { e.preventDefault(); if (editState.cur<editState.buf.length) { editState.buf=editState.buf.slice(0,editState.cur)+editState.buf.slice(editState.cur+1); } draw(); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); if (editState.cur>0) editState.cur--; draw(); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); if (editState.cur<editState.buf.length) editState.cur++; draw(); return; }
+  if (e.key === 'Home') { e.preventDefault(); editState.cur=0; draw(); return; }
+  if (e.key === 'End') { e.preventDefault(); editState.cur=editState.buf.length; draw(); return; }
+  if (e.key.length===1 && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    editState.buf = editState.buf.slice(0,editState.cur)+e.key+editState.buf.slice(editState.cur);
+    editState.cur++;
+    draw();
+    return;
+  }
+});
+
+// ── Events ──────────────────────────────────────────
+function fireTrigger(trigger) {
+  if (!_dsl) return;
+  const ev = _dsl.events.find(e => e.trigger === trigger);
+  if (!ev) return;
+  for (const action of ev.actions) execAction(action);
+}
+
+function fireButton(inst) {
+  if (!_dsl) return;
+  // build candidate triggers
+  const triggers = [
+    inst.id + '.click',
+    inst.name + '.click',
+  ];
+  // with parent prefix
+  const parent = instances.find(p => p.id === inst.parentId);
+  if (parent) {
+    triggers.push(parent.name + '.' + inst.name + '.click');
+    const gp = instances.find(p => p.id === parent.parentId);
+    if (gp) triggers.push(gp.name + '.' + parent.name + '.' + inst.name + '.click');
+  }
+  // strip index suffixes for template children: workers.card_0.del_btn -> workers.card.del_btn
+  const cleaned = triggers.map(t => t.replace(/_\d+\./g, '.'));
+  const all = [...new Set([...triggers, ...cleaned])];
+
+  for (const t of all) {
+    const ev = _dsl.events.find(e => e.trigger === t);
+    if (ev) {
+      _clickItem = inst.item || null;
+      for (const action of ev.actions) execAction(action);
+      return;
+    }
   }
 }
 
-init();
-window.addEventListener('resize', () => { draw(); if (activeTab === 'panels') renderPanelTree(); });
+function execAction(action) {
+  // data.X.push { ... }
+  const pushM = action.match(/^data\.(\w+)\.push\s*\{(.+)\}$/);
+  if (pushM) {
+    const list = DS[pushM[1]];
+    if (!Array.isArray(list)) return;
+    const obj = {};
+    pushM[2].split(',').forEach(pair => {
+      const [k, ...rest] = pair.split(':');
+      const v = rest.join(':').trim();
+      if (v.startsWith('read(') && v.endsWith(')')) {
+        const ref = v.slice(5,-1);
+        // find instance by name suffix
+        const inst = instances.find(i => i.id.endsWith(ref) || i.id.endsWith('.'+ref.split('.').pop()));
+        // read from active edit buf if still editing, otherwise from committed inst.value
+        obj[k.trim()] = inst ? (editState.id === inst.id ? editState.buf : (inst.value || '')) : '';
+      } else {
+        obj[k.trim()] = v.replace(/"/g, '');
+      }
+    });
+    // don't push if all read() fields are empty
+    const hasValue = Object.values(obj).some(v => v !== '');
+    if (!hasValue) return;
+    list.push(obj);
+    saveDS(pushM[1]);
+    editState = { id:null, buf:'', cur:0 };
+    rebuildAndDraw();
+    return;
+  }
 
+  // data.X.remove item
+  const rmM = action.match(/^data\.(\w+)\.remove\s+item$/);
+  if (rmM && _clickItem) {
+    const list = DS[rmM[1]];
+    if (Array.isArray(list)) {
+      const idx = list.indexOf(_clickItem);
+      if (idx >= 0) list.splice(idx, 1);
+      saveDS(rmM[1]);
+      rebuildAndDraw();
+    }
+    return;
+  }
+
+  // clear X
+  const clrM = action.match(/^clear\s+([\w.]+)$/);
+  if (clrM) {
+    editState = { id:null, buf:'', cur:0 };
+    return;
+  }
+}
+
+// ── Rebuild + draw ──────────────────────────────────
+function rebuildAndDraw() {
+  if (!_dsl || !_tree.length) return;
+  resolveInstances(_tree, _dsl.bind);
+  draw();
+}
+
+// ── Default DSL ─────────────────────────────────────
+const DEFAULT_DSL = `# Workers panel
+layout:
+  panel workers [0,0,32,auto]:
+    label title [2,1,10,1]
+    input url_input [1,2,25,3]
+    button add_btn [26,2,5,3]
+    template card [1,auto,30,3]:
+      dot status [2,1,1,1]
+      text endpoint [4,1,18,1]
+      input role [22,1,7,1]
+      button del_btn [29,1,2,1]
+
+data:
+  worker_list: local reactive_workers
+  probe_status(url): GET {url}/v1/models timeout 3s
+
+bind:
+  workers.title <- "WORKERS"
+  workers.add_btn <- "+"
+  workers.card <- each data.worker_list as item
+  workers.card.status <- item.url | probe_status
+  workers.card.endpoint <- item.url
+  workers.card.role <- item.role
+  workers.card.del_btn <- "x"
+
+on workers.add_btn.click:
+  data.worker_list.push { url: read(workers.url_input), role: "gen" }
+  clear workers.url_input
+
+on workers.url_input.enter:
+  data.worker_list.push { url: read(workers.url_input), role: "gen" }
+  clear workers.url_input
+
+on workers.card.del_btn.click:
+  data.worker_list.remove item
+`.trim();
+
+// ── UI wiring ───────────────────────────────────────
+const $src = document.getElementById('dsl-src');
+const $err = document.getElementById('dsl-err');
+
+function apply() {
+  $err.textContent = '';
+  try {
+    _dsl = parseDSL($src.value);
+    _tree = buildLayoutTree(_dsl.layout);
+    initData(_dsl.data);
+    resolveInstances(_tree, _dsl.bind);
+    draw();
+    document.getElementById('st-edit').textContent = `${instances.length} inst`;
+  } catch(e) {
+    $err.textContent = e.message;
+  }
+}
+
+$src.value = localStorage.getItem('aabb_dsl') || DEFAULT_DSL;
+document.getElementById('btn-apply').onclick = () => { localStorage.setItem('aabb_dsl', $src.value); apply(); };
+document.getElementById('btn-reset').onclick = () => { $src.value = DEFAULT_DSL; localStorage.removeItem('aabb_dsl'); apply(); };
+$src.addEventListener('keydown', e => { if (e.key==='Enter'&&e.ctrlKey) { e.preventDefault(); document.getElementById('btn-apply').click(); } });
+
+// ── Boot ────────────────────────────────────────────
+measureCell();
+apply();
+
+// re-resolve transforms (probes etc.) periodically
+setInterval(() => rebuildAndDraw(), 15000);
 </script>
 </body>
 </html>
