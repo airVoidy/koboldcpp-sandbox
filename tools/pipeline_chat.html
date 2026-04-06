@@ -87,6 +87,22 @@ textarea { resize:vertical; }
 .new-ch { display:flex; gap:2px; padding:4px; border-top:1px solid var(--border); flex-shrink:0; }
 .new-ch input { flex:1; font-size:10px; padding:2px 4px; }
 
+/* FS tree */
+.fs-breadcrumb span { cursor:pointer; }
+.fs-breadcrumb span:hover { color:var(--accent); text-decoration:underline; }
+.fs-breadcrumb .sep { color:var(--border); cursor:default; }
+.fs-breadcrumb .sep:hover { color:var(--border); text-decoration:none; }
+.fs-tree { padding-left:16px; }
+.fs-node { margin:1px 0; }
+.fs-node-hdr { display:flex; align-items:center; gap:4px; padding:2px 4px; border-radius:3px; cursor:pointer; font-size:11px; }
+.fs-node-hdr:hover { background:var(--surface2); }
+.fs-node-hdr .fs-icon { color:var(--text-dim); font-size:10px; width:12px; text-align:center; }
+.fs-node-hdr .fs-name { color:var(--text); }
+.fs-node-hdr .fs-type { font-size:9px; padding:0 3px; border-radius:2px; background:var(--surface2); color:var(--text-dim); margin-left:auto; }
+.fs-node-meta { display:none; padding:2px 4px 2px 20px; font-size:10px; color:var(--text-dim); }
+.fs-node-meta.open { display:block; }
+.fs-node-meta pre { margin:0; white-space:pre-wrap; word-break:break-word; line-height:1.3; }
+
 /* Status */
 .status-bar { font-size:10px; color:var(--text-dim); padding:2px 12px; border-top:1px solid var(--border); flex-shrink:0; background:var(--surface); }
 .status-bar.loading { color:var(--yellow); }
@@ -145,7 +161,8 @@ textarea { resize:vertical; }
 </div>
 
 <!-- FS Tab -->
-<div class="page" id="page-fs">
+<div class="page" id="page-fs" style="flex-direction:column;">
+  <div class="fs-breadcrumb" id="fs-breadcrumb" style="padding:4px 8px; font-size:10px; color:var(--text-dim); border-bottom:1px solid var(--border); flex-shrink:0; display:flex; gap:2px; align-items:center;"></div>
   <div class="node-list" id="fs-view"></div>
 </div>
 
@@ -224,16 +241,16 @@ function loadCachedState() {
 //  Shell exec — for Shell tab and mutations
 // ══════════════════════════════════════════════════════════
 
-async function shellExec(cmd, log = true) {
+async function shellExec(cmd, log = true, scope = 'CMD') {
   const user = getUsername();
-  const res = await api('POST', '/api/pchat/exec', { cmd, user, log });
+  const res = await api('POST', '/api/pchat/exec', { cmd, user, log, scope });
   cmdLog.push({ cmd, user, result: res, ts: new Date().toISOString() });
   return res;
 }
 
-async function shellBatch(cmds, log = true) {
+async function shellBatch(cmds, log = true, scope = 'CMD') {
   const user = getUsername();
-  const res = await api('POST', '/api/pchat/batch', { cmds, user, log });
+  const res = await api('POST', '/api/pchat/batch', { cmds, user, log, scope });
   for (let i = 0; i < cmds.length; i++) {
     cmdLog.push({ cmd: cmds[i], user, result: res.results[i], ts: new Date().toISOString() });
   }
@@ -269,19 +286,10 @@ async function createChannel() {
   input.value = '';
   setStatus('Creating channel...', true);
   try {
-    // Batch: navigate, ensure channels dir, create node, navigate back
-    await shellBatch([
-      '/select pchat',
-      '/mk channels channels',
-      '/select channels',
-      `/mk channel ${name}`,
-      '/up',
-      '/up',
-    ]);
-    // Fetch fresh state with new channel selected
-    const state = await fetchState(name);
-    renderFromState(state);
-    setStatus('Ready');
+    // Create channel via server — uses dedicated scope, not user CMD
+    await shellExec(`/mkchannel ${name}`, true, 'sys');
+    // Select + fetch
+    await selectChannel(name);
   } catch (e) { setStatus('Error: ' + e.message); }
 }
 
@@ -301,6 +309,9 @@ async function selectChannel(name) {
   document.getElementById('channel-label').innerHTML = '# <strong>' + esc(name) + '</strong>';
   setStatus('Loading...', true);
   try {
+    // Tell server to set up channel scope (select container)
+    await shellExec(`/select ${name}`, true, 'CMD');
+    // Fetch view data
     const state = await fetchState(name);
     renderFromState(state);
     setStatus('Ready');
@@ -322,17 +333,9 @@ async function sendMessage() {
   input.value = '';
   setStatus('Posting...', true);
   try {
-    // Batch: navigate to channel, post, navigate back — one HTTP request
-    await shellBatch([
-      '/select pchat',
-      '/select channels',
-      `/select ${activeChannelName}`,
-      `/post ${msg}`,
-      '/up',
-      '/up',
-      '/up',
-    ]);
-    // Fetch updated state — one more request
+    // Post via channel scope — server knows cwd from /select
+    await shellExec(`/post ${msg}`, true, `channel:${activeChannelName}`);
+    // Fetch updated state
     const state = await fetchState(activeChannelName);
     renderFromState(state);
     setStatus('Ready');
@@ -375,7 +378,7 @@ async function runShell() {
   const outputEl = document.getElementById('shell-output');
   outputEl.innerHTML += `<div class="sh-line"><span class="sh-cmd">$ ${esc(cmd)}</span></div>`;
   try {
-    const res = await shellExec(cmd);
+    const res = await shellExec(cmd, true, 'shell');
     const cls = res.error ? 'sh-error' : 'sh-result';
     outputEl.innerHTML += `<div class="sh-line"><span class="${cls}">${esc(JSON.stringify(res, null, 2))}</span></div>`;
   } catch (e) {
@@ -389,25 +392,85 @@ async function runShell() {
 //  FS view tab
 // ══════════════════════════════════════════════════════════
 
+let fsCwd = 'pchat';  // current FS view path
+
+function renderFsTree(node, depth = 0) {
+  const meta = node.meta || {};
+  const name = node.name || '?';
+  const type = meta.type || meta.name || '';
+  const hasChildren = (node.children || []).length > 0;
+  const icon = hasChildren ? '▸' : '·';
+  const path = node.path || '';
+  const metaStr = JSON.stringify(meta, null, 2);
+  const dataStr = node.data ? JSON.stringify(node.data, null, 2) : '';
+  const detailStr = dataStr ? metaStr + '\n─── data ───\n' + dataStr : metaStr;
+
+  let html = `<div class="fs-node">
+    <div class="fs-node-hdr" onclick="fsToggle(this)" data-path="${esc(path)}">
+      <span class="fs-icon">${icon}</span>
+      <span class="fs-name">${esc(name)}</span>
+      ${type ? `<span class="fs-type">${esc(type)}</span>` : ''}
+    </div>
+    <div class="fs-node-meta"><pre>${esc(detailStr)}</pre></div>`;
+
+  if (hasChildren) {
+    html += `<div class="fs-tree" style="display:none;">`;
+    for (const child of node.children) {
+      html += renderFsTree(child, depth + 1);
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function fsToggle(hdr) {
+  // Toggle meta
+  const meta = hdr.nextElementSibling;
+  meta.classList.toggle('open');
+  // Toggle children tree
+  const tree = meta.nextElementSibling;
+  if (tree && tree.classList.contains('fs-tree')) {
+    const show = tree.style.display === 'none';
+    tree.style.display = show ? 'block' : 'none';
+    hdr.querySelector('.fs-icon').textContent = show ? '▾' : '▸';
+  }
+}
+
+function renderFsBreadcrumb(path) {
+  const el = document.getElementById('fs-breadcrumb');
+  const parts = path.split('/');
+  let html = '';
+  let acc = '';
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) { html += '<span class="sep">/</span>'; acc += '/'; }
+    acc += parts[i];
+    const p = acc;
+    html += `<span onclick="fsNavigate('${esc(p)}')">${esc(parts[i])}</span>`;
+  }
+  el.innerHTML = html;
+}
+
+async function fsNavigate(path) {
+  fsCwd = path;
+  await renderFsView();
+}
+
 async function renderFsView() {
   const el = document.getElementById('fs-view');
+  renderFsBreadcrumb(fsCwd);
   try {
-    const res = await api('GET', '/api/pchat/state');
-    const children = res.children || [];
-    if (!children.length) {
-      el.innerHTML = '<div class="chat-empty" style="padding:12px">Empty workspace</div>';
+    const res = await shellExec(`/query ${fsCwd} --depth=3 --limit=100`, false, 'sys');
+    if (res.error) {
+      el.innerHTML = `<div class="chat-empty" style="padding:12px">${esc(res.error)}</div>`;
       return;
     }
-    el.innerHTML = children.map(c => {
-      const meta = c.meta || {};
-      return `<div class="pnode">
-        <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
-          <span class="pnode-id">${esc(c.path)}</span>
-          <span class="pnode-kind">${esc(meta.type || '?')}</span>
-        </div>
-        <div class="pnode-body"><pre>${esc(JSON.stringify(c, null, 2))}</pre></div>
-      </div>`;
-    }).join('');
+    const children = res.children || [];
+    if (!children.length) {
+      el.innerHTML = '<div class="chat-empty" style="padding:12px">Empty</div>';
+      return;
+    }
+    el.innerHTML = children.map(c => renderFsTree(c)).join('');
   } catch (e) {
     el.innerHTML = `<div class="chat-empty">${esc(e.message)}</div>`;
   }

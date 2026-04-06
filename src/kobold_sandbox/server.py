@@ -283,12 +283,21 @@ class PChatExecRequest(BaseModel):
     cmd: str
     user: str = "anon"
     log: bool = True  # set False for read-only operations (skip logging)
+    scope: str = "CMD"  # terminal scope name
 
 
 class PChatBatchRequest(BaseModel):
     cmds: list[str]
     user: str = "anon"
     log: bool = True
+    scope: str = "CMD"
+
+
+class PChatSysRequest(BaseModel):
+    """Non-user CMD: binds, triggers, auto-patches."""
+    cmd: str
+    user: str = "system"
+    scope: str = "sys"
 
 
 class PChatStateRequest(BaseModel):
@@ -4092,6 +4101,31 @@ def create_app(root: str) -> FastAPI:
     # ------------------------------------------------------------------
     import shlex
 
+    class ConsoleScope:
+        """One virtual terminal: own cwd, own log, own redo."""
+
+        def __init__(self, name: str, root: Path, redo: bool = True):
+            self.name = name
+            self.cwd = root       # current active object (result accumulator)
+            self.log: list[dict] = []   # FIFO cmd history, JSON-serializable
+            self.redo = redo
+            self.redo_stack: list[dict] = []
+
+        def record(self, cmd: str, user: str, result: dict):
+            entry = {"cmd": cmd, "user": user, "ts": utc_now(), "result": result}
+            self.log.append(entry)
+            if self.redo:
+                self.redo_stack.clear()  # new action clears redo
+
+        def to_dict(self) -> dict:
+            return {
+                "name": self.name,
+                "cwd": str(self.cwd),
+                "log_size": len(self.log),
+                "redo": self.redo,
+                "redo_size": len(self.redo_stack),
+            }
+
     class PChatWorkspace:
         """Filesystem-backed chat workspace with shell commands."""
 
@@ -4103,15 +4137,29 @@ def create_app(root: str) -> FastAPI:
             self.pchat_dir = self.root / "pchat"
             self.pchat_dir.mkdir(exist_ok=True)
             self.log_path = self.root / "log.jsonl"
-            self.cwd = self.pchat_dir
+            self.scopes: dict[str, ConsoleScope] = {}
 
             # Root _meta.json
             root_meta = self.root / "_meta.json"
             if not root_meta.exists():
                 root_meta.write_text(json.dumps({"type": "root"}, indent=2), encoding="utf-8")
 
+            # Ensure pchat has meta
+            pchat_meta = self.pchat_dir / "_meta.json"
+            if not pchat_meta.exists():
+                pchat_meta.write_text(json.dumps({"type": "pchat", "name": "pchat"}, indent=2), encoding="utf-8")
+            pchat_data = self.pchat_dir / "_data.json"
+            if not pchat_data.exists():
+                pchat_data.write_text("{}", encoding="utf-8")
+
             # Default templates
             self._init_templates()
+
+        def _dump_tree(self):
+            """Serialize full FS tree to root/tree.json."""
+            tree = self._read_tree(self.root, depth=10, limit=500)
+            tree_path = self.root / "tree.json"
+            tree_path.write_text(json.dumps(tree, indent=2, ensure_ascii=False), encoding="utf-8")
 
         def _init_templates(self):
             """Create default templates if missing."""
@@ -4129,8 +4177,15 @@ def create_app(root: str) -> FastAPI:
                 for sub in ("commands", "panels", "renders"):
                     (tpl_dir / sub).mkdir(exist_ok=True)
 
-        def exec_cmd(self, cmd_str: str, user: str = "anon", log: bool = True) -> dict:
-            """Parse and execute a shell command."""
+        def get_scope(self, name: str = "CMD") -> "ConsoleScope":
+            """Get or create a named scope. Root = root dir (virtual root node)."""
+            if name not in self.scopes:
+                redo = name == "CMD"  # only user CMD gets redo
+                self.scopes[name] = ConsoleScope(name, self.root, redo=redo)
+            return self.scopes[name]
+
+        def exec_cmd(self, cmd_str: str, user: str = "anon", log: bool = True, scope_name: str = "CMD") -> dict:
+            """Parse and execute a shell command in a named scope."""
             try:
                 parts = shlex.split(cmd_str)
             except ValueError as e:
@@ -4139,12 +4194,14 @@ def create_app(root: str) -> FastAPI:
                 return {"error": "empty command"}
             command = parts[0].lstrip("/").lower()
             args = parts[1:]
+            scope = self.get_scope(scope_name)
             handler = getattr(self, f"cmd_{command}", None)
             if not handler:
                 return {"error": f"unknown command: /{command}"}
-            result = handler(args, user)
-            # Log if enabled and not a pure-read command
-            if log and command not in ("ls", "cat"):
+            result = handler(args, user, scope)
+            # Record in scope log + global audit log
+            if log and command not in ("dir", "cat", "query", "ls"):
+                scope.record(cmd_str, user, result)
                 self._log(cmd_str, user)
             return result
 
@@ -4192,14 +4249,14 @@ def create_app(root: str) -> FastAPI:
 
         # ── Commands ──────────────────────────────────────────
 
-        def cmd_mktype(self, args: list[str], user: str) -> dict:
+        def cmd_mktype(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Create a template type."""
             if not args:
                 return {"error": "usage: /mktype <name>"}
             name = args[0]
             tpl_dir = self.templates_dir / name
             tpl_dir.mkdir(exist_ok=True)
-            for sub in ("commands", "panels", "renders"):
+            for sub in ("commands", "panels", "renders", "views"):
                 (tpl_dir / sub).mkdir(exist_ok=True)
             schema = {"fields": {}, "commands": [], "panels": [], "renders": []}
             schema_path = tpl_dir / "schema.json"
@@ -4207,14 +4264,37 @@ def create_app(root: str) -> FastAPI:
                 schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
             return {"ok": True, "path": self._rel_path(tpl_dir)}
 
-        def cmd_mk(self, args: list[str], user: str) -> dict:
+        def cmd_mkchannel(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Create a channel (convenience). /mkchannel <name>"""
+            if not args:
+                return {"error": "usage: /mkchannel <name>"}
+            name = args[0]
+            # Ensure channels container exists
+            channels_dir = self.pchat_dir / "channels"
+            channels_dir.mkdir(exist_ok=True)
+            if not (channels_dir / "_meta.json").exists():
+                self._write_meta(channels_dir, {"type": "channels", "name": "channels"})
+            # Create channel node
+            ch_dir = channels_dir / name
+            if ch_dir.exists():
+                meta = self._read_meta(ch_dir) or {}
+                return {"ok": True, "path": self._rel_path(ch_dir), "meta": meta, "existed": True}
+            ch_dir.mkdir()
+            meta = {"type": "channel", "user": user, "ts": utc_now(), "name": name}
+            self._write_meta(ch_dir, meta)
+            self._write_data(ch_dir, {})
+            # Auto-create channel scope
+            ch_scope = self.get_scope(f"channel:{name}")
+            ch_scope.cwd = ch_dir
+            return {"ok": True, "path": self._rel_path(ch_dir), "meta": meta, "scope": f"channel:{name}"}
+
+        def cmd_mk(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Create a node of given type in current scope."""
             if len(args) < 2:
                 return {"error": "usage: /mk <type> <name>"}
             node_type, name = args[0], args[1]
-            node_dir = self.cwd / name
+            node_dir = scope.cwd / name
             if node_dir.exists():
-                # Idempotent — return existing node
                 meta = self._read_meta(node_dir) or {}
                 return {"ok": True, "path": self._rel_path(node_dir), "meta": meta, "existed": True}
             node_dir.mkdir(parents=True)
@@ -4223,15 +4303,20 @@ def create_app(root: str) -> FastAPI:
             self._write_data(node_dir, {})
             return {"ok": True, "path": self._rel_path(node_dir), "meta": meta}
 
-        def cmd_select(self, args: list[str], user: str) -> dict:
-            """Navigate into a child node by name."""
+        def cmd_cd(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Navigate: cd name (down), cd .. (up)."""
             if not args:
-                return {"error": "usage: /select <name>"}
+                return {"ok": True, "path": self._rel_path(scope.cwd)}
             name = args[0]
-            target = self.cwd / name
+            if name == "..":
+                if scope.cwd == self.root:
+                    return {"error": "already at root"}
+                scope.cwd = scope.cwd.parent
+                return {"ok": True, "path": self._rel_path(scope.cwd)}
+            target = scope.cwd / name
             if not target.is_dir():
-                # Try searching children
-                for d in self.cwd.iterdir():
+                # Try searching children by meta.name
+                for d in scope.cwd.iterdir():
                     if d.is_dir() and not d.name.startswith("_"):
                         meta = self._read_meta(d)
                         if meta and meta.get("name") == name:
@@ -4239,25 +4324,61 @@ def create_app(root: str) -> FastAPI:
                             break
                 if not target.is_dir():
                     return {"error": f"not found: {name}"}
-            self.cwd = target
+            scope.cwd = target
             meta = self._read_meta(target) or {}
             return {"ok": True, "path": self._rel_path(target), "meta": meta}
 
-        def cmd_up(self, args: list[str], user: str) -> dict:
-            """Navigate up to parent."""
-            if self.cwd == self.root:
-                return {"error": "already at root"}
-            self.cwd = self.cwd.parent
-            return {"ok": True, "path": self._rel_path(self.cwd)}
+        def cmd_select(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Select a container: creates/updates a named scope with cwd = target node.
+            /select <name> — find child by name, create scope 'channel:<name>' pointing to it."""
+            if not args:
+                return {"error": "usage: /select <name>"}
+            name = args[0]
+            # Find the target node — search in channels dir first, then scope.cwd
+            channels_dir = self.pchat_dir / "channels"
+            target = None
+            if channels_dir.is_dir():
+                candidate = channels_dir / name
+                if candidate.is_dir():
+                    target = candidate
+            if target is None:
+                # Fallback: search in current scope cwd
+                candidate = scope.cwd / name
+                if candidate.is_dir():
+                    target = candidate
+            if target is None:
+                return {"error": f"not found: {name}"}
+            # Create/update the channel scope
+            scope_name = f"channel:{name}"
+            ch_scope = self.get_scope(scope_name)
+            ch_scope.cwd = target
+            meta = self._read_meta(target) or {}
+            return {"ok": True, "path": self._rel_path(target), "meta": meta, "scope": scope_name}
 
-        def cmd_ls(self, args: list[str], user: str) -> dict:
-            """List children (folders) in current scope."""
+        def cmd_up(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Alias for cd .. (backward compat)."""
+            return self.cmd_cd([".."], user, scope)
+
+        def cmd_dir(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """List children in current scope (compact)."""
+            children = []
+            for d in sorted(scope.cwd.iterdir(), key=lambda p: p.name):
+                if d.is_dir() and not d.name.startswith("_"):
+                    meta = self._read_meta(d)
+                    entry = {"name": d.name, "path": self._rel_path(d)}
+                    if meta:
+                        entry["type"] = meta.get("type", "?")
+                    children.append(entry)
+            return {"children": children, "cwd": self._rel_path(scope.cwd)}
+
+        def cmd_ls(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """List children (full, with data) in current scope."""
             sort_by = "name"
             for a in args:
                 if a.startswith("--sort="):
                     sort_by = a.split("=", 1)[1]
             children = []
-            for d in self.cwd.iterdir():
+            for d in scope.cwd.iterdir():
                 if d.is_dir() and not d.name.startswith("_"):
                     meta = self._read_meta(d)
                     data = self._read_data(d)
@@ -4271,58 +4392,61 @@ def create_app(root: str) -> FastAPI:
                 children.sort(key=lambda c: c.get("meta", {}).get("ts", ""), reverse=True)
             else:
                 children.sort(key=lambda c: c["name"])
-            return {"children": children, "cwd": self._rel_path(self.cwd)}
+            return {"children": children, "cwd": self._rel_path(scope.cwd)}
 
-        def cmd_cat(self, args: list[str], user: str) -> dict:
+        def cmd_cat(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Read a slot's content (meta + data)."""
             if not args:
-                # Cat current node
-                meta = self._read_meta(self.cwd)
-                data = self._read_data(self.cwd)
-                return {"path": self._rel_path(self.cwd), "meta": meta, "data": data}
+                meta = self._read_meta(scope.cwd)
+                data = self._read_data(scope.cwd)
+                return {"path": self._rel_path(scope.cwd), "meta": meta, "data": data}
             name = args[0]
-            target = self.cwd / name
+            target = scope.cwd / name
             if not target.is_dir():
                 return {"error": f"not found: {name}"}
             meta = self._read_meta(target)
             data = self._read_data(target)
             return {"path": self._rel_path(target), "meta": meta, "data": data}
 
-        def cmd_post(self, args: list[str], user: str) -> dict:
+        def cmd_post(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Create a message in current scope."""
             text = " ".join(args) if args else ""
-            slot_name = self._next_slot_id(self.cwd, "msg")
-            slot_dir = self.cwd / slot_name
+            slot_name = self._next_slot_id(scope.cwd, "msg")
+            slot_dir = scope.cwd / slot_name
             slot_dir.mkdir()
             meta = {"type": "message", "user": user, "ts": utc_now()}
             self._write_meta(slot_dir, meta)
             self._write_data(slot_dir, {"content": text})
             return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": {"content": text}}
 
-        def cmd_rm(self, args: list[str], user: str) -> dict:
+        def cmd_rm(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Delete a slot."""
             if not args:
                 return {"error": "usage: /rm <name>"}
             name = args[0]
-            target = self.cwd / name
+            target = scope.cwd / name
             if not target.is_dir():
                 return {"error": f"not found: {name}"}
             import shutil
             shutil.rmtree(target)
             return {"ok": True, "removed": name}
 
-        def cmd_reset(self, args: list[str], user: str) -> dict:
+        def cmd_reset(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Clear workspace — remove everything under pchat/."""
             import shutil
             if self.pchat_dir.exists():
                 shutil.rmtree(self.pchat_dir)
             self.pchat_dir.mkdir(exist_ok=True)
-            self.cwd = self.pchat_dir
+            # Reset all scopes
+            for s in self.scopes.values():
+                s.cwd = self.pchat_dir
+                s.log.clear()
+                s.redo_stack.clear()
             if self.log_path.exists():
                 self.log_path.write_text("", encoding="utf-8")
             return {"ok": True}
 
-        def cmd_query(self, args: list[str], user: str) -> dict:
+        def cmd_query(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Read node by absolute path (relative to root). No cwd mutation.
             Usage: /query <path> [--depth=1] [--limit=50]
             Returns node meta+data and children up to depth/limit."""
@@ -4364,14 +4488,15 @@ def create_app(root: str) -> FastAPI:
                 node["children"] = children
             return node
 
-        def cmd_session(self, args: list[str], user: str) -> dict:
+        def cmd_session(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Start a user session. Logs 'user joined' as a system event."""
             return {"ok": True, "user": user, "ts": utc_now(), "event": "session_start"}
 
-        def replay(self) -> int:
-            """Replay log to restore state."""
+        def replay(self, scope_name: str = "CMD") -> int:
+            """Replay log to restore state in a scope."""
             if not self.log_path.exists():
                 return 0
+            scope = self.get_scope(scope_name)
             count = 0
             for line in self.log_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
@@ -4381,14 +4506,13 @@ def create_app(root: str) -> FastAPI:
                     entry = json.loads(line)
                     cmd = entry.get("cmd", "")
                     cmd_user = entry.get("user", "anon")
-                    # Execute without re-logging
                     parts = shlex.split(cmd)
                     if not parts:
                         continue
                     command = parts[0].lstrip("/").lower()
                     handler = getattr(self, f"cmd_{command}", None)
                     if handler:
-                        handler(parts[1:], cmd_user)
+                        handler(parts[1:], cmd_user, scope)
                         count += 1
                 except Exception:
                     continue
@@ -4399,14 +4523,19 @@ def create_app(root: str) -> FastAPI:
 
     @app.post("/api/pchat/exec")
     def pchat_exec(req: PChatExecRequest) -> dict:
-        return workspace.exec_cmd(req.cmd, req.user, log=req.log)
+        return workspace.exec_cmd(req.cmd, req.user, log=req.log, scope_name=req.scope)
+
+    @app.post("/api/pchat/sys")
+    def pchat_sys(req: PChatSysRequest) -> dict:
+        """Non-user CMD: binds, triggers, auto-patches. Separate from user input."""
+        return workspace.exec_cmd(req.cmd, req.user, log=True, scope_name=req.scope)
 
     @app.post("/api/pchat/batch")
     def pchat_batch(req: PChatBatchRequest) -> dict:
         """Execute multiple commands in one HTTP request. Returns list of results."""
         results = []
         for cmd in req.cmds:
-            results.append(workspace.exec_cmd(cmd, req.user, log=req.log))
+            results.append(workspace.exec_cmd(cmd, req.user, log=req.log, scope_name=req.scope))
         return {"results": results}
 
     @app.post("/api/pchat/view")
