@@ -280,8 +280,9 @@ class ChatSessionCreateRequest(BaseModel):
 
 
 class PChatExecRequest(BaseModel):
-    asm: str
-    state: dict[str, Any] = {}
+    cmd: str
+    user: str = "anon"
+    log: bool = True  # set False for read-only operations (skip logging)
 
 
 class BehaviorJsonUpdateRequest(BaseModel):
@@ -4065,151 +4066,277 @@ def create_app(root: str) -> FastAPI:
         return entry
 
     # ------------------------------------------------------------------
-    # Pipeline Chat — PNode-based
+    # Pipeline Chat — FS-first workspace with shell commands
     # ------------------------------------------------------------------
+    import shlex
 
-    pchat_store = PNodeStore()
-    _pchat_log_path = Path(root) / "pchat_log.jsonl"
+    class PChatWorkspace:
+        """Filesystem-backed chat workspace with shell commands."""
 
-    def _pchat_log_append(nodes: list[dict], asm: str) -> None:
-        """Append created nodes to the persistent log file."""
-        if not nodes:
-            return
-        line = json.dumps({"nodes": nodes, "asm": asm}, ensure_ascii=False, default=str)
-        with open(_pchat_log_path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        def __init__(self, fs_root: Path):
+            self.root = fs_root / "root"
+            self.root.mkdir(exist_ok=True)
+            self.templates_dir = self.root / "templates"
+            self.templates_dir.mkdir(exist_ok=True)
+            self.pchat_dir = self.root / "pchat"
+            self.pchat_dir.mkdir(exist_ok=True)
+            self.log_path = self.root / "log.jsonl"
+            self.cwd = self.pchat_dir
 
-    def _pchat_replay() -> int:
-        """Replay log file to restore PNodeStore state. Returns node count."""
-        if not _pchat_log_path.exists():
-            return 0
-        count = 0
-        for line in _pchat_log_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
+            # Root _meta.json
+            root_meta = self.root / "_meta.json"
+            if not root_meta.exists():
+                root_meta.write_text(json.dumps({"type": "root"}, indent=2), encoding="utf-8")
+
+            # Default templates
+            self._init_templates()
+
+        def _init_templates(self):
+            """Create default templates if missing."""
+            for tpl_name, schema in [
+                ("channels", {"fields": {}, "commands": ["add_channel"], "panels": [], "renders": []}),
+                ("channel", {"fields": {"name": "str"}, "commands": ["post", "select", "rename"], "panels": ["panel_sidebar"], "renders": []}),
+                ("message", {"fields": {"content": "str"}, "commands": ["edit"], "panels": ["panel_compact"], "renders": []}),
+            ]:
+                tpl_dir = self.templates_dir / tpl_name
+                tpl_dir.mkdir(exist_ok=True)
+                schema_path = tpl_dir / "schema.json"
+                if not schema_path.exists():
+                    schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+                # Create subdirs
+                for sub in ("commands", "panels", "renders"):
+                    (tpl_dir / sub).mkdir(exist_ok=True)
+
+        def exec_cmd(self, cmd_str: str, user: str = "anon", log: bool = True) -> dict:
+            """Parse and execute a shell command."""
             try:
-                entry = json.loads(line)
-                for nd in entry.get("nodes", []):
-                    pchat_store.put(PNode(
-                        id=nd["id"],
-                        parent_id=nd.get("parent_id"),
-                        data=nd.get("data"),
-                        ts=nd.get("ts", utc_now()),
-                    ))
-                    count += 1
-            except Exception:
-                continue
-        return count
+                parts = shlex.split(cmd_str)
+            except ValueError as e:
+                return {"error": f"parse error: {e}"}
+            if not parts:
+                return {"error": "empty command"}
+            command = parts[0].lstrip("/").lower()
+            args = parts[1:]
+            handler = getattr(self, f"cmd_{command}", None)
+            if not handler:
+                return {"error": f"unknown command: /{command}"}
+            result = handler(args, user)
+            # Log if enabled and not a pure-read command
+            if log and command not in ("ls", "cat"):
+                self._log(cmd_str, user)
+            return result
 
-    # Replay on startup
-    _replayed = _pchat_replay()
+        def _log(self, cmd: str, user: str):
+            line = json.dumps({"cmd": cmd, "ts": utc_now(), "user": user}, ensure_ascii=False, default=str)
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
 
-    @app.get("/api/pchat/nodes")
-    def pchat_nodes(parent_id: str | None = None, kind: str | None = None) -> dict:
-        if parent_id:
-            nodes = pchat_store.children(parent_id)
-        elif kind:
-            nodes = pchat_store.query_data("kind", kind)
-        else:
-            nodes = pchat_store.all()
-        return {"nodes": [pchat_store.to_dict(n) for n in nodes]}
+        def _read_meta(self, path: Path) -> dict | None:
+            meta_path = path / "_meta.json"
+            if meta_path.exists():
+                return json.loads(meta_path.read_text(encoding="utf-8"))
+            return None
 
-    @app.get("/api/pchat/node/{node_id}")
-    def pchat_get_node(node_id: str) -> dict:
-        node = pchat_store.get(node_id)
-        if not node:
-            raise HTTPException(status_code=404, detail="node not found")
-        return {"node": pchat_store.to_dict(node), "children": [pchat_store.to_dict(c) for c in pchat_store.children(node_id)]}
+        def _write_meta(self, path: Path, meta: dict):
+            (path / "_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
-    @app.delete("/api/pchat/node/{node_id}")
-    def pchat_delete_node(node_id: str) -> dict:
-        for child in pchat_store.children(node_id):
-            pchat_store.remove(child.id)
-        pchat_store.remove(node_id)
-        return {"ok": True}
+        def _read_data(self, path: Path) -> dict | None:
+            data_path = path / "_data.json"
+            if data_path.exists():
+                return json.loads(data_path.read_text(encoding="utf-8"))
+            return None
 
-    @app.post("/api/pchat/reset")
-    def pchat_reset() -> dict:
-        pchat_store.clear()
-        if _pchat_log_path.exists():
-            _pchat_log_path.write_text("", encoding="utf-8")
-        return {"ok": True}
+        def _write_data(self, path: Path, data: dict):
+            (path / "_data.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-    # ------------------------------------------------------------------
-    # Pipeline Chat — Assembly exec endpoint
-    # ------------------------------------------------------------------
+        def _next_slot_id(self, parent: Path, type_prefix: str) -> str:
+            """Find next sequential slot: msg_1, msg_2, ..."""
+            existing = []
+            for d in parent.iterdir():
+                if d.is_dir() and d.name.startswith(type_prefix + "_"):
+                    try:
+                        num = int(d.name.split("_", 1)[1])
+                        existing.append(num)
+                    except (ValueError, IndexError):
+                        pass
+            return f"{type_prefix}_{max(existing, default=0) + 1}"
 
-    from .assembly_dsl import asm_function, execute as asm_execute
-    from .workflow_dsl import WorkflowContext
+        def _rel_path(self, path: Path) -> str:
+            """Path relative to root."""
+            try:
+                return str(path.relative_to(self.root)).replace("\\", "/")
+            except ValueError:
+                return str(path)
 
-    @asm_function("send_message", params=["channel_id", "text", "user"], outputs=["result"])
-    def _asm_send_message(ctx, args, flags):
-        store = ctx.vars.get("_store")
-        if not store:
-            return {"ok": False, "error": "no store in context"}
-        channel_id = args[0] if args else None
-        text = args[1] if len(args) > 1 else ""
-        user = args[2] if len(args) > 2 else "anon"
-        node_id = f"n-{uuid.uuid4().hex[:8]}"
-        ts = utc_now()
-        node = PNode(id=node_id, parent_id=channel_id, data={
-            "kind": "message",
-            "content": text,
-            "user": user,
-        }, ts=ts)
-        store.put(node)
-        return {"ok": True, "node": store.to_dict(node)}
+        # ── Commands ──────────────────────────────────────────
 
-    @asm_function("create_channel", params=["name"], outputs=["result"])
-    def _asm_create_channel(ctx, args, flags):
-        store = ctx.vars.get("_store")
-        if not store:
-            return {"ok": False, "error": "no store in context"}
-        name = args[0] if args else "unnamed"
-        node_id = f"n-{uuid.uuid4().hex[:8]}"
-        node = PNode(id=node_id, data={"kind": "channel", "name": name})
-        store.put(node)
-        return {"ok": True, "node": store.to_dict(node)}
+        def cmd_mktype(self, args: list[str], user: str) -> dict:
+            """Create a template type."""
+            if not args:
+                return {"error": "usage: /mktype <name>"}
+            name = args[0]
+            tpl_dir = self.templates_dir / name
+            tpl_dir.mkdir(exist_ok=True)
+            for sub in ("commands", "panels", "renders"):
+                (tpl_dir / sub).mkdir(exist_ok=True)
+            schema = {"fields": {}, "commands": [], "panels": [], "renders": []}
+            schema_path = tpl_dir / "schema.json"
+            if not schema_path.exists():
+                schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+            return {"ok": True, "path": self._rel_path(tpl_dir)}
+
+        def cmd_mk(self, args: list[str], user: str) -> dict:
+            """Create a node of given type in current scope."""
+            if len(args) < 2:
+                return {"error": "usage: /mk <type> <name>"}
+            node_type, name = args[0], args[1]
+            node_dir = self.cwd / name
+            if node_dir.exists():
+                # Idempotent — return existing node
+                meta = self._read_meta(node_dir) or {}
+                return {"ok": True, "path": self._rel_path(node_dir), "meta": meta, "existed": True}
+            node_dir.mkdir(parents=True)
+            meta = {"type": node_type, "user": user, "ts": utc_now(), "name": name}
+            self._write_meta(node_dir, meta)
+            self._write_data(node_dir, {})
+            return {"ok": True, "path": self._rel_path(node_dir), "meta": meta}
+
+        def cmd_select(self, args: list[str], user: str) -> dict:
+            """Navigate into a child node by name."""
+            if not args:
+                return {"error": "usage: /select <name>"}
+            name = args[0]
+            target = self.cwd / name
+            if not target.is_dir():
+                # Try searching children
+                for d in self.cwd.iterdir():
+                    if d.is_dir() and not d.name.startswith("_"):
+                        meta = self._read_meta(d)
+                        if meta and meta.get("name") == name:
+                            target = d
+                            break
+                if not target.is_dir():
+                    return {"error": f"not found: {name}"}
+            self.cwd = target
+            meta = self._read_meta(target) or {}
+            return {"ok": True, "path": self._rel_path(target), "meta": meta}
+
+        def cmd_up(self, args: list[str], user: str) -> dict:
+            """Navigate up to parent."""
+            if self.cwd == self.root:
+                return {"error": "already at root"}
+            self.cwd = self.cwd.parent
+            return {"ok": True, "path": self._rel_path(self.cwd)}
+
+        def cmd_ls(self, args: list[str], user: str) -> dict:
+            """List children (folders) in current scope."""
+            sort_by = "name"
+            for a in args:
+                if a.startswith("--sort="):
+                    sort_by = a.split("=", 1)[1]
+            children = []
+            for d in self.cwd.iterdir():
+                if d.is_dir() and not d.name.startswith("_"):
+                    meta = self._read_meta(d)
+                    data = self._read_data(d)
+                    entry = {"path": self._rel_path(d), "name": d.name}
+                    if meta:
+                        entry["meta"] = meta
+                    if data:
+                        entry["data"] = data
+                    children.append(entry)
+            if sort_by == "date":
+                children.sort(key=lambda c: c.get("meta", {}).get("ts", ""), reverse=True)
+            else:
+                children.sort(key=lambda c: c["name"])
+            return {"children": children, "cwd": self._rel_path(self.cwd)}
+
+        def cmd_cat(self, args: list[str], user: str) -> dict:
+            """Read a slot's content (meta + data)."""
+            if not args:
+                # Cat current node
+                meta = self._read_meta(self.cwd)
+                data = self._read_data(self.cwd)
+                return {"path": self._rel_path(self.cwd), "meta": meta, "data": data}
+            name = args[0]
+            target = self.cwd / name
+            if not target.is_dir():
+                return {"error": f"not found: {name}"}
+            meta = self._read_meta(target)
+            data = self._read_data(target)
+            return {"path": self._rel_path(target), "meta": meta, "data": data}
+
+        def cmd_post(self, args: list[str], user: str) -> dict:
+            """Create a message in current scope."""
+            text = " ".join(args) if args else ""
+            slot_name = self._next_slot_id(self.cwd, "msg")
+            slot_dir = self.cwd / slot_name
+            slot_dir.mkdir()
+            meta = {"type": "message", "user": user, "ts": utc_now()}
+            self._write_meta(slot_dir, meta)
+            self._write_data(slot_dir, {"content": text})
+            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": {"content": text}}
+
+        def cmd_rm(self, args: list[str], user: str) -> dict:
+            """Delete a slot."""
+            if not args:
+                return {"error": "usage: /rm <name>"}
+            name = args[0]
+            target = self.cwd / name
+            if not target.is_dir():
+                return {"error": f"not found: {name}"}
+            import shutil
+            shutil.rmtree(target)
+            return {"ok": True, "removed": name}
+
+        def cmd_reset(self, args: list[str], user: str) -> dict:
+            """Clear workspace — remove everything under pchat/."""
+            import shutil
+            if self.pchat_dir.exists():
+                shutil.rmtree(self.pchat_dir)
+            self.pchat_dir.mkdir(exist_ok=True)
+            self.cwd = self.pchat_dir
+            if self.log_path.exists():
+                self.log_path.write_text("", encoding="utf-8")
+            return {"ok": True}
+
+        def replay(self) -> int:
+            """Replay log to restore state."""
+            if not self.log_path.exists():
+                return 0
+            count = 0
+            for line in self.log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    cmd = entry.get("cmd", "")
+                    cmd_user = entry.get("user", "anon")
+                    # Execute without re-logging
+                    parts = shlex.split(cmd)
+                    if not parts:
+                        continue
+                    command = parts[0].lstrip("/").lower()
+                    handler = getattr(self, f"cmd_{command}", None)
+                    if handler:
+                        handler(parts[1:], cmd_user)
+                        count += 1
+                except Exception:
+                    continue
+            return count
+
+    workspace = PChatWorkspace(Path(root))
+    # No replay needed — FS IS the state. Log is for audit/migration only.
 
     @app.post("/api/pchat/exec")
     def pchat_exec(req: PChatExecRequest) -> dict:
-        # Snapshot existing IDs to detect new nodes
-        ids_before = set(n.id for n in pchat_store.all())
+        return workspace.exec_cmd(req.cmd, req.user, log=req.log)
 
-        ctx = WorkflowContext(workers={}, settings={})
-        ctx.vars = {**req.state, "_store": pchat_store}
-        try:
-            result = asm_execute(req.asm, ctx)
-        finally:
-            ctx.close()
-
-        # Collect new nodes (exclude log entries)
-        new_nodes = [
-            pchat_store.to_dict(n) for n in pchat_store.all()
-            if n.id not in ids_before and n.data.get("kind") != "log"
-        ]
-
-        # Persist to log file
-        _pchat_log_append(new_nodes, req.asm)
-
-        # Log entry (in-memory only, not persisted)
-        log_id = f"log-{uuid.uuid4().hex[:8]}"
-        clean_state = {k: v for k, v in result.state.items() if not k.startswith("_")}
-        pchat_store.put(PNode(id=log_id, data={
-            "kind": "log",
-            "asm": req.asm,
-            "input_state": req.state,
-            "output_state": clean_state,
-            "error": result.error,
-        }))
-
-        return {
-            "state": clean_state,
-            "log": result.log,
-            "log_id": log_id,
-            "error": result.error,
-        }
+    @app.get("/api/pchat/state")
+    def pchat_state() -> dict:
+        """Return current workspace state — cwd, channels, etc."""
+        return workspace.cmd_ls([], "system")
 
     @app.get("/api/imagegen/samplers")
     def get_image_samplers() -> dict:

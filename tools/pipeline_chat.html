@@ -46,9 +46,8 @@ textarea { resize:vertical; }
 /* Chat */
 .chat-thread { flex:1; overflow-y:auto; padding:8px 12px; }
 .chat-msg { margin:6px 0; padding:8px 12px; border-radius:6px; font-size:11px; line-height:1.5; white-space:pre-wrap; word-break:break-word; background:var(--surface); border:1px solid var(--border); }
+.chat-msg.self { border-color:var(--accent); border-left:3px solid var(--accent); }
 .chat-msg .msg-hdr { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
-.chat-msg .msg-id { font-size:9px; color:var(--accent); font-weight:600; }
-.chat-msg .msg-kind { font-size:9px; padding:0 3px; border-radius:2px; background:var(--surface2); color:var(--text-dim); }
 .chat-msg .msg-ts { font-size:9px; color:var(--text-dim); margin-left:auto; }
 .chat-msg .msg-user { color:var(--green); font-weight:600; margin-right:4px; }
 .chat-msg .msg-content { }
@@ -59,7 +58,7 @@ textarea { resize:vertical; }
 .channel-label { padding:4px 12px; font-size:11px; color:var(--text-dim); border-bottom:1px solid var(--border); flex-shrink:0; }
 .channel-label strong { color:var(--accent); }
 
-/* Nodes tab */
+/* Nodes/FS tab */
 .data-view { flex:1; overflow-y:auto; padding:12px; min-height:0; }
 .data-view pre { white-space:pre-wrap; word-break:break-word; font-size:11px; line-height:1.5; color:var(--text); }
 .data-view .empty { color:var(--text-dim); font-style:italic; }
@@ -70,29 +69,19 @@ textarea { resize:vertical; }
 .pnode-hdr:hover { background:var(--surface2); }
 .pnode-id { color:var(--accent); font-weight:600; font-size:10px; }
 .pnode-kind { font-size:9px; padding:1px 4px; border-radius:3px; background:var(--surface2); color:var(--text-dim); }
-.pnode-preview { font-size:11px; color:var(--text); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pnode-ts { font-size:9px; color:var(--text-dim); margin-left:auto; }
 .pnode-body { display:none; padding:4px 8px 8px; border-top:1px solid var(--border); }
 .pnode-body.open { display:block; }
 .pnode-body pre { white-space:pre-wrap; word-break:break-word; font-size:10px; line-height:1.4; max-height:300px; overflow-y:auto; }
 
-/* Views editor tab */
-.views-layout { flex:1; display:flex; min-height:0; }
-.views-sidebar { width:160px; border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
-.views-sidebar .sidebar-body { flex:1; overflow-y:auto; padding:4px; }
-.view-item { padding:4px 8px; border-radius:3px; cursor:pointer; font-size:11px; }
-.view-item:hover { background:var(--surface2); }
-.view-item.active { background:var(--accent); color:#000; }
-.views-panels { flex:1; display:flex; flex-direction:column; min-height:0; }
-.view-panel { flex:1; display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--border); }
-.view-panel:last-child { border-right:none; }
-.view-panel-hdr { padding:3px 8px; font-size:10px; font-weight:600; color:var(--text-dim); border-bottom:1px solid var(--border); background:var(--surface2); flex-shrink:0; }
-.view-panel-body { flex:1; overflow-y:auto; padding:4px; min-height:0; }
-.view-panel-body textarea { width:100%; height:100%; border:none; background:transparent; color:var(--text); font:11px/1.4 'Cascadia Code','Fira Code',monospace; resize:none; outline:none; }
-.view-panel-body pre { white-space:pre-wrap; word-break:break-word; font-size:10px; line-height:1.4; }
-.view-panel-body .preview-frame { padding:8px; }
-.view-sample-bar { display:flex; gap:4px; padding:3px 8px; border-bottom:1px solid var(--border); flex-shrink:0; align-items:center; font-size:10px; color:var(--text-dim); }
-.view-sample-bar select { font-size:10px; padding:1px 3px; }
+/* Shell tab */
+.shell-layout { flex:1; display:flex; flex-direction:column; min-height:0; }
+.shell-output { flex:1; overflow-y:auto; padding:8px 12px; font-size:11px; }
+.shell-output .sh-line { margin:2px 0; }
+.shell-output .sh-cmd { color:var(--green); }
+.shell-output .sh-result { color:var(--text-dim); white-space:pre-wrap; }
+.shell-output .sh-error { color:var(--red); }
+.shell-input-bar { display:flex; gap:4px; padding:6px 12px; border-top:1px solid var(--border); flex-shrink:0; }
+.shell-input-bar input { flex:1; font-size:11px; }
 
 /* New channel input */
 .new-ch { display:flex; gap:2px; padding:4px; border-top:1px solid var(--border); flex-shrink:0; }
@@ -114,8 +103,8 @@ textarea { resize:vertical; }
 
 <div class="page-tabs">
   <button class="page-tab active" data-page="chat">Chat</button>
-  <button class="page-tab" data-page="views">Views</button>
-  <button class="page-tab" data-page="nodes">Nodes</button>
+  <button class="page-tab" data-page="shell">Shell</button>
+  <button class="page-tab" data-page="fs">FS</button>
   <button class="page-tab" data-page="raw">Raw</button>
 </div>
 
@@ -143,202 +132,44 @@ textarea { resize:vertical; }
   </div>
 </div>
 
-<!-- Views Tab -->
-<div class="page" id="page-views">
-  <div class="views-layout">
-    <div class="views-sidebar">
-      <div class="sidebar-hdr">Presets</div>
-      <div class="sidebar-body" id="view-preset-list"></div>
-      <div class="sidebar-hdr" style="border-top:1px solid var(--border)">Sample</div>
-      <div style="padding:4px"><select id="view-sample-select" onchange="liveUpdateView()" style="width:100%;font-size:10px;padding:2px 4px;"></select></div>
-    </div>
-    <div class="views-panels" id="views-panels">
-      <div class="view-panel" style="flex:0 0 auto;max-height:30%;">
-        <div class="view-panel-hdr">Assembly</div>
-        <div class="view-panel-body"><textarea id="view-asm" spellcheck="false" oninput="liveUpdateView()"></textarea></div>
-      </div>
-      <div style="flex:1;display:flex;min-height:0;">
-        <div class="view-panel" style="flex:1;">
-          <div class="view-panel-hdr">Raw Node (before)</div>
-          <div class="view-panel-body"><pre id="view-raw"></pre></div>
-        </div>
-        <div class="view-panel" style="flex:1;">
-          <div class="view-panel-hdr">After Assembly</div>
-          <div class="view-panel-body"><pre id="view-json"></pre></div>
-        </div>
-      </div>
+<!-- Shell Tab -->
+<div class="page" id="page-shell">
+  <div class="shell-layout">
+    <div class="shell-output" id="shell-output"></div>
+    <div class="shell-input-bar">
+      <span style="color:var(--green)">$</span>
+      <input id="shell-input" placeholder="/ls, /mk channel lobby, /select lobby, /post hello ..." onkeydown="if(event.key==='Enter')runShell()">
+      <button class="btn sm" onclick="runShell()">Run</button>
     </div>
   </div>
 </div>
 
-<!-- Nodes Tab -->
-<div class="page" id="page-nodes">
-  <div class="node-list" id="node-list"></div>
+<!-- FS Tab -->
+<div class="page" id="page-fs">
+  <div class="node-list" id="fs-view"></div>
 </div>
 
 <!-- Raw Tab -->
 <div class="page" id="page-raw">
   <div class="data-view">
-    <pre id="raw-view" class="empty">Post a message to see raw node data</pre>
+    <pre id="raw-view" class="empty">Send a command to see raw responses</pre>
   </div>
 </div>
 
 <div class="status-bar" id="status-bar">Ready</div>
 
 <script>
-'use strict';
-
-// ══════════════════════════════════════════════════════════
-//  jpath — dot-path traversal for any JSON
-// ══════════════════════════════════════════════════════════
-function jpath(data, path, def_val) {
-  if (!path) return data;
-  let obj = data;
-  for (const p of path.split('.')) {
-    if (obj == null) return def_val;
-    if (Array.isArray(obj) && /^\d+$/.test(p)) obj = obj[+p];
-    else if (typeof obj === 'object') obj = obj[p];
-    else return def_val;
-  }
-  return obj !== undefined ? obj : def_val;
-}
+// 'use strict' removed — functions must be global for onclick handlers
 
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ══════════════════════════════════════════════════════════
-//  Assembly VM — minimal client-side DSL interpreter
+//  State
 // ══════════════════════════════════════════════════════════
 
-function asmTokenize(line) {
-  const tokens = []; let i = 0; const s = line.trim();
-  while (i < s.length) {
-    if (s[i] === ',' || s[i] === ' ' || s[i] === '\t') { i++; continue; }
-    if (s[i] === '"' || s[i] === "'") {
-      const q = s[i]; let j = i + 1;
-      while (j < s.length && s[j] !== q) { if (s[j] === '\\') j++; j++; }
-      tokens.push(s.slice(i + 1, j)); i = j + 1; continue;
-    }
-    let j = i;
-    while (j < s.length && s[j] !== ',' && s[j] !== ' ' && s[j] !== '\t') j++;
-    tokens.push(s.slice(i, j)); i = j;
-  }
-  return tokens;
-}
-
-function asmResolve(token, state) {
-  if (token == null) return undefined;
-  if (token === 'true') return true;
-  if (token === 'false') return false;
-  if (token === 'null') return null;
-  if (token === '[]') return [];
-  if (token === '{}') return ({});
-  if (/^[+-]?\d+(\.\d+)?$/.test(token)) return +token;
-  if (token.startsWith('@')) return jpath(state, token.slice(1));
-  if (token.startsWith('+')) return +token;
-  return token;
-}
-
-function asmStore(state, ref, value) {
-  if (!ref || !ref.startsWith('@')) return;
-  const path = ref.slice(1);
-  const parts = path.split('.');
-  let obj = state;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const p = parts[i];
-    if (obj[p] == null) obj[p] = {};
-    obj = obj[p];
-  }
-  obj[parts[parts.length - 1]] = value;
-}
-
-const _builtins = {
-  default(a) { return a[0] != null && a[0] !== '' ? a[0] : a[1]; },
-  json(a) { try { return JSON.stringify(a[0], null, 2); } catch (_) { return String(a[0]); } },
-  fmt(a) { let s = String(a[0] || ''); for (let i = 1; i < a.length; i++) s = s.replace(`{${i-1}}`, String(a[i] ?? '')); return s; },
-  concat(a) { return String(a[0] ?? '') + String(a[1] ?? ''); },
-  len(a) { return Array.isArray(a[0]) ? a[0].length : 0; },
-  keys(a) { return a[0] != null && typeof a[0] === 'object' ? Object.keys(a[0]) : []; },
-  slice(a) { return Array.isArray(a[0]) ? a[0].slice(+a[1]||0, a[2]!=null?+a[2]:undefined) : String(a[0]||'').slice(+a[1]||0, a[2]!=null?+a[2]:undefined); },
-  get(a) { return a[0] != null ? a[0][a[1]] : undefined; },
-  // generic array search
-  find(a) { return Array.isArray(a[0]) ? a[0].find(s => s && s[a[1]] === a[2]) || null : null; },
-  filter(a) { return Array.isArray(a[0]) ? a[0].filter(s => s && s[a[1]] === a[2]) : []; },
-};
-
-function execAsm(code, extraState) {
-  if (!code || !code.trim()) return {};
-  const state = { ...extraState };
-  const lines = code.split('\n');
-  let ip = 0; const max = lines.length * 20; let steps = 0;
-  while (ip < lines.length && steps < max) {
-    steps++;
-    const line = lines[ip].trim();
-    if (!line || line.startsWith(';') || line.startsWith('#')) { ip++; continue; }
-    const tokens = asmTokenize(line);
-    if (!tokens.length) { ip++; continue; }
-    const op = tokens[0];
-    if (op === 'MOV') {
-      asmStore(state, tokens[1], asmResolve(tokens[2], state));
-    } else if (op === 'CALL') {
-      const dst = tokens[1], fn = tokens[2], args = tokens.slice(3).map(t => asmResolve(t, state));
-      const b = _builtins[fn];
-      if (b) { const r = b(args); if (dst !== '_') asmStore(state, dst, r); }
-    }
-    ip++;
-  }
-  return state;
-}
-
-// ══════════════════════════════════════════════════════════
-//  View Presets — assembly snippet → json → html
-// ══════════════════════════════════════════════════════════
-
-const viewPresets = {
-  'message/compact': {
-    asm: [
-      'CALL @content, default, @data.content, ""',
-      'CALL @user, default, @data.user, "anon"',
-    ].join('\n'),
-    render(j) {
-      const ts = j.ts ? new Date(j.ts).toLocaleTimeString() : '';
-      return `<div class="chat-msg">
-        <div class="msg-hdr"><span class="msg-user">${esc(j.user)}</span><span class="msg-ts">${esc(ts)}</span></div>
-        <div class="msg-content">${esc(j.content)}</div>
-      </div>`;
-    },
-  },
-  'channel/item': {
-    asm: 'CALL @name, default, @data.name, @id',
-    render(j) {
-      return `<span class="ch-hash">#</span> ${esc(j.name)}`;
-    },
-  },
-};
-
-function renderNode(node, presetName) {
-  const preset = viewPresets[presetName];
-  if (!preset) return `<div class="pnode"><pre>${esc(JSON.stringify(node, null, 2))}</pre></div>`;
-  // Node fields passed directly: @id, @parent_id, @data.content, @ts — matches raw JSON
-  const state = execAsm(preset.asm, { ...node });
-  const json = {};
-  for (const [k, v] of Object.entries(state)) {
-    if (!k.startsWith('_') && k !== 'each_idx') json[k] = v;
-  }
-  return preset.render(json);
-}
-
-function pickPreset(node, context) {
-  const kind = jpath(node.data, 'kind', 'generic');
-  if (context === 'chat') return kind === 'channel' ? 'channel/item' : 'message/compact';
-  return null; // Nodes tab uses raw render
-}
-
-// ══════════════════════════════════════════════════════════
-//  State + API
-// ══════════════════════════════════════════════════════════
-
-let allNodes = [];
-let activeChannel = null;
+let activeChannelPath = null;  // e.g. "pchat/channels/lobby"
+let activeChannelName = null;
+let cmdLog = [];  // shell history for Raw tab
 
 document.querySelectorAll('.page-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -365,13 +196,14 @@ async function api(method, path, body) {
   return data;
 }
 
-async function execServerAsm(asm, state = {}) {
-  const res = await api('POST', '/api/pchat/exec', { asm, state });
-  if (res.error) console.error('exec error:', res.error);
-  // Add log node to allNodes so Nodes tab sees it
-  if (res.log_id) {
-    allNodes.push({ id: res.log_id, parent_id: null, data: { kind: 'log', asm, input_state: state, output_state: res.state, error: res.error }, ts: new Date().toISOString() });
-  }
+// ══════════════════════════════════════════════════════════
+//  Shell exec — all commands go through /api/pchat/exec
+// ══════════════════════════════════════════════════════════
+
+async function shellExec(cmd, log = true) {
+  const user = getUsername();
+  const res = await api('POST', '/api/pchat/exec', { cmd, user, log });
+  cmdLog.push({ cmd, user, result: res, ts: new Date().toISOString() });
   return res;
 }
 
@@ -386,33 +218,64 @@ async function createChannel() {
   input.value = '';
   setStatus('Creating channel...', true);
   try {
-    const res = await execServerAsm('CALL @result, create_channel, @name', { name });
-    const node = res.state?.result?.node;
-    if (node) { allNodes.push(node); selectChannel(node.id); renderAll(); }
-    setStatus('Ready — ' + allNodes.length + ' nodes');
+    // Navigate to pchat/channels first, then create
+    await shellExec('/select pchat');
+    const mkRes = await shellExec('/select channels');
+    if (mkRes.error) {
+      // channels dir might not exist, create it
+      await shellExec('/mk channels channels');
+      await shellExec('/select channels');
+    }
+    await shellExec(`/mk channel ${name}`);
+    // Go back to pchat for consistent state
+    await shellExec('/up');
+    await shellExec('/up');
+    await loadChannels();
+    selectChannel(name);
+    setStatus('Ready');
   } catch (e) { setStatus('Error: ' + e.message); }
 }
 
-function selectChannel(id) {
-  activeChannel = id;
-  renderChannelList();
-  renderChat();
-  const ch = allNodes.find(n => n.id === id);
-  const name = ch ? jpath(ch.data, 'name', id) : id;
-  document.getElementById('channel-label').innerHTML = '# <strong>' + esc(name) + '</strong>';
+async function loadChannels() {
+  try {
+    // Navigate to channels dir and list (read-only, no log)
+    await shellExec('/select pchat', false);
+    const selRes = await shellExec('/select channels', false);
+    if (selRes.error) {
+      await shellExec('/up', false);
+      renderChannelList([]);
+      return;
+    }
+    const ls = await shellExec('/ls', false);
+    await shellExec('/up', false);
+    await shellExec('/up', false);
+    renderChannelList(ls.children || []);
+  } catch (e) {
+    renderChannelList([]);
+  }
 }
 
-function renderChannelList() {
+function renderChannelList(channels) {
   const el = document.getElementById('channel-list');
-  const channels = allNodes.filter(n => jpath(n.data, 'kind') === 'channel');
-  el.innerHTML = channels.map(n => {
-    const active = n.id === activeChannel ? ' active' : '';
-    return `<div class="channel-item${active}" onclick="selectChannel('${n.id}')">${renderNode(n, 'channel/item')}</div>`;
+  if (!channels.length) { el.innerHTML = '<div class="chat-empty" style="font-size:10px">No channels</div>'; return; }
+  el.innerHTML = channels.map(ch => {
+    const name = ch.meta?.name || ch.name;
+    const active = name === activeChannelName ? ' active' : '';
+    return `<div class="channel-item${active}" onclick="selectChannel('${esc(name)}')"><span class="ch-hash">#</span> ${esc(name)}</div>`;
   }).join('');
 }
 
+async function selectChannel(name) {
+  activeChannelName = name;
+  activeChannelPath = `pchat/channels/${name}`;
+  document.getElementById('channel-label').innerHTML = '# <strong>' + esc(name) + '</strong>';
+  await loadMessages();
+  // Re-render channel list to highlight active
+  await loadChannels();
+}
+
 // ══════════════════════════════════════════════════════════
-//  Messages + Rendering
+//  Messages
 // ══════════════════════════════════════════════════════════
 
 function getUsername() {
@@ -423,168 +286,159 @@ async function sendMessage() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
   if (!msg) return;
-  if (!activeChannel) {
-    const res = await execServerAsm('CALL @result, create_channel, @name', { name: 'general' });
-    const ch = res.state?.result?.node;
-    if (ch) { allNodes.push(ch); selectChannel(ch.id); }
+  if (!activeChannelName) {
+    // Auto-create general channel
+    document.getElementById('new-ch-input').value = 'general';
+    await createChannel();
   }
   input.value = '';
   setStatus('Posting...', true);
   try {
-    const user = getUsername();
-    const res = await execServerAsm(
-      'CALL @result, send_message, @channel_id, @text, @user',
-      { channel_id: activeChannel, text: msg, user }
-    );
-    const node = res.state?.result?.node;
-    if (node) { allNodes.push(node); renderAll(); }
-    setStatus('Ready — ' + allNodes.length + ' nodes');
+    // Navigate to channel, post, come back
+    await shellExec('/select pchat');
+    await shellExec('/select channels');
+    await shellExec(`/select ${activeChannelName}`);
+    await shellExec(`/post ${msg}`);
+    // Get updated message list
+    const ls = await shellExec('/ls --sort=date');
+    await shellExec('/up');
+    await shellExec('/up');
+    await shellExec('/up');
+    renderMessages(ls.children || []);
+    setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
   }
 }
 
-function renderChat() {
+async function loadMessages() {
+  if (!activeChannelName) return;
+  try {
+    await shellExec('/select pchat', false);
+    await shellExec('/select channels', false);
+    await shellExec(`/select ${activeChannelName}`, false);
+    const ls = await shellExec('/ls --sort=date', false);
+    await shellExec('/up', false);
+    await shellExec('/up', false);
+    await shellExec('/up', false);
+    renderMessages(ls.children || []);
+  } catch (e) {
+    renderMessages([]);
+  }
+}
+
+function renderMessages(items) {
   const el = document.getElementById('chat-thread');
-  if (!activeChannel) { el.innerHTML = '<div class="chat-empty">No channel selected</div>'; return; }
-  const msgs = allNodes.filter(n => n.parent_id === activeChannel && jpath(n.data, 'kind') === 'message');
-  if (!msgs.length) { el.innerHTML = '<div class="chat-empty">No messages yet. Say something!</div>'; return; }
-  el.innerHTML = msgs.map(n => renderNode(n, 'message/compact')).join('');
+  const msgs = items.filter(i => i.meta?.type === 'message');
+  if (!msgs.length) {
+    el.innerHTML = '<div class="chat-empty">No messages yet. Say something!</div>';
+    return;
+  }
+  const currentUser = getUsername();
+  el.innerHTML = msgs.map(m => {
+    const meta = m.meta || {};
+    const user = meta.user || 'anon';
+    const ts = meta.ts ? new Date(meta.ts).toLocaleTimeString() : '';
+    const content = m.data?.content || m.name || '';
+    const isSelf = user === currentUser;
+    return `<div class="chat-msg${isSelf ? ' self' : ''}">
+      <div class="msg-hdr"><span class="msg-user">${esc(user)}</span><span class="msg-ts">${esc(ts)}</span></div>
+      <div class="msg-content">${esc(content)}</div>
+    </div>`;
+  }).join('');
   el.scrollTop = el.scrollHeight;
 }
 
-function renderNodeList() {
-  const el = document.getElementById('node-list');
-  if (!allNodes.length) { el.innerHTML = '<div class="empty" style="padding:12px">No nodes</div>'; return; }
-  el.innerHTML = allNodes.map(n => {
-    const kind = jpath(n.data, 'kind', '?');
-    return `<div class="pnode">
-      <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
-        <span class="pnode-id">${esc(n.id)}</span>
-        <span class="pnode-kind">${esc(kind)}</span>
-      </div>
-      <div class="pnode-body"><pre>${esc(JSON.stringify(n, null, 2))}</pre></div>
-    </div>`;
-  }).join('');
+// ══════════════════════════════════════════════════════════
+//  Shell interactive tab
+// ══════════════════════════════════════════════════════════
+
+async function runShell() {
+  const input = document.getElementById('shell-input');
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+  const outputEl = document.getElementById('shell-output');
+  outputEl.innerHTML += `<div class="sh-line"><span class="sh-cmd">$ ${esc(cmd)}</span></div>`;
+  try {
+    const res = await shellExec(cmd);
+    const cls = res.error ? 'sh-error' : 'sh-result';
+    outputEl.innerHTML += `<div class="sh-line"><span class="${cls}">${esc(JSON.stringify(res, null, 2))}</span></div>`;
+  } catch (e) {
+    outputEl.innerHTML += `<div class="sh-line"><span class="sh-error">${esc(e.message)}</span></div>`;
+  }
+  outputEl.scrollTop = outputEl.scrollHeight;
+  renderRaw();
 }
+
+// ══════════════════════════════════════════════════════════
+//  FS view tab
+// ══════════════════════════════════════════════════════════
+
+async function renderFsView() {
+  const el = document.getElementById('fs-view');
+  try {
+    const res = await api('GET', '/api/pchat/state');
+    const children = res.children || [];
+    if (!children.length) {
+      el.innerHTML = '<div class="chat-empty" style="padding:12px">Empty workspace</div>';
+      return;
+    }
+    el.innerHTML = children.map(c => {
+      const meta = c.meta || {};
+      return `<div class="pnode">
+        <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
+          <span class="pnode-id">${esc(c.path)}</span>
+          <span class="pnode-kind">${esc(meta.type || '?')}</span>
+        </div>
+        <div class="pnode-body"><pre>${esc(JSON.stringify(c, null, 2))}</pre></div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="chat-empty">${esc(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  Raw tab + Reset
+// ══════════════════════════════════════════════════════════
 
 function renderRaw() {
   const el = document.getElementById('raw-view');
-  if (!allNodes.length) { el.textContent = 'No nodes yet'; el.className = 'empty'; return; }
-  el.textContent = JSON.stringify(allNodes, null, 2);
+  if (!cmdLog.length) { el.textContent = 'No commands yet'; el.className = 'empty'; return; }
+  el.textContent = JSON.stringify(cmdLog, null, 2);
   el.className = '';
 }
 
-function renderAll() {
-  renderChannelList();
-  renderChat();
-  renderNodeList();
-  renderRaw();
-  renderPresetList();
-  if (activePreset) { populateSampleSelect(); liveUpdateView(); }
-}
-
-// ══════════════════════════════════════════════════════════
-//  Reset + Load
-// ══════════════════════════════════════════════════════════
-
 async function resetAll() {
-  await api('POST', '/api/pchat/reset');
-  allNodes = [];
-  activeChannel = null;
+  await shellExec('/reset');
+  cmdLog = [];
+  activeChannelPath = null;
+  activeChannelName = null;
   document.getElementById('channel-label').textContent = 'Select or create a channel';
-  renderAll();
+  document.getElementById('chat-thread').innerHTML = '<div class="chat-empty">No channel selected</div>';
+  renderChannelList([]);
+  renderRaw();
   setStatus('Reset — Ready');
 }
 
-async function loadNodes() {
-  try {
-    const data = await api('GET', '/api/pchat/nodes');
-    allNodes = data.nodes || [];
-    const channels = allNodes.filter(n => jpath(n.data, 'kind') === 'channel');
-    if (channels.length) selectChannel(channels[0].id);
-    renderAll();
-    setStatus('Ready — ' + allNodes.length + ' nodes');
-  } catch (e) {
-    setStatus('Ready');
-  }
-}
-
 // ══════════════════════════════════════════════════════════
-//  Views Editor
+//  Init
 // ══════════════════════════════════════════════════════════
-
-let activePreset = null;
-
-function renderPresetList() {
-  const el = document.getElementById('view-preset-list');
-  el.innerHTML = Object.keys(viewPresets).map(name => {
-    const active = name === activePreset ? ' active' : '';
-    return `<div class="view-item${active}" onclick="selectPreset('${name}')">${esc(name)}</div>`;
-  }).join('');
-}
-
-function selectPreset(name) {
-  activePreset = name;
-  renderPresetList();
-  const preset = viewPresets[name];
-  document.getElementById('view-asm').value = preset.asm || '';
-  populateSampleSelect();
-  liveUpdateView();
-}
-
-function populateSampleSelect() {
-  const sel = document.getElementById('view-sample-select');
-  const kind = activePreset ? activePreset.split('/')[0] : '';
-  const matching = allNodes.filter(n => {
-    const nk = jpath(n.data, 'kind', '');
-    return nk === kind || !kind;
-  });
-  sel.innerHTML = matching.length
-    ? matching.map(n => `<option value="${n.id}">${esc(n.id)} — ${esc(jpath(n.data,'content') || jpath(n.data,'name') || '').slice(0,30)}</option>`).join('')
-    : '<option value="">no sample nodes</option>';
-}
-
-function liveUpdateView() {
-  if (!activePreset) return;
-  const asm = document.getElementById('view-asm').value;
-  viewPresets[activePreset].asm = asm;
-
-  const sel = document.getElementById('view-sample-select');
-  const sampleId = sel.value;
-  const sampleNode = allNodes.find(n => n.id === sampleId);
-
-  const rawEl = document.getElementById('view-raw');
-  const jsonEl = document.getElementById('view-json');
-
-  if (!sampleNode) {
-    rawEl.textContent = '(no sample node selected)';
-    jsonEl.textContent = '(no sample node selected)';
-    return;
-  }
-
-  // Left: raw node as server returns it
-  rawEl.textContent = JSON.stringify(sampleNode, null, 2);
-
-  try {
-    // Right: after assembly
-    const state = execAsm(asm, { ...sampleNode });
-    const json = {};
-    for (const [k, v] of Object.entries(state)) {
-      if (k !== 'each_idx' && !k.startsWith('_')) json[k] = v;
-    }
-    jsonEl.textContent = JSON.stringify(json, null, 2);
-  } catch (e) {
-    jsonEl.textContent = 'Error: ' + e.message;
-  }
-}
 
 // Username persistence
 const _usernameInput = document.getElementById('username-input');
 _usernameInput.value = localStorage.getItem('pchat_user') || '';
 _usernameInput.addEventListener('input', () => localStorage.setItem('pchat_user', _usernameInput.value));
 
-loadNodes();
+// Tab switch hooks
+document.querySelectorAll('.page-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.page === 'fs') renderFsView();
+  });
+});
+
+loadChannels().then(() => setStatus('Ready'));
 </script>
 </body>
 </html>
