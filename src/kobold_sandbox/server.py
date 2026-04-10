@@ -53,7 +53,7 @@ from .data_store.api import create_datastore_router
 from .data_store.store import DataStore
 from .atomic_data_revision import create_atomic_data_revision_router
 from .atomic_wiki import create_atomic_wiki_router
-from .atomic_dsl_api import create_atomic_dsl_router
+from .atomic_dsl_api import create_atomic_dsl_router, flatten_json
 try:
     from .ui_proto import (
         AddNodeOp,
@@ -142,6 +142,10 @@ class RunRequest(BaseModel):
     task: str
     model: str | None = None
     commit: bool = False
+
+
+class ContainerMaterializeRequest(BaseModel):
+    container_id: str
 
 
 def _mojibake_marker_count(text: str) -> int:
@@ -4204,6 +4208,12 @@ load();
             self.root.mkdir(exist_ok=True)
             self.templates_dir = self.root / "templates"
             self.templates_dir.mkdir(exist_ok=True)
+            self.runtime_dir = self.root / "runtime"
+            self.runtime_dir.mkdir(exist_ok=True)
+            self.containers_dir = self.runtime_dir / "containers"
+            self.containers_dir.mkdir(parents=True, exist_ok=True)
+            self.sandboxes_dir = self.runtime_dir / "sandboxes"
+            self.sandboxes_dir.mkdir(parents=True, exist_ok=True)
             self.pchat_dir = self.root / "pchat"
             self.pchat_dir.mkdir(exist_ok=True)
             self.log_path = self.root / "log.jsonl"
@@ -4229,6 +4239,7 @@ load();
 
             # Default templates
             self._init_templates()
+            self._init_runtime_containers()
 
             # Precompile + preload all template commands
             import compileall
@@ -4244,6 +4255,7 @@ load();
         def _init_templates(self):
             """Create default templates if missing."""
             for tpl_name, schema in [
+                ("root", {"fields": {}, "commands": ["materialize", "cselect", "cpost", "cmkchannel", "cpatch", "cedit", "cdelete", "creact"], "panels": [], "renders": []}),
                 ("channels", {"fields": {}, "commands": ["add_channel"], "panels": [], "renders": []}),
                 ("channel", {"fields": {"name": "str"}, "commands": ["post", "select", "rename"], "panels": ["panel_sidebar"], "renders": []}),
                 ("message", {"fields": {"content": "str"}, "commands": ["edit"], "panels": ["panel_compact"], "renders": []}),
@@ -4256,6 +4268,34 @@ load();
                 # Create subdirs
                 for sub in ("commands", "panels", "renders"):
                     (tpl_dir / sub).mkdir(exist_ok=True)
+
+        def _init_runtime_containers(self):
+            """Create default runtime container manifests for generic materialization."""
+            for container_id in ("channels_selector", "current_channel"):
+                meta, state = self._load_default_container_spec(container_id)
+                self._ensure_container(container_id, meta, state)
+
+        def _load_default_container_spec(self, container_id: str) -> tuple[dict, dict]:
+            """Load default container manifest/state from the checkout's root/runtime tree."""
+            defaults_root = Path(__file__).resolve().parents[2] / "root" / "runtime" / "containers" / container_id
+            meta = self._read_json(defaults_root / "_meta.json")
+            state = self._read_json(defaults_root / "state.json")
+            if isinstance(meta, dict) and isinstance(state, dict):
+                return meta, state
+            raise RuntimeError(f"missing default runtime container spec for {container_id}")
+
+        def _ensure_container(self, container_id: str, meta: dict, state: dict):
+            cdir = self.containers_dir / container_id
+            cdir.mkdir(parents=True, exist_ok=True)
+            meta_path = cdir / "_meta.json"
+            state_path = cdir / "state.json"
+            log_path = cdir / "cmd_log.jsonl"
+            if not meta_path.exists():
+                meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+            if not state_path.exists():
+                state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+            if not log_path.exists():
+                log_path.write_text("", encoding="utf-8")
 
         def get_scope(self, name: str = "CMD") -> "ConsoleScope":
             """Get or create a named scope. Root = root dir (virtual root node)."""
@@ -4386,6 +4426,432 @@ load();
 
         def _write_data(self, path: Path, data: dict):
             (path / "_data.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        def _read_json(self, path: Path):
+            if path.exists():
+                return json.loads(path.read_text(encoding="utf-8"))
+            return None
+
+        def _write_json(self, path: Path, data: Any):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        def _container_dir(self, container_id: str) -> Path:
+            return self.containers_dir / container_id
+
+        def _read_container_meta(self, container_id: str) -> dict:
+            return self._read_json(self._container_dir(container_id) / "_meta.json") or {}
+
+        def _read_container_state(self, container_id: str) -> dict:
+            return self._read_json(self._container_dir(container_id) / "state.json") or {}
+
+        def _write_container_state(self, container_id: str, state: dict):
+            self._write_json(self._container_dir(container_id) / "state.json", state)
+
+        def _append_container_log(self, container_id: str, entry: dict):
+            path = self._container_dir(container_id) / "cmd_log.jsonl"
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        def _get_by_dotpath(self, data: Any, path: str):
+            cur = data
+            for part in path.split("."):
+                if isinstance(cur, dict):
+                    cur = cur.get(part)
+                else:
+                    return None
+            return cur
+
+        def _set_by_dotpath(self, data: dict, path: str, value: Any):
+            parts = [p for p in path.split(".") if p]
+            if not parts:
+                return
+            cur = data
+            for part in parts[:-1]:
+                if part not in cur or not isinstance(cur[part], dict):
+                    cur[part] = {}
+                cur = cur[part]
+            cur[parts[-1]] = value
+
+        def _render_source_template(self, template: str) -> str:
+            def repl(match):
+                expr = match.group(1)
+                parts = expr.split(".")
+                if len(parts) >= 4 and parts[0] == "containers" and parts[2] == "state":
+                    container_id = parts[1]
+                    state = self._read_container_state(container_id)
+                    return str(self._get_by_dotpath(state, ".".join(parts[3:])) or "")
+                return ""
+
+            return re.sub(r"\{([^{}]+)\}", repl, template)
+
+        def _container_selected_ref(self, container_id: str) -> tuple[str | None, str | None]:
+            meta = self._read_container_meta(container_id)
+            selected_from = meta.get("selected_from", {})
+            if isinstance(selected_from, dict):
+                ref_container = selected_from.get("container")
+                ref_path = selected_from.get("state_path")
+                if isinstance(ref_container, str) and isinstance(ref_path, str):
+                    return ref_container, ref_path
+            return None, None
+
+        def _container_selected_value(self, container_id: str):
+            ref_container, ref_path = self._container_selected_ref(container_id)
+            if ref_container and ref_path:
+                ref_state = self._read_container_state(ref_container)
+                return self._get_by_dotpath(ref_state, ref_path)
+            state = self._read_container_state(container_id)
+            return self._get_by_dotpath(state, "selected")
+
+        def _read_node_object(self, rel_path: str, include_children: str = "none") -> dict:
+            path = self.root / Path(rel_path)
+            if not path.is_dir():
+                return {"error": f"not found: {rel_path}"}
+
+            node = {
+                "id": path.name,
+                "path": self._rel_path(path),
+                "meta": self._read_meta(path) or {},
+                "data": self._read_data(path) or {},
+            }
+
+            if include_children == "direct":
+                children = []
+                for child in sorted(path.iterdir(), key=lambda p: p.name):
+                    if not child.is_dir() or child.name.startswith("_"):
+                        continue
+                    children.append({
+                        "id": child.name,
+                        "path": self._rel_path(child),
+                        "meta": self._read_meta(child) or {},
+                        "data": self._read_data(child) or {},
+                    })
+                node["children"] = children
+
+            return node
+
+        def _resolve_container_source(self, meta: dict, state: dict) -> str:
+            selected_from = meta.get("selected_from", {})
+            if isinstance(selected_from, dict):
+                ref_container = selected_from.get("container")
+                ref_path = selected_from.get("state_path")
+                if ref_container and ref_path:
+                    ref_state = self._read_container_state(ref_container)
+                    selected_value = self._get_by_dotpath(ref_state, ref_path)
+                    if selected_value in (None, ""):
+                        return ""
+            resolve = meta.get("resolve", {})
+            if "source_root" in resolve:
+                return resolve["source_root"]
+            if "source_template" in resolve:
+                return self._render_source_template(resolve["source_template"])
+            raise ValueError("container resolve source is missing")
+
+        def _build_resolved_object(self, container_id: str, meta: dict, state: dict, source_path: str, source_node: dict) -> dict:
+            resolved = {
+                "container_id": container_id,
+                "state": state,
+                "source": {
+                    "path": source_path,
+                    "meta": source_node.get("meta", {}),
+                    "data": source_node.get("data", {}),
+                },
+            }
+            if "children" in source_node:
+                resolved["items"] = source_node["children"]
+            else:
+                resolved["item"] = {
+                    "id": source_node.get("id"),
+                    "path": source_node.get("path"),
+                    "meta": source_node.get("meta", {}),
+                    "data": source_node.get("data", {}),
+                }
+            return resolved
+
+        def _collect_source_refs(self, resolved: dict) -> list[dict]:
+            refs = []
+            src = resolved.get("source")
+            if src:
+                refs.append({"path": src.get("path"), "hash": src.get("meta", {}).get("hash")})
+            for item in resolved.get("items", []):
+                refs.append({"path": item.get("path"), "hash": item.get("meta", {}).get("hash")})
+            item = resolved.get("item")
+            if item:
+                refs.append({"path": item.get("path"), "hash": item.get("meta", {}).get("hash")})
+            return refs
+
+        def _sandbox_dir(self, container_id: str) -> Path:
+            return self.sandboxes_dir / container_id
+
+        def _container_action_spec(self, container_id: str, action: str) -> dict:
+            meta = self._read_container_meta(container_id)
+            defaults = meta.get("action_defaults", {})
+            actions = meta.get("actions", {})
+            spec = actions.get(action, {})
+            merged = {}
+            if isinstance(defaults, dict):
+                merged.update(defaults)
+            if isinstance(spec, dict):
+                merged.update(spec)
+            return merged
+
+        def _rebuild_many(self, container_ids: list[str]) -> dict[str, dict]:
+            return {container_id: self.materialize_container(container_id) for container_id in container_ids}
+
+        def _run_action_rebuilds(self, container_id: str, action: str, fallback: list[str]) -> dict[str, dict]:
+            spec = self._container_action_spec(container_id, action)
+            targets = spec.get("rebuild_containers", fallback)
+            if not isinstance(targets, list):
+                targets = fallback
+            return self._rebuild_many(targets)
+
+        def _action_target_dir(self, container_id: str, action: str) -> Path:
+            spec = self._container_action_spec(container_id, action)
+            template = spec.get("target_template")
+            if template:
+                return self.root / Path(self._render_source_template(template))
+            raise ValueError(f"container action target_template missing: {container_id}.{action}")
+
+        def materialize_container(self, container_id: str) -> dict:
+            meta = self._read_container_meta(container_id)
+            if not meta:
+                return {"error": f"unknown container: {container_id}"}
+            state = self._read_container_state(container_id)
+            try:
+                source_path = self._resolve_container_source(meta, state)
+            except Exception as e:
+                return {"error": str(e)}
+            if not source_path:
+                resolved = {
+                    "container_id": container_id,
+                    "state": state,
+                    "source": {
+                        "path": None,
+                        "meta": {},
+                        "data": {},
+                    },
+                    "items": [],
+                }
+                rows = flatten_json(resolved, object_name=container_id)
+                refs = []
+                sdir = self._sandbox_dir(container_id)
+                sdir.mkdir(parents=True, exist_ok=True)
+                self._write_json(sdir / "_meta.json", {
+                    "container_id": container_id,
+                    "source_path": None,
+                })
+                self._write_json(sdir / "resolved.json", resolved)
+                self._write_json(sdir / "rows.json", {"rows": rows})
+                self._write_json(sdir / "source_refs.json", {"refs": refs})
+                return {
+                    "ok": True,
+                    "container_id": container_id,
+                    "sandbox": self._rel_path(sdir),
+                    "resolved": resolved,
+                    "rows": rows,
+                    "refs": refs,
+                    "empty": True,
+                }
+            source_node = self._read_node_object(
+                source_path,
+                include_children=meta.get("resolve", {}).get("children", "none"),
+            )
+            if source_node.get("error"):
+                return source_node
+
+            resolved = self._build_resolved_object(container_id, meta, state, source_path, source_node)
+            rows = flatten_json(resolved, object_name=container_id)
+            refs = self._collect_source_refs(resolved)
+
+            sdir = self._sandbox_dir(container_id)
+            sdir.mkdir(parents=True, exist_ok=True)
+            self._write_json(sdir / "_meta.json", {
+                "container_id": container_id,
+                "source_path": source_path,
+            })
+            self._write_json(sdir / "resolved.json", resolved)
+            self._write_json(sdir / "rows.json", {"rows": rows})
+            self._write_json(sdir / "source_refs.json", {"refs": refs})
+
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "sandbox": self._rel_path(sdir),
+                "resolved": resolved,
+                "rows": rows,
+                "refs": refs,
+            }
+
+        def container_select_channel(self, name: str, user: str) -> dict:
+            container_id = "channels_selector"
+            spec = self._container_action_spec(container_id, "select")
+            state_path = spec.get("state_path", "selected")
+            state = self._read_container_state(container_id)
+            self._set_by_dotpath(state, state_path, name)
+            self._write_container_state(container_id, state)
+            self._append_container_log("channels_selector", {
+                "cmd": "cselect",
+                "args": [name],
+                "user": user,
+                "ts": utc_now(),
+            })
+            mats = self._run_action_rebuilds(container_id, "select", [container_id, "current_channel"])
+            return {
+                "ok": True,
+                "selected": name,
+                "selector": mats.get("channels_selector"),
+                "current_channel": mats.get("current_channel"),
+            }
+
+        def container_post_selected(self, text: str, user: str) -> dict:
+            channel_name = self._container_selected_value("current_channel")
+            if not channel_name:
+                return {"error": "no selected channel"}
+            ch_dir = self._action_target_dir("current_channel", "post")
+            if not ch_dir.is_dir():
+                return {"error": f"selected channel not found: {channel_name}"}
+
+            ch_scope = self.get_scope(f"channel:{channel_name}")
+            ch_scope.cwd = ch_dir
+            post_result = self.cmd_post(text.split(), user, ch_scope)
+            self._append_container_log("current_channel", {
+                "cmd": "cpost",
+                "args": text.split(),
+                "user": user,
+                "ts": utc_now(),
+                "selected": channel_name,
+            })
+            mats = self._run_action_rebuilds("current_channel", "post", ["channels_selector", "current_channel"])
+            return {
+                "ok": bool(post_result.get("ok")),
+                "selected": channel_name,
+                "post": post_result,
+                "selector": mats.get("channels_selector"),
+                "current_channel": mats.get("current_channel"),
+            }
+
+        def container_create_channel(self, name: str, user: str, scope: "ConsoleScope") -> dict:
+            mk_result = self.cmd_mkchannel([name], user, scope)
+            if mk_result.get("error"):
+                return mk_result
+
+            spec = self._container_action_spec("channels_selector", "create_channel")
+            selector_state = self._read_container_state("channels_selector")
+            if spec.get("select_new", True):
+                selector_state["selected"] = name
+            self._write_container_state("channels_selector", selector_state)
+            self._append_container_log("channels_selector", {
+                "cmd": "cmkchannel",
+                "args": [name],
+                "user": user,
+                "ts": utc_now(),
+            })
+            mats = self._run_action_rebuilds("channels_selector", "create_channel", ["channels_selector", "current_channel"])
+            return {
+                "ok": True,
+                "selected": name,
+                "channel": mk_result,
+                "selector": mats.get("channels_selector"),
+                "current_channel": mats.get("current_channel"),
+            }
+
+        def container_patch_selected(self, raw_path: str, value: Any, user: str) -> dict:
+            channel_name = self._container_selected_value("current_channel")
+            if not channel_name:
+                return {"error": "no selected channel"}
+            channel_dir = self._action_target_dir("current_channel", "patch")
+            if not channel_dir.is_dir():
+                return {"error": f"selected channel not found: {channel_name}"}
+
+            target_dir = channel_dir
+            field_path = raw_path
+            parts = raw_path.split(".")
+            candidate = channel_dir / parts[0]
+            if candidate.is_dir() and len(parts) > 1:
+                target_dir = candidate
+                field_path = ".".join(parts[1:])
+
+            if field_path.startswith("meta."):
+                meta = self._read_meta(target_dir) or {}
+                self._set_by_dotpath(meta, field_path[len("meta."):], value)
+                self._write_meta(target_dir, meta)
+                target_kind = "meta"
+            else:
+                data = self._read_data(target_dir) or {}
+                self._set_by_dotpath(data, field_path, value)
+                self._write_data(target_dir, data)
+                target_kind = "data"
+
+            self._append_container_log("current_channel", {
+                "cmd": "cpatch",
+                "args": [raw_path],
+                "user": user,
+                "ts": utc_now(),
+                "selected": channel_name,
+                "target": raw_path,
+                "value": value,
+            })
+            mats = self._run_action_rebuilds("current_channel", "patch", ["channels_selector", "current_channel"])
+            return {
+                "ok": True,
+                "selected": channel_name,
+                "path": self._rel_path(target_dir),
+                "target": raw_path,
+                "target_kind": target_kind,
+                "value": value,
+                "selector": mats.get("channels_selector"),
+                "current_channel": mats.get("current_channel"),
+            }
+
+        def container_react_selected(self, msg_id: str, emoji: str, user: str) -> dict:
+            channel_name = self._container_selected_value("current_channel")
+            if not channel_name:
+                return {"error": "no selected channel"}
+            base_dir = self._action_target_dir("current_channel", "react")
+            msg_dir = base_dir / msg_id
+            if not msg_dir.is_dir():
+                return {"error": f"message not found: {msg_id}"}
+
+            data = self._read_data(msg_dir) or {}
+            reactions = data.get("reactions")
+            if not isinstance(reactions, dict):
+                reactions = {}
+            entry = reactions.get(emoji)
+            if not isinstance(entry, dict):
+                entry = {"users": [], "count": 0}
+            users = entry.get("users")
+            if not isinstance(users, list):
+                users = []
+
+            if user in users:
+                users = [u for u in users if u != user]
+            else:
+                users = users + [user]
+
+            if users:
+                reactions[emoji] = {"users": users, "count": len(users)}
+            else:
+                reactions.pop(emoji, None)
+
+            data["reactions"] = reactions
+            self._write_data(msg_dir, data)
+            self._append_container_log("current_channel", {
+                "cmd": "creact",
+                "args": [msg_id, emoji],
+                "user": user,
+                "ts": utc_now(),
+                "selected": channel_name,
+            })
+            mats = self._run_action_rebuilds("current_channel", "react", ["channels_selector", "current_channel"])
+            return {
+                "ok": True,
+                "selected": channel_name,
+                "message": msg_id,
+                "emoji": emoji,
+                "reactions": reactions,
+                "selector": mats.get("channels_selector"),
+                "current_channel": mats.get("current_channel"),
+            }
 
         def _next_slot_id(self, parent: Path, type_prefix: str) -> str:
             """Find next sequential slot: msg_1, msg_2, ..."""
@@ -4624,6 +5090,69 @@ load();
                 return {"error": f"not found: {path_str}"}
             return self._read_tree(target, depth, limit)
 
+        def cmd_materialize(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Materialize a runtime container into its sandbox."""
+            if not args:
+                return {"error": "usage: /materialize <container_id>"}
+            container_id = args[0]
+            self._append_container_log(container_id, {
+                "cmd": "materialize",
+                "args": [container_id],
+                "user": user,
+                "ts": utc_now(),
+            })
+            return self.materialize_container(container_id)
+
+        def cmd_cselect(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Set selected channel in the channels selector runtime container."""
+            if not args:
+                return {"error": "usage: /cselect <channel_name>"}
+            return self.container_select_channel(args[0], user)
+
+        def cmd_cpost(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Post into the channel currently selected by the channels selector container."""
+            text = " ".join(args).strip()
+            if not text:
+                return {"error": "usage: /cpost <text>"}
+            return self.container_post_selected(text, user)
+
+        def cmd_cmkchannel(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Create a channel, select it in the selector container, and rematerialize chat containers."""
+            if not args:
+                return {"error": "usage: /cmkchannel <name>"}
+            return self.container_create_channel(args[0], user, scope)
+
+        def cmd_cpatch(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Patch the selected channel or one of its direct children via dot-path."""
+            if len(args) < 2:
+                return {"error": "usage: /cpatch <path> <value>"}
+
+            raw_path = args[0]
+            raw_value = " ".join(args[1:])
+            try:
+                value = json.loads(raw_value)
+            except Exception:
+                value = raw_value
+            return self.container_patch_selected(raw_path, value, user)
+
+        def cmd_cedit(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Edit a message content in the selected channel."""
+            if len(args) < 2:
+                return {"error": "usage: /cedit <msg_id> <text>"}
+            return self.cmd_cpatch([f"{args[0]}.content", " ".join(args[1:])], user, scope)
+
+        def cmd_cdelete(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Soft-delete a message in the selected channel."""
+            if not args:
+                return {"error": "usage: /cdelete <msg_id>"}
+            return self.cmd_cpatch([f"{args[0]}._deleted", "true"], user, scope)
+
+        def cmd_creact(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Toggle a reaction on a message in the selected channel."""
+            if len(args) < 2:
+                return {"error": "usage: /creact <msg_id> <emoji>"}
+            return self.container_react_selected(args[0], args[1], user)
+
         def _read_tree(self, path: Path, depth: int, limit: int) -> dict:
             """Read a node and its children recursively up to depth/limit."""
             node: dict[str, Any] = {"path": self._rel_path(path), "name": path.name}
@@ -4702,12 +5231,50 @@ load();
         """Return full chat state in one request: channels + messages for active channel."""
         return _pchat_build_state(req.channel, req.msg_limit, req.user)
 
+    @app.post("/api/container/materialize")
+    def container_materialize(req: ContainerMaterializeRequest) -> dict:
+        return workspace.materialize_container(req.container_id)
+
     @app.get("/api/pchat/state")
     def pchat_state_get(channel: str | None = None, msg_limit: int = 50) -> dict:
         """GET variant — returns channels + optional channel messages."""
         return _pchat_build_state(channel, msg_limit, "anon")
 
     def _pchat_build_state(channel: str | None, msg_limit: int, user: str) -> dict:
+        selected = workspace._container_selected_value("current_channel")
+        if selected and (channel is None or channel == selected):
+            selector = workspace.materialize_container("channels_selector")
+            current = workspace.materialize_container("current_channel")
+            if selector.get("ok") and current.get("ok"):
+                state = selector["resolved"].get("state", {})
+                channels = []
+                for item in selector["resolved"].get("items", []):
+                    channels.append({
+                        "name": item.get("meta", {}).get("name") or item.get("id"),
+                        "path": item.get("path"),
+                        "meta": item.get("meta", {}),
+                        "data": item.get("data", {}),
+                    })
+                messages = []
+                for item in current["resolved"].get("items", []):
+                    data = item.get("data", {}) or {}
+                    if data.get("_deleted"):
+                        continue
+                    messages.append({
+                        "name": item.get("id"),
+                        "path": item.get("path"),
+                        "meta": item.get("meta", {}),
+                        "data": data,
+                    })
+                return {
+                    "channels": channels,
+                    "messages": messages[-msg_limit:],
+                    "active_channel": state.get("selected"),
+                    "user": user,
+                    "ts": utc_now(),
+                    "source": "containers",
+                }
+
         channels_dir = workspace.pchat_dir / "channels"
         channels = []
         if channels_dir.is_dir():

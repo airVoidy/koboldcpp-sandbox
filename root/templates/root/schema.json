@@ -1,0 +1,7 @@
+{
+  "type": "root",
+  "description": "Runtime root container for global CMD wrappers",
+  "fields": {},
+  "inherits": null,
+  "commands": ["materialize", "cselect", "cpost", "cmkchannel", "cpatch", "cedit", "cdelete", "creact"]
+}
