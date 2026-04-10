@@ -51,6 +51,11 @@ textarea { resize:vertical; }
 .chat-msg .msg-ts { font-size:9px; color:var(--text-dim); margin-left:auto; }
 .chat-msg .msg-user { color:var(--green); font-weight:600; margin-right:4px; }
 .chat-msg .msg-content { }
+.chat-msg .msg-reactions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+.chat-msg .msg-reaction { font-size:10px; padding:1px 6px; border:1px solid var(--border); border-radius:999px; background:var(--surface2); color:var(--text-dim); }
+.chat-msg .msg-reaction.self { border-color:var(--accent); color:var(--accent); }
+.chat-msg .msg-actions { display:flex; gap:4px; margin-top:6px; }
+.chat-msg .msg-actions button { font-size:10px; padding:1px 6px; }
 .top-bar input { width:100px; font-size:11px; padding:2px 6px; }
 .chat-input-bar { display:flex; gap:4px; padding:6px 12px; border-top:1px solid var(--border); flex-shrink:0; }
 .chat-input-bar textarea { flex:1; min-height:32px; max-height:120px; resize:vertical; font-size:11px; }
@@ -213,6 +218,47 @@ async function fetchState(channel) {
     user: getUsername(),
     msg_limit: 50,
   });
+}
+
+async function materializeContainer(containerId) {
+  return api('POST', '/api/container/materialize', { container_id: containerId });
+}
+
+function buildStateFromContainers(selectorRes, currentRes) {
+  const selector = selectorRes?.resolved || {};
+  const current = currentRes?.resolved || {};
+  const active = selector.state?.selected || activeChannelName || null;
+  const channels = (selector.items || []).map(item => ({
+    name: item.meta?.name || item.id,
+    path: item.path,
+    meta: item.meta || {},
+    data: item.data || {},
+  }));
+  const messages = (current.items || []).map(item => ({
+    name: item.id,
+    path: item.path,
+    meta: item.meta || {},
+    data: item.data || {},
+  })).filter(item => !item.data?._deleted);
+  return {
+    channels,
+    messages,
+    active_channel: active,
+    user: getUsername(),
+    ts: new Date().toISOString(),
+  };
+}
+
+async function refreshChatContainers() {
+  const [selectorRes, currentRes] = await Promise.all([
+    materializeContainer('channels_selector'),
+    materializeContainer('current_channel'),
+  ]);
+  if (selectorRes.error) throw new Error(selectorRes.error);
+  if (currentRes.error) throw new Error(currentRes.error);
+  const state = buildStateFromContainers(selectorRes, currentRes);
+  renderFromState(state);
+  return state;
 }
 
 function cacheState(state) {
@@ -458,8 +504,12 @@ function loadScript(url) {
   try {
     // Session start
     await shellExec(`/session`, true);
-    const state = await fetchState(activeChannelName);
-    renderFromState(state);
+    try {
+      await refreshChatContainers();
+    } catch {
+      const state = await fetchState(activeChannelName);
+      renderFromState(state);
+    }
     setStatus('Ready');
   } catch (e) {
     if (!cached) setStatus('Server unavailable');

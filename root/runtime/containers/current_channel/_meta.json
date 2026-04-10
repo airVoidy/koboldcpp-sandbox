@@ -1,0 +1,22 @@
+{
+  "id": "current_channel",
+  "kind": "container",
+  "depends_on": ["channels_selector"],
+  "selected_from": {
+    "container": "channels_selector",
+    "state_path": "selected"
+  },
+  "action_defaults": {
+    "target_template": "pchat/channels/{containers.channels_selector.state.selected}",
+    "rebuild_containers": ["channels_selector", "current_channel"]
+  },
+  "actions": {
+    "post": {},
+    "patch": {},
+    "react": {}
+  },
+  "resolve": {
+    "source_template": "pchat/channels/{containers.channels_selector.state.selected}",
+    "children": "direct"
+  }
+}
