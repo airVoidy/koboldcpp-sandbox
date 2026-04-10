@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from dataclasses import asdict, is_dataclass
+import shutil
 import uuid
 import json
 import re
@@ -146,6 +147,22 @@ class RunRequest(BaseModel):
 
 class ContainerMaterializeRequest(BaseModel):
     container_id: str
+
+
+class AtomicViewRequest(BaseModel):
+    path: str
+    view: str = "object"
+
+
+class AtomicPatchRequest(BaseModel):
+    atomic_path: str
+    value: Any
+
+
+class AtomicDefineFieldRequest(BaseModel):
+    atomic_path: str
+    value_type: str | None = None
+    default: Any = None
 
 
 def _mojibake_marker_count(text: str) -> int:
@@ -4218,6 +4235,8 @@ load();
             self.pchat_dir.mkdir(exist_ok=True)
             self.log_path = self.root / "log.jsonl"
             self.scopes: dict[str, ConsoleScope] = {}
+            self.atomic_runtime_objects: dict[str, dict] = {}
+            self.atomic_runtime_index: dict[str, list[dict[str, Any]]] = {}
 
             # Git versioning for pchat FS
             from .data_store.git_history import DataStoreGit
@@ -4266,8 +4285,23 @@ load();
                 if not schema_path.exists():
                     schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
                 # Create subdirs
-                for sub in ("commands", "panels", "renders"):
+                for sub in ("commands", "panels", "renders", "views"):
                     (tpl_dir / sub).mkdir(exist_ok=True)
+            self._sync_default_templates()
+
+        def _sync_default_templates(self):
+            """Copy built-in template files from the checkout if they are missing in the workspace root."""
+            defaults_root = Path(__file__).resolve().parents[2] / "root" / "templates"
+            if not defaults_root.is_dir():
+                return
+            for src_path in defaults_root.rglob("*"):
+                if src_path.is_dir():
+                    continue
+                rel = src_path.relative_to(defaults_root)
+                dst_path = self.templates_dir / rel
+                if not dst_path.exists():
+                    dst_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
 
         def _init_runtime_containers(self):
             """Create default runtime container manifests for generic materialization."""
@@ -4453,6 +4487,13 @@ load();
             with open(path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+        def _projection_field_name(self, source_path: str, canonical_path: str) -> str:
+            normalized_source = str(source_path or "").replace("\\", "/").strip(".")
+            normalized_path = self._normalize_atomic_path(canonical_path)
+            if normalized_source and normalized_path.startswith(normalized_source + "."):
+                return normalized_path[len(normalized_source) + 1:]
+            return normalized_path.split(".")[-1]
+
         def _get_by_dotpath(self, data: Any, path: str):
             cur = data
             for part in path.split("."):
@@ -4530,16 +4571,398 @@ load();
 
             return node
 
-        def _resolve_container_source(self, meta: dict, state: dict) -> str:
+        def _atomic_field(self, name: str, path: str, value_type: str, value: Any, origin: str, atomic_root: str, extra: dict | None = None) -> dict:
+            normalized_root = atomic_root.replace("\\", "/")
+            normalized_path = str(path or "").replace("\\", "/")
+            bind = normalized_root if not normalized_path else f"{normalized_root}.{normalized_path}"
+            field = {
+                "kind": "field",
+                "name": name,
+                "path": path,
+                "value_type": value_type,
+                "value": value,
+                "origin": origin,
+                "atomic_root": normalized_root,
+                "bind": bind,
+                "atomic_path": bind,
+            }
+            if extra:
+                field.update(extra)
+            return field
+
+        def _append_json_fields(self, atomic_root: str, prefix: str, value: Any, origin: str, out: list[dict]):
+            if isinstance(value, dict):
+                out.append(self._atomic_field(prefix.split(".")[-1], prefix, "object", None, origin, atomic_root))
+                for key, child in value.items():
+                    child_path = f"{prefix}.{key}" if prefix else key
+                    self._append_json_fields(atomic_root, child_path, child, origin, out)
+                return
+            if isinstance(value, list):
+                out.append(self._atomic_field(prefix.split(".")[-1], prefix, "list", value, origin, atomic_root))
+                return
+            out.append(self._atomic_field(prefix.split(".")[-1], prefix, type(value).__name__ if value is not None else "null", value, origin, atomic_root))
+
+        def _build_fs_node_fields(self, rel_path: str, node: dict, include_children: bool) -> list[dict]:
+            atomic_root = rel_path.replace("\\", "/")
+            fields: list[dict] = []
+            fields.append(self._atomic_field("_meta", "_meta", "object", None, "json_file", atomic_root))
+            meta = node.get("meta") or {}
+            for key, value in meta.items():
+                self._append_json_fields(atomic_root, f"_meta.{key}", value, "json_field", fields)
+
+            fields.append(self._atomic_field("_data", "_data", "object", None, "json_file", atomic_root))
+            data = node.get("data") or {}
+            for key, value in data.items():
+                self._append_json_fields(atomic_root, f"_data.{key}", value, "json_field", fields)
+
+            if include_children:
+                for child in node.get("children", []):
+                    child_id = child.get("id")
+                    if not child_id:
+                        continue
+                    fields.append(self._atomic_field(
+                        child_id,
+                        child_id,
+                        "node",
+                        None,
+                        "fs_child",
+                        atomic_root,
+                        extra={"child_path": child.get("path"), "child_type": child.get("meta", {}).get("type")},
+                    ))
+            return fields
+
+        def _normalize_atomic_path(self, atomic_path: str) -> str:
+            path = str(atomic_path or "").strip().replace("\\", "/")
+            if path.startswith("root."):
+                path = path[len("root."):]
+            if "/" not in path and "._" in path:
+                # Support dot notation like pchat.channels.general._data.content
+                parts = path.split(".")
+                special_idx = next((i for i, part in enumerate(parts) if part in ("_meta", "_data", "_rows")), -1)
+                if special_idx >= 0:
+                    fs_part = "/".join(parts[:special_idx])
+                    rest = ".".join(parts[special_idx:])
+                    path = f"{fs_part}.{rest}" if rest else fs_part
+            return path
+
+        def _resolve_atomic_target(self, atomic_path: str) -> dict:
+            path = self._normalize_atomic_path(atomic_path)
+            if not path:
+                return {"error": "empty atomic_path"}
+            if "._" in path:
+                fs_part, field_part = path.split("._", 1)
+                special, _, field_path = field_part.partition(".")
+                file_kind = f"_{special}"
+            else:
+                fs_part, file_kind, field_path = path, "", ""
+            node_dir = self.root / Path(fs_part)
+            if not node_dir.is_dir():
+                return {"error": f"atomic node not found: {fs_part}"}
+            if file_kind not in ("_meta", "_data"):
+                return {"error": f"unsupported atomic target: {atomic_path}"}
+            return {
+                "ok": True,
+                "node_dir": node_dir,
+                "node_path": self._rel_path(node_dir),
+                "file_kind": file_kind,
+                "field_path": field_path,
+            }
+
+        def atomic_patch(self, atomic_path: str, value: Any) -> dict:
+            target = self._resolve_atomic_target(atomic_path)
+            if not target.get("ok"):
+                return target
+            node_dir: Path = target["node_dir"]
+            file_kind = target["file_kind"]
+            field_path = target["field_path"]
+
+            if file_kind == "_meta":
+                obj = self._read_meta(node_dir) or {}
+            else:
+                obj = self._read_data(node_dir) or {}
+
+            if not field_path:
+                return {"error": f"atomic patch requires field path: {atomic_path}"}
+            self._set_by_dotpath(obj, field_path, value)
+
+            if file_kind == "_meta":
+                self._write_meta(node_dir, obj)
+            else:
+                self._write_data(node_dir, obj)
+
+            self._sync_runtime_atomic_path(atomic_path, value)
+
+            return {
+                "ok": True,
+                "atomic_path": self._normalize_atomic_path(atomic_path),
+                "node_path": target["node_path"],
+                "file_kind": file_kind,
+                "field_path": field_path,
+                "value": value,
+            }
+
+        def atomic_read(self, atomic_path: str) -> dict:
+            target = self._resolve_atomic_target(atomic_path)
+            if not target.get("ok"):
+                return target
+            node_dir: Path = target["node_dir"]
+            file_kind = target["file_kind"]
+            field_path = target["field_path"]
+
+            if file_kind == "_meta":
+                obj = self._read_meta(node_dir) or {}
+            else:
+                obj = self._read_data(node_dir) or {}
+
+            if not field_path:
+                value = obj
+            else:
+                value = self._get_by_dotpath(obj, field_path)
+
+            return {
+                "ok": True,
+                "atomic_path": self._normalize_atomic_path(atomic_path),
+                "node_path": target["node_path"],
+                "file_kind": file_kind,
+                "field_path": field_path,
+                "value": value,
+            }
+
+        def atomic_define_field(self, atomic_path: str, value_type: str | None = None, default: Any = None) -> dict:
+            target = self._resolve_atomic_target(atomic_path)
+            if not target.get("ok"):
+                return target
+            node_dir: Path = target["node_dir"]
+            file_kind = target["file_kind"]
+            field_path = target["field_path"]
+
+            if not field_path:
+                return {"error": f"atomic define requires field path: {atomic_path}"}
+
+            if file_kind == "_meta":
+                obj = self._read_meta(node_dir) or {}
+            else:
+                obj = self._read_data(node_dir) or {}
+
+            existing = self._get_by_dotpath(obj, field_path)
+            if existing is None:
+                if default is not None:
+                    value = default
+                elif value_type == "object":
+                    value = {}
+                elif value_type == "list":
+                    value = []
+                elif value_type == "str":
+                    value = ""
+                elif value_type == "bool":
+                    value = False
+                elif value_type in ("int", "float", "number"):
+                    value = 0
+                else:
+                    value = None
+                self._set_by_dotpath(obj, field_path, value)
+                if file_kind == "_meta":
+                    self._write_meta(node_dir, obj)
+                else:
+                    self._write_data(node_dir, obj)
+                self._sync_runtime_atomic_path(atomic_path, value)
+                created = True
+            else:
+                value = existing
+                created = False
+
+            return {
+                "ok": True,
+                "created": created,
+                "atomic_path": self._normalize_atomic_path(atomic_path),
+                "node_path": target["node_path"],
+                "file_kind": file_kind,
+                "field_path": field_path,
+                "value_type": value_type,
+                "value": value,
+            }
+
+        def _runtime_atomic_view_path(self, node_type: str, view_name: str) -> Path:
+            return self.templates_dir / node_type / "runtime" / "atomic-dsl" / f"{view_name}.json"
+
+        def _atomic_runtime_object_id(self, path_str: str, view_name: str) -> str:
+            return f"{path_str.replace('\\', '/')}::{view_name}"
+
+        def _clear_atomic_runtime_refs(self, object_id: str):
+            empty_keys: list[str] = []
+            for atomic_path, refs in self.atomic_runtime_index.items():
+                kept = [ref for ref in refs if ref.get("object_id") != object_id]
+                if kept:
+                    self.atomic_runtime_index[atomic_path] = kept
+                else:
+                    empty_keys.append(atomic_path)
+            for atomic_path in empty_keys:
+                self.atomic_runtime_index.pop(atomic_path, None)
+
+        def _register_atomic_runtime_object(self, object_id: str, payload: dict):
+            self.atomic_runtime_objects[object_id] = payload
+            self._clear_atomic_runtime_refs(object_id)
+
+            obj = payload.get("object")
+            if isinstance(obj, dict):
+                for idx, field in enumerate(obj.get("fields", [])):
+                    bind = field.get("bind") or field.get("atomic_path")
+                    if not bind:
+                        continue
+                    self.atomic_runtime_index.setdefault(bind, []).append({
+                        "object_id": object_id,
+                        "kind": "object_field",
+                        "field_index": idx,
+                    })
+
+            table = payload.get("table")
+            if isinstance(table, dict):
+                for row_idx, row in enumerate(table.get("rows", [])):
+                    for cell_idx, cell in enumerate(row.get("cells", [])):
+                        bind = cell.get("bind") or cell.get("atomic_path")
+                        if not bind:
+                            continue
+                        self.atomic_runtime_index.setdefault(bind, []).append({
+                            "object_id": object_id,
+                            "kind": "table_cell",
+                            "row_index": row_idx,
+                            "cell_index": cell_idx,
+                        })
+
+        def _sync_runtime_atomic_path(self, atomic_path: str, value: Any):
+            normalized = self._normalize_atomic_path(atomic_path)
+            for ref in list(self.atomic_runtime_index.get(normalized, [])):
+                payload = self.atomic_runtime_objects.get(ref.get("object_id"))
+                if not payload:
+                    continue
+                if ref.get("kind") == "object_field":
+                    fields = payload.get("object", {}).get("fields", [])
+                    idx = ref.get("field_index")
+                    if isinstance(idx, int) and 0 <= idx < len(fields):
+                        fields[idx]["value"] = value
+                elif ref.get("kind") == "table_cell":
+                    rows = payload.get("table", {}).get("rows", [])
+                    row_idx = ref.get("row_index")
+                    cell_idx = ref.get("cell_index")
+                    if isinstance(row_idx, int) and 0 <= row_idx < len(rows):
+                        cells = rows[row_idx].get("cells", [])
+                        if isinstance(cell_idx, int) and 0 <= cell_idx < len(cells):
+                            cells[cell_idx]["value"] = value
+
+        def _load_atomic_view_spec(self, path_str: str, view_name: str) -> dict:
+            node_path = self.root / Path(path_str)
+            if not node_path.is_dir():
+                return {"error": f"not found: {path_str}"}
+            meta = self._read_meta(node_path) or {}
+            node_type = meta.get("type")
+            if not node_type:
+                return {"error": f"node has no type: {path_str}"}
+            spec_path = self._runtime_atomic_view_path(node_type, view_name)
+            spec = self._read_json(spec_path)
+            if not isinstance(spec, dict):
+                return {"error": f"atomic view not found: {node_type}/{view_name}"}
+            return {"ok": True, "node_type": node_type, "spec": spec}
+
+        def load_atomic_view(self, path_str: str, view_name: str = "object") -> dict:
+            loaded = self._load_atomic_view_spec(path_str, view_name)
+            if not loaded.get("ok"):
+                return loaded
+
+            spec = loaded["spec"]
+            kind = spec.get("kind")
+            if kind == "object_view":
+                include_children = "direct" if spec.get("include", {}).get("children") else "none"
+                node = self._read_node_object(path_str, include_children=include_children)
+                if node.get("error"):
+                    return node
+                fields = self._build_fs_node_fields(path_str, node, include_children == "direct")
+                result = {
+                    "ok": True,
+                    "path": path_str,
+                    "view": view_name,
+                    "node_type": loaded["node_type"],
+                    "spec": spec,
+                    "object": {
+                        "kind": "object",
+                        "atomic_root": path_str.replace("\\", "/"),
+                        "node": node,
+                        "fields": fields,
+                    },
+                }
+                result["object_id"] = self._atomic_runtime_object_id(path_str, view_name)
+                self._register_atomic_runtime_object(result["object_id"], result)
+                return result
+
+            if kind == "children_table":
+                node = self._read_node_object(path_str, include_children="direct")
+                if node.get("error"):
+                    return node
+                rows = []
+                lift = spec.get("lift", [])
+                for child in node.get("children", []):
+                    row_root = child.get("path", "").replace("\\", "/")
+                    row = {
+                        "row_key": child.get("id"),
+                        "path": child.get("path"),
+                        "row_root": row_root,
+                        "row_bind": row_root,
+                    }
+                    cells = [
+                        self._atomic_field(
+                            child.get("id") or "row",
+                            "",
+                            "node",
+                            None,
+                            "fs_child",
+                            row_root,
+                            extra={"child_path": child.get("path"), "child_type": child.get("meta", {}).get("type")},
+                        )
+                    ]
+                    for field_path in lift:
+                        if field_path.startswith("_meta."):
+                            value = self._get_by_dotpath(child.get("meta", {}), field_path[len("_meta."):])
+                            row[field_path] = value
+                            cells.append(self._atomic_field(field_path.split(".")[-1], field_path, type(value).__name__ if value is not None else "null", value, "lifted_meta", row_root))
+                        elif field_path.startswith("_data."):
+                            value = self._get_by_dotpath(child.get("data", {}), field_path[len("_data."):])
+                            row[field_path] = value
+                            cells.append(self._atomic_field(field_path.split(".")[-1], field_path, type(value).__name__ if value is not None else "null", value, "lifted_data", row_root))
+                    row["cells"] = cells
+                    rows.append(row)
+                result = {
+                    "ok": True,
+                    "path": path_str,
+                    "view": view_name,
+                    "node_type": loaded["node_type"],
+                    "spec": spec,
+                    "table": {
+                        "kind": "table",
+                        "atomic_root": path_str.replace("\\", "/"),
+                        "columns": ["row_key"] + lift,
+                        "rows": rows,
+                    },
+                }
+                result["object_id"] = self._atomic_runtime_object_id(path_str, view_name)
+                self._register_atomic_runtime_object(result["object_id"], result)
+                return result
+
+            return {"error": f"unsupported atomic view kind: {kind}"}
+
+        def _container_has_selection(self, meta: dict) -> bool:
             selected_from = meta.get("selected_from", {})
-            if isinstance(selected_from, dict):
-                ref_container = selected_from.get("container")
-                ref_path = selected_from.get("state_path")
-                if ref_container and ref_path:
-                    ref_state = self._read_container_state(ref_container)
-                    selected_value = self._get_by_dotpath(ref_state, ref_path)
-                    if selected_value in (None, ""):
-                        return ""
+            if not isinstance(selected_from, dict):
+                return True
+            ref_container = selected_from.get("container")
+            ref_path = selected_from.get("state_path")
+            if not (ref_container and ref_path):
+                return True
+            ref_state = self._read_container_state(ref_container)
+            selected_value = self._get_by_dotpath(ref_state, ref_path)
+            return selected_value not in (None, "")
+
+        def _resolve_container_source(self, meta: dict, state: dict) -> str:
+            if not self._container_has_selection(meta):
+                return ""
             resolve = meta.get("resolve", {})
             if "source_root" in resolve:
                 return resolve["source_root"]
@@ -4580,6 +5003,73 @@ load();
                 refs.append({"path": item.get("path"), "hash": item.get("meta", {}).get("hash")})
             return refs
 
+        def _materialize_projection_container(self, container_id: str, meta: dict, state: dict, persist: bool = True) -> dict:
+            projection = meta.get("projection", {}) if isinstance(meta.get("projection"), dict) else {}
+            source_path = str(projection.get("source_path") or "").replace("\\", "/")
+            local_root = str(projection.get("local_root") or "projection")
+            fields = projection.get("fields") or []
+            if not isinstance(fields, list):
+                fields = []
+
+            resolved_fields = []
+            for canonical_path in fields:
+                if not isinstance(canonical_path, str) or not canonical_path.strip():
+                    continue
+                read = self.atomic_read(canonical_path)
+                local_path = self._projection_field_name(source_path, canonical_path)
+                entry = {
+                    "kind": "field",
+                    "path": f"{local_root}.{local_path}" if local_root else local_path,
+                    "local_name": local_path.split(".")[-1],
+                    "bind": self._normalize_atomic_path(canonical_path),
+                    "atomic_path": self._normalize_atomic_path(canonical_path),
+                }
+                if read.get("error"):
+                    entry["value"] = None
+                    entry["value_type"] = "null"
+                    entry["error"] = read.get("error")
+                else:
+                    entry["value"] = read.get("value")
+                    entry["value_type"] = type(read.get("value")).__name__ if read.get("value") is not None else "null"
+                resolved_fields.append(entry)
+
+            resolved = {
+                "container_id": container_id,
+                "state": state,
+                "source": {
+                    "path": source_path or None,
+                    "meta": meta,
+                    "data": {},
+                },
+                "projection": {
+                    "kind": "projection_object",
+                    "local_root": local_root,
+                    "source_path": source_path or None,
+                    "fields": resolved_fields,
+                },
+            }
+            rows = flatten_json(resolved, object_name=container_id)
+            refs = [{"path": source_path, "hash": None}] if source_path else []
+            if persist:
+                sdir = self._sandbox_dir(container_id)
+                sdir.mkdir(parents=True, exist_ok=True)
+                self._write_json(sdir / "_meta.json", {
+                    "container_id": container_id,
+                    "source_path": source_path or None,
+                    "kind": "projection",
+                })
+                self._write_json(sdir / "resolved.json", resolved)
+                self._write_json(sdir / "rows.json", {"rows": rows})
+                self._write_json(sdir / "source_refs.json", {"refs": refs})
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "sandbox": self._rel_path(self._sandbox_dir(container_id)),
+                "resolved": resolved,
+                "rows": rows,
+                "refs": refs,
+            }
+
         def _sandbox_dir(self, container_id: str) -> Path:
             return self.sandboxes_dir / container_id
 
@@ -4596,7 +5086,7 @@ load();
             return merged
 
         def _rebuild_many(self, container_ids: list[str]) -> dict[str, dict]:
-            return {container_id: self.materialize_container(container_id) for container_id in container_ids}
+            return {container_id: self.materialize_container(container_id, persist=False) for container_id in container_ids}
 
         def _run_action_rebuilds(self, container_id: str, action: str, fallback: list[str]) -> dict[str, dict]:
             spec = self._container_action_spec(container_id, action)
@@ -4612,11 +5102,13 @@ load();
                 return self.root / Path(self._render_source_template(template))
             raise ValueError(f"container action target_template missing: {container_id}.{action}")
 
-        def materialize_container(self, container_id: str) -> dict:
+        def materialize_container(self, container_id: str, persist: bool = True) -> dict:
             meta = self._read_container_meta(container_id)
             if not meta:
                 return {"error": f"unknown container: {container_id}"}
             state = self._read_container_state(container_id)
+            if meta.get("kind") == "projection":
+                return self._materialize_projection_container(container_id, meta, state, persist=persist)
             try:
                 source_path = self._resolve_container_source(meta, state)
             except Exception as e:
@@ -4634,15 +5126,18 @@ load();
                 }
                 rows = flatten_json(resolved, object_name=container_id)
                 refs = []
-                sdir = self._sandbox_dir(container_id)
-                sdir.mkdir(parents=True, exist_ok=True)
-                self._write_json(sdir / "_meta.json", {
-                    "container_id": container_id,
-                    "source_path": None,
-                })
-                self._write_json(sdir / "resolved.json", resolved)
-                self._write_json(sdir / "rows.json", {"rows": rows})
-                self._write_json(sdir / "source_refs.json", {"refs": refs})
+                if persist:
+                    sdir = self._sandbox_dir(container_id)
+                    sdir.mkdir(parents=True, exist_ok=True)
+                    self._write_json(sdir / "_meta.json", {
+                        "container_id": container_id,
+                        "source_path": None,
+                    })
+                    self._write_json(sdir / "resolved.json", resolved)
+                    self._write_json(sdir / "rows.json", {"rows": rows})
+                    self._write_json(sdir / "source_refs.json", {"refs": refs})
+                else:
+                    sdir = self._sandbox_dir(container_id)
                 return {
                     "ok": True,
                     "container_id": container_id,
@@ -4664,14 +5159,15 @@ load();
             refs = self._collect_source_refs(resolved)
 
             sdir = self._sandbox_dir(container_id)
-            sdir.mkdir(parents=True, exist_ok=True)
-            self._write_json(sdir / "_meta.json", {
-                "container_id": container_id,
-                "source_path": source_path,
-            })
-            self._write_json(sdir / "resolved.json", resolved)
-            self._write_json(sdir / "rows.json", {"rows": rows})
-            self._write_json(sdir / "source_refs.json", {"refs": refs})
+            if persist:
+                sdir.mkdir(parents=True, exist_ok=True)
+                self._write_json(sdir / "_meta.json", {
+                    "container_id": container_id,
+                    "source_path": source_path,
+                })
+                self._write_json(sdir / "resolved.json", resolved)
+                self._write_json(sdir / "rows.json", {"rows": rows})
+                self._write_json(sdir / "source_refs.json", {"refs": refs})
 
             return {
                 "ok": True,
@@ -4713,10 +5209,10 @@ load();
 
             ch_scope = self.get_scope(f"channel:{channel_name}")
             ch_scope.cwd = ch_dir
-            post_result = self.cmd_post(text.split(), user, ch_scope)
+            post_result = self.cmd_post([text], user, ch_scope)
             self._append_container_log("current_channel", {
                 "cmd": "cpost",
-                "args": text.split(),
+                "args": [text],
                 "user": user,
                 "ts": utc_now(),
                 "selected": channel_name,
@@ -4755,6 +5251,47 @@ load();
                 "current_channel": mats.get("current_channel"),
             }
 
+        def container_create_projection(self, container_id: str, source_path: str, local_root: str, fields: list[str], user: str) -> dict:
+            if not container_id:
+                return {"error": "container_id is required"}
+            if not source_path:
+                return {"error": "source_path is required"}
+            if not local_root:
+                return {"error": "local_root is required"}
+            normalized_fields = [str(field).strip() for field in fields if str(field).strip()]
+            if not normalized_fields:
+                return {"error": "at least one canonical field is required"}
+
+            meta = {
+                "id": container_id,
+                "kind": "projection",
+                "projection": {
+                    "source_path": source_path.replace("\\", "/"),
+                    "local_root": local_root,
+                    "fields": normalized_fields,
+                },
+            }
+            state = {
+                "local_root": local_root,
+            }
+            self._ensure_container(container_id, meta, state)
+            self._write_json(self._container_dir(container_id) / "_meta.json", meta)
+            self._write_container_state(container_id, state)
+            self._append_container_log(container_id, {
+                "cmd": "mkprojection",
+                "user": user,
+                "ts": utc_now(),
+                "source_path": source_path,
+                "local_root": local_root,
+                "fields": normalized_fields,
+            })
+            materialized = self.materialize_container(container_id, persist=False)
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "projection": materialized,
+            }
+
         def container_patch_selected(self, raw_path: str, value: Any, user: str) -> dict:
             channel_name = self._container_selected_value("current_channel")
             if not channel_name:
@@ -4772,14 +5309,16 @@ load();
                 field_path = ".".join(parts[1:])
 
             if field_path.startswith("meta."):
-                meta = self._read_meta(target_dir) or {}
-                self._set_by_dotpath(meta, field_path[len("meta."):], value)
-                self._write_meta(target_dir, meta)
+                atomic_path = f"{self._rel_path(target_dir)}._meta.{field_path[len('meta.'):]}"
+                patch_result = self.atomic_patch(atomic_path, value)
+                if patch_result.get("error"):
+                    return patch_result
                 target_kind = "meta"
             else:
-                data = self._read_data(target_dir) or {}
-                self._set_by_dotpath(data, field_path, value)
-                self._write_data(target_dir, data)
+                atomic_path = f"{self._rel_path(target_dir)}._data.{field_path}"
+                patch_result = self.atomic_patch(atomic_path, value)
+                if patch_result.get("error"):
+                    return patch_result
                 target_kind = "data"
 
             self._append_container_log("current_channel", {
@@ -4789,6 +5328,7 @@ load();
                 "ts": utc_now(),
                 "selected": channel_name,
                 "target": raw_path,
+                "atomic_path": atomic_path,
                 "value": value,
             })
             mats = self._run_action_rebuilds("current_channel", "patch", ["channels_selector", "current_channel"])
@@ -4797,6 +5337,7 @@ load();
                 "selected": channel_name,
                 "path": self._rel_path(target_dir),
                 "target": raw_path,
+                "atomic_path": atomic_path,
                 "target_kind": target_kind,
                 "value": value,
                 "selector": mats.get("channels_selector"),
@@ -4812,8 +5353,12 @@ load();
             if not msg_dir.is_dir():
                 return {"error": f"message not found: {msg_id}"}
 
-            data = self._read_data(msg_dir) or {}
-            reactions = data.get("reactions")
+            atomic_path = f"{self._rel_path(msg_dir)}._data.reactions"
+            current = self.atomic_read(atomic_path)
+            if current.get("error"):
+                return current
+
+            reactions = current.get("value")
             if not isinstance(reactions, dict):
                 reactions = {}
             entry = reactions.get(emoji)
@@ -4833,14 +5378,16 @@ load();
             else:
                 reactions.pop(emoji, None)
 
-            data["reactions"] = reactions
-            self._write_data(msg_dir, data)
+            patch_result = self.atomic_patch(atomic_path, reactions)
+            if patch_result.get("error"):
+                return patch_result
             self._append_container_log("current_channel", {
                 "cmd": "creact",
                 "args": [msg_id, emoji],
                 "user": user,
                 "ts": utc_now(),
                 "selected": channel_name,
+                "atomic_path": patch_result.get("atomic_path"),
             })
             mats = self._run_action_rebuilds("current_channel", "react", ["channels_selector", "current_channel"])
             return {
@@ -4848,6 +5395,7 @@ load();
                 "selected": channel_name,
                 "message": msg_id,
                 "emoji": emoji,
+                "atomic_path": patch_result.get("atomic_path"),
                 "reactions": reactions,
                 "selector": mats.get("channels_selector"),
                 "current_channel": mats.get("current_channel"),
@@ -5090,69 +5638,6 @@ load();
                 return {"error": f"not found: {path_str}"}
             return self._read_tree(target, depth, limit)
 
-        def cmd_materialize(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Materialize a runtime container into its sandbox."""
-            if not args:
-                return {"error": "usage: /materialize <container_id>"}
-            container_id = args[0]
-            self._append_container_log(container_id, {
-                "cmd": "materialize",
-                "args": [container_id],
-                "user": user,
-                "ts": utc_now(),
-            })
-            return self.materialize_container(container_id)
-
-        def cmd_cselect(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Set selected channel in the channels selector runtime container."""
-            if not args:
-                return {"error": "usage: /cselect <channel_name>"}
-            return self.container_select_channel(args[0], user)
-
-        def cmd_cpost(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Post into the channel currently selected by the channels selector container."""
-            text = " ".join(args).strip()
-            if not text:
-                return {"error": "usage: /cpost <text>"}
-            return self.container_post_selected(text, user)
-
-        def cmd_cmkchannel(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Create a channel, select it in the selector container, and rematerialize chat containers."""
-            if not args:
-                return {"error": "usage: /cmkchannel <name>"}
-            return self.container_create_channel(args[0], user, scope)
-
-        def cmd_cpatch(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Patch the selected channel or one of its direct children via dot-path."""
-            if len(args) < 2:
-                return {"error": "usage: /cpatch <path> <value>"}
-
-            raw_path = args[0]
-            raw_value = " ".join(args[1:])
-            try:
-                value = json.loads(raw_value)
-            except Exception:
-                value = raw_value
-            return self.container_patch_selected(raw_path, value, user)
-
-        def cmd_cedit(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Edit a message content in the selected channel."""
-            if len(args) < 2:
-                return {"error": "usage: /cedit <msg_id> <text>"}
-            return self.cmd_cpatch([f"{args[0]}.content", " ".join(args[1:])], user, scope)
-
-        def cmd_cdelete(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Soft-delete a message in the selected channel."""
-            if not args:
-                return {"error": "usage: /cdelete <msg_id>"}
-            return self.cmd_cpatch([f"{args[0]}._deleted", "true"], user, scope)
-
-        def cmd_creact(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Toggle a reaction on a message in the selected channel."""
-            if len(args) < 2:
-                return {"error": "usage: /creact <msg_id> <emoji>"}
-            return self.container_react_selected(args[0], args[1], user)
-
         def _read_tree(self, path: Path, depth: int, limit: int) -> dict:
             """Read a node and its children recursively up to depth/limit."""
             node: dict[str, Any] = {"path": self._rel_path(path), "name": path.name}
@@ -5235,6 +5720,18 @@ load();
     def container_materialize(req: ContainerMaterializeRequest) -> dict:
         return workspace.materialize_container(req.container_id)
 
+    @app.post("/api/atomic/view")
+    def atomic_view(req: AtomicViewRequest) -> dict:
+        return workspace.load_atomic_view(req.path, req.view)
+
+    @app.post("/api/atomic/patch")
+    def atomic_patch(req: AtomicPatchRequest) -> dict:
+        return workspace.atomic_patch(req.atomic_path, req.value)
+
+    @app.post("/api/atomic/define-field")
+    def atomic_define_field(req: AtomicDefineFieldRequest) -> dict:
+        return workspace.atomic_define_field(req.atomic_path, req.value_type, req.default)
+
     @app.get("/api/pchat/state")
     def pchat_state_get(channel: str | None = None, msg_limit: int = 50) -> dict:
         """GET variant — returns channels + optional channel messages."""
@@ -5245,7 +5742,9 @@ load();
         if selected and (channel is None or channel == selected):
             selector = workspace.materialize_container("channels_selector")
             current = workspace.materialize_container("current_channel")
-            if selector.get("ok") and current.get("ok"):
+            source_path = current.get("resolved", {}).get("source", {}).get("path")
+            source_dir = workspace.root / Path(source_path) if source_path else None
+            if selector.get("ok") and current.get("ok") and source_dir and source_dir.is_dir():
                 state = selector["resolved"].get("state", {})
                 channels = []
                 for item in selector["resolved"].get("items", []):

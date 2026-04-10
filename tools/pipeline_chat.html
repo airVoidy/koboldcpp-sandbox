@@ -249,6 +249,15 @@ function buildStateFromContainers(selectorRes, currentRes) {
   };
 }
 
+function renderFromCommandResult(res) {
+  const selectorRes = res?.selector;
+  const currentRes = res?.current_channel;
+  if (!selectorRes?.resolved || !currentRes?.resolved) return false;
+  const state = buildStateFromContainers(selectorRes, currentRes);
+  renderFromState(state);
+  return true;
+}
+
 async function refreshChatContainers() {
   const [selectorRes, currentRes] = await Promise.all([
     materializeContainer('channels_selector'),
@@ -287,6 +296,18 @@ async function shellBatch(cmds, log = true, scope = 'CMD') {
     cmdLog.push({ cmd: cmds[i], user, result: res.results[i], ts: new Date().toISOString() });
   }
   return res.results;
+}
+
+async function atomicPatchValue(atomicPath, value) {
+  const user = getUsername();
+  const res = await api('POST', '/api/atomic/patch', { atomic_path: atomicPath, value });
+  cmdLog.push({
+    cmd: `@atomic_patch ${atomicPath}`,
+    user,
+    result: res,
+    ts: new Date().toISOString(),
+  });
+  return res;
 }
 
 // ══════════════════════════════════════════════════════════

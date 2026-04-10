@@ -1,4 +1,4 @@
-// Channel Content Panel — messages render + send
+// Channel Content Panel - messages render + send
 
 async function sendMessage() {
   const input = document.getElementById('chat-input');
@@ -11,12 +11,9 @@ async function sendMessage() {
   input.value = '';
   setStatus('Posting...', true);
   try {
-    await shellExec(`/cpost ${msg}`, true, 'CMD');
-    try {
+    const res = await shellExec(`/cpost ${msg}`, true, 'CMD');
+    if (!renderFromCommandResult(res)) {
       await refreshChatContainers();
-    } catch {
-      const state = await fetchState(activeChannelName);
-      renderFromState(state);
     }
     setStatus('Ready');
   } catch (e) {
@@ -27,13 +24,34 @@ async function sendMessage() {
 async function reactToMessage(msgId, emoji) {
   setStatus('Reacting...', true);
   try {
-    await shellExec(`/creact ${msgId} ${emoji}`, true, 'CMD');
-    try {
+    const res = await shellExec(`/creact ${msgId} ${emoji}`, true, 'CMD');
+    if (!renderFromCommandResult(res)) {
       await refreshChatContainers();
-    } catch {
-      const state = await fetchState(activeChannelName);
-      renderFromState(state);
     }
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+async function editMessageAtomic(msgPath, currentText) {
+  const nextText = prompt('Edit message', currentText ?? '');
+  if (nextText === null) return;
+  setStatus('Saving...', true);
+  try {
+    await atomicPatchValue(`${msgPath}._data.content`, nextText);
+    await refreshChatContainers();
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+async function deleteMessageAtomic(msgPath) {
+  setStatus('Deleting...', true);
+  try {
+    await atomicPatchValue(`${msgPath}._data._deleted`, true);
+    await refreshChatContainers();
     setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
@@ -54,6 +72,7 @@ function renderMessages(items) {
     const ts = meta.ts ? new Date(meta.ts).toLocaleTimeString() : '';
     const content = m.data?.content || m.name || '';
     const msgId = m.name || '';
+    const msgPath = m.path || '';
     const reactions = m.data?.reactions || {};
     const isSelf = user === currentUser;
     const reactionHtml = Object.entries(reactions).map(([emoji, info]) => {
@@ -68,6 +87,8 @@ function renderMessages(items) {
       ${reactionHtml ? `<div class="msg-reactions">${reactionHtml}</div>` : ''}
       <div class="msg-actions">
         <button class="btn sm" onclick="reactToMessage('${esc(msgId)}','👍')">👍</button>
+        <button class="btn sm" onclick="editMessageAtomic('${esc(msgPath)}', ${JSON.stringify(content)})">Edit</button>
+        <button class="btn sm" onclick="deleteMessageAtomic('${esc(msgPath)}')">Del</button>
       </div>
     </div>`;
   }).join('');
