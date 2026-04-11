@@ -1,0 +1,8 @@
+{
+  "kind": "children_table",
+  "row_source": "children",
+  "lift": [
+    "_meta.name",
+    "_meta.type"
+  ]
+}

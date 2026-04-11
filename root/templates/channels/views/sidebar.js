@@ -17,14 +17,11 @@ async function createChannel() {
   input.value = '';
   setStatus('Creating channel...', true);
   try {
-    await shellExec(`/cmkchannel ${name}`, true, 'CMD');
+    const res = await shellExec(`/cmkchannel ${name}`, true, 'CMD');
     activeChannelName = name;
     localStorage.setItem('pchat_channel', name);
-    try {
+    if (!renderFromCommandResult(res)) {
       await refreshChatContainers();
-    } catch {
-      await selectChannel(name);
-      return;
     }
     setStatus('Ready');
   } catch (e) { setStatus('Error: ' + e.message); }
@@ -36,13 +33,9 @@ async function selectChannel(name) {
   document.getElementById('channel-label').innerHTML = '# <strong>' + esc(name) + '</strong>';
   setStatus('Loading...', true);
   try {
-    await shellExec(`/cselect ${name}`, true, 'CMD');
-    try {
+    const res = await shellExec(`/cselect ${name}`, true, 'CMD');
+    if (!renderFromCommandResult(res)) {
       await refreshChatContainers();
-    } catch {
-      await shellExec(`/select ${name}`, true, 'CMD');
-      const state = await fetchState(name);
-      renderFromState(state);
     }
     setStatus('Ready');
   } catch (e) { setStatus('Error: ' + e.message); }

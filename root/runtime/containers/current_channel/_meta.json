@@ -8,7 +8,7 @@
   },
   "action_defaults": {
     "target_template": "pchat/channels/{containers.channels_selector.state.selected}",
-    "rebuild_containers": ["channels_selector", "current_channel"]
+    "rebuild_containers": ["channels_selector", "current_channel", "current_channel_messages"]
   },
   "actions": {
     "post": {},
