@@ -1,0 +1,35 @@
+{
+  "page_id": "wiki:prompt_constraints_hypotheses_seed",
+  "slug": "prompt_constraints_hypotheses_seed",
+  "title": "$config.prompt_constraints_hypotheses_seed",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "Known ENTITIES:\n@entities\n\nKnown AXIOMS:\n@axioms\n\nRead @input and extract only HYPOTHESES.\nHYPOTHESES are inferred, uncertain, optional, or rejection-reason style checks that are useful later but are not explicit hard axioms.\n\nReturn JSON array only.\nRules:\n- short labels\n- no commentary\n- no code fences"
+  },
+  "blocks": [
+    {
+      "block_id": "prompt_constraints_hypotheses_seed:block:1",
+      "kind": "text",
+      "label": "$config.prompt_constraints_hypotheses_seed",
+      "text": "Known ENTITIES:\n@entities\n\nKnown AXIOMS:\n@axioms\n\nRead @input and extract only HYPOTHESES.\nHYPOTHESES are inferred, uncertain, optional, or rejection-reason style checks that are useful later but are not explicit hard axioms.\n\nReturn JSON array only.\nRules:\n- short labels\n- no commentary\n- no code fences",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$config.prompt_constraints_hypotheses_seed"
+  ],
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "links": [],
+  "source": "global_items_migration",
+  "updated_at": "2026-03-27T18:22:01.242260+00:00"
+}

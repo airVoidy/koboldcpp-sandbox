@@ -1,0 +1,13 @@
+{
+  "type": "wiki_page",
+  "slug": "max_table_iters",
+  "title": "$config.max_table_iters",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "updated_at": "2026-03-27T18:22:01.244686+00:00"
+}

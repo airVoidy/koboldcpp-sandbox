@@ -1,0 +1,35 @@
+{
+  "page_id": "wiki:prompt_answer_table_rows",
+  "slug": "prompt_answer_table_rows",
+  "title": "$config.prompt_answer_table_rows",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "Write exactly $config.target_rows candidate prompts that answer the user's request.\n\nRules:\n- Output exactly $config.target_rows items\n- Each item must be one prompt only\n- Number them as 1. 2. 3. ...\n- No intro, no outro, no markdown headings\n- Keep each prompt self-contained\n- Follow the user's constraints closely"
+  },
+  "blocks": [
+    {
+      "block_id": "prompt_answer_table_rows:block:1",
+      "kind": "text",
+      "label": "$config.prompt_answer_table_rows",
+      "text": "Write exactly $config.target_rows candidate prompts that answer the user's request.\n\nRules:\n- Output exactly $config.target_rows items\n- Each item must be one prompt only\n- Number them as 1. 2. 3. ...\n- No intro, no outro, no markdown headings\n- Keep each prompt self-contained\n- Follow the user's constraints closely",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$config.prompt_answer_table_rows"
+  ],
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "links": [],
+  "source": "global_items_migration",
+  "updated_at": "2026-03-27T18:22:01.239022+00:00"
+}

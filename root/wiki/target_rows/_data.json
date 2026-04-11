@@ -1,0 +1,35 @@
+{
+  "page_id": "wiki:target_rows",
+  "slug": "target_rows",
+  "title": "$config.target_rows",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "4"
+  },
+  "blocks": [
+    {
+      "block_id": "target_rows:block:1",
+      "kind": "text",
+      "label": "$config.target_rows",
+      "text": "4",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$config.target_rows"
+  ],
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "links": [],
+  "source": "global_items_migration",
+  "updated_at": "2026-03-27T18:22:01.243467+00:00"
+}
