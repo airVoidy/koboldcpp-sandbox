@@ -3,5 +3,27 @@
   "description": "Runtime root container for global CMD wrappers",
   "fields": {},
   "inherits": null,
-  "commands": ["materialize", "cselect", "cpost", "cmkchannel", "cpatch", "cedit", "cdelete", "creact"]
+  "commands": [
+    "materialize",
+    "cselect",
+    "cpost",
+    "cmkchannel",
+    "cpatch",
+    "cedit",
+    "cdelete",
+    "creact",
+    "mkprojection",
+    "projectionexec",
+    "projectionconcat",
+    "mktable",
+    "tableexec",
+    "tablerow",
+    "tablechildren",
+    "tablechildlog",
+    "tablewindow",
+    "tablesort",
+    "tablefilter",
+    "tablerange",
+    "wiki"
+  ]
 }

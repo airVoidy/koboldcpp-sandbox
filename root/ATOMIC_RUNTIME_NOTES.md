@@ -7,6 +7,16 @@ Current working model:
 - Canonical fields are runtime singletons by path.
 - `bind` is wiring only at the DSL level.
 - Runtime may compile binds into lambda/exec wrappers internally.
+- Projection objects may also define local `rule` fields over bound fields.
+- Generic projection rules are appended as exec-like rule objects and materialized by `op`.
+- Projection `op` handlers should live in `templates/root/runtime/projection-ops/`, not as server-specific branches.
+- Table/matrix transforms should follow the same pattern via `templates/root/runtime/table-ops/`.
+- Initial table ops can stay simple: add row, sort rows, filter rows; richer matrix sugar can layer on top.
+- Range/slice should also live at table-op level so long lists can be paged without special server endpoints.
+- A table can also be populated from direct FS children via modular table-op, instead of adding rows one by one.
+- A table can also be populated from append-only child-log refs, so long message lists do not need full directory scans.
+- Child-log based loading should support cursor-like ref windows (`before_ref` / `after_ref`) in addition to raw offsets.
+- Table containers may keep pagination/window state locally and feed it into autoload ops at materialize time.
 - Views and virtual tables are projections over fields, not source of truth.
 - `value` in view cells is resolved cache.
 - `atomic_path` is legacy-compatible naming; `bind` is the preferred view-level key.

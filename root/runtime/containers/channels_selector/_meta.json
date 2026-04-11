@@ -7,11 +7,11 @@
   "actions": {
     "select": {
       "state_path": "selected",
-      "rebuild_containers": ["channels_selector", "current_channel"]
+      "rebuild_containers": ["channels_selector", "current_channel", "current_channel_messages"]
     },
     "create_channel": {
       "select_new": true,
-      "rebuild_containers": ["channels_selector", "current_channel"]
+      "rebuild_containers": ["channels_selector", "current_channel", "current_channel_messages"]
     }
   },
   "resolve": {
