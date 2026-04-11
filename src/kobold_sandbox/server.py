@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from dataclasses import asdict, is_dataclass
+import hashlib
 import uuid
 import json
 import re
@@ -16,6 +17,7 @@ from fastapi.responses import HTMLResponse
 import httpx
 import yaml
 from pydantic import BaseModel
+import jsonata
 
 from .assertions import ClaimStatus, HypothesisTree
 from .models import PNode, PNodeStore, jpath, utc_now
@@ -4406,6 +4408,236 @@ load();
             except ValueError:
                 return str(path)
 
+        def _exec_log_path(self, node_dir: Path) -> Path:
+            return node_dir / "_exec.jsonl"
+
+        def _append_exec_entry(self, node_dir: Path, entry: dict):
+            log_path = self._exec_log_path(node_dir)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        def _field_type_name(self, value: Any) -> str:
+            if value is None:
+                return "null"
+            if isinstance(value, bool):
+                return "bool"
+            if isinstance(value, int) and not isinstance(value, bool):
+                return "int"
+            if isinstance(value, float):
+                return "float"
+            if isinstance(value, str):
+                return "str"
+            if isinstance(value, list):
+                return "list"
+            if isinstance(value, dict):
+                return "dict"
+            return type(value).__name__
+
+        def _projection_hash(self, source_path: str, field_path: str) -> str:
+            raw = f"{source_path}::{field_path}".encode("utf-8")
+            return hashlib.sha1(raw).hexdigest()[:12]
+
+        def _projection_field_entry(self, source_path: str, scope: str, key: str, value: Any) -> dict:
+            field_path = f"{scope}.{key}"
+            bind = f"{source_path}.{field_path}"
+            field_hash = self._projection_hash(source_path, field_path)
+            return {
+                "hash": field_hash,
+                "scope": scope,
+                "path": field_path,
+                "full_relative_path": field_path,
+                "bind": bind,
+                "value": value,
+                "value_type": self._field_type_name(value),
+            }
+
+        def _projection_views(self, flat_store: dict[str, list[Any]], view_filters: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+            views: dict[str, list[dict[str, Any]]] = {}
+            for view_name, paths in view_filters.items():
+                rows: list[dict[str, Any]] = []
+                for path in paths:
+                    item = flat_store.get(path)
+                    if not item:
+                        continue
+                    rows.append({
+                        "hash": item[0],
+                        "path": item[1],
+                        "value": item[2],
+                    })
+                views[view_name] = rows
+            return views
+
+        def _build_message_projection(self, msg_dir: Path) -> dict:
+            source_path = self._rel_path(msg_dir)
+            meta = self._read_meta(msg_dir) or {}
+            data = self._read_data(msg_dir) or {}
+            fields = []
+            flat_store = {}
+            view_filters = {
+                "all": [],
+                "_meta": [],
+                "_data": [],
+            }
+            for key, value in meta.items():
+                entry = self._projection_field_entry(source_path, "_meta", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [
+                    entry["hash"],
+                    entry["full_relative_path"],
+                    entry["value"],
+                ]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_meta"].append(entry["full_relative_path"])
+            for key, value in data.items():
+                entry = self._projection_field_entry(source_path, "_data", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [
+                    entry["hash"],
+                    entry["full_relative_path"],
+                    entry["value"],
+                ]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_data"].append(entry["full_relative_path"])
+            return {
+                "source_node": source_path,
+                "_meta": {
+                    "global_path": f"{source_path}.(_meta.json)",
+                    "schema": {k: k for k in meta.keys()},
+                    "value": meta,
+                },
+                "_data": {
+                    "global_path": f"{source_path}.(_data.json)",
+                    "schema": {k: k for k in data.keys()},
+                    "value": data,
+                },
+                "fields": fields,
+                "flat_store": flat_store,
+                "view_filters": view_filters,
+                "views": self._projection_views(flat_store, view_filters),
+            }
+
+        def _build_jsonata_bindings(self, projection: dict) -> dict[str, Any]:
+            flat_store = projection.get("flat_store") or {}
+            views = projection.get("views") or {}
+
+            def field(path: str) -> dict[str, Any] | None:
+                item = flat_store.get(str(path))
+                if not item:
+                    return None
+                return {
+                    "hash": item[0],
+                    "path": item[1],
+                    "value": item[2],
+                }
+
+            def value(path: str) -> Any:
+                item = flat_store.get(str(path))
+                if not item:
+                    return None
+                return item[2]
+
+            def view(name: str) -> list[dict[str, Any]]:
+                return list(views.get(str(name)) or [])
+
+            return {
+                "projection": projection,
+                "flat_store": flat_store,
+                "views": views,
+                "field": field,
+                "value": value,
+                "view": view,
+            }
+
+        def eval_message_projection_jsonata(
+            self,
+            msg_dir: Path,
+            expr: str,
+            *,
+            view_name: str = "all",
+            input_name: str = "view",
+        ) -> dict:
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            input_map = {
+                "projection": projection,
+                "flat_store": projection.get("flat_store") or {},
+                "view": (projection.get("views") or {}).get(view_name) or [],
+            }
+            if input_name not in input_map:
+                return {"error": f"unsupported input '{input_name}'"}
+
+            expression = jsonata.Jsonata(expr)
+            bindings = self._build_jsonata_bindings(projection)
+            expression.assign("projection", bindings["projection"])
+            expression.assign("flat_store", bindings["flat_store"])
+            expression.assign("views", bindings["views"])
+            expression.register_lambda("field", bindings["field"])
+            expression.register_lambda("value", bindings["value"])
+            expression.register_lambda("view", bindings["view"])
+            result = expression.evaluate(input_map[input_name])
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "input": input_name,
+                "view": view_name,
+                "expr": expr,
+                "result": result,
+                "projection": projection,
+            }
+
+        def create_message_checkpoint(self, msg_dir: Path, user: str) -> dict:
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            checkpoint_name = self._next_slot_id(msg_dir, "checkpoint")
+            checkpoint_dir = msg_dir / checkpoint_name
+            checkpoint_dir.mkdir()
+
+            checkpoint_meta = {
+                "type": "message",
+                "kind": "checkpoint",
+                "user": user,
+                "ts": utc_now(),
+                "source": projection["source_node"],
+            }
+            checkpoint_data = {
+                "projection": projection,
+                "resolved": {
+                    "meta": projection["_meta"]["value"],
+                    "data": projection["_data"]["value"],
+                },
+            }
+            self._write_meta(checkpoint_dir, checkpoint_meta)
+            self._write_data(checkpoint_dir, checkpoint_data)
+            self._append_exec_entry(msg_dir, {
+                "op": "checkpoint",
+                "user": user,
+                "ts": checkpoint_meta["ts"],
+                "checkpoint": self._rel_path(checkpoint_dir),
+                "source": projection["source_node"],
+                "resolved": checkpoint_data["resolved"],
+            })
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "projection": projection,
+                "checkpoint": {
+                    "path": self._rel_path(checkpoint_dir),
+                    "meta": checkpoint_meta,
+                    "data": checkpoint_data,
+                },
+            }
+
         # ── Commands ──────────────────────────────────────────
 
         def cmd_mktype(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
@@ -4574,9 +4806,59 @@ load();
             slot_dir = scope.cwd / slot_name
             slot_dir.mkdir()
             meta = {"type": "message", "user": user, "ts": utc_now()}
+            data = {"content": text}
             self._write_meta(slot_dir, meta)
-            self._write_data(slot_dir, {"content": text})
-            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": {"content": text}}
+            self._write_data(slot_dir, data)
+            self._append_exec_entry(slot_dir, {
+                "op": "post",
+                "user": user,
+                "ts": meta["ts"],
+                "meta": meta,
+                "data": data,
+            })
+            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": data}
+
+        def cmd_mcheckpoint(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Create a child checkpoint node inside a message slot."""
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if args:
+                    return {"error": "usage: /mcheckpoint  (inside message) or /mcheckpoint <msg_id> (inside channel)"}
+                return self.create_message_checkpoint(target, user)
+
+            if not args:
+                return {"error": "usage: /mcheckpoint <msg_id>"}
+            msg_dir = scope.cwd / args[0]
+            return self.create_message_checkpoint(msg_dir, user)
+
+        def cmd_mjsonata(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Evaluate a JSONata expression against a message projection."""
+            view_name = "all"
+            input_name = "view"
+            positional: list[str] = []
+            for arg in args:
+                if arg.startswith("--view="):
+                    view_name = arg.split("=", 1)[1].strip() or "all"
+                    continue
+                if arg.startswith("--input="):
+                    input_name = arg.split("=", 1)[1].strip() or "view"
+                    continue
+                positional.append(arg)
+
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if not positional:
+                    return {"error": "usage: /mjsonata <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+                expr = " ".join(positional)
+                return self.eval_message_projection_jsonata(target, expr, view_name=view_name, input_name=input_name)
+
+            if len(positional) < 2:
+                return {"error": "usage: /mjsonata <msg_id> <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+            msg_dir = scope.cwd / positional[0]
+            expr = " ".join(positional[1:])
+            return self.eval_message_projection_jsonata(msg_dir, expr, view_name=view_name, input_name=input_name)
 
         def cmd_rm(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Delete a slot."""
