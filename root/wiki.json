@@ -1,0 +1,338 @@
+{
+  "extract_constraints_instruction": {
+    "title": "$config.extract_constraints_instruction",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста.",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.extract_constraints_instruction"
+    ]
+  },
+  "fn-quick_check": {
+    "title": "quick_check",
+    "kind": "text",
+    "page_kind": "function_page",
+    "text": "fn quick_check(@text) -> @result:\n  CALL @numbered, numbered, @text\n  CALL @result, check_status, \"PASS: ok\"",
+    "tags": [
+      "function",
+      "user-defined"
+    ],
+    "aliases": [
+      "$config.fn-quick_check"
+    ]
+  },
+  "grammar__binary": {
+    "title": "$grammar.binary",
+    "kind": "text",
+    "page_kind": "grammar_page",
+    "text": "root ::= digit term\ndigit ::= \"0\" | \"1\"\nterm ::= \" \" | \"\\n\" | \"\\\"\"",
+    "tags": [
+      "grammar",
+      "wikilike"
+    ],
+    "aliases": [
+      "$grammar.binary"
+    ]
+  },
+  "grammar__number": {
+    "title": "$grammar.number",
+    "kind": "text",
+    "page_kind": "grammar_page",
+    "text": "root ::= digits term\ndigits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]\nterm ::= \" \" | \"\\n\" | \"\\\"\"",
+    "tags": [
+      "grammar",
+      "wikilike"
+    ],
+    "aliases": [
+      "$grammar.number"
+    ]
+  },
+  "grammar__pass_fail": {
+    "title": "$grammar.pass_fail",
+    "kind": "text",
+    "page_kind": "grammar_page",
+    "text": "root ::= word term\nword ::= \"PASS\" | \"FAIL\"\nterm ::= \" \" | \"\\n\"",
+    "tags": [
+      "grammar",
+      "wikilike"
+    ],
+    "aliases": [
+      "$grammar.pass_fail"
+    ]
+  },
+  "grammar__yesno": {
+    "title": "$grammar.yesno",
+    "kind": "text",
+    "page_kind": "grammar_page",
+    "text": "root ::= word term\nword ::= \"yes\" | \"no\" | \"Yes\" | \"No\"\nterm ::= \" \" | \"\\n\"",
+    "tags": [
+      "grammar",
+      "wikilike"
+    ],
+    "aliases": [
+      "$grammar.yesno"
+    ]
+  },
+  "hypothesis_cols": {
+    "title": "$config.hypothesis_cols",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "6",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.hypothesis_cols"
+    ]
+  },
+  "max_continue": {
+    "title": "$config.max_continue",
+    "kind": "param",
+    "page_kind": "config_page",
+    "text": "20",
+    "tags": [
+      "config",
+      "wikilike",
+      "param"
+    ],
+    "aliases": [
+      "$config.max_continue"
+    ],
+    "blocks": [
+      {
+        "block_id": "max_continue:block:1",
+        "kind": "param",
+        "label": "$config.max_continue",
+        "text": "20",
+        "headers": [],
+        "rows": [],
+        "ref": null
+      }
+    ]
+  },
+  "max_table_iters": {
+    "title": "$config.max_table_iters",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "4",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.max_table_iters"
+    ]
+  },
+  "max_tokens": {
+    "title": "$config.max_tokens",
+    "kind": "param",
+    "page_kind": "config_page",
+    "text": "2048",
+    "tags": [
+      "config",
+      "wikilike",
+      "param"
+    ],
+    "aliases": [
+      "$config.max_tokens"
+    ],
+    "blocks": [
+      {
+        "block_id": "max_tokens:block:1",
+        "kind": "param",
+        "label": "$config.max_tokens",
+        "text": "2048",
+        "headers": [],
+        "rows": [],
+        "ref": null
+      }
+    ]
+  },
+  "prompt_answer_table_rows": {
+    "title": "$config.prompt_answer_table_rows",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Write exactly $config.target_rows candidate prompts that answer the user's request.\n\nRules:\n- Output exactly $config.target_rows items\n- Each item must be one prompt only\n- Number them as 1. 2. 3. ...\n- No intro, no outro, no markdown headings\n- Keep each prompt self-contained\n- Follow the user's constraints closely",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_answer_table_rows"
+    ]
+  },
+  "prompt_claims": {
+    "title": "$config.prompt_claims",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста.\n\nТекст для анализа:\n@input",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_claims"
+    ]
+  },
+  "prompt_constraints_axioms_seed": {
+    "title": "$config.prompt_constraints_axioms_seed",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Known ENTITIES:\n@entities\n\nRead @input and extract only AXIOMS.\nAXIOMS are explicit checks, conditions, required facts, or hard constraints from the request.\nDo not include hypotheses.\n\nReturn JSON array only.\nRules:\n- short atomic checks\n- no commentary\n- no code fences",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_axioms_seed"
+    ]
+  },
+  "prompt_constraints_axioms_tail": {
+    "title": "$config.prompt_constraints_axioms_tail",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Known ENTITIES:\n@entities\n\nKnown AXIOMS:\n@known\n\nRead @input again.\nReturn only additional AXIOMS missing from the known set.\nIf none are missing, return [].\n\nReturn JSON array only.\nRules:\n- do not repeat known axioms\n- do not add hypotheses\n- short atomic checks",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_axioms_tail"
+    ]
+  },
+  "prompt_constraints_entities_seed": {
+    "title": "$config.prompt_constraints_entities_seed",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Read @input and extract only candidate ENTITIES for later structured verification.\n\nReturn JSON array only.\nExample: [\"subject\", \"style\", \"eye color\"]\nRules:\n- short labels\n- no commentary\n- no code fences",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_entities_seed"
+    ]
+  },
+  "prompt_constraints_entities_tail": {
+    "title": "$config.prompt_constraints_entities_tail",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Known ENTITIES:\n@known\n\nRead @input again.\nReturn only additional ENTITIES missing from the known set.\nIf none are missing, return [].\n\nReturn JSON array only.\nRules:\n- no duplicates from known set\n- short labels\n- no commentary",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_entities_tail"
+    ]
+  },
+  "prompt_constraints_hypotheses_seed": {
+    "title": "$config.prompt_constraints_hypotheses_seed",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Known ENTITIES:\n@entities\n\nKnown AXIOMS:\n@axioms\n\nRead @input and extract only HYPOTHESES.\nHYPOTHESES are inferred, uncertain, optional, or rejection-reason style checks that are useful later but are not explicit hard axioms.\n\nReturn JSON array only.\nRules:\n- short labels\n- no commentary\n- no code fences",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_hypotheses_seed"
+    ]
+  },
+  "prompt_constraints_hypotheses_tail": {
+    "title": "$config.prompt_constraints_hypotheses_tail",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Known ENTITIES:\n@entities\n\nKnown AXIOMS:\n@axioms\n\nKnown HYPOTHESES:\n@known\n\nRead @input again.\nReturn only additional HYPOTHESES missing from the known set.\nIf none are missing, return [].\n\nReturn JSON array only.\nRules:\n- do not repeat known hypotheses\n- do not restate hard axioms\n- short labels",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_hypotheses_tail"
+    ]
+  },
+  "prompt_constraints_strict": {
+    "title": "$config.prompt_constraints_strict",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Extract a compact constraint manifest from the user request.\n\nReturn exactly this format:\nENTITIES:\n- column 1\n- column 2\n\nAXIOMS:\n- check 1\n- check 2\n\nHYPOTHESES:\n- reason 1\n- reason 2\n\nRules:\n- ENTITIES are table columns for each candidate prompt\n- AXIOMS are binary checks for accept or reject\n- HYPOTHESES are short rejection-reason columns\n- No commentary\n- No code fences\n- Keep labels short",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_constraints_strict"
+    ]
+  },
+  "prompt_table": {
+    "title": "$config.prompt_table",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "Ты — экстрактор данных. Распарси текст в структурированную таблицу.\nВерни markdown-таблицу с подходящими колонками.\nЕсли есть сущности со свойствами: | Сущность | Свойство1 | Свойство2 |\nЕсли список: | # | Элемент | Детали |\n\nТекст:\n@input",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.prompt_table"
+    ]
+  },
+  "target_rows": {
+    "title": "$config.target_rows",
+    "kind": "text",
+    "page_kind": "config_page",
+    "text": "4",
+    "tags": [
+      "config",
+      "wikilike",
+      "text"
+    ],
+    "aliases": [
+      "$config.target_rows"
+    ]
+  },
+  "temperature": {
+    "title": "$config.temperature",
+    "kind": "param",
+    "page_kind": "config_page",
+    "text": "0.6",
+    "tags": [
+      "config",
+      "wikilike",
+      "param"
+    ],
+    "aliases": [
+      "$config.temperature"
+    ],
+    "blocks": [
+      {
+        "block_id": "temperature:block:1",
+        "kind": "param",
+        "label": "$config.temperature",
+        "text": "0.6",
+        "headers": [],
+        "rows": [],
+        "ref": null
+      }
+    ]
+  }
+}

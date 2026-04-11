@@ -1,0 +1,112 @@
+{
+  "rows": [
+    {
+      "field": "container_id",
+      "type": "str",
+      "value": "channels_selector",
+      "path": "container_id",
+      "group": "root",
+      "aliases": [
+        "container_id",
+        "container_id"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "selected",
+      "type": "null",
+      "value": null,
+      "path": "state.selected",
+      "group": "state",
+      "aliases": [
+        "state.selected",
+        "state.selected"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "path",
+      "type": "str",
+      "value": "pchat/channels",
+      "path": "source.path",
+      "group": "source",
+      "aliases": [
+        "source.path",
+        "source.path"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "type",
+      "type": "str",
+      "value": "channels",
+      "path": "source.meta.type",
+      "group": "source",
+      "aliases": [
+        "source.meta.type",
+        "source.meta.type"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "name",
+      "type": "str",
+      "value": "channels",
+      "path": "source.meta.name",
+      "group": "source",
+      "aliases": [
+        "source.meta.name",
+        "source.meta.name"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "items",
+      "type": "list",
+      "value": [
+        {
+          "id": "123",
+          "path": "pchat/channels/123",
+          "meta": {
+            "type": "channel",
+            "user": "anon",
+            "ts": "2026-04-06T08:53:11.607256+00:00",
+            "name": "123"
+          },
+          "data": {}
+        },
+        {
+          "id": "general",
+          "path": "pchat/channels/general",
+          "meta": {
+            "type": "channel",
+            "user": "anon",
+            "ts": "2026-04-06T11:00:35.953507+00:00",
+            "name": "general"
+          },
+          "data": {}
+        }
+      ],
+      "path": "items",
+      "group": "root",
+      "aliases": [
+        "items",
+        "items"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    }
+  ]
+}

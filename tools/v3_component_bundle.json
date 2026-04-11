@@ -1,0 +1,66 @@
+{
+  "components": {
+    "message": {
+      "template": {
+        "data": "string"
+      }
+    },
+    "fdasf": {
+      "template": {
+        "data": "string"
+      }
+    }
+  },
+  "views": {
+    "button/13": {
+      "component": "button",
+      "clientTemplate": {
+        "label": "string",
+        "action": "string",
+        "color": "string"
+      },
+      "assembly": "MOV @label, @server.label\nMOV @action, @server.action\nMOV @color, @server.color",
+      "layout": {
+        "rows": [
+          {
+            "cells": [
+              "label"
+            ]
+          },
+          {
+            "cells": [
+              "action"
+            ]
+          },
+          {
+            "cells": [
+              "color"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "cards": {
+    "13123": {
+      "slots": []
+    }
+  },
+  "replay": [
+    {
+      "_raw": "comp message",
+      "cmd": "comp",
+      "name": "message",
+      "_ctx": "schema",
+      "_ts": 1775452751306
+    },
+    {
+      "_raw": "comp message",
+      "cmd": "comp",
+      "name": "message",
+      "_ctx": "schema",
+      "_ts": 1775454027233
+    }
+  ],
+  "_saved": "2026-04-06T05:40:52.241Z"
+}
