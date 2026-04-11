@@ -1,0 +1,35 @@
+{
+  "page_id": "wiki:extract_constraints_instruction",
+  "slug": "extract_constraints_instruction",
+  "title": "$config.extract_constraints_instruction",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста."
+  },
+  "blocks": [
+    {
+      "block_id": "extract_constraints_instruction:block:1",
+      "kind": "text",
+      "label": "$config.extract_constraints_instruction",
+      "text": "Ты — логический аналитик. Извлеки все атомарные утверждения/факты из текста.\nВерни ТОЛЬКО в формате:\nENTITIES: [сущность1, сущность2, ...]\nAXIOMS:\n- утверждение 1\n- утверждение 2\nHYPOTHESES:\n- гипотеза 1\n\nТребования:\n- AXIOMS = факты, данные как условие.\n- HYPOTHESES = выводы, предположения.\n- Каждое утверждение атомарное и короткое.\n- Не выводи прозу или JSON.\n- Отвечай на языке текста.",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$config.extract_constraints_instruction"
+  ],
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "links": [],
+  "source": "global_items_migration",
+  "updated_at": "2026-03-27T18:22:01.237251+00:00"
+}

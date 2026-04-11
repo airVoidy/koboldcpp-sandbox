@@ -1,0 +1,34 @@
+{
+  "page_id": "wiki:grammar__number",
+  "slug": "grammar__number",
+  "title": "$grammar.number",
+  "page_kind": "grammar_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "root ::= digits term\ndigits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]\nterm ::= \" \" | \"\\n\" | \"\\\"\""
+  },
+  "blocks": [
+    {
+      "block_id": "grammar__number:block:1",
+      "kind": "text",
+      "label": "$grammar.number",
+      "text": "root ::= digits term\ndigits ::= [0-9] | [0-9][0-9] | [0-9][0-9][0-9]\nterm ::= \" \" | \"\\n\" | \"\\\"\"",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$grammar.number"
+  ],
+  "tags": [
+    "grammar",
+    "wikilike"
+  ],
+  "links": [],
+  "source": "local_grammar_migration",
+  "updated_at": "2026-03-27T18:22:02.566529+00:00"
+}

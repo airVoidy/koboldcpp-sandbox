@@ -1,0 +1,35 @@
+{
+  "page_id": "wiki:prompt_constraints_entities_tail",
+  "slug": "prompt_constraints_entities_tail",
+  "title": "$config.prompt_constraints_entities_tail",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "Known ENTITIES:\n@known\n\nRead @input again.\nReturn only additional ENTITIES missing from the known set.\nIf none are missing, return [].\n\nReturn JSON array only.\nRules:\n- no duplicates from known set\n- short labels\n- no commentary"
+  },
+  "blocks": [
+    {
+      "block_id": "prompt_constraints_entities_tail:block:1",
+      "kind": "text",
+      "label": "$config.prompt_constraints_entities_tail",
+      "text": "Known ENTITIES:\n@known\n\nRead @input again.\nReturn only additional ENTITIES missing from the known set.\nIf none are missing, return [].\n\nReturn JSON array only.\nRules:\n- no duplicates from known set\n- short labels\n- no commentary",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$config.prompt_constraints_entities_tail"
+  ],
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "links": [],
+  "source": "global_items_migration",
+  "updated_at": "2026-03-27T18:22:01.240610+00:00"
+}

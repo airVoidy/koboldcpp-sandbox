@@ -1,0 +1,13 @@
+{
+  "type": "wiki_page",
+  "slug": "max_tokens",
+  "title": "$config.max_tokens",
+  "page_kind": "config_page",
+  "item_kind": "param",
+  "tags": [
+    "config",
+    "wikilike",
+    "param"
+  ],
+  "updated_at": "2026-03-27T18:22:01.235975+00:00"
+}
