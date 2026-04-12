@@ -1,5 +1,4 @@
 /** Core types matching server _meta.json + _data.json */
-import type { Projection } from './runtime'
 
 export interface NodeMeta {
   type: string
@@ -20,8 +19,6 @@ export interface ChatItem {
   path: string
   meta: NodeMeta
   data: NodeData
-  /** Optional L1 projection (when requested) */
-  projection?: Projection
 }
 
 export interface ChatState {
@@ -30,26 +27,10 @@ export interface ChatState {
   active_channel: string | null
   user: string
   ts: string
-  source?: string
 }
 
 export interface CmdResult {
   ok?: boolean
   error?: string
   [key: string]: unknown
-}
-
-export interface ContainerResolved {
-  container_id: string
-  state: Record<string, unknown>
-  source: { path: string | null; meta: NodeMeta; data: NodeData }
-  items?: ChatItem[]
-  item?: ChatItem
-}
-
-export interface MaterializeResult extends CmdResult {
-  container_id: string
-  resolved: ContainerResolved
-  rows: unknown[]
-  refs: unknown[]
 }

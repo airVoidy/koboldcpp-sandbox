@@ -6,7 +6,7 @@
  */
 import { useMemo } from 'react'
 import { useChat } from './useChat'
-import type { FieldEntry, Projection, TemplateAggregation } from '@/types/runtime'
+import type { FieldEntry } from '@/types/runtime'
 import { toFieldStore, fromFieldStore, patchFieldStore } from '@/types/runtime'
 import * as api from '@/lib/api'
 
@@ -47,10 +47,9 @@ export function useFieldStore() {
   }, [chat.channels])
 
   /** Fetch server-side template aggregation via exec */
-  const fetchProjection = async (template: string, scope?: string): Promise<TemplateAggregation> => {
+  const fetchProjection = async (template: string, scope?: string): Promise<Record<string, unknown>> => {
     const cmd = scope ? `/mproject ${template} --scope=${scope}` : `/mproject ${template}`
-    const result = await api.exec(cmd, 'anon')
-    return result as unknown as TemplateAggregation
+    return api.exec(cmd, 'anon') as Promise<Record<string, unknown>>
   }
 
   return {

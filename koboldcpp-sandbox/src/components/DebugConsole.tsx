@@ -8,7 +8,7 @@ import {
 import { exec as apiExec } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState, CmdResult } from '@/types/chat'
-import type { Projection, FieldEntry } from '@/types/runtime'
+import type { FieldEntry } from '@/types/runtime'
 import { FSView } from './FSView'
 import { useSandbox } from '@/hooks/useSandbox'
 
@@ -344,14 +344,21 @@ function ProjectionTab({ user }: { user: string }) {
     setLoading(true); setError(null)
     try {
       const r = await apiExec(`/query ${nodePath.trim()}`, user)
-      if (r.error) { setError(r.error); return }
-      const proj = (r as Record<string, unknown>).projection as Projection | undefined
-      const store = proj?.flat_store ?? (r as Record<string, unknown>).flat_store as Record<string, FieldEntry> | undefined
+      if (r.error) { setError(r.error as string); return }
+      // Extract flat_store from exec result (runtime projection data)
+      const result = r as Record<string, unknown>
+      const store = result.flat_store as Record<string, FieldEntry> | undefined
       if (store) {
         setFields(Object.entries(store).map(([p, entry]) => ({
           path: p, value: entry[2], hash: String(entry[0]), type: typeof entry[2],
         })))
-      } else { setFields([]); setError('No flat_store in response') }
+      } else {
+        // Fallback: show raw result as fields
+        const data = (result.data ?? result.meta ?? result) as Record<string, unknown>
+        setFields(Object.entries(data).map(([p, v]) => ({
+          path: p, value: v, hash: '', type: typeof v,
+        })))
+      }
     } catch (e) { setError(String(e)) }
     finally { setLoading(false) }
   }

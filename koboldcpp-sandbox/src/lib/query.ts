@@ -1,18 +1,14 @@
 /**
- * JSONata query/transform layer for client-side projections.
+ * JSONata query/transform layer.
  *
- * Wraps jsonata as a generic exec op:
- * - input: runtime projection object
- * - expression: JSONata string
- * - bindings: custom variables ($field, $value, $children, $by_type)
- * - output: transformed data or patch-list
- *
+ * Runtime bindings from sandbox fieldStore, not endpoint responses.
  * Same jsonata-python on server, same jsonata npm on client.
  * One expression, two runtimes.
  */
 import jsonata from 'jsonata'
-import type { FieldEntry, Projection } from '@/types/runtime'
+import type { FieldEntry } from '@/types/runtime'
 import { getByPath, toFieldStore, fromFieldStore } from '@/types/runtime'
+import type { FieldCell } from './sandbox'
 
 /** Pre-compiled expression cache */
 const cache = new Map<string, jsonata.Expression>()
@@ -26,23 +22,17 @@ function compile(expr: string): jsonata.Expression {
   return compiled
 }
 
-/** Runtime lambda bindings — mirrors server-side registered functions */
-function createBindings(projection?: Projection) {
+/** Runtime lambda bindings using sandbox fieldStore */
+function createBindings(fieldStore?: Map<string, FieldCell>) {
   return {
-    /** $field(path) — get field entry from flat store */
-    field: (path: string): FieldEntry | undefined => {
-      return projection?.flat_store[path]
+    /** $field(path) — get field cell from sandbox fieldStore */
+    field: (path: string): FieldCell | undefined => {
+      return fieldStore?.get(path)
     },
 
-    /** $value(path) — get resolved value from flat store */
+    /** $value(path) — get resolved value from fieldStore */
     value: (path: string): unknown => {
-      const entry = projection?.flat_store[path]
-      return entry ? entry[2] : undefined
-    },
-
-    /** $view(name) — get named view */
-    view: (name: string): Record<string, FieldEntry> | undefined => {
-      return projection?.views[name]
+      return fieldStore?.get(path)?.value
     },
 
     /** $keys_of(obj) — shorthand for Object.keys */
@@ -84,23 +74,20 @@ function registerBindings(
  * Evaluate a JSONata expression over data.
  *
  * @param expr - JSONata expression string
- * @param data - Input data (runtime projection, node, or any object)
- * @param projection - Optional projection for $field/$value/$view bindings
- * @param extraBindings - Additional variables available as $name in expression
+ * @param data - Input data (any object)
+ * @param fieldStore - Optional sandbox fieldStore for $field/$value bindings
+ * @param extraBindings - Additional variables
  */
 export async function evaluate(
   expr: string,
   data: unknown,
-  projection?: Projection,
+  fieldStore?: Map<string, FieldCell>,
   extraBindings?: Record<string, unknown>,
 ): Promise<unknown> {
   const compiled = compile(expr)
-  const bindings = createBindings(projection)
+  const bindings = createBindings(fieldStore)
 
-  // Register runtime lambdas
   registerBindings(compiled, bindings)
-
-  // Register extra bindings as functions too
   if (extraBindings) {
     registerBindings(compiled, extraBindings)
   }
@@ -114,24 +101,22 @@ export async function evaluate(
 export async function query<T = unknown>(
   expr: string,
   data: unknown,
-  projection?: Projection,
+  fieldStore?: Map<string, FieldCell>,
 ): Promise<T> {
-  return evaluate(expr, data, projection) as Promise<T>
+  return evaluate(expr, data, fieldStore) as Promise<T>
 }
 
 /**
  * Transform: evaluate expression, return both result and diff from original.
- * Useful for generating patch-lists from transform expressions.
  */
 export async function transform(
   expr: string,
   data: Record<string, unknown>,
-  projection?: Projection,
+  fieldStore?: Map<string, FieldCell>,
 ): Promise<{ result: unknown; patches: Array<{ path: string; value: unknown }> }> {
   const before = toFieldStore(data)
-  const result = await evaluate(expr, data, projection)
+  const result = await evaluate(expr, data, fieldStore)
 
-  // If result is an object, diff it against original
   const patches: Array<{ path: string; value: unknown }> = []
   if (result && typeof result === 'object' && !Array.isArray(result)) {
     const after = toFieldStore(result as Record<string, unknown>)
