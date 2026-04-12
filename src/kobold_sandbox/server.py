@@ -6628,16 +6628,32 @@ load();
     _endpoint_log_dir = workspace.root / "runtime" / "endpoint_logs"
     _endpoint_log_dir.mkdir(parents=True, exist_ok=True)
 
+    def _json_log_safe(value):
+        """Return a JSON-serializable copy without dropping runtime object shape."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            return {str(k): _json_log_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [_json_log_safe(v) for v in value]
+        try:
+            json.dumps(value, ensure_ascii=False)
+            return value
+        except TypeError:
+            return str(value)
+
     def _log_endpoint(endpoint: str, req_data: dict, result: dict | None = None, error: str | None = None):
         log_path = _endpoint_log_dir / f"{endpoint}.jsonl"
         entry = {"ts": utc_now(), "endpoint": endpoint, "req": req_data}
         if result is not None:
-            # Truncate large results for log readability
             ok = result.get("ok")
             err = result.get("error")
             entry["ok"] = ok
             if err:
                 entry["error"] = err
+            entry["result"] = _json_log_safe(result)
         if error:
             entry["error"] = error
         with open(log_path, "a", encoding="utf-8") as f:
