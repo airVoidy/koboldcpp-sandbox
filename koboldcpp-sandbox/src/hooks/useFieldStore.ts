@@ -46,9 +46,11 @@ export function useFieldStore() {
     return store
   }, [chat.channels])
 
-  /** Fetch server-side template aggregation */
+  /** Fetch server-side template aggregation via exec */
   const fetchProjection = async (template: string, scope?: string): Promise<TemplateAggregation> => {
-    return api.getProjection(template, scope) as Promise<TemplateAggregation>
+    const cmd = scope ? `/mproject ${template} --scope=${scope}` : `/mproject ${template}`
+    const result = await api.exec(cmd, 'anon')
+    return result as unknown as TemplateAggregation
   }
 
   return {

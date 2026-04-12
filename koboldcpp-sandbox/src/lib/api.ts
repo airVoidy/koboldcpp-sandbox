@@ -1,4 +1,14 @@
-/** API client for sandbox server at localhost:5002 */
+/**
+ * API client for sandbox server.
+ *
+ * Only three endpoints matter:
+ * - exec: send CMD → server dispatches → result
+ * - batch: send multiple CMDs in one request
+ * - getState: fetch current chat state (view projection)
+ *
+ * Everything else goes through exec as CMD strings.
+ * Same pattern as vanilla pipeline-chat shellExec.
+ */
 import type { CmdResult, ChatState } from '@/types/chat'
 
 const BASE = '/api'
@@ -13,12 +23,6 @@ async function post<T = unknown>(path: string, body: unknown): Promise<T> {
   return res.json()
 }
 
-async function get<T = unknown>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json()
-}
-
 /** Execute a CMD in a scope */
 export function exec(cmd: string, user: string, scope = 'CMD'): Promise<CmdResult> {
   return post('/pchat/exec', { cmd, user, scope, log: true })
@@ -29,41 +33,9 @@ export function batch(cmds: string[], user: string, scope = 'CMD'): Promise<CmdR
   return post('/pchat/batch', { cmds, user, scope })
 }
 
-/** Get full chat state (channels + messages) */
+/** Get chat state (channels + messages view projection) */
 export function getState(channel?: string, user = 'anon', since?: number): Promise<ChatState> {
   const params: Record<string, unknown> = { channel, user, msg_limit: 100 }
   if (since !== undefined) params.since = since
   return post('/pchat/view', params)
-}
-
-/** Convenience: select channel */
-export function selectChannel(name: string, user: string) {
-  return exec(`/cselect ${name}`, user)
-}
-
-/** Convenience: post message */
-export function postMessage(text: string, user: string) {
-  return exec(`/cpost ${text}`, user)
-}
-
-/** Convenience: create channel */
-export function createChannel(name: string, user: string) {
-  return exec(`/cmkchannel ${name}`, user)
-}
-
-/** Convenience: toggle reaction */
-export function react(msgId: string, emoji: string, user: string) {
-  return exec(`/creact ${msgId} ${emoji}`, user)
-}
-
-/** Template aggregation projection */
-export function getProjection(template: string, scope?: string) {
-  return post('/pchat/projection', { template, scope: scope ?? '' })
-}
-
-/** Wiki commands */
-export const wiki = {
-  status: (user: string) => exec('/wiki status', user),
-  list: (user: string) => exec('/wiki list', user),
-  read: (slug: string, user: string) => exec(`/wiki read ${slug}`, user),
 }
