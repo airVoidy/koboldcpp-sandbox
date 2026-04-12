@@ -1,111 +1,211 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocalStorageState } from 'ahooks'
-import type { ChatState } from '@/types/chat'
-import { execCmd, type StateUpdater } from '@/lib/client-cmd'
 import * as api from '@/lib/api'
+import { useSandbox } from '@/hooks/useSandbox'
+import type { ChatItem, ChatState, CmdResult, NodeData, NodeMeta } from '@/types/chat'
 
-const LS_KEY = 'pchat_state'
 const LS_USER = 'pchat_user'
+const LS_CHANNEL = 'pchat_active_channel'
 
-const EMPTY_STATE: ChatState = {
-  channels: [],
-  messages: [],
-  active_channel: null,
-  user: 'anon',
-  ts: '',
+function byPathDepth(a: ChatItem, b: ChatItem): number {
+  return a.path.localeCompare(b.path, undefined, { numeric: true })
+}
+
+function lastSegment(path: string): string {
+  const parts = path.split('/')
+  return parts[parts.length - 1] ?? path
+}
+
+function toNodeMeta(meta: Record<string, unknown>, fallbackType: string): NodeMeta {
+  return {
+    type: typeof meta.type === 'string' ? meta.type : fallbackType,
+    user: typeof meta.user === 'string' ? meta.user : undefined,
+    ts: typeof meta.ts === 'string' ? meta.ts : undefined,
+    name: typeof meta.name === 'string' ? meta.name : undefined,
+  }
+}
+
+function toNodeData(data: Record<string, unknown>): NodeData {
+  return data as NodeData
+}
+
+function isReadOnlyOp(op: string): boolean {
+  return new Set([
+    'dir', 'ls', 'cat', 'list', 'query', 'mjsonata', 'mproject', 'mcheckpoint', 'wiki',
+  ]).has(op)
+}
+
+function parseCmd(cmd: string): { op: string; args: string[] } {
+  const parts = cmd.trim().replace(/^\//, '').split(/\s+/).filter(Boolean)
+  return { op: (parts[0] ?? '').toLowerCase(), args: parts.slice(1) }
 }
 
 export function useChat() {
-  const [state, _setState] = useState<ChatState>(EMPTY_STATE)
-  const [cached, setCached] = useLocalStorageState<ChatState>(LS_KEY, { defaultValue: EMPTY_STATE })
-  const [user, setUser] = useLocalStorageState(LS_USER, { defaultValue: 'anon' })
+  const {
+    sandbox,
+    serverState,
+    loadServerState,
+    serverExec,
+    setUser: setSandboxUser,
+  } = useSandbox()
+
+  const [user, setUser] = useLocalStorageState<string>(LS_USER, { defaultValue: 'anon' })
+  const [activeChannel, setActiveChannel] = useLocalStorageState<string | null>(LS_CHANNEL, {
+    defaultValue: null,
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const stateRef = useRef(state)
 
-  // Keep ref in sync — avoids stale closures
-  const setState = useCallback((fn: ChatState | ((prev: ChatState) => ChatState)) => {
-    _setState(prev => {
-      const next = typeof fn === 'function' ? fn(prev) : fn
-      stateRef.current = next
-      return next
-    })
-  }, [])
+  useEffect(() => {
+    setSandboxUser(user ?? 'anon')
+  }, [setSandboxUser, user])
 
-  // Optimistic state updater for client-cmd
-  const optimisticUpdate: StateUpdater = useCallback((fn) => {
-    setState(prev => {
-      const next = fn(prev)
-      setCached(next) // persist to localStorage too
-      return next
-    })
-  }, [setState, setCached])
+  const channels = useMemo<ChatItem[]>(() => {
+    return serverState
+      .filter(node => (node.meta?.type as string | undefined) === 'channel')
+      .map(node => ({
+        name: node.name,
+        path: node.path,
+        meta: toNodeMeta(node.meta, 'channel'),
+        data: toNodeData(node.data),
+      }))
+      .sort(byPathDepth)
+  }, [serverState])
 
-  const activeChannel = state.active_channel
+  const messages = useMemo<ChatItem[]>(() => {
+    const channel = activeChannel ?? null
+    return serverState
+      .filter(node => {
+        if ((node.meta?.type as string | undefined) !== 'message') return false
+        if (!channel) return false
+        return node.path.startsWith(`pchat/channels/${channel}/`)
+      })
+      .map(node => ({
+        name: node.name || lastSegment(node.path),
+        path: node.path,
+        meta: toNodeMeta(node.meta, 'message'),
+        data: toNodeData(node.data),
+      }))
+      .filter(msg => !msg.data?._deleted)
+      .sort(byPathDepth)
+  }, [activeChannel, serverState])
 
-  // Fetch state from server — silent reconciliation, no loading flash
+  const state = useMemo<ChatState>(() => ({
+    channels,
+    messages,
+    active_channel: activeChannel ?? null,
+    user: user ?? 'anon',
+    ts: new Date().toISOString(),
+    source: 'sandbox',
+  }), [activeChannel, channels, messages, user])
+
   const refresh = useCallback(async (channel?: string) => {
-    try {
-      const s = await api.getState(channel ?? activeChannel ?? undefined, user ?? 'anon')
-      setState(s)
-      setCached(s)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'fetch failed')
+    const target = channel ?? activeChannel ?? undefined
+    const result = await loadServerState(target)
+    if (!result.ok) {
+      setError(result.error ?? 'load failed')
+      return
     }
-  }, [activeChannel, user, setCached, setState])
+    if (channel !== undefined) setActiveChannel(channel)
+    setError(null)
+  }, [activeChannel, loadServerState, setActiveChannel, user])
 
-  // Full refresh with loading indicator (initial load only)
   const initialLoad = useCallback(async () => {
     setLoading(true)
-    await refresh()
-    setLoading(false)
-  }, [refresh])
-
-  // ── Actions via client-cmd resolver ──
-
-  const selectChannel = useCallback(async (name: string) => {
-    // Pure optimistic — no loading, no flicker
-    await execCmd(`/cselect ${name}`, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
-
-  const postMessage = useCallback(async (text: string) => {
-    if (!text.trim()) return
-    await execCmd(`/cpost ${text}`, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
-
-  const createChannel = useCallback(async (name: string) => {
-    setLoading(true)
     try {
-      await api.createChannel(name, user ?? 'anon')
-      await refresh(name)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'create failed')
+      await refresh(activeChannel ?? undefined)
     } finally {
       setLoading(false)
     }
-  }, [user, refresh])
+  }, [activeChannel, refresh])
+
+  const selectChannel = useCallback(async (name: string) => {
+    setActiveChannel(name)
+    setLoading(true)
+    try {
+      const result = await serverExec(`/cselect ${name}`)
+      if (!result.ok) {
+        setError(result.error ?? 'select failed')
+        return
+      }
+      await refresh(name)
+    } finally {
+      setLoading(false)
+    }
+  }, [refresh, serverExec, setActiveChannel])
+
+  const postMessage = useCallback(async (text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    setLoading(true)
+    try {
+      const result = await serverExec(`/cpost ${trimmed}`)
+      if (!result.ok) {
+        setError(result.error ?? 'post failed')
+        return
+      }
+      await refresh()
+    } finally {
+      setLoading(false)
+    }
+  }, [refresh, serverExec])
+
+  const createChannel = useCallback(async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setLoading(true)
+    try {
+      const result = await serverExec(`/cmkchannel ${trimmed}`)
+      if (!result.ok) {
+        setError(result.error ?? 'create failed')
+        return
+      }
+      await refresh(trimmed)
+    } finally {
+      setLoading(false)
+    }
+  }, [refresh, serverExec])
 
   const toggleReaction = useCallback(async (msgId: string, emoji: string) => {
-    // Pure optimistic — instant toggle, server confirms in background
-    await execCmd(`/creact ${msgId} ${emoji}`, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
+    setLoading(true)
+    try {
+      const result = await serverExec(`/creact ${msgId} ${emoji}`)
+      if (!result.ok) {
+        setError(result.error ?? 'reaction failed')
+        return
+      }
+      await refresh()
+    } finally {
+      setLoading(false)
+    }
+  }, [refresh, serverExec])
 
-  // Run arbitrary CMD (for command palette)
-  const exec = useCallback(async (cmd: string) => {
-    return execCmd(cmd, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
+  const exec = useCallback(async (cmd: string): Promise<{ result: CmdResult; local: boolean }> => {
+    const normalized = cmd.trim().startsWith('/') ? cmd.trim() : `/${cmd.trim()}`
+    const { op, args } = parseCmd(normalized)
 
-  // Init: show cached immediately, reconcile from server in background
+    if (op === 'cselect' && args[0]) {
+      await selectChannel(args[0])
+      return { result: { ok: true, selected: args[0] }, local: false }
+    }
+
+    const result = await api.exec(normalized, user ?? 'anon')
+    if (!result.error && !isReadOnlyOp(op)) {
+      await refresh()
+    }
+    return { result, local: false }
+  }, [refresh, selectChannel, user])
+
   useEffect(() => {
-    if (cached) setState(cached)
     initialLoad()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
+    sandbox,
     state,
-    channels: state.channels,
-    messages: state.messages.filter(m => !m.data?._deleted),
-    activeChannel,
+    channels,
+    messages,
+    activeChannel: activeChannel ?? null,
     user: user ?? 'anon',
     setUser,
     loading,
