@@ -574,7 +574,8 @@ function ShellTab({ exec }: { exec: ExecFn }) {
                       : <ChevronRight size={10} className="inline" />}
                   </button>
                   <span className="text-[10px]" style={{ color: TK.ok }}>OK</span>
-                  {expanded.has(i) && (
+                  {/* Always show result by default, toggle collapses it */}
+                  {(!expanded.has(i)) && (
                     <div className="mt-1 p-1 rounded overflow-x-auto" style={{ background: TK.bg }}>
                       <JsonTree data={entry.result} />
                     </div>
