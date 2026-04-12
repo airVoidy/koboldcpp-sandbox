@@ -4,6 +4,7 @@ import asyncio
 import copy
 import hashlib
 from dataclasses import asdict, is_dataclass
+import hashlib
 import shutil
 import uuid
 import json
@@ -16,6 +17,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import httpx
+import jsonata
 import yaml
 from pydantic import BaseModel
 
@@ -158,6 +160,8 @@ class ProjectionRequest(BaseModel):
 
 class MessageProjectionRequest(BaseModel):
     path: str
+class ContainerMaterializeRequest(BaseModel):
+    container_id: str
 
 
 class AtomicViewRequest(BaseModel):
@@ -4832,6 +4836,256 @@ load();
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+        # ── L1: Message projection / flat_store ─────────────────────
+
+        def _field_type_name(self, value: Any) -> str:
+            if value is None:
+                return "null"
+            if isinstance(value, bool):
+                return "bool"
+            if isinstance(value, int) and not isinstance(value, bool):
+                return "int"
+            if isinstance(value, float):
+                return "float"
+            if isinstance(value, str):
+                return "str"
+            if isinstance(value, list):
+                return "list"
+            if isinstance(value, dict):
+                return "dict"
+            return type(value).__name__
+
+        def _projection_hash(self, source_path: str, field_path: str) -> str:
+            raw = f"{source_path}::{field_path}".encode("utf-8")
+            return hashlib.sha1(raw).hexdigest()[:12]
+
+        def _projection_field_entry(self, source_path: str, scope: str, key: str, value: Any) -> dict:
+            field_path = f"{scope}.{key}"
+            bind = f"{source_path}.{field_path}"
+            field_hash = self._projection_hash(source_path, field_path)
+            return {
+                "hash": field_hash,
+                "scope": scope,
+                "path": field_path,
+                "full_relative_path": field_path,
+                "bind": bind,
+                "value": value,
+                "value_type": self._field_type_name(value),
+            }
+
+        def _projection_views(self, flat_store: dict[str, list[Any]], view_filters: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+            views: dict[str, list[dict[str, Any]]] = {}
+            for view_name, paths in view_filters.items():
+                rows: list[dict[str, Any]] = []
+                for path in paths:
+                    item = flat_store.get(path)
+                    if not item:
+                        continue
+                    rows.append({
+                        "hash": item[0],
+                        "path": item[1],
+                        "value": item[2],
+                    })
+                views[view_name] = rows
+            return views
+
+        def _build_message_projection(self, msg_dir: Path) -> dict:
+            source_path = self._rel_path(msg_dir)
+            meta = self._read_meta(msg_dir) or {}
+            data = self._read_data(msg_dir) or {}
+
+            fields: list[dict[str, Any]] = []
+            flat_store: dict[str, list[Any]] = {}
+            view_filters: dict[str, list[str]] = {"all": [], "_meta": [], "_data": []}
+
+            for key, value in meta.items():
+                entry = self._projection_field_entry(source_path, "_meta", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_meta"].append(entry["full_relative_path"])
+
+            for key, value in data.items():
+                entry = self._projection_field_entry(source_path, "_data", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_data"].append(entry["full_relative_path"])
+
+            return {
+                "source_node": source_path,
+                "_meta": {
+                    "global_path": f"{source_path}._meta",
+                    "schema": {key: key for key in meta.keys()},
+                    "value": meta,
+                },
+                "_data": {
+                    "global_path": f"{source_path}._data",
+                    "schema": {key: key for key in data.keys()},
+                    "value": data,
+                },
+                "fields": fields,
+                "flat_store": flat_store,
+                "view_filters": view_filters,
+                "views": self._projection_views(flat_store, view_filters),
+            }
+
+        def _build_jsonata_bindings(self, projection: dict) -> dict[str, Any]:
+            flat_store = projection.get("flat_store") or {}
+            views = projection.get("views") or {}
+
+            def field(path: str) -> dict[str, Any] | None:
+                item = flat_store.get(str(path))
+                if not item:
+                    return None
+                return {"hash": item[0], "path": item[1], "value": item[2]}
+
+            def value(path: str) -> Any:
+                item = flat_store.get(str(path))
+                return item[2] if item else None
+
+            def view(name: str) -> Any:
+                return views.get(str(name)) or []
+
+            return {
+                "projection": projection,
+                "flat_store": flat_store,
+                "views": views,
+                "field": field,
+                "value": value,
+                "view": view,
+            }
+
+        def eval_message_projection_jsonata(
+            self,
+            msg_dir: Path,
+            expr: str,
+            *,
+            view_name: str = "all",
+            input_name: str = "view",
+        ) -> dict:
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            input_map = {
+                "projection": projection,
+                "flat_store": projection.get("flat_store") or {},
+                "view": (projection.get("views") or {}).get(view_name) or [],
+            }
+            if input_name not in input_map:
+                return {"error": f"unsupported input '{input_name}'"}
+
+            expression = jsonata.Jsonata(expr)
+            bindings = self._build_jsonata_bindings(projection)
+            expression.assign("projection", bindings["projection"])
+            expression.assign("flat_store", bindings["flat_store"])
+            expression.assign("views", bindings["views"])
+            expression.register_lambda("field", bindings["field"])
+            expression.register_lambda("value", bindings["value"])
+            expression.register_lambda("view", bindings["view"])
+            result = expression.evaluate(input_map[input_name])
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "input": input_name,
+                "view": view_name,
+                "expr": expr,
+                "projection": projection,
+                "result": result,
+            }
+
+        def create_message_checkpoint(self, msg_dir: Path, user: str) -> dict:
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            checkpoint_name = self._next_slot_id(msg_dir, "checkpoint")
+            checkpoint_dir = msg_dir / checkpoint_name
+            checkpoint_dir.mkdir()
+
+            checkpoint_meta = {
+                "type": "message",
+                "kind": "checkpoint",
+                "user": user,
+                "ts": utc_now(),
+                "source": projection["source_node"],
+            }
+            checkpoint_data = {
+                "projection": projection,
+                "resolved": {
+                    "meta": projection["_meta"]["value"],
+                    "data": projection["_data"]["value"],
+                },
+            }
+            self._write_meta(checkpoint_dir, checkpoint_meta)
+            self._write_data(checkpoint_dir, checkpoint_data)
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "projection": projection,
+                "checkpoint": {
+                    "path": self._rel_path(checkpoint_dir),
+                    "meta": checkpoint_meta,
+                    "data": checkpoint_data,
+                },
+            }
+
+        def _build_template_aggregation(self, template_type: str, scope_dir: Path) -> dict:
+            prefix = f"{template_type}_"
+            instances = []
+            merged_flat_store: dict[str, list[Any]] = {}
+            merged_fields: list[dict] = []
+            instance_views: dict[str, dict] = {}
+
+            for child in sorted(scope_dir.iterdir(), key=lambda p: p.name):
+                if not child.is_dir() or child.name.startswith("_"):
+                    continue
+                if not child.name.startswith(prefix):
+                    continue
+                meta = self._read_meta(child)
+                if not meta or meta.get("type") != template_type:
+                    if meta and meta.get("type"):
+                        continue
+
+                projection = self._build_message_projection(child)
+                instance_id = child.name
+                instances.append({
+                    "id": instance_id,
+                    "path": self._rel_path(child),
+                    "meta": meta or {},
+                })
+
+                for field_path, entry in projection.get("flat_store", {}).items():
+                    namespaced = f"{instance_id}.{field_path}"
+                    merged_flat_store[namespaced] = [entry[0], namespaced, entry[2]]
+                    merged_fields.append({
+                        "instance": instance_id,
+                        "path": field_path,
+                        "namespaced_path": namespaced,
+                        "hash": entry[0],
+                        "value": entry[2],
+                    })
+
+                instance_views[instance_id] = projection.get("views", {})
+
+            return {
+                "ok": True,
+                "type": template_type,
+                "scope": self._rel_path(scope_dir),
+                "count": len(instances),
+                "instances": instances,
+                "flat_store": merged_flat_store,
+                "fields": merged_fields,
+                "instance_views": instance_views,
+            }
+
         def _container_dir(self, container_id: str) -> Path:
             return self.containers_dir / container_id
 
@@ -6481,6 +6735,48 @@ load();
             self._append_child_ref(scope.cwd, slot_dir)
             return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": data}
 
+        def cmd_mcheckpoint(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Create a child checkpoint node inside a message slot."""
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if args:
+                    return {"error": "usage: /mcheckpoint  (inside message) or /mcheckpoint <msg_id> (inside channel)"}
+                return self.create_message_checkpoint(target, user)
+
+            if not args:
+                return {"error": "usage: /mcheckpoint <msg_id>"}
+            msg_dir = scope.cwd / args[0]
+            return self.create_message_checkpoint(msg_dir, user)
+
+        def cmd_mjsonata(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Evaluate JSONata expression against a message projection."""
+            view_name = "all"
+            input_name = "view"
+            positional: list[str] = []
+            for arg in args:
+                if arg.startswith("--view="):
+                    view_name = arg.split("=", 1)[1].strip() or "all"
+                    continue
+                if arg.startswith("--input="):
+                    input_name = arg.split("=", 1)[1].strip() or "view"
+                    continue
+                positional.append(arg)
+
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if not positional:
+                    return {"error": "usage: /mjsonata <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+                expr = " ".join(positional)
+                return self.eval_message_projection_jsonata(target, expr, view_name=view_name, input_name=input_name)
+
+            if len(positional) < 2:
+                return {"error": "usage: /mjsonata <msg_id> <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+            msg_dir = scope.cwd / positional[0]
+            expr = " ".join(positional[1:])
+            return self.eval_message_projection_jsonata(msg_dir, expr, view_name=view_name, input_name=input_name)
+
         def cmd_rm(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Delete a slot."""
             if not args:
@@ -6728,7 +7024,6 @@ load();
             for f in sorted(_endpoint_log_dir.glob("*.jsonl")):
                 logs.append({"endpoint": f.stem, "size": f.stat().st_size, "lines": sum(1 for _ in open(f, encoding="utf-8"))})
         return {"logs": logs}
-
     @app.post("/api/pchat/projection")
     def pchat_projection(req: ProjectionRequest) -> dict:
         scope_dir = workspace.root / req.scope if req.scope else workspace.pchat_dir

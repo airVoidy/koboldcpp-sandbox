@@ -11,6 +11,8 @@
     "cedit",
     "cdelete",
     "creact",
+    "mcheckpoint",
+    "mjsonata",
     "mkprojection",
     "projectionexec",
     "projectionconcat",
