@@ -82,6 +82,7 @@ function NodeTree({ sandbox, node, depth, onSelect }: {
   const dataKeys = Object.keys(node.data).filter(k => k !== '_deleted')
   const hasData = dataKeys.length > 0
   const nodeFields = getNodeFields(sandbox, node.path)
+  const listKinds = Object.keys(node.childLists).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   const indent = depth * 16
 
   return (
@@ -129,6 +130,26 @@ function NodeTree({ sandbox, node, depth, onSelect }: {
                 Object.fromEntries(Object.entries(node.data).filter(([k]) => k !== '_deleted'))
               } />}
             </>
+          )}
+
+          <div className="text-[9px] py-0.5" style={{ color: TK.dim }}>
+            children[]: {node.capabilities.children ? 'open' : 'closed'}
+            {Array.isArray(node.capabilities.children) && ` (${node.capabilities.children.join(', ')})`}
+          </div>
+
+          {listKinds.length > 0 && (
+            <div className="ml-2 mb-1">
+              <div className="text-[9px] py-0.5" style={{ color: TK.purple }}>
+                virtual lists
+              </div>
+              {listKinds.map(kind => (
+                <div key={kind} className="text-[9px] flex gap-2 py-0.5">
+                  <span style={{ color: TK.purple }}>{kind}[</span>
+                  <span style={{ color: TK.dim }}>{node.childLists[kind].length}</span>
+                  <span style={{ color: TK.purple }}>]</span>
+                </div>
+              ))}
+            </div>
           )}
 
           {nodeFields.length > 0 && (

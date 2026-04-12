@@ -28,6 +28,8 @@ export interface SandboxNode {
   meta: Record<string, unknown>
   data: Record<string, unknown>
   children: string[]
+  /** Virtual typed child lists derived from children[] */
+  childLists: Record<string, string[]>
   exec: string[]
   /** Declared capabilities: what this node's scope allows */
   capabilities: {
@@ -218,6 +220,7 @@ export class Sandbox {
         meta: { ...sn.meta },
         data: { ...sn.data },
         children: [],
+        childLists: {},
         exec: [],
         capabilities: capabilitiesFromType(type),
       })
@@ -238,6 +241,7 @@ export class Sandbox {
             meta: { type, user: entry.user, ts: new Date(entry.ts).toISOString() },
             data: (entry.args.data as Record<string, unknown>) ?? {},
             children: [],
+            childLists: {},
             exec: [entry.id],
             capabilities: {
               exec: caps.exec ?? true,
@@ -283,6 +287,7 @@ export class Sandbox {
 
     for (const node of tree.values()) {
       node.children.sort(naturalSort)
+      node.childLists = buildChildLists(tree, node.children)
     }
 
     this.tree = tree
@@ -310,6 +315,19 @@ export class Sandbox {
     const node = this.tree.get(path)
     if (!node) return []
     return node.children.map(p => this.tree.get(p)).filter(Boolean) as SandboxNode[]
+  }
+
+  childListKinds(path: string): string[] {
+    const node = this.tree.get(path)
+    if (!node) return []
+    return Object.keys(node.childLists).sort(naturalSort)
+  }
+
+  childrenByKind(path: string, kind: string): SandboxNode[] {
+    const node = this.tree.get(path)
+    if (!node) return []
+    const refs = node.childLists[kind] ?? []
+    return refs.map(p => this.tree.get(p)).filter(Boolean) as SandboxNode[]
   }
 
   query(pattern: string): SandboxNode[] {
@@ -432,6 +450,7 @@ const opMk: OpHandler = (sb, entry) => {
     meta: { type, user: entry.user, ts: new Date(entry.ts).toISOString() },
     data: (entry.args.data as Record<string, unknown>) ?? {},
     children: [],
+    childLists: {},
     exec: [entry.id],
     capabilities: {
       exec: caps.exec ?? true,  // exec open by default
@@ -497,6 +516,32 @@ function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown
 
 function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true })
+}
+
+function childKinds(node: SandboxNode): string[] {
+  const result = new Set<string>()
+  if (node.type) result.add(node.type)
+  const metaType = typeof node.meta.type === 'string' ? node.meta.type : undefined
+  if (metaType) result.add(metaType)
+  const prefix = node.name.match(/^([A-Za-z][\w-]*?)_\d+$/)?.[1]
+  if (prefix) result.add(prefix)
+  return Array.from(result)
+}
+
+function buildChildLists(tree: Map<string, SandboxNode>, childPaths: string[]): Record<string, string[]> {
+  const lists: Record<string, string[]> = {}
+  for (const childPath of childPaths) {
+    const child = tree.get(childPath)
+    if (!child) continue
+    for (const kind of childKinds(child)) {
+      if (!lists[kind]) lists[kind] = []
+      lists[kind].push(childPath)
+    }
+  }
+  for (const refs of Object.values(lists)) {
+    refs.sort(naturalSort)
+  }
+  return lists
 }
 
 /** Derive default capabilities from node type */

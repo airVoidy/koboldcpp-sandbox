@@ -51,8 +51,11 @@ export function useSandbox() {
     resolve: sandbox.resolve.bind(sandbox),
     roots: sandbox.roots.bind(sandbox),
     children: sandbox.children.bind(sandbox),
+    childListKinds: sandbox.childListKinds.bind(sandbox),
+    childrenByKind: sandbox.childrenByKind.bind(sandbox),
     query: sandbox.query.bind(sandbox),
     allNodes: sandbox.allNodes.bind(sandbox),
+    getEntry: sandbox.getEntry.bind(sandbox),
     getField: sandbox.getField.bind(sandbox),
     queryFields: sandbox.queryFields.bind(sandbox),
 
