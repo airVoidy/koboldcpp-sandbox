@@ -14,3 +14,7 @@ root/runtime/endpoint_logs/
 root/runtime/sandboxes/
 root/runtime/containers/**/cmd_log.jsonl
 root/runtime/containers/current_channel_messages__*/
+
+.codex-backups/
+
+koboldcpp-sandbox/dist/
