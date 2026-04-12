@@ -29,6 +29,15 @@ export interface SandboxNode {
   data: Record<string, unknown>
   children: string[]
   exec: string[]
+  /** Declared capabilities: what this node's scope allows */
+  capabilities: {
+    /** children[] open = can create nested nodes. string[] = allowed types, true = any */
+    children?: string[] | true
+    /** exec declared = can receive exec commands */
+    exec?: boolean
+    /** append declarations: type → allowed (e.g. {msg: true} = can post messages) */
+    append?: Record<string, boolean>
+  }
 }
 
 export interface ServerNode {
@@ -199,15 +208,18 @@ export class Sandbox {
   rebuildTree() {
     const tree = new Map<string, SandboxNode>()
 
+    // Pass 1: server nodes → runtime nodes (with capabilities from type)
     for (const sn of this.serverState) {
+      const type = sn.meta?.type as string | undefined
       tree.set(sn.path, {
         name: sn.name,
         path: sn.path,
-        type: sn.meta?.type as string | undefined,
+        type,
         meta: { ...sn.meta },
         data: { ...sn.data },
         children: [],
         exec: [],
+        capabilities: capabilitiesFromType(type),
       })
     }
 
@@ -215,16 +227,23 @@ export class Sandbox {
       if (entry.op === 'mk') {
         const parent = (entry.args.parent as string) || ''
         const name = entry.args.name as string
+        const type = entry.args.type as string | undefined
         const path = parent ? `${parent}/${name}` : name
         if (!tree.has(path)) {
+          const caps = (entry.args.capabilities as SandboxNode['capabilities']) ?? {}
           tree.set(path, {
             name,
             path,
-            type: entry.args.type as string | undefined,
-            meta: { type: entry.args.type, user: entry.user, ts: new Date(entry.ts).toISOString() },
+            type,
+            meta: { type, user: entry.user, ts: new Date(entry.ts).toISOString() },
             data: (entry.args.data as Record<string, unknown>) ?? {},
             children: [],
             exec: [entry.id],
+            capabilities: {
+              exec: caps.exec ?? true,
+              children: caps.children,
+              append: caps.append,
+            },
           })
         }
       }
@@ -382,19 +401,43 @@ export class Sandbox {
 const opMk: OpHandler = (sb, entry) => {
   const parent = (entry.args.parent as string) || ''
   const name = entry.args.name as string
+  const type = entry.args.type as string | undefined
   if (!name) return { ok: false, error: 'mk: name required' }
+
+  // Capability check: parent must have children[] scope open
+  if (parent) {
+    const parentNode = sb.tree.get(parent)
+    if (!parentNode) return { ok: false, error: `mk: parent not found: ${parent}` }
+
+    const cap = parentNode.capabilities
+    if (!cap.children) {
+      return { ok: false, error: `mk: scope closed — ${parent} has no children[] declared` }
+    }
+    // If children is string[] (specific types allowed), check type
+    if (Array.isArray(cap.children) && type && !cap.children.includes(type)) {
+      return { ok: false, error: `mk: type '${type}' not allowed in ${parent} (allowed: ${cap.children.join(', ')})` }
+    }
+  }
 
   const path = parent ? `${parent}/${name}` : name
   if (sb.tree.has(path)) return { ok: true, data: { path, exists: true } }
 
+  // Derive capabilities from args or defaults
+  const caps = (entry.args.capabilities as SandboxNode['capabilities']) ?? {}
+
   const node: SandboxNode = {
     name,
     path,
-    type: entry.args.type as string | undefined,
-    meta: { type: entry.args.type, user: entry.user, ts: new Date(entry.ts).toISOString() },
+    type,
+    meta: { type, user: entry.user, ts: new Date(entry.ts).toISOString() },
     data: (entry.args.data as Record<string, unknown>) ?? {},
     children: [],
     exec: [entry.id],
+    capabilities: {
+      exec: caps.exec ?? true,  // exec open by default
+      children: caps.children,  // children closed by default (must declare)
+      append: caps.append,
+    },
   }
   sb.tree.set(path, node)
 
@@ -454,4 +497,25 @@ function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown
 
 function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true })
+}
+
+/** Derive default capabilities from node type */
+function capabilitiesFromType(type?: string): SandboxNode['capabilities'] {
+  switch (type) {
+    // Root/pchat: open scope for any children
+    case 'pchat':
+      return { exec: true, children: true }
+    // Channels container: children[] open for 'channel' type
+    case 'channels':
+      return { exec: true, children: ['channel'], append: { channel: true } }
+    // Channel: children[] open for 'message' type
+    case 'channel':
+      return { exec: true, children: ['message'], append: { message: true } }
+    // Message: exec open (can patch own fields), no children by default
+    case 'message':
+      return { exec: true }
+    // Default: exec open, children closed
+    default:
+      return { exec: true }
+  }
 }
