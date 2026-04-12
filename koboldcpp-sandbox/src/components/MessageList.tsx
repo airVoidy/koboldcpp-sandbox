@@ -64,9 +64,9 @@ export function MessageList({ messages, user, onReact }: Props) {
         return (
           <div
             key={msg.path}
-            className={`group py-1.5 ${isSelf ? 'text-right' : ''}`}
+            className="group py-1.5"
           >
-            <div className="inline-block text-left max-w-[80%]">
+            <div className="max-w-[80%]">
               <div className="flex items-baseline gap-2 text-[10px]">
                 <span className="font-semibold text-[var(--green)]">{msg.meta.user ?? 'anon'}</span>
                 <span className="text-[var(--text-dim)]">{time}</span>
