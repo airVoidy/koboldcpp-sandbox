@@ -1,199 +1,177 @@
 /**
  * FSView — virtual filesystem view over sandbox runtime objects.
  *
- * Like vanilla pipeline-chat FS tab: tree of nodes with expandable meta/data.
- * All data from runtime objects in memory, not from disk.
+ * Mirrors vanilla pipeline-chat FS tab: tree with inline meta/data.
+ * FS = Source of Truth representation.
+ * JSONL apply-patch = commands that change projection.
  */
 import { useState, useCallback } from 'react'
-import { ChevronDown, ChevronRight, FolderOpen, Folder, FileText, Hash } from 'lucide-react'
-import type { SandboxNode } from '@/lib/sandbox'
+import type { Sandbox, SandboxNode, FieldCell } from '@/lib/sandbox'
 
 const TK = {
   bg: '#1a1a2e',
-  surface: '#222244',
-  surface2: '#2a2a4a',
-  border: '#333366',
-  text: '#e0e0f0',
   dim: '#8888aa',
-  accent: '#6c63ff',
-  green: '#44dd88',
-  yellow: '#ffcc66',
+  text: '#e0e0f0',
   red: '#ff5566',
   purple: '#c084fc',
+  cyan: '#66ccff',
 }
 
 interface FSViewProps {
-  root: SandboxNode
+  sandbox: Sandbox
   onSelect?: (node: SandboxNode, path: string) => void
 }
 
-export function FSView({ root, onSelect }: FSViewProps) {
+export function FSView({ sandbox, onSelect }: FSViewProps) {
+  const roots = sandbox.roots()
+  const fieldCount = sandbox.fieldStore.size
+
   return (
-    <div className="text-xs overflow-y-auto h-full p-2" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-      <div className="mb-1 text-[10px] uppercase" style={{ color: TK.dim }}>
-        sandbox
+    <div className="text-xs overflow-y-auto h-full p-2"
+      style={{ fontFamily: '"JetBrains Mono", monospace', background: TK.bg }}>
+      <div className="mb-1 text-[10px] flex items-center justify-between" style={{ color: TK.dim }}>
+        <span>{sandbox.tree.size} nodes</span>
+        {fieldCount > 0 && <span>{fieldCount} fields</span>}
+        <span style={{ color: TK.purple }}>{sandbox.execLog.length} exec</span>
       </div>
-      <NodeTree node={root} path="" depth={0} onSelect={onSelect} />
+      {roots.length === 0 ? (
+        <div className="text-[10px] py-4 text-center" style={{ color: TK.dim }}>
+          empty — loadServerState() or exec('mk', ...)
+        </div>
+      ) : (
+        roots.map(node => (
+          <NodeTree
+            key={node.path}
+            sandbox={sandbox}
+            node={node}
+            depth={0}
+            onSelect={onSelect}
+          />
+        ))
+      )}
     </div>
   )
 }
 
-function NodeTree({ node, path, depth, onSelect }: {
+function NodeTree({ sandbox, node, depth, onSelect }: {
+  sandbox: Sandbox
   node: SandboxNode
-  path: string
   depth: number
   onSelect?: (node: SandboxNode, path: string) => void
 }) {
   const [expanded, setExpanded] = useState(depth < 2)
-  const [showMeta, setShowMeta] = useState(false)
   const [showData, setShowData] = useState(false)
-  const [showExec, setShowExec] = useState(false)
+  const [showFields, setShowFields] = useState(false)
 
-  const fullPath = path ? `${path}/${node.name}` : node.name
-  const hasChildren = node.children.size > 0
+  const hasChildren = node.children.length > 0
   const isDeleted = !!node.data._deleted
 
-  const handleClick = useCallback(() => {
-    if (hasChildren) setExpanded(v => !v)
-    onSelect?.(node, fullPath)
-  }, [hasChildren, node, fullPath, onSelect])
+  const handleToggle = useCallback(() => {
+    setExpanded(v => !v)
+  }, [])
 
-  const typeColor = node.type === 'channel' ? TK.green
-    : node.type === 'message' ? TK.accent
-    : node.type === 'channels' ? TK.yellow
-    : TK.dim
+  const handleSelect = useCallback(() => {
+    sandbox.exec('cd', { path: node.path }, '_ui')
+    onSelect?.(node, node.path)
+  }, [sandbox, node, onSelect])
+
+  const childNodes = node.children
+    .map(p => sandbox.resolve(p))
+    .filter(Boolean) as SandboxNode[]
+
+  const dataKeys = Object.keys(node.data).filter(k => k !== '_deleted')
+  const hasData = dataKeys.length > 0
+  const nodeFields = getNodeFields(sandbox, node.path)
+  const indent = depth * 16
 
   return (
     <div style={{ opacity: isDeleted ? 0.4 : 1 }}>
-      {/* Node header */}
-      <div
-        className="flex items-center gap-1 py-0.5 cursor-pointer hover:opacity-80"
-        style={{ paddingLeft: depth * 16 }}
-        onClick={handleClick}
-      >
-        {/* Expand icon */}
-        {hasChildren ? (
-          expanded
-            ? <ChevronDown size={12} style={{ color: TK.dim }} />
-            : <ChevronRight size={12} style={{ color: TK.dim }} />
-        ) : (
-          <span style={{ width: 12 }} />
-        )}
+      <div className="flex items-center gap-1 py-0.5" style={{ paddingLeft: indent }}>
+        <span
+          className="cursor-pointer select-none"
+          style={{ color: TK.dim, width: 12, display: 'inline-block', textAlign: 'center' }}
+          onClick={handleToggle}
+        >
+          {(hasChildren || hasData) ? (expanded ? '▾' : '▸') : '·'}
+        </span>
 
-        {/* Folder/file icon */}
-        {hasChildren ? (
-          expanded
-            ? <FolderOpen size={12} style={{ color: TK.yellow }} />
-            : <Folder size={12} style={{ color: TK.yellow }} />
-        ) : (
-          <FileText size={12} style={{ color: TK.dim }} />
-        )}
-
-        {/* Name */}
-        <span style={{ color: TK.text, fontWeight: depth < 2 ? 600 : 400 }}>
+        <span
+          className="cursor-pointer hover:underline"
+          style={{ color: TK.text, fontWeight: depth < 2 ? 700 : 400 }}
+          onClick={handleSelect}
+        >
           {node.name}
         </span>
 
-        {/* Type badge */}
-        {node.type && (
-          <span className="text-[9px] px-1 rounded" style={{ color: typeColor, background: `${typeColor}15` }}>
-            {node.type}
-          </span>
-        )}
-
-        {/* Children count */}
         {hasChildren && (
           <span className="text-[9px]" style={{ color: TK.dim }}>
-            [{node.children.size}]
-          </span>
-        )}
-
-        {/* Exec count */}
-        {node.exec.length > 0 && (
-          <span className="text-[9px]" style={{ color: TK.purple }}>
-            <Hash size={8} className="inline" />{node.exec.length}
+            [{node.children.length}]
           </span>
         )}
       </div>
 
-      {/* Meta/Data/Exec toggles (when expanded) */}
       {expanded && (
-        <div style={{ paddingLeft: (depth + 1) * 16 + 12 }}>
-          {/* Meta */}
+        <div style={{ paddingLeft: indent + 16 }}>
           {Object.keys(node.meta).length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowMeta(v => !v)}
-                className="text-[9px] py-0.5 hover:opacity-80"
-                style={{ color: TK.dim }}
-              >
-                {showMeta ? '▾' : '▸'} _meta
-              </button>
-              {showMeta && (
-                <pre className="text-[10px] p-1 rounded mt-0.5 mb-1 whitespace-pre-wrap"
-                  style={{ background: TK.bg, color: TK.text }}>
-                  {JSON.stringify(node.meta, null, 2)}
-                </pre>
-              )}
-            </div>
+            <InlineJson data={node.meta} />
           )}
 
-          {/* Data */}
-          {Object.keys(node.data).filter(k => k !== '_deleted').length > 0 && (
-            <div>
-              <button
+          {hasData && (
+            <>
+              <div
+                className="text-[9px] cursor-pointer py-0.5 hover:opacity-80"
+                style={{ color: TK.dim }}
                 onClick={() => setShowData(v => !v)}
-                className="text-[9px] py-0.5 hover:opacity-80"
-                style={{ color: TK.dim }}
               >
-                {showData ? '▾' : '▸'} _data
-              </button>
-              {showData && (
-                <pre className="text-[10px] p-1 rounded mt-0.5 mb-1 whitespace-pre-wrap"
-                  style={{ background: TK.bg, color: TK.text }}>
-                  {JSON.stringify(
-                    Object.fromEntries(Object.entries(node.data).filter(([k]) => k !== '_deleted')),
-                    null, 2
-                  )}
-                </pre>
-              )}
-            </div>
+                {showData ? '── data ──' : '── data ── (click)'}
+              </div>
+              {showData && <InlineJson data={
+                Object.fromEntries(Object.entries(node.data).filter(([k]) => k !== '_deleted'))
+              } />}
+            </>
           )}
 
-          {/* Exec log */}
-          {node.exec.length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowExec(v => !v)}
-                className="text-[9px] py-0.5 hover:opacity-80"
-                style={{ color: TK.purple }}
+          {nodeFields.length > 0 && (
+            <>
+              <div
+                className="text-[9px] cursor-pointer py-0.5 hover:opacity-80"
+                style={{ color: TK.cyan }}
+                onClick={() => setShowFields(v => !v)}
               >
-                {showExec ? '▾' : '▸'} _exec [{node.exec.length}]
-              </button>
-              {showExec && (
-                <div className="mt-0.5 mb-1">
-                  {node.exec.map((e, i) => (
-                    <div key={i} className="text-[9px] py-0.5" style={{ color: TK.dim }}>
-                      <span style={{ color: TK.accent }}>{e.op}</span>
-                      {' '}
-                      <span style={{ color: TK.dim }}>
-                        {new Date(e.ts).toLocaleTimeString()}
+                {showFields ? '▾' : '▸'} fields [{nodeFields.length}]
+              </div>
+              {showFields && (
+                <div className="ml-2 mb-1">
+                  {nodeFields.map(f => (
+                    <div key={f.path} className="text-[9px] py-0.5 flex gap-2">
+                      <span style={{ color: TK.cyan }}>{f.localName}</span>
+                      <span style={{ color: TK.dim }}>=</span>
+                      <span style={{ color: TK.text }}>
+                        {typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value ?? 'null')}
                       </span>
-                      {' '}
-                      <span style={{ color: TK.green }}>{e.user}</span>
+                      {f.bind && (
+                        <span className="text-[8px]" style={{ color: TK.purple }}>
+                          → {f.bind}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
+            </>
+          )}
+
+          {isDeleted && (
+            <div className="text-[9px] my-0.5" style={{ color: TK.red }}>
+              [DELETED]
             </div>
           )}
 
-          {/* Children */}
-          {Array.from(node.children.values()).map(child => (
+          {childNodes.map(child => (
             <NodeTree
-              key={child.name}
+              key={child.path}
+              sandbox={sandbox}
               node={child}
-              path={fullPath}
               depth={depth + 1}
               onSelect={onSelect}
             />
@@ -202,4 +180,23 @@ function NodeTree({ node, path, depth, onSelect }: {
       )}
     </div>
   )
+}
+
+function InlineJson({ data }: { data: unknown }) {
+  return (
+    <pre className="text-[10px] whitespace-pre-wrap leading-relaxed my-0.5"
+      style={{ color: TK.cyan }}>
+      {JSON.stringify(data, null, 2)}
+    </pre>
+  )
+}
+
+function getNodeFields(sandbox: Sandbox, nodePath: string): FieldCell[] {
+  const result: FieldCell[] = []
+  for (const [path, cell] of sandbox.fieldStore) {
+    if (path.startsWith(nodePath + '.') || cell.ref === nodePath) {
+      result.push(cell)
+    }
+  }
+  return result
 }

@@ -11,7 +11,7 @@
  * One expression, two runtimes.
  */
 import jsonata from 'jsonata'
-import type { FieldEntry, Projection } from '@/types/runtime'
+import type { FieldEntry, Projection, ProjectionFieldRow } from '@/types/runtime'
 import { getByPath, toFieldStore, fromFieldStore } from '@/types/runtime'
 
 /** Pre-compiled expression cache */
@@ -41,7 +41,7 @@ function createBindings(projection?: Projection) {
     },
 
     /** $view(name) — get named view */
-    view: (name: string): Record<string, FieldEntry> | undefined => {
+    view: (name: string): ProjectionFieldRow[] | undefined => {
       return projection?.views[name]
     },
 

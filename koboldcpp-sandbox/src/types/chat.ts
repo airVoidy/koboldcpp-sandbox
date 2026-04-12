@@ -38,18 +38,3 @@ export interface CmdResult {
   error?: string
   [key: string]: unknown
 }
-
-export interface ContainerResolved {
-  container_id: string
-  state: Record<string, unknown>
-  source: { path: string | null; meta: NodeMeta; data: NodeData }
-  items?: ChatItem[]
-  item?: ChatItem
-}
-
-export interface MaterializeResult extends CmdResult {
-  container_id: string
-  resolved: ContainerResolved
-  rows: unknown[]
-  refs: unknown[]
-}

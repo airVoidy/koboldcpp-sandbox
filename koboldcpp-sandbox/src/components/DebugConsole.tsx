@@ -8,7 +8,6 @@ import {
 import { exec as apiExec } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState, CmdResult } from '@/types/chat'
-import type { Projection, FieldEntry } from '@/types/runtime'
 import { FSView } from './FSView'
 import { useSandbox } from '@/hooks/useSandbox'
 
@@ -289,10 +288,10 @@ function InspectorTab({ user }: { user: string }) {
       </div>
       <div className="flex-1 overflow-y-auto p-2 text-xs" style={{ fontFamily: 'monospace' }}>
         {error && <div style={{ color: TK.err }}>{error}</div>}
-        {result && !error && (
+        {result !== null && !error && (
           mode === 'value' ? <JsonTree data={result} /> : <PathView data={result} prefix={path} />
         )}
-        {!result && !error && (
+        {result === null && !error && (
           <div className="text-center py-4" style={{ color: TK.dim }}>Enter a path and click Resolve</div>
         )}
       </div>
@@ -332,7 +331,8 @@ function flattenPaths(obj: unknown, prefix: string): [string, unknown][] {
 /*  Tab content: Projection                                            */
 /* ------------------------------------------------------------------ */
 
-function ProjectionTab({ user }: { user: string }) {
+function ProjectionTab() {
+  const { loadServerState, queryFields, tree: runtimeTree } = useSandbox()
   const [nodePath, setNodePath] = useState('')
   const [fields, setFields] = useState<Array<{ path: string; value: unknown; hash: string; type: string }>>([])
   const [mode, setMode] = useState<'value' | 'bind'>('value')
@@ -341,19 +341,33 @@ function ProjectionTab({ user }: { user: string }) {
 
   const fetch_ = async () => {
     if (!nodePath.trim()) return
-    setLoading(true); setError(null)
+    setLoading(true)
+    setError(null)
     try {
-      const r = await apiExec(`/query ${nodePath.trim()}`, user)
-      if (r.error) { setError(r.error); return }
-      const proj = (r as Record<string, unknown>).projection as Projection | undefined
-      const store = proj?.flat_store ?? (r as Record<string, unknown>).flat_store as Record<string, FieldEntry> | undefined
-      if (store) {
-        setFields(Object.entries(store).map(([p, entry]) => ({
-          path: p, value: entry[2], hash: String(entry[0]), type: typeof entry[2],
-        })))
-      } else { setFields([]); setError('No flat_store in response') }
-    } catch (e) { setError(String(e)) }
-    finally { setLoading(false) }
+      if (runtimeTree.size === 0) {
+        const loaded = await loadServerState()
+        if (!loaded.ok) {
+          setError(loaded.error ?? 'load failed')
+          return
+        }
+      }
+      const matched = queryFields(`${nodePath.trim()}.*`)
+      if (matched.length === 0) {
+        setFields([])
+        setError('No fields found for path')
+        return
+      }
+      setFields(matched.map((entry) => ({
+        path: entry.path,
+        value: entry.value,
+        hash: String(entry.path.length),
+        type: entry.valueType,
+      })))
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -628,60 +642,60 @@ function ShellTab({ exec }: { exec: ExecFn }) {
 /* ------------------------------------------------------------------ */
 
 function FSViewTab() {
-  const { root, loadFromServer } = useSandbox()
+  const { sandbox, loadServerState } = useSandbox()
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     if (!loaded) {
-      loadFromServer().then(() => setLoaded(true))
+      loadServerState().then(() => setLoaded(true))
     }
-  }, [loaded, loadFromServer])
+  }, [loaded, loadServerState])
 
   return (
     <div className="h-full overflow-hidden">
-      <FSView root={root} onSelect={(node, path) => {
+      <FSView sandbox={sandbox} onSelect={(node, path) => {
         console.log('Selected:', path, node)
       }} />
     </div>
   )
 }
 
-function ObjectsTab({ exec }: { exec: ExecFn }) {
+function ObjectsTab() {
+  const { allNodes, loadServerState, tree: runtimeTree, fieldStore } = useSandbox()
   const [tree, setTree] = useState<ObjectNode[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null)
+    setLoading(true)
+    setError(null)
     try {
-      const { result } = await exec('/dir')
-      if (result.error) { setError(result.error); return }
-      // parse result into tree nodes - result may have items, children, or be a flat list
-      const raw = result as Record<string, unknown>
-      const items = (raw.items ?? raw.children ?? raw.entries ?? Object.keys(raw).filter(k => k !== 'ok')) as unknown
-      if (Array.isArray(items)) {
-        setTree(items.map((it: unknown) => {
-          if (typeof it === 'string') return { name: it, type: 'node' }
-          const obj = it as Record<string, unknown>
-          return {
-            name: String(obj.name ?? obj.id ?? obj.path ?? '?'),
-            type: String(obj.type ?? 'node'),
-            children: Array.isArray(obj.children)
-              ? (obj.children as Record<string, unknown>[]).map(c => ({
-                  name: String(c.name ?? c.id ?? '?'),
-                  type: String(c.type ?? 'node'),
-                }))
-              : undefined,
-          }
-        }))
-      } else {
-        // fallback: show raw keys as nodes
-        setTree(Object.keys(raw).filter(k => k !== 'ok').map(k => ({ name: k, type: typeof raw[k] === 'object' ? 'dir' : 'leaf' })))
+      if (runtimeTree.size === 0) {
+        const result = await loadServerState()
+        if (!result.ok) {
+          setError(result.error ?? 'load failed')
+          return
+        }
       }
-    } catch (e) { setError(String(e)) }
-    finally { setLoading(false) }
-  }, [exec])
+      const nodes = allNodes()
+      const byPath = new Map(nodes.map(node => [node.path, node]))
+      const roots = nodes.filter(node => !node.path.includes('/'))
+      const walk = (nodePath: string): ObjectNode => {
+        const node = byPath.get(nodePath)!
+        return {
+          name: node.name,
+          type: String(node.type ?? 'node'),
+          children: node.children.map(childPath => walk(childPath)),
+        }
+      }
+      setTree(roots.map(node => walk(node.path)))
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [allNodes, loadServerState, runtimeTree.size])
 
   useEffect(() => { load() }, [load])
 
@@ -720,7 +734,9 @@ function ObjectsTab({ exec }: { exec: ExecFn }) {
           style={{ background: TK.surface2, color: TK.text }}>
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
-        <span style={{ color: TK.dim }} className="ml-auto">{tree.length} roots</span>
+        <span style={{ color: TK.dim }} className="ml-auto">
+          {tree.length} roots · {runtimeTree.size} nodes · {fieldStore.size} fields
+        </span>
       </div>
       <div className="flex-1 overflow-y-auto p-1 text-xs" style={{ fontFamily: 'monospace' }}>
         {error && <div className="p-2" style={{ color: TK.err }}>{error}</div>}
@@ -897,10 +913,10 @@ export function DebugConsole({ visible, onClose, chatState, user, exec, initialT
           <div className="flex-1 min-h-0 overflow-hidden">
             {currentTab?.kind === 'l0log' && <L0LogTab refreshInterval={refreshInterval} />}
             {currentTab?.kind === 'inspector' && <InspectorTab user={user} />}
-            {currentTab?.kind === 'projection' && <ProjectionTab user={user} />}
+            {currentTab?.kind === 'projection' && <ProjectionTab />}
             {currentTab?.kind === 'free' && <FreeTab chatState={chatState} />}
             {currentTab?.kind === 'shell' && <ShellTab exec={exec} />}
-            {currentTab?.kind === 'objects' && <ObjectsTab exec={exec} />}
+            {currentTab?.kind === 'objects' && <ObjectsTab />}
             {currentTab?.kind === 'fsview' && <FSViewTab />}
           </div>
 

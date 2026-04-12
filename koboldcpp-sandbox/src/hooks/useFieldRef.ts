@@ -8,7 +8,7 @@
  * This is the client-side equivalent of server field projections:
  * field[field.display] — one object, three facets.
  */
-import { useMemo, useState, createContext, useContext } from 'react'
+import { useMemo, useState, createContext, useContext, createElement, type ReactNode } from 'react'
 import type { ChatState } from '@/types/chat'
 import { getByPath } from '@/types/runtime'
 
@@ -26,8 +26,8 @@ export interface FieldRef {
 /** Context for container-level display switching */
 const DisplayContext = createContext<DisplayFacet>('value')
 
-export function DisplayProvider({ facet, children }: { facet: DisplayFacet; children: React.ReactNode }) {
-  return <DisplayContext.Provider value={facet}>{children}</DisplayContext.Provider>
+export function DisplayProvider({ facet, children }: { facet: DisplayFacet; children: ReactNode }) {
+  return createElement(DisplayContext.Provider, { value: facet }, children)
 }
 
 /** Simple hash for field identity */

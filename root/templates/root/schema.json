@@ -4,7 +4,6 @@
   "fields": {},
   "inherits": null,
   "commands": [
-    "materialize",
     "cselect",
     "cpost",
     "cmkchannel",

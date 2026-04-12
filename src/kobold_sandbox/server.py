@@ -151,10 +151,6 @@ class RunRequest(BaseModel):
     commit: bool = False
 
 
-class ContainerMaterializeRequest(BaseModel):
-    container_id: str
-
-
 class AtomicViewRequest(BaseModel):
     path: str
     view: str = "object"
@@ -6683,11 +6679,6 @@ load();
         """Return full chat state in one request: channels + messages for active channel."""
         return _safe_endpoint("view", {"channel": req.channel, "user": req.user},
             lambda: _pchat_build_state(req.channel, req.msg_limit, req.user))
-
-    @app.post("/api/container/materialize")
-    def container_materialize(req: ContainerMaterializeRequest) -> dict:
-        return _safe_endpoint("materialize", {"container_id": req.container_id},
-            lambda: workspace.materialize_container(req.container_id))
 
     class ProjectionRequest(BaseModel):
         template: str
