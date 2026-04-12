@@ -54,47 +54,20 @@ export interface ExecResult {
   data?: unknown
 }
 
-/** Materialized container result (immutable server response) */
-export interface ContainerResult {
-  id: string
-  resolved: Record<string, unknown>
-  rows: unknown[]
-  ts: number
-}
-
-/** Field cell — atomic {path ↔ value} from table projection */
+/** Field cell — atomic {path ↔ value} runtime object */
 export interface FieldCell {
+  /** Canonical path */
   path: string
+  /** Local field name (last segment) */
   localName: string
+  /** Resolved value */
   value: unknown
+  /** Value type */
   valueType: string
+  /** Bind path (for write-back to source) */
   bind?: string
-  rowKey?: string
+  /** Node path this field belongs to */
   ref?: string
-  containerId: string
-}
-
-/** Simplified table row */
-export interface TableRow {
-  key: string
-  ref: string
-  cells: Record<string, unknown>
-}
-
-/** Raw table row from server (for internal parsing) */
-interface RawTableRow {
-  row_key: string
-  ref: string
-  cells?: RawCell[]
-}
-
-interface RawCell {
-  local_name: string
-  value: unknown
-  value_type?: string
-  path?: string
-  bind?: string
-  atomic_path?: string
 }
 
 // ── Op handler type ──
@@ -246,6 +219,7 @@ export class Sandbox {
 
       this.serverState = nodes
       this.rebuildTree()
+      this.rebuildFieldStore()
 
       // Record as exec entry
       const entry: ExecEntry = {
@@ -400,82 +374,39 @@ export class Sandbox {
     return this.execLog.find(e => e.id === id)
   }
 
-  // ── Container materialization (server-side projections) ──
+  // ── Field store: runtime field objects ──
 
-  /** Materialized containers cache: containerId → resolved result */
-  containers: Map<string, ContainerResult> = new Map()
-
-  /** Field store: flat {path → FieldCell} from all materialized containers */
+  /** Flat field store: {path → FieldCell} — built from server state */
   fieldStore: Map<string, FieldCell> = new Map()
 
-  /** Materialize a server container, store result immutably */
-  async materialize(containerId: string): Promise<ExecResult> {
-    const entry: ExecEntry = {
-      id: nextId(),
-      op: '_materialize',
-      ts: Date.now(),
-      user: '_system',
-      args: { container_id: containerId },
-      local: false,
-    }
-    this.execLog.push(entry)
-
-    try {
-      const res = await fetch('/api/container/materialize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ container_id: containerId }),
-      })
-      const data = await res.json()
-      entry.result = data
-
-      // Store container result immutably
-      const container: ContainerResult = {
-        id: containerId,
-        resolved: data.resolved ?? {},
-        rows: data.rows ?? [],
-        ts: Date.now(),
+  /** Rebuild field store from tree (after loadServerState or exec) */
+  rebuildFieldStore() {
+    this.fieldStore.clear()
+    for (const [, node] of this.tree) {
+      // Meta fields
+      for (const [key, value] of Object.entries(node.meta)) {
+        const path = `${node.path}._meta.${key}`
+        this.fieldStore.set(path, {
+          path,
+          localName: key,
+          value,
+          valueType: typeof value,
+          ref: node.path,
+        })
       }
-      this.containers.set(containerId, container)
-
-      // Extract fields from table projection if present
-      const table = data.resolved?.table
-      if (table?.rows) {
-        for (const row of table.rows) {
-          for (const cell of row.cells ?? []) {
-            const fieldPath = cell.bind ?? cell.atomic_path ?? cell.path
-            this.fieldStore.set(fieldPath, {
-              path: fieldPath,
-              localName: cell.local_name,
-              value: cell.value,
-              valueType: cell.value_type ?? typeof cell.value,
-              bind: cell.bind,
-              rowKey: row.row_key,
-              ref: row.ref,
-              containerId,
-            })
-          }
-        }
+      // Data fields
+      for (const [key, value] of Object.entries(node.data)) {
+        if (key === '_deleted' && !value) continue
+        const path = `${node.path}._data.${key}`
+        this.fieldStore.set(path, {
+          path,
+          localName: key,
+          value,
+          valueType: typeof value,
+          ref: node.path,
+        })
       }
-
-      this.notify()
-      return { ok: true, data: container }
-    } catch (e) {
-      const error = e instanceof Error ? e.message : String(e)
-      entry.result = { ok: false, error }
-      this.notify()
-      return { ok: false, error }
     }
-  }
-
-  /** Materialize multiple containers in parallel */
-  async materializeAll(...containerIds: string[]): Promise<ExecResult> {
-    const results = await Promise.all(containerIds.map(id => this.materialize(id)))
-    const errors = results.filter(r => !r.ok)
-    if (errors.length > 0) {
-      return { ok: false, error: errors.map(e => e.error).join('; ') }
-    }
-    return { ok: true, data: { materialized: containerIds } }
   }
 
   /** Get field by canonical path */
@@ -491,18 +422,6 @@ export class Sandbox {
       if (regex.test(path)) result.push(cell)
     }
     return result
-  }
-
-  /** Get rows from a materialized container table */
-  getTableRows(containerId: string): TableRow[] {
-    const container = this.containers.get(containerId)
-    if (!container?.resolved?.table?.rows) return []
-    return container.resolved.table.rows.map((row: RawTableRow) => {
-      const cells = Object.fromEntries(
-        (row.cells ?? []).map((c: RawCell) => [c.local_name, c.value])
-      )
-      return { key: row.row_key, ref: row.ref, cells }
-    })
   }
 
   // ── Subscribe ──

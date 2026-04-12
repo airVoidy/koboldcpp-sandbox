@@ -1,5 +1,5 @@
 /** API client for sandbox server at localhost:5002 */
-import type { CmdResult, ChatState, MaterializeResult } from '@/types/chat'
+import type { CmdResult, ChatState } from '@/types/chat'
 
 const BASE = '/api'
 
@@ -34,11 +34,6 @@ export function getState(channel?: string, user = 'anon', since?: number): Promi
   const params: Record<string, unknown> = { channel, user, msg_limit: 100 }
   if (since !== undefined) params.since = since
   return post('/pchat/view', params)
-}
-
-/** Materialize a runtime container */
-export function materialize(containerId: string): Promise<MaterializeResult> {
-  return post('/container/materialize', { container_id: containerId })
 }
 
 /** Convenience: select channel */
