@@ -5,10 +5,12 @@ import {
   Terminal, X, Minus, Plus, ChevronDown, ChevronRight,
   Eye, Link, Play, RefreshCw, FolderTree,
 } from 'lucide-react'
-import { exec as apiExec } from '@/lib/api'
+import { exec as apiExec, getMessageProjection, getProjection } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState, CmdResult } from '@/types/chat'
+import type { Projection, TemplateAggregation } from '@/types/runtime'
 import { FSView } from './FSView'
+import { ProjectionRenderer } from './ProjectionRenderer'
 import { useSandbox } from '@/hooks/useSandbox'
 
 /* ------------------------------------------------------------------ */
@@ -332,10 +334,9 @@ function flattenPaths(obj: unknown, prefix: string): [string, unknown][] {
 /* ------------------------------------------------------------------ */
 
 function ProjectionTab() {
-  const { loadServerState, queryFields, tree: runtimeTree } = useSandbox()
   const [nodePath, setNodePath] = useState('')
-  const [fields, setFields] = useState<Array<{ path: string; value: unknown; hash: string; type: string }>>([])
-  const [mode, setMode] = useState<'value' | 'bind'>('value')
+  const [projection, setProjection] = useState<Projection | null>(null)
+  const [aggregation, setAggregation] = useState<TemplateAggregation | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -343,26 +344,28 @@ function ProjectionTab() {
     if (!nodePath.trim()) return
     setLoading(true)
     setError(null)
+    setProjection(null)
+    setAggregation(null)
     try {
-      if (runtimeTree.size === 0) {
-        const loaded = await loadServerState()
-        if (!loaded.ok) {
-          setError(loaded.error ?? 'load failed')
+      const target = nodePath.trim()
+      const parsed = parseProjectionTarget(target)
+      const { kind, value } = parsed
+      if (kind === 'template') {
+        const result = await getProjection(value, parsed.scope)
+        if (isTemplateAggregation(result)) {
+          setAggregation(result)
           return
         }
-      }
-      const matched = queryFields(`${nodePath.trim()}.*`)
-      if (matched.length === 0) {
-        setFields([])
-        setError('No fields found for path')
+        setError('Projection response is not a template aggregation')
         return
       }
-      setFields(matched.map((entry) => ({
-        path: entry.path,
-        value: entry.value,
-        hash: String(entry.path.length),
-        type: entry.valueType,
-      })))
+
+      const result = await getMessageProjection(value)
+      if (isProjection(result)) {
+        setProjection(result)
+        return
+      }
+      setError('Projection response is not a message projection')
     } catch (e) {
       setError(String(e))
     } finally {
@@ -377,7 +380,7 @@ function ProjectionTab() {
           value={nodePath}
           onChange={(e) => setNodePath(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && fetch_()}
-          placeholder="node path"
+          placeholder="msg path or template type (e.g. pchat/channels/general/msg_1 or msg --scope=pchat/channels/general)"
           className="flex-1 px-2 py-0.5 rounded text-xs outline-none"
           style={{ background: TK.bg, color: TK.text, border: `1px solid ${TK.border}`, fontFamily: 'monospace' }}
         />
@@ -386,46 +389,90 @@ function ProjectionTab() {
           style={{ background: TK.accent, color: '#fff' }}>
           <Play size={10} /> Load
         </button>
-        <button
-          onClick={() => setMode(mode === 'value' ? 'bind' : 'value')}
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs"
-          style={{ background: TK.surface2, color: mode === 'bind' ? TK.accent : TK.dim }}>
-          {mode === 'value' ? <Eye size={10} /> : <Link size={10} />}
-          {mode === 'value' ? 'Val' : 'Bind'}
-        </button>
       </div>
       <div className="flex-1 overflow-y-auto p-1 text-[11px]" style={{ fontFamily: 'monospace' }}>
         {error && <div className="p-2" style={{ color: TK.err }}>{error}</div>}
-        {fields.length > 0 && (
-          <table className="w-full">
-            <thead>
-              <tr style={{ color: TK.dim, borderBottom: `1px solid ${TK.border}` }}>
-                <th className="text-left px-1 py-0.5 font-normal">Path</th>
-                <th className="text-left px-1 py-0.5 font-normal">{mode === 'value' ? 'Value' : 'Bind'}</th>
-                <th className="text-left px-1 py-0.5 font-normal w-16">Hash</th>
-                <th className="text-left px-1 py-0.5 font-normal w-12">Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fields.map((f) => (
-                <tr key={f.path} className="hover:opacity-80" style={{ borderBottom: `1px solid ${TK.border}11` }}>
-                  <td className="px-1 py-0.5" style={{ color: TK.accent }}>{f.path}</td>
-                  <td className="px-1 py-0.5 truncate max-w-[200px]" style={{ color: TK.text }}>
-                    {typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value ?? '')}
-                  </td>
-                  <td className="px-1 py-0.5" style={{ color: TK.dim }}>{f.hash.slice(0, 8)}</td>
-                  <td className="px-1 py-0.5" style={{ color: TK.dim }}>{f.type}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {fields.length === 0 && !error && (
+        {projection && <ProjectionRenderer projection={projection} />}
+        {aggregation && <AggregationRenderer aggregation={aggregation} />}
+        {!projection && !aggregation && !error && (
           <div className="text-center py-4" style={{ color: TK.dim }}>Enter a node path and click Load</div>
         )}
       </div>
     </div>
   )
+}
+
+function AggregationRenderer({ aggregation }: { aggregation: TemplateAggregation }) {
+  return (
+    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+      <div className="px-2 py-1 bg-[var(--surface)] text-[10px] flex items-center justify-between" style={{ color: TK.dim }}>
+        <span>type: {aggregation.type}</span>
+        <span>{aggregation.count} instances</span>
+      </div>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="bg-[var(--surface)] text-[var(--text-dim)]">
+            <th className="text-left px-2 py-1 font-normal">instance</th>
+            <th className="text-left px-2 py-1 font-normal">path</th>
+            <th className="text-left px-2 py-1 font-normal">value</th>
+            <th className="text-left px-2 py-1 font-normal w-16">hash</th>
+          </tr>
+        </thead>
+        <tbody>
+          {aggregation.fields.map((field) => (
+            <tr key={field.namespaced_path} className="border-t border-[var(--border)] hover:bg-[var(--surface2)]">
+              <td className="px-2 py-1 text-[var(--text-dim)]">{field.instance}</td>
+              <td className="px-2 py-1 font-mono text-[var(--accent)]">{field.namespaced_path}</td>
+              <td className="px-2 py-1 truncate max-w-[320px]">{formatProjectionValue(field.value)}</td>
+              <td className="px-2 py-1 font-mono text-[var(--text-dim)] text-[9px]">{field.hash?.slice(0, 8)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {aggregation.fields.length === 0 && (
+        <div className="px-3 py-4 text-center text-[var(--text-dim)] text-xs">
+          No projected fields
+        </div>
+      )}
+    </div>
+  )
+}
+
+function parseProjectionTarget(input: string): { kind: 'message'; value: string } | { kind: 'template'; value: string; scope?: string } {
+  const trimmed = input.trim()
+  const scopeMatch = trimmed.match(/^([A-Za-z][\w-]*)(?:\s+--scope=(.+))?$/)
+  if (scopeMatch && !trimmed.startsWith('msg_') && !trimmed.includes('/')) {
+    return {
+      kind: 'template',
+      value: scopeMatch[1],
+      scope: scopeMatch[2]?.trim() || undefined,
+    }
+  }
+  return { kind: 'message', value: trimmed }
+}
+
+function isProjection(value: unknown): value is Projection {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  return typeof obj.source_node === 'string'
+    && typeof obj.flat_store === 'object'
+    && typeof obj.views === 'object'
+}
+
+function isTemplateAggregation(value: unknown): value is TemplateAggregation {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  return typeof obj.type === 'string'
+    && typeof obj.count === 'number'
+    && Array.isArray(obj.instances)
+    && typeof obj.flat_store === 'object'
+}
+
+function formatProjectionValue(value: unknown): string {
+  if (value === null || value === undefined) return 'null'
+  if (typeof value === 'string') return value.length > 120 ? `${value.slice(0, 120)}...` : value
+  if (typeof value === 'object') return JSON.stringify(value).slice(0, 120)
+  return String(value)
 }
 
 /* ------------------------------------------------------------------ */

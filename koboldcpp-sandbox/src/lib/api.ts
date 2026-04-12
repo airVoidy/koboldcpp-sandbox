@@ -61,6 +61,11 @@ export function getProjection(template: string, scope?: string) {
   return post('/pchat/projection', { template, scope: scope ?? '' })
 }
 
+/** Single message projection */
+export function getMessageProjection(path: string) {
+  return post('/pchat/message-projection', { path })
+}
+
 /** Wiki commands */
 export const wiki = {
   status: (user: string) => exec('/wiki status', user),

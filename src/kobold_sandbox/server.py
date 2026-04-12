@@ -151,6 +151,15 @@ class RunRequest(BaseModel):
     commit: bool = False
 
 
+class ProjectionRequest(BaseModel):
+    template: str
+    scope: str = ""
+
+
+class MessageProjectionRequest(BaseModel):
+    path: str
+
+
 class AtomicViewRequest(BaseModel):
     path: str
     view: str = "object"
@@ -6696,10 +6705,6 @@ load();
         return _safe_endpoint("view", {"channel": req.channel, "user": req.user},
             lambda: _pchat_build_state(req.channel, req.msg_limit, req.user))
 
-    class ProjectionRequest(BaseModel):
-        template: str
-        scope: str = ""
-
     @app.get("/api/endpoint-logs/{endpoint}")
     def get_endpoint_log(endpoint: str, tail: int = 50) -> dict:
         """Read last N entries from endpoint log."""
@@ -6730,6 +6735,14 @@ load();
         if not scope_dir.is_dir():
             scope_dir = workspace.pchat_dir
         return workspace._build_template_aggregation(req.template, scope_dir)
+
+    @app.post("/api/pchat/message-projection")
+    def pchat_message_projection(req: MessageProjectionRequest) -> dict:
+        return _safe_endpoint(
+            "message_projection",
+            {"path": req.path},
+            lambda: workspace._build_message_projection(workspace.root / Path(req.path)),
+        )
 
     @app.post("/api/atomic/view")
     def atomic_view(req: AtomicViewRequest) -> dict:
