@@ -3,10 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ChannelSidebar } from '@/components/ChannelSidebar'
 import { MessageList } from '@/components/MessageList'
 import { MessageInput } from '@/components/MessageInput'
-import { CommandPalette } from '@/components/CommandPalette'
 import { DebugConsole } from '@/components/DebugConsole'
 import { useChat } from '@/hooks/useChat'
-import { Terminal, Bug, Loader2 } from 'lucide-react'
+import { Bug, Loader2, Terminal } from 'lucide-react'
 
 const queryClient = new QueryClient()
 
@@ -21,15 +20,21 @@ function Chat() {
     exec,
   } = useChat()
 
-  const [cmdOpen, setCmdOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
+  const [debugInitialTab, setDebugInitialTab] = useState<string | undefined>(undefined)
 
-  // Ctrl+K command palette, Ctrl+Shift+D debug console
+  // Ctrl+K opens debug console with Shell tab, Ctrl+Shift+D toggles debug console
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault()
-        setCmdOpen(v => !v)
+        if (!debugOpen) {
+          setDebugInitialTab('shell')
+          setDebugOpen(true)
+        } else {
+          // already open: switch to shell tab
+          setDebugInitialTab('shell')
+        }
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
         e.preventDefault()
@@ -38,7 +43,7 @@ function Chat() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [debugOpen])
 
   return (
     <div className="flex h-screen">
@@ -77,7 +82,7 @@ function Chat() {
               <Bug className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setCmdOpen(true)}
+              onClick={() => { setDebugInitialTab('shell'); setDebugOpen(true) }}
               className="p-1 text-[var(--text-dim)] hover:text-[var(--accent)] transition-colors"
               title="Ctrl+K"
             >
@@ -97,17 +102,13 @@ function Chat() {
         />
       </main>
 
-      <CommandPalette
-        open={cmdOpen}
-        onClose={() => setCmdOpen(false)}
-        exec={exec}
-      />
-
       <DebugConsole
         visible={debugOpen}
         onClose={() => setDebugOpen(false)}
         chatState={state}
         user={user}
+        exec={exec}
+        initialTab={debugInitialTab}
       />
     </div>
   )
