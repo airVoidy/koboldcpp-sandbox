@@ -9,6 +9,8 @@ import { exec as apiExec } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState, CmdResult } from '@/types/chat'
 import type { Projection, FieldEntry } from '@/types/runtime'
+import { FSView } from './FSView'
+import { useSandbox } from '@/hooks/useSandbox'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -25,7 +27,7 @@ interface DebugConsoleProps {
   initialTab?: string
 }
 
-type TabKind = 'l0log' | 'inspector' | 'projection' | 'free' | 'shell' | 'objects'
+type TabKind = 'l0log' | 'inspector' | 'projection' | 'free' | 'shell' | 'objects' | 'fsview'
 
 interface TabDef {
   id: string
@@ -625,6 +627,25 @@ function ShellTab({ exec }: { exec: ExecFn }) {
 /*  Tab content: Object List                                           */
 /* ------------------------------------------------------------------ */
 
+function FSViewTab() {
+  const { root, loadFromServer } = useSandbox()
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!loaded) {
+      loadFromServer().then(() => setLoaded(true))
+    }
+  }, [loaded, loadFromServer])
+
+  return (
+    <div className="h-full overflow-hidden">
+      <FSView root={root} onSelect={(node, path) => {
+        console.log('Selected:', path, node)
+      }} />
+    </div>
+  )
+}
+
 function ObjectsTab({ exec }: { exec: ExecFn }) {
   const [tree, setTree] = useState<ObjectNode[]>([])
   const [loading, setLoading] = useState(false)
@@ -859,6 +880,7 @@ export function DebugConsole({ visible, onClose, chatState, user, exec, initialT
                   { kind: 'projection' as const, label: 'Projection' },
                   { kind: 'free' as const, label: 'JSONata (Free)' },
                   { kind: 'objects' as const, label: 'Object List' },
+                  { kind: 'fsview' as const, label: 'FS View' },
                   { kind: 'l0log' as const, label: 'L0 Log' },
                   { kind: 'shell' as const, label: 'Shell' },
                 ] as const).map(({ kind, label }) => (
@@ -879,6 +901,7 @@ export function DebugConsole({ visible, onClose, chatState, user, exec, initialT
             {currentTab?.kind === 'free' && <FreeTab chatState={chatState} />}
             {currentTab?.kind === 'shell' && <ShellTab exec={exec} />}
             {currentTab?.kind === 'objects' && <ObjectsTab exec={exec} />}
+            {currentTab?.kind === 'fsview' && <FSViewTab />}
           </div>
 
           {/* resize handle */}
