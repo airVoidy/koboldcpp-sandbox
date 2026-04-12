@@ -1,9 +1,15 @@
 /**
- * Runtime types — mirrors Python atomic runtime model.
+ * Runtime types — mirrors server atomic runtime model.
  *
- * Source of truth: immutable exec log (L0)
+ * Source of truth: immutable exec log (L0) + immutable server responses.
  * All objects are projections over canonical fields.
  */
+
+/** Atomic runtime data object: path ↔ value pair */
+export interface Row {
+  path: string
+  value: unknown
+}
 
 /** Canonical field — runtime singleton by path */
 export interface Field {
@@ -20,24 +26,48 @@ export type FieldEntry = [string, string, unknown]
 
 /** Exec log entry — L0 immutable record */
 export interface ExecEntry {
+  /** Unique id */
+  id: string
+  /** Operation name */
   op: string
+  /** Who issued */
   user: string
+  /** Timestamp ISO */
   ts: string
+  /** Operation arguments */
   args?: Record<string, unknown>
+  /** Server response (immutable) */
+  result?: unknown
+  /** True = client-only, no server call */
+  local?: boolean
   /** Resolved batch of sub-operations */
   batch?: ExecEntry[]
 }
 
-/** Runtime Node — container of local exec/messages/patches */
+/** Server node (from /api/pchat/view response) — immutable */
+export interface ServerNode {
+  name: string
+  path: string
+  meta: Record<string, unknown>
+  data: Record<string, unknown>
+}
+
+/** Runtime Node — projection over server + local data */
 export interface RuntimeNode {
   /** Node identity path */
   path: string
+  /** Name (last path segment) */
+  name: string
   /** Type from template */
   type?: string
-  /** Local exec log (append-only) */
-  exec: ExecEntry[]
-  /** Canonical fields owned by this node */
-  fields: Record<string, Field>
+  /** Meta fields */
+  meta: Record<string, unknown>
+  /** Data fields */
+  data: Record<string, unknown>
+  /** Child paths (refs, not objects) */
+  children: string[]
+  /** Exec entry IDs relevant to this node */
+  exec: string[]
 }
 
 /** Projection field entry (server format) */
@@ -81,27 +111,9 @@ export interface TemplateAggregation {
   instance_views: Record<string, Record<string, ProjectionFieldRow[]>>
 }
 
-/** Runtime container state as rows + patch_log (not mutable state.json) */
-export interface ContainerRuntime {
-  id: string
-  /** Canonical rows (atomic-dsl format) */
-  rows: Array<Record<string, unknown>>
-  /** Append-only patch log */
-  patch_log: ExecEntry[]
-  /** Optional manifest for resolve rules */
-  manifest?: Record<string, unknown>
-}
-
-/**
- * L0/L1/L2 layer model:
- * - L0 = immutable exec/messages/patches
- * - L1 = rows / linked runtime field layer
- * - L2 = resolved serializations (lists, tables, cards, trees)
- */
-
 // ── JSONata-compatible path utilities ──
 
-/** Resolve dot-path on object (JSONata `.` step) */
+/** Resolve dot-path on object */
 export function getByPath(obj: unknown, path: string): unknown {
   let cur = obj
   for (const part of path.split('.')) {
@@ -124,22 +136,6 @@ export function setByPath(obj: Record<string, unknown>, path: string, value: unk
   cur[parts[parts.length - 1]] = value
 }
 
-/** $spread equivalent — object → array of {key, value} */
-export function spread(obj: Record<string, unknown>): Array<{ key: string; value: unknown }> {
-  return Object.entries(obj).map(([key, value]) => ({ key, value }))
-}
-
-/** $merge equivalent — array of objects → merged object */
-export function merge(arr: Array<Record<string, unknown>>): Record<string, unknown> {
-  return Object.assign({}, ...arr)
-}
-
-/** $keys equivalent */
-export function keys(obj: unknown): string[] {
-  if (obj == null || typeof obj !== 'object') return []
-  return Object.keys(obj)
-}
-
 /** Build flat field store from object (like flatten_json) */
 export function toFieldStore(
   obj: Record<string, unknown>,
@@ -153,7 +149,6 @@ export function toFieldStore(
         walk(v, path ? `${path}.${k}` : k)
       }
     } else {
-      // Leaf — create field entry [hash, path, value]
       const hash = simpleHash(`${path}:${JSON.stringify(val)}`)
       store[path] = [hash, path, val]
     }
@@ -163,7 +158,7 @@ export function toFieldStore(
   return store
 }
 
-/** Reconstruct object from flat field store (like rows_to_json) */
+/** Reconstruct object from flat field store */
 export function fromFieldStore(store: Record<string, FieldEntry>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [, [, path, value]] of Object.entries(store)) {

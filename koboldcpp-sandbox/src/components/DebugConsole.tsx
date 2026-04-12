@@ -628,19 +628,19 @@ function ShellTab({ exec }: { exec: ExecFn }) {
 /* ------------------------------------------------------------------ */
 
 function FSViewTab() {
-  const { root, loadFromServer } = useSandbox()
+  const { sandbox, loadServerState } = useSandbox()
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     if (!loaded) {
-      loadFromServer().then(() => setLoaded(true))
+      loadServerState().then(() => setLoaded(true))
     }
-  }, [loaded, loadFromServer])
+  }, [loaded, loadServerState])
 
   return (
     <div className="h-full overflow-hidden">
-      <FSView root={root} onSelect={(node, path) => {
-        console.log('Selected:', path, node)
+      <FSView sandbox={sandbox} onSelect={(_node, path) => {
+        console.log('FS selected:', path)
       }} />
     </div>
   )

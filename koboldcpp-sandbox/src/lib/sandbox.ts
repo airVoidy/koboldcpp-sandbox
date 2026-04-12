@@ -1,62 +1,120 @@
 /**
- * Sandbox runtime: single FS node tree + single exec queue.
+ * Sandbox runtime — exec-first invariant.
  *
  * Invariants:
- * - One sandbox, one exec singleton
- * - All state-changing actions = exec entries (immutable, push-only)
- * - L0 = linear exec pipeline. No cycles, no recursion.
- * - Node = {name, type?, children, meta, data}. Name unique per scope.
- * - Runtime objects live in memory. FS serialization = lazy/debug.
- * - Types are generic (card = {}, cards = [])
+ * 1. One sandbox, one exec singleton
+ * 2. All state-changing actions = exec entries (append-only JSONL messages)
+ * 3. Server responses = immutable (stored as-is, never mutated)
+ * 4. FS = sandbox middleware (virtual FS over runtime objects in memory)
+ * 5. Node = {name, type?, meta, data}, serialized as {type}_{id}
+ * 6. Source of truth: execLog (client) + serverState (immutable)
+ * 7. Projection = resolve(state) → view, zero writes, one pass
  */
 
-// ── Node: atomic runtime object ──
+// ── Types ──
+
+export interface ExecEntry {
+  /** Unique id for this entry */
+  id: string
+  /** Operation name */
+  op: string
+  /** Timestamp (epoch ms) */
+  ts: number
+  /** Who issued */
+  user: string
+  /** Operation arguments */
+  args: Record<string, unknown>
+  /** Server response (immutable, stored as-is) */
+  result?: unknown
+  /** True = no server call, pure client */
+  local?: boolean
+}
 
 export interface SandboxNode {
   name: string
+  path: string
   type?: string
   meta: Record<string, unknown>
   data: Record<string, unknown>
-  children: Map<string, SandboxNode>
-  exec: ExecEntry[]
-  parent: SandboxNode | null
+  children: string[]   // child paths (refs, not objects)
+  exec: string[]       // exec entry ids relevant to this node
 }
 
-export interface ExecEntry {
-  op: string
-  ts: number
-  user: string
-  args: Record<string, unknown>
+/** Server node shape from /api/pchat/view */
+export interface ServerNode {
+  name: string
+  path: string
+  meta: Record<string, unknown>
+  data: Record<string, unknown>
 }
 
-// ── Sandbox: single root + exec queue ──
+export interface ExecResult {
+  ok: boolean
+  error?: string
+  data?: unknown
+}
+
+// ── Op handler type ──
+
+export type OpHandler = (sb: Sandbox, entry: ExecEntry) => ExecResult
+
+// ── Sandbox ──
+
+let _idCounter = 0
+function nextId(): string {
+  return `e_${Date.now()}_${++_idCounter}`
+}
 
 export class Sandbox {
-  root: SandboxNode
+  /** Append-only exec log — source of truth for client actions */
   execLog: ExecEntry[] = []
+
+  /** Last server response — immutable snapshot */
+  serverState: ServerNode[] = []
+
+  /** Runtime tree — derived projection, rebuilt on changes */
+  tree: Map<string, SandboxNode> = new Map()
+
+  /** Pluggable op handlers */
+  private ops: Map<string, OpHandler> = new Map()
+
+  /** Subscribers for reactive updates */
   private listeners = new Set<() => void>()
 
   constructor() {
-    this.root = createNode('root', null, { type: 'root' })
+    // Register built-in ops
+    this.registerOp('mk', opMk)
+    this.registerOp('rm', opRm)
+    this.registerOp('patch', opPatch)
+    this.registerOp('cd', opCd)
+    this.registerOp('_server_sync', opServerSync)
   }
 
-  /** Subscribe to state changes */
-  subscribe(fn: () => void) {
-    this.listeners.add(fn)
-    return () => this.listeners.delete(fn)
+  // ── Op registration ──
+
+  registerOp(name: string, handler: OpHandler) {
+    this.ops.set(name, handler)
   }
 
-  private notify() {
-    this.listeners.forEach(fn => fn())
-  }
+  // ── Exec: all mutations go through here ──
 
-  /** Execute a command — all mutations go through here */
-  exec(op: string, args: Record<string, unknown>, user = 'anon'): ExecResult {
-    const entry: ExecEntry = { op, ts: Date.now(), user, args }
+  exec(op: string, args: Record<string, unknown> = {}, user = 'anon'): ExecResult {
+    const entry: ExecEntry = {
+      id: nextId(),
+      op,
+      ts: Date.now(),
+      user,
+      args,
+      local: !this.ops.has(op), // unknown ops assumed server-side
+    }
+
+    // Always append to log first (source of truth)
     this.execLog.push(entry)
 
-    const handler = EXEC_OPS[op]
+    const handler = this.ops.get(op)
     if (!handler) {
+      entry.result = { ok: false, error: `unknown op: ${op}` }
+      this.notify()
       return { ok: false, error: `unknown op: ${op}` }
     }
 
@@ -65,187 +123,355 @@ export class Sandbox {
     return result
   }
 
-  /** Resolve node by path (dot-separated or slash-separated) */
-  resolve(path: string): SandboxNode | null {
-    if (!path || path === '.' || path === 'root') return this.root
-    const parts = path.replace(/\\/g, '/').split(/[./]/).filter(Boolean)
-    let cur = this.root
-    for (const part of parts) {
-      const child = cur.children.get(part)
-      if (!child) return null
-      cur = child
+  // ── Server exec: cmd string → server endpoint → result into log ──
+
+  async serverExec(cmd: string, user = 'anon'): Promise<ExecResult> {
+    const entry: ExecEntry = {
+      id: nextId(),
+      op: '_server_cmd',
+      ts: Date.now(),
+      user,
+      args: { cmd },
+      local: false,
     }
-    return cur
+    this.execLog.push(entry)
+    this.notify()
+
+    try {
+      const res = await fetch('/api/pchat/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd, user, log: true, scope: 'CMD' }),
+      })
+      const data = await res.json()
+      // Store server response immutably
+      entry.result = data
+      this.notify()
+      return { ok: true, data }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      entry.result = { ok: false, error }
+      this.notify()
+      return { ok: false, error }
+    }
   }
 
-  /** Get flat list of all nodes (for table view) */
-  flatten(node?: SandboxNode, prefix = ''): Array<{ path: string; node: SandboxNode }> {
-    const n = node ?? this.root
-    const path = prefix ? `${prefix}/${n.name}` : n.name
-    const result: Array<{ path: string; node: SandboxNode }> = [{ path, node: n }]
-    for (const child of n.children.values()) {
-      result.push(...this.flatten(child, path))
+  // ── Load server state (immutable snapshot) ──
+
+  async loadServerState(channel?: string, user = 'anon'): Promise<ExecResult> {
+    try {
+      const body: Record<string, unknown> = { user, msg_limit: 100 }
+      if (channel) body.channel = channel
+      const res = await fetch('/api/pchat/view', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+
+      // Store as immutable server state
+      const nodes: ServerNode[] = []
+
+      // Root pchat node
+      nodes.push({ name: 'pchat', path: 'pchat', meta: { type: 'pchat' }, data: {} })
+
+      // Channels container
+      if (data.channels?.length) {
+        nodes.push({ name: 'channels', path: 'pchat/channels', meta: { type: 'channels' }, data: {} })
+        for (const ch of data.channels) {
+          const chName = ch.meta?.name ?? ch.name
+          nodes.push({
+            name: chName,
+            path: `pchat/channels/${chName}`,
+            meta: ch.meta ?? { type: 'channel', name: chName },
+            data: ch.data ?? {},
+          })
+        }
+      }
+
+      // Messages for active channel
+      if (data.active_channel && data.messages?.length) {
+        for (const msg of data.messages) {
+          nodes.push({
+            name: msg.name,
+            path: `pchat/channels/${data.active_channel}/${msg.name}`,
+            meta: msg.meta ?? {},
+            data: msg.data ?? {},
+          })
+        }
+      }
+
+      this.serverState = nodes
+      this.rebuildTree()
+
+      // Record as exec entry
+      const entry: ExecEntry = {
+        id: nextId(),
+        op: '_load_state',
+        ts: Date.now(),
+        user: '_system',
+        args: { channel },
+        result: { ok: true, node_count: nodes.length, active_channel: data.active_channel },
+        local: true,
+      }
+      this.execLog.push(entry)
+      this.notify()
+
+      return { ok: true, data: { node_count: nodes.length, active_channel: data.active_channel } }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      return { ok: false, error }
+    }
+  }
+
+  // ── Tree projection: rebuild from serverState + local ops ──
+
+  rebuildTree() {
+    const tree = new Map<string, SandboxNode>()
+
+    // Pass 1: server nodes → runtime nodes
+    for (const sn of this.serverState) {
+      tree.set(sn.path, {
+        name: sn.name,
+        path: sn.path,
+        type: sn.meta?.type as string | undefined,
+        meta: { ...sn.meta },
+        data: { ...sn.data },
+        children: [],
+        exec: [],
+      })
+    }
+
+    // Pass 1b: local nodes from exec log (mk ops)
+    for (const entry of this.execLog) {
+      if (entry.op === 'mk') {
+        const parent = (entry.args.parent as string) || ''
+        const name = entry.args.name as string
+        const path = parent ? `${parent}/${name}` : name
+        if (!tree.has(path)) {
+          tree.set(path, {
+            name,
+            path,
+            type: entry.args.type as string | undefined,
+            meta: { type: entry.args.type, user: entry.user, ts: new Date(entry.ts).toISOString() },
+            data: (entry.args.data as Record<string, unknown>) ?? {},
+            children: [],
+            exec: [entry.id],
+          })
+        }
+      }
+    }
+
+    // Pass 2: build children refs from path hierarchy
+    for (const [path, node] of tree) {
+      const lastSlash = path.lastIndexOf('/')
+      if (lastSlash > 0) {
+        const parentPath = path.substring(0, lastSlash)
+        const parent = tree.get(parentPath)
+        if (parent && !parent.children.includes(path)) {
+          parent.children.push(path)
+        }
+      }
+    }
+
+    // Pass 3: apply local patches from exec log
+    for (const entry of this.execLog) {
+      if (entry.op === 'patch') {
+        const nodePath = entry.args.path as string
+        const node = tree.get(nodePath)
+        if (node) {
+          const field = entry.args.field as string
+          const value = entry.args.value
+          setByDotPath(node.data, field, value)
+          if (!node.exec.includes(entry.id)) node.exec.push(entry.id)
+        }
+      }
+      if (entry.op === 'rm') {
+        const nodePath = entry.args.path as string
+        const node = tree.get(nodePath)
+        if (node) {
+          node.data._deleted = true
+          if (!node.exec.includes(entry.id)) node.exec.push(entry.id)
+        }
+      }
+    }
+
+    // Pass 4: sort children naturally (msg_1 before msg_10)
+    for (const node of tree.values()) {
+      node.children.sort(naturalSort)
+    }
+
+    this.tree = tree
+  }
+
+  // ── Query helpers ──
+
+  resolve(path: string): SandboxNode | undefined {
+    if (!path || path === '.') {
+      // Return first root node
+      for (const node of this.tree.values()) {
+        if (!node.path.includes('/')) return node
+      }
+      return undefined
+    }
+    return this.tree.get(path)
+  }
+
+  /** Get root-level nodes (no slash in path) */
+  roots(): SandboxNode[] {
+    const result: SandboxNode[] = []
+    for (const node of this.tree.values()) {
+      if (!node.path.includes('/')) {
+        result.push(node)
+      }
     }
     return result
   }
 
-  /** Serialize to JSON (for debug/transport) */
-  toJSON(): unknown {
-    return serializeNode(this.root)
+  /** Get children of a node */
+  children(path: string): SandboxNode[] {
+    const node = this.tree.get(path)
+    if (!node) return []
+    return node.children.map(p => this.tree.get(p)).filter(Boolean) as SandboxNode[]
   }
-}
 
-// ── Exec result ──
-
-export interface ExecResult {
-  ok: boolean
-  error?: string
-  node?: SandboxNode
-  data?: unknown
-}
-
-// ── Node factory ──
-
-export function createNode(
-  name: string,
-  parent: SandboxNode | null,
-  meta: Record<string, unknown> = {},
-  data: Record<string, unknown> = {},
-): SandboxNode {
-  return { name, type: meta.type as string | undefined, meta, data, children: new Map(), exec: [], parent }
-}
-
-// ── Exec operations: all state changes ──
-
-type ExecHandler = (sb: Sandbox, entry: ExecEntry) => ExecResult
-
-const EXEC_OPS: Record<string, ExecHandler> = {
-  /** Create a child node */
-  mk(sb, entry) {
-    const { parent: parentPath, name, type, data } = entry.args as {
-      parent?: string; name: string; type?: string; data?: Record<string, unknown>
+  /** Query by path pattern (simple glob: * matches one level) */
+  query(pattern: string): SandboxNode[] {
+    const regex = new RegExp(
+      '^' + pattern.replace(/\*/g, '[^/]+') + '$'
+    )
+    const result: SandboxNode[] = []
+    for (const [path, node] of this.tree) {
+      if (regex.test(path)) result.push(node)
     }
-    const parent = parentPath ? sb.resolve(parentPath as string) : sb.root
-    if (!parent) return { ok: false, error: `parent not found: ${parentPath}` }
-    if (parent.children.has(name)) return { ok: true, node: parent.children.get(name)! }
+    return result
+  }
 
-    const meta: Record<string, unknown> = { type: type ?? 'card', user: entry.user, ts: new Date(entry.ts).toISOString() }
-    if (type) meta.name = name
-    const node = createNode(name, parent, meta, data ?? {})
-    parent.children.set(name, node)
-    node.exec.push(entry)
-    return { ok: true, node }
-  },
+  /** Get all nodes as flat list */
+  allNodes(): SandboxNode[] {
+    return Array.from(this.tree.values())
+  }
 
-  /** Post a message (auto-numbered) */
-  post(sb, entry) {
-    const { parent: parentPath, content } = entry.args as { parent?: string; content: string }
-    const parent = parentPath ? sb.resolve(parentPath as string) : sb.root
-    if (!parent) return { ok: false, error: `parent not found: ${parentPath}` }
+  /** Get ExecEntry by id */
+  getEntry(id: string): ExecEntry | undefined {
+    return this.execLog.find(e => e.id === id)
+  }
 
-    // Find next msg_N
-    let maxN = 0
-    for (const key of parent.children.keys()) {
-      if (key.startsWith('msg_')) {
-        const n = parseInt(key.slice(4), 10)
-        if (n > maxN) maxN = n
+  // ── Subscribe ──
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn)
+    return () => this.listeners.delete(fn)
+  }
+
+  private notify() {
+    this.listeners.forEach(fn => fn())
+  }
+
+  // ── Serialization ──
+
+  /** Exec log as JSONL string (for debug/export) */
+  toJSONL(): string {
+    return this.execLog.map(e => JSON.stringify(e)).join('\n')
+  }
+
+  /** Tree as JSON (for debug) */
+  toJSON(): Record<string, unknown> {
+    const obj: Record<string, unknown> = {}
+    for (const [path, node] of this.tree) {
+      obj[path] = {
+        name: node.name,
+        type: node.type,
+        meta: node.meta,
+        data: node.data,
+        children_count: node.children.length,
+        exec_count: node.exec.length,
       }
     }
-    const name = `msg_${maxN + 1}`
-    const meta = { type: 'message', user: entry.user, ts: new Date(entry.ts).toISOString() }
-    const data = { content, reactions: {} }
-    const node = createNode(name, parent, meta, data)
-    parent.children.set(name, node)
-    node.exec.push(entry)
-    return { ok: true, node }
-  },
-
-  /** Delete a child node (soft: mark _deleted) */
-  rm(sb, entry) {
-    const { parent: parentPath, name } = entry.args as { parent?: string; name: string }
-    const parent = parentPath ? sb.resolve(parentPath as string) : sb.root
-    if (!parent) return { ok: false, error: `parent not found: ${parentPath}` }
-    const node = parent.children.get(name)
-    if (!node) return { ok: false, error: `not found: ${name}` }
-    node.data._deleted = true
-    node.exec.push(entry)
-    return { ok: true, node }
-  },
-
-  /** Patch a field by dot-path */
-  patch(sb, entry) {
-    const { path, field, value } = entry.args as { path?: string; field: string; value: unknown }
-    const node = path ? sb.resolve(path as string) : sb.root
-    if (!node) return { ok: false, error: `not found: ${path}` }
-
-    // Set by dot-path in data
-    const parts = field.split('.')
-    let cur: Record<string, unknown> = node.data
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!(parts[i] in cur) || typeof cur[parts[i]] !== 'object') {
-        cur[parts[i]] = {}
-      }
-      cur = cur[parts[i]] as Record<string, unknown>
-    }
-    cur[parts[parts.length - 1]] = value
-    node.exec.push(entry)
-    return { ok: true, node }
-  },
-
-  /** Toggle reaction */
-  react(sb, entry) {
-    const { path, emoji } = entry.args as { path: string; emoji: string }
-    const node = sb.resolve(path)
-    if (!node) return { ok: false, error: `not found: ${path}` }
-
-    const reactions = (node.data.reactions ?? {}) as Record<string, { users: string[]; count: number }>
-    const existing = reactions[emoji] ?? { users: [], count: 0 }
-    const users = existing.users.includes(entry.user)
-      ? existing.users.filter(u => u !== entry.user)
-      : [...existing.users, entry.user]
-
-    if (users.length === 0) {
-      delete reactions[emoji]
-    } else {
-      reactions[emoji] = { users, count: users.length }
-    }
-    node.data.reactions = reactions
-    node.exec.push(entry)
-    return { ok: true, node, data: { reactions } }
-  },
-
-  /** Create channel (convenience) */
-  mkchannel(sb, entry) {
-    const { name } = entry.args as { name: string }
-    // Ensure channels container
-    if (!sb.root.children.has('channels')) {
-      const channels = createNode('channels', sb.root, { type: 'channels', name: 'channels' })
-      sb.root.children.set('channels', channels)
-    }
-    const channels = sb.root.children.get('channels')!
-    if (channels.children.has(name)) {
-      return { ok: true, node: channels.children.get(name)! }
-    }
-    const ch = createNode(name, channels, { type: 'channel', user: entry.user, ts: new Date(entry.ts).toISOString(), name })
-    channels.children.set(name, ch)
-    ch.exec.push(entry)
-    return { ok: true, node: ch }
-  },
+    return obj
+  }
 }
 
-// ── Serialization ──
+// ── Built-in op handlers ──
 
-function serializeNode(node: SandboxNode): unknown {
-  const children: Record<string, unknown> = {}
-  for (const [name, child] of node.children) {
-    children[name] = serializeNode(child)
+const opMk: OpHandler = (sb, entry) => {
+  const parent = (entry.args.parent as string) || ''
+  const name = entry.args.name as string
+  if (!name) return { ok: false, error: 'mk: name required' }
+
+  const path = parent ? `${parent}/${name}` : name
+  if (sb.tree.has(path)) return { ok: true, data: { path, exists: true } }
+
+  const node: SandboxNode = {
+    name,
+    path,
+    type: entry.args.type as string | undefined,
+    meta: { type: entry.args.type, user: entry.user, ts: new Date(entry.ts).toISOString() },
+    data: (entry.args.data as Record<string, unknown>) ?? {},
+    children: [],
+    exec: [entry.id],
   }
-  return {
-    name: node.name,
-    type: node.type,
-    meta: node.meta,
-    data: node.data,
-    children: Object.keys(children).length > 0 ? children : undefined,
-    exec_count: node.exec.length,
+  sb.tree.set(path, node)
+
+  // Add to parent's children
+  if (parent) {
+    const parentNode = sb.tree.get(parent)
+    if (parentNode && !parentNode.children.includes(path)) {
+      parentNode.children.push(path)
+    }
   }
+
+  return { ok: true, data: { path } }
+}
+
+const opRm: OpHandler = (sb, entry) => {
+  const path = entry.args.path as string
+  if (!path) return { ok: false, error: 'rm: path required' }
+  const node = sb.tree.get(path)
+  if (!node) return { ok: false, error: `rm: not found: ${path}` }
+  node.data._deleted = true
+  node.exec.push(entry.id)
+  return { ok: true }
+}
+
+const opPatch: OpHandler = (sb, entry) => {
+  const path = entry.args.path as string
+  const field = entry.args.field as string
+  const value = entry.args.value
+  if (!path || !field) return { ok: false, error: 'patch: path and field required' }
+  const node = sb.tree.get(path)
+  if (!node) return { ok: false, error: `patch: not found: ${path}` }
+  setByDotPath(node.data, field, value)
+  node.exec.push(entry.id)
+  return { ok: true }
+}
+
+const opCd: OpHandler = (_sb, entry) => {
+  // Navigation is just a recorded intent, no tree mutation
+  entry.local = true
+  return { ok: true, data: { path: entry.args.path } }
+}
+
+const opServerSync: OpHandler = (_sb, entry) => {
+  // Server sync is a passthrough — result already stored in entry
+  entry.local = true
+  return { ok: true, data: entry.args.result }
+}
+
+// ── Utilities ──
+
+function setByDotPath(obj: Record<string, unknown>, path: string, value: unknown) {
+  const parts = path.split('.')
+  let cur = obj
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!(parts[i] in cur) || typeof cur[parts[i]] !== 'object') {
+      cur[parts[i]] = {}
+    }
+    cur = cur[parts[i]] as Record<string, unknown>
+  }
+  cur[parts[parts.length - 1]] = value
+}
+
+function naturalSort(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true })
 }
