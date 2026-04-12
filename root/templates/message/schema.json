@@ -3,5 +3,7 @@
   "description": "Chat message — content + metadata",
   "fields": {"content": "str"},
   "inherits": "card",
+  "exec": true,
+  "children": {},
   "commands": []
 }

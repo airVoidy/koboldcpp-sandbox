@@ -24,6 +24,9 @@
     "tablesort",
     "tablefilter",
     "tablerange",
-    "wiki"
+    "wiki",
+    "mcheckpoint",
+    "mjsonata",
+    "mproject"
   ]
 }

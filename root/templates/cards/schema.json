@@ -3,5 +3,7 @@
   "description": "Base type: list/container of objects",
   "fields": {},
   "inherits": "card",
+  "exec": true,
+  "children": {},
   "commands": ["list", "mk", "post"]
 }
