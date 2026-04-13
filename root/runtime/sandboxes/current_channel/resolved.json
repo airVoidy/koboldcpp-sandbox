@@ -2,39 +2,46 @@
   "container_id": "current_channel",
   "state": {},
   "source": {
-    "path": "pchat/channels/323",
+    "path": "pchat/channels/43",
     "meta": {
       "type": "channel",
-      "user": "323",
-      "ts": "2026-04-12T05:15:40.952332+00:00",
-      "name": "323"
+      "user": "anon",
+      "ts": "2026-04-11T20:00:16.227732+00:00",
+      "name": "43"
     },
     "data": {}
   },
   "items": [
     {
       "id": "msg_1",
-      "path": "pchat/channels/323/msg_1",
+      "path": "pchat/channels/43/msg_1",
       "meta": {
         "type": "message",
-        "user": "323",
-        "ts": "2026-04-12T10:09:51.121781+00:00"
+        "user": "anon",
+        "ts": "2026-04-11T20:24:16.675961+00:00"
       },
       "data": {
-        "content": "321",
-        "_deleted": true
+        "content": "hello",
+        "reactions": {
+          "👍": {
+            "users": [
+              "323"
+            ],
+            "count": 1
+          }
+        }
       }
     },
     {
       "id": "msg_2",
-      "path": "pchat/channels/323/msg_2",
+      "path": "pchat/channels/43/msg_2",
       "meta": {
         "type": "message",
         "user": "anon",
-        "ts": "2026-04-13T05:15:18.910900+00:00"
+        "ts": "2026-04-12T04:47:47.694522+00:00"
       },
       "data": {
-        "content": "ello",
+        "content": "13",
         "reactions": {
           "👍": {
             "users": [
@@ -43,6 +50,60 @@
             "count": 1
           }
         }
+      }
+    },
+    {
+      "id": "msg_3",
+      "path": "pchat/channels/43/msg_3",
+      "meta": {
+        "type": "message",
+        "user": "anon",
+        "ts": "2026-04-12T04:58:13.394277+00:00"
+      },
+      "data": {
+        "content": "hello",
+        "reactions": {
+          "👍": {
+            "users": [
+              "323"
+            ],
+            "count": 1
+          }
+        },
+        "_deleted": true
+      }
+    },
+    {
+      "id": "msg_4",
+      "path": "pchat/channels/43/msg_4",
+      "meta": {
+        "type": "message",
+        "user": "anon",
+        "ts": "2026-04-12T04:58:48.348423+00:00"
+      },
+      "data": {
+        "content": "32",
+        "reactions": {
+          "👍": {
+            "users": [
+              "anon"
+            ],
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "msg_5",
+      "path": "pchat/channels/43/msg_5",
+      "meta": {
+        "type": "message",
+        "user": "anon",
+        "ts": "2026-04-12T10:20:43.390687+00:00"
+      },
+      "data": {
+        "content": "11",
+        "reactions": {}
       }
     }
   ]

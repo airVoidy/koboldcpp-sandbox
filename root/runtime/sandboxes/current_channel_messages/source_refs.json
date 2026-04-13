@@ -1,6 +1,18 @@
 {
   "refs": [
     {
+      "path": "current_channel_messages__msg_5",
+      "hash": null
+    },
+    {
+      "path": "current_channel_messages__msg_4",
+      "hash": null
+    },
+    {
+      "path": "current_channel_messages__msg_3",
+      "hash": null
+    },
+    {
       "path": "current_channel_messages__msg_2",
       "hash": null
     },

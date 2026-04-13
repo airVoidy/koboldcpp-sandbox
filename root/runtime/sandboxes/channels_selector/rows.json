@@ -17,7 +17,7 @@
     {
       "field": "selected",
       "type": "str",
-      "value": "323",
+      "value": "43",
       "path": "state.selected",
       "group": "state",
       "aliases": [
