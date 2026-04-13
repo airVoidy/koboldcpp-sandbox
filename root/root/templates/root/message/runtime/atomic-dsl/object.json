@@ -1,9 +1,0 @@
-{
-  "kind": "object_view",
-  "source": "fs_node",
-  "include": {
-    "_meta": true,
-    "_data": true,
-    "children": false
-  }
-}

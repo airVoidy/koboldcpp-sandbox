@@ -1,9 +1,0 @@
-{
-  "type": "card",
-  "description": "Base type: single object with fields",
-  "fields": {},
-  "inherits": null,
-  "exec": false,
-  "children": {},
-  "commands": ["pick", "put", "cd", "cat", "rm"]
-}

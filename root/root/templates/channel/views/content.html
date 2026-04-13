@@ -1,9 +1,0 @@
-<!-- Channel Content Panel (inner content, container = .content-area) -->
-<div class="channel-label" id="channel-label">Select or create a channel</div>
-<div class="chat-thread" id="chat-thread">
-  <div class="chat-empty">No channel selected</div>
-</div>
-<div class="chat-input-bar">
-  <textarea id="chat-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
-  <button class="btn primary" onclick="sendMessage()">Send</button>
-</div>
