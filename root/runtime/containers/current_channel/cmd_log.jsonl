@@ -4,3 +4,4 @@
 {"cmd": "cpost", "args": ["dsdsd"], "user": "anon", "ts": "2026-04-13T05:16:37.222982+00:00", "selected": "123"}
 {"cmd": "creact", "args": ["msg_1", "👍"], "user": "anon", "ts": "2026-04-13T05:55:52.042678+00:00", "selected": "43", "atomic_path": "pchat/channels/43/msg_1._data.reactions"}
 {"cmd": "creact", "args": ["msg_2", "👍"], "user": "anon", "ts": "2026-04-13T05:55:53.858924+00:00", "selected": "43", "atomic_path": "pchat/channels/43/msg_2._data.reactions"}
+{"cmd": "creact", "args": ["msg_4", "👍"], "user": "anon", "ts": "2026-04-13T05:55:55.405175+00:00", "selected": "43", "atomic_path": "pchat/channels/43/msg_4._data.reactions"}
