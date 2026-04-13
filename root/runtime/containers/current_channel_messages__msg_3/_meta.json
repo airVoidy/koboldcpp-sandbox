@@ -2,14 +2,14 @@
   "id": "current_channel_messages__msg_3",
   "kind": "projection",
   "projection": {
-    "source_path": "pchat/channels/323/msg_3",
+    "source_path": "pchat/channels/123/msg_3",
     "local_root": "item",
     "fields": [
-      "pchat/channels/323/msg_3._meta.user",
-      "pchat/channels/323/msg_3._data.content",
-      "pchat/channels/323/msg_3._meta.ts",
-      "pchat/channels/323/msg_3._data.reactions",
-      "pchat/channels/323/msg_3._data._deleted"
+      "pchat/channels/123/msg_3._meta.user",
+      "pchat/channels/123/msg_3._data.content",
+      "pchat/channels/123/msg_3._meta.ts",
+      "pchat/channels/123/msg_3._data.reactions",
+      "pchat/channels/123/msg_3._data._deleted"
     ]
   }
 }
