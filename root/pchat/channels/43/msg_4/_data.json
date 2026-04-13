@@ -1,4 +1,11 @@
 {
   "content": "32",
-  "reactions": {}
+  "reactions": {
+    "\ud83d\udc4d": {
+      "users": [
+        "anon"
+      ],
+      "count": 1
+    }
+  }
 }
