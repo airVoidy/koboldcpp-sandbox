@@ -67,3 +67,4 @@
 {"cmd": "/cselect 43", "ts": "2026-04-13T06:16:01.080153+00:00", "user": "anon"}
 {"cmd": "/cselect 323", "ts": "2026-04-13T06:16:02.424210+00:00", "user": "anon"}
 {"cmd": "/tablewindow current_channel_messages --limit=50 --before-ref=pchat/channels/323/msg_2", "ts": "2026-04-13T06:16:03.944972+00:00", "user": "anon"}
+{"cmd": "/tablewindow current_channel_messages --limit=50 --offset=0", "ts": "2026-04-13T06:16:04.393222+00:00", "user": "anon"}
