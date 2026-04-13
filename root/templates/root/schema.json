@@ -4,7 +4,6 @@
   "fields": {},
   "inherits": null,
   "commands": [
-    "materialize",
     "cselect",
     "cpost",
     "cmkchannel",
@@ -12,6 +11,8 @@
     "cedit",
     "cdelete",
     "creact",
+    "mcheckpoint",
+    "mjsonata",
     "mkprojection",
     "projectionexec",
     "projectionconcat",

@@ -5,11 +5,12 @@ import {
   Terminal, X, Minus, Plus, ChevronDown, ChevronRight,
   Eye, Link, Play, RefreshCw, FolderTree,
 } from 'lucide-react'
-import { exec as apiExec } from '@/lib/api'
+import { exec as apiExec, getMessageProjection, getProjection } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState, CmdResult } from '@/types/chat'
-import type { Projection, FieldEntry } from '@/types/runtime'
+import type { Projection, TemplateAggregation } from '@/types/runtime'
 import { FSView } from './FSView'
+import { ProjectionRenderer } from './ProjectionRenderer'
 import { useSandbox } from '@/hooks/useSandbox'
 
 /* ------------------------------------------------------------------ */
@@ -27,7 +28,7 @@ interface DebugConsoleProps {
   initialTab?: string
 }
 
-type TabKind = 'l0log' | 'inspector' | 'projection' | 'free' | 'shell' | 'objects' | 'fsview'
+type TabKind = 'l0log' | 'inspector' | 'projection' | 'free' | 'shell' | 'objects' | 'fsview' | 'replay'
 
 interface TabDef {
   id: string
@@ -57,6 +58,40 @@ interface ObjectNode {
   children?: ObjectNode[]
 }
 
+interface RuntimeRowView {
+  rowId: string
+  scopeId: string
+  kind: 'intent' | 'reply' | 'live'
+  entityId: string
+  entityType: string
+  localPath: string
+  value: unknown
+  valueType: string
+}
+
+interface ReplayDiffView {
+  execAdded: string[]
+  execRemoved: string[]
+  nodesAdded: string[]
+  nodesRemoved: string[]
+  fieldsAdded: string[]
+  fieldsRemoved: string[]
+  rowsAdded: string[]
+  rowsRemoved: string[]
+}
+
+interface TypedListEntryView {
+  kind: string
+  index: number
+  role: 'template' | 'instance'
+  virtual: boolean
+  path: string
+  node?: {
+    type?: string
+    meta: Record<string, unknown>
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Theme tokens (inline)                                              */
 /* ------------------------------------------------------------------ */
@@ -69,6 +104,7 @@ const TK = {
   text:     '#e0e0f0',
   dim:      '#8888aa',
   accent:   '#6c63ff',
+  cyan:     '#66ccff',
   ok:       '#44dd88',
   err:      '#ff5566',
 } as const
@@ -289,10 +325,10 @@ function InspectorTab({ user }: { user: string }) {
       </div>
       <div className="flex-1 overflow-y-auto p-2 text-xs" style={{ fontFamily: 'monospace' }}>
         {error && <div style={{ color: TK.err }}>{error}</div>}
-        {result && !error && (
+        {result !== null && !error && (
           mode === 'value' ? <JsonTree data={result} /> : <PathView data={result} prefix={path} />
         )}
-        {!result && !error && (
+        {result === null && !error && (
           <div className="text-center py-4" style={{ color: TK.dim }}>Enter a path and click Resolve</div>
         )}
       </div>
@@ -332,28 +368,44 @@ function flattenPaths(obj: unknown, prefix: string): [string, unknown][] {
 /*  Tab content: Projection                                            */
 /* ------------------------------------------------------------------ */
 
-function ProjectionTab({ user }: { user: string }) {
+function ProjectionTab() {
   const [nodePath, setNodePath] = useState('')
-  const [fields, setFields] = useState<Array<{ path: string; value: unknown; hash: string; type: string }>>([])
-  const [mode, setMode] = useState<'value' | 'bind'>('value')
+  const [projection, setProjection] = useState<Projection | null>(null)
+  const [aggregation, setAggregation] = useState<TemplateAggregation | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetch_ = async () => {
     if (!nodePath.trim()) return
-    setLoading(true); setError(null)
+    setLoading(true)
+    setError(null)
+    setProjection(null)
+    setAggregation(null)
     try {
-      const r = await apiExec(`/query ${nodePath.trim()}`, user)
-      if (r.error) { setError(r.error); return }
-      const proj = (r as Record<string, unknown>).projection as Projection | undefined
-      const store = proj?.flat_store ?? (r as Record<string, unknown>).flat_store as Record<string, FieldEntry> | undefined
-      if (store) {
-        setFields(Object.entries(store).map(([p, entry]) => ({
-          path: p, value: entry[2], hash: String(entry[0]), type: typeof entry[2],
-        })))
-      } else { setFields([]); setError('No flat_store in response') }
-    } catch (e) { setError(String(e)) }
-    finally { setLoading(false) }
+      const target = nodePath.trim()
+      const parsed = parseProjectionTarget(target)
+      const { kind, value } = parsed
+      if (kind === 'template') {
+        const result = await getProjection(value, parsed.scope)
+        if (isTemplateAggregation(result)) {
+          setAggregation(result)
+          return
+        }
+        setError('Projection response is not a template aggregation')
+        return
+      }
+
+      const result = await getMessageProjection(value)
+      if (isProjection(result)) {
+        setProjection(result)
+        return
+      }
+      setError('Projection response is not a message projection')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -363,7 +415,7 @@ function ProjectionTab({ user }: { user: string }) {
           value={nodePath}
           onChange={(e) => setNodePath(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && fetch_()}
-          placeholder="node path"
+          placeholder="msg path or template type (e.g. pchat/channels/general/msg_1 or msg --scope=pchat/channels/general)"
           className="flex-1 px-2 py-0.5 rounded text-xs outline-none"
           style={{ background: TK.bg, color: TK.text, border: `1px solid ${TK.border}`, fontFamily: 'monospace' }}
         />
@@ -372,46 +424,90 @@ function ProjectionTab({ user }: { user: string }) {
           style={{ background: TK.accent, color: '#fff' }}>
           <Play size={10} /> Load
         </button>
-        <button
-          onClick={() => setMode(mode === 'value' ? 'bind' : 'value')}
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs"
-          style={{ background: TK.surface2, color: mode === 'bind' ? TK.accent : TK.dim }}>
-          {mode === 'value' ? <Eye size={10} /> : <Link size={10} />}
-          {mode === 'value' ? 'Val' : 'Bind'}
-        </button>
       </div>
       <div className="flex-1 overflow-y-auto p-1 text-[11px]" style={{ fontFamily: 'monospace' }}>
         {error && <div className="p-2" style={{ color: TK.err }}>{error}</div>}
-        {fields.length > 0 && (
-          <table className="w-full">
-            <thead>
-              <tr style={{ color: TK.dim, borderBottom: `1px solid ${TK.border}` }}>
-                <th className="text-left px-1 py-0.5 font-normal">Path</th>
-                <th className="text-left px-1 py-0.5 font-normal">{mode === 'value' ? 'Value' : 'Bind'}</th>
-                <th className="text-left px-1 py-0.5 font-normal w-16">Hash</th>
-                <th className="text-left px-1 py-0.5 font-normal w-12">Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fields.map((f) => (
-                <tr key={f.path} className="hover:opacity-80" style={{ borderBottom: `1px solid ${TK.border}11` }}>
-                  <td className="px-1 py-0.5" style={{ color: TK.accent }}>{f.path}</td>
-                  <td className="px-1 py-0.5 truncate max-w-[200px]" style={{ color: TK.text }}>
-                    {typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value ?? '')}
-                  </td>
-                  <td className="px-1 py-0.5" style={{ color: TK.dim }}>{f.hash.slice(0, 8)}</td>
-                  <td className="px-1 py-0.5" style={{ color: TK.dim }}>{f.type}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {fields.length === 0 && !error && (
+        {projection && <ProjectionRenderer projection={projection} />}
+        {aggregation && <AggregationRenderer aggregation={aggregation} />}
+        {!projection && !aggregation && !error && (
           <div className="text-center py-4" style={{ color: TK.dim }}>Enter a node path and click Load</div>
         )}
       </div>
     </div>
   )
+}
+
+function AggregationRenderer({ aggregation }: { aggregation: TemplateAggregation }) {
+  return (
+    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+      <div className="px-2 py-1 bg-[var(--surface)] text-[10px] flex items-center justify-between" style={{ color: TK.dim }}>
+        <span>type: {aggregation.type}</span>
+        <span>{aggregation.count} instances</span>
+      </div>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="bg-[var(--surface)] text-[var(--text-dim)]">
+            <th className="text-left px-2 py-1 font-normal">instance</th>
+            <th className="text-left px-2 py-1 font-normal">path</th>
+            <th className="text-left px-2 py-1 font-normal">value</th>
+            <th className="text-left px-2 py-1 font-normal w-16">hash</th>
+          </tr>
+        </thead>
+        <tbody>
+          {aggregation.fields.map((field) => (
+            <tr key={field.namespaced_path} className="border-t border-[var(--border)] hover:bg-[var(--surface2)]">
+              <td className="px-2 py-1 text-[var(--text-dim)]">{field.instance}</td>
+              <td className="px-2 py-1 font-mono text-[var(--accent)]">{field.namespaced_path}</td>
+              <td className="px-2 py-1 truncate max-w-[320px]">{formatProjectionValue(field.value)}</td>
+              <td className="px-2 py-1 font-mono text-[var(--text-dim)] text-[9px]">{field.hash?.slice(0, 8)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {aggregation.fields.length === 0 && (
+        <div className="px-3 py-4 text-center text-[var(--text-dim)] text-xs">
+          No projected fields
+        </div>
+      )}
+    </div>
+  )
+}
+
+function parseProjectionTarget(input: string): { kind: 'message'; value: string } | { kind: 'template'; value: string; scope?: string } {
+  const trimmed = input.trim()
+  const scopeMatch = trimmed.match(/^([A-Za-z][\w-]*)(?:\s+--scope=(.+))?$/)
+  if (scopeMatch && !trimmed.startsWith('msg_') && !trimmed.includes('/')) {
+    return {
+      kind: 'template',
+      value: scopeMatch[1],
+      scope: scopeMatch[2]?.trim() || undefined,
+    }
+  }
+  return { kind: 'message', value: trimmed }
+}
+
+function isProjection(value: unknown): value is Projection {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  return typeof obj.source_node === 'string'
+    && typeof obj.flat_store === 'object'
+    && typeof obj.views === 'object'
+}
+
+function isTemplateAggregation(value: unknown): value is TemplateAggregation {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  return typeof obj.type === 'string'
+    && typeof obj.count === 'number'
+    && Array.isArray(obj.instances)
+    && typeof obj.flat_store === 'object'
+}
+
+function formatProjectionValue(value: unknown): string {
+  if (value === null || value === undefined) return 'null'
+  if (typeof value === 'string') return value.length > 120 ? `${value.slice(0, 120)}...` : value
+  if (typeof value === 'object') return JSON.stringify(value).slice(0, 120)
+  return String(value)
 }
 
 /* ------------------------------------------------------------------ */
@@ -639,49 +735,49 @@ function FSViewTab() {
 
   return (
     <div className="h-full overflow-hidden">
-      <FSView sandbox={sandbox} onSelect={(_node, path) => {
-        console.log('FS selected:', path)
+      <FSView sandbox={sandbox} onSelect={(node, path) => {
+        console.log('Selected:', path, node)
       }} />
     </div>
   )
 }
 
-function ObjectsTab({ exec }: { exec: ExecFn }) {
+function ObjectsTab() {
+  const { allNodes, loadServerState, tree: runtimeTree, fieldStore } = useSandbox()
   const [tree, setTree] = useState<ObjectNode[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null)
+    setLoading(true)
+    setError(null)
     try {
-      const { result } = await exec('/dir')
-      if (result.error) { setError(result.error); return }
-      // parse result into tree nodes - result may have items, children, or be a flat list
-      const raw = result as Record<string, unknown>
-      const items = (raw.items ?? raw.children ?? raw.entries ?? Object.keys(raw).filter(k => k !== 'ok')) as unknown
-      if (Array.isArray(items)) {
-        setTree(items.map((it: unknown) => {
-          if (typeof it === 'string') return { name: it, type: 'node' }
-          const obj = it as Record<string, unknown>
-          return {
-            name: String(obj.name ?? obj.id ?? obj.path ?? '?'),
-            type: String(obj.type ?? 'node'),
-            children: Array.isArray(obj.children)
-              ? (obj.children as Record<string, unknown>[]).map(c => ({
-                  name: String(c.name ?? c.id ?? '?'),
-                  type: String(c.type ?? 'node'),
-                }))
-              : undefined,
-          }
-        }))
-      } else {
-        // fallback: show raw keys as nodes
-        setTree(Object.keys(raw).filter(k => k !== 'ok').map(k => ({ name: k, type: typeof raw[k] === 'object' ? 'dir' : 'leaf' })))
+      if (runtimeTree.size === 0) {
+        const result = await loadServerState()
+        if (!result.ok) {
+          setError(result.error ?? 'load failed')
+          return
+        }
       }
-    } catch (e) { setError(String(e)) }
-    finally { setLoading(false) }
-  }, [exec])
+      const nodes = allNodes()
+      const byPath = new Map(nodes.map(node => [node.path, node]))
+      const roots = nodes.filter(node => !node.path.includes('/'))
+      const walk = (nodePath: string): ObjectNode => {
+        const node = byPath.get(nodePath)!
+        return {
+          name: node.name,
+          type: String(node.type ?? 'node'),
+          children: node.children.map(childPath => walk(childPath)),
+        }
+      }
+      setTree(roots.map(node => walk(node.path)))
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [allNodes, loadServerState, runtimeTree.size])
 
   useEffect(() => { load() }, [load])
 
@@ -720,7 +816,9 @@ function ObjectsTab({ exec }: { exec: ExecFn }) {
           style={{ background: TK.surface2, color: TK.text }}>
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
-        <span style={{ color: TK.dim }} className="ml-auto">{tree.length} roots</span>
+        <span style={{ color: TK.dim }} className="ml-auto">
+          {tree.length} roots · {runtimeTree.size} nodes · {fieldStore.size} fields
+        </span>
       </div>
       <div className="flex-1 overflow-y-auto p-1 text-xs" style={{ fontFamily: 'monospace' }}>
         {error && <div className="p-2" style={{ color: TK.err }}>{error}</div>}
@@ -728,6 +826,251 @@ function ObjectsTab({ exec }: { exec: ExecFn }) {
           <div className="text-center py-4" style={{ color: TK.dim }}>No objects found</div>
         )}
         {tree.map(n => renderNode(n, 0))}
+      </div>
+    </div>
+  )
+}
+
+function RuntimeObjectsTab() {
+  const { allNodes, loadServerState, tree: runtimeTree, fieldStore, runtimeRows, runtimeBatches } = useSandbox()
+  const [tree, setTree] = useState<ObjectNode[]>([])
+  const [rows, setRows] = useState<RuntimeRowView[]>([])
+  const [batches, setBatches] = useState<Record<string, RuntimeRowView[]>>({})
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [mode, setMode] = useState<'tree' | 'rows' | 'batches'>('tree')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      if (runtimeTree.size === 0) {
+        const result = await loadServerState()
+        if (!result.ok) {
+          setError(result.error ?? 'load failed')
+          return
+        }
+      }
+      const nodes = allNodes()
+      const byPath = new Map(nodes.map(node => [node.path, node]))
+      const roots = nodes.filter(node => !node.path.includes('/'))
+      const walk = (nodePath: string): ObjectNode => {
+        const node = byPath.get(nodePath)!
+        return {
+          name: node.name,
+          type: String(node.type ?? 'node'),
+          children: node.children.map(childPath => walk(childPath)),
+        }
+      }
+      setTree(roots.map(node => walk(node.path)))
+      setRows(runtimeRows() as RuntimeRowView[])
+      setBatches(runtimeBatches('entityId') as Record<string, RuntimeRowView[]>)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [allNodes, loadServerState, runtimeBatches, runtimeRows, runtimeTree.size])
+
+  useEffect(() => { load() }, [load])
+
+  const toggle = (name: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(name) ? next.delete(name) : next.add(name)
+      return next
+    })
+  }
+
+  const renderNode = (node: ObjectNode, depth: number) => (
+    <div key={`${depth}-${node.name}`} style={{ paddingLeft: depth * 14 }}>
+      <div className="flex items-center gap-1 py-0.5 cursor-pointer hover:opacity-80"
+        onClick={() => node.children && toggle(node.name)}>
+        {node.children ? (
+          expanded.has(node.name)
+            ? <ChevronDown size={10} style={{ color: TK.dim }} />
+            : <ChevronRight size={10} style={{ color: TK.dim }} />
+        ) : <span className="w-[10px]" />}
+        <FolderTree size={10} style={{ color: TK.accent }} />
+        <span style={{ color: TK.text }} className="text-xs">{node.name}</span>
+        <span className="text-[9px]" style={{ color: TK.dim }}>{node.type}</span>
+      </div>
+      {node.children && expanded.has(node.name) &&
+        node.children.map(c => renderNode(c, depth + 1))
+      }
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-2 py-1 text-xs" style={{ borderBottom: `1px solid ${TK.border}` }}>
+        <button onClick={load}
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded"
+          style={{ background: TK.surface2, color: TK.text }}>
+          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
+        <button
+          onClick={() => setMode('tree')}
+          className="px-1.5 py-0.5 rounded"
+          style={{ background: mode === 'tree' ? TK.accent : TK.surface2, color: '#fff' }}>
+          tree
+        </button>
+        <button
+          onClick={() => setMode('rows')}
+          className="px-1.5 py-0.5 rounded"
+          style={{ background: mode === 'rows' ? TK.accent : TK.surface2, color: '#fff' }}>
+          rows
+        </button>
+        <button
+          onClick={() => setMode('batches')}
+          className="px-1.5 py-0.5 rounded"
+          style={{ background: mode === 'batches' ? TK.accent : TK.surface2, color: '#fff' }}>
+          batches
+        </button>
+        <span style={{ color: TK.dim }} className="ml-auto">
+          {tree.length} roots · {runtimeTree.size} nodes · {fieldStore.size} fields · {rows.length} rows
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-1 text-xs" style={{ fontFamily: 'monospace' }}>
+        {error && <div className="p-2" style={{ color: TK.err }}>{error}</div>}
+        {mode === 'tree' && tree.length === 0 && !error && !loading && (
+          <div className="text-center py-4" style={{ color: TK.dim }}>No objects found</div>
+        )}
+        {mode === 'tree' && tree.map(n => renderNode(n, 0))}
+        {mode === 'rows' && rows.map((row) => (
+          <div key={row.rowId} className="py-0.5" style={{ borderBottom: `1px solid ${TK.border}22` }}>
+            <div className="flex gap-2">
+              <span style={{ color: TK.accent }}>{row.kind}</span>
+              <span style={{ color: TK.dim }}>{row.entityType}</span>
+              <span style={{ color: TK.text }}>{row.entityId}</span>
+            </div>
+            <div className="flex gap-2 pl-3">
+              <span style={{ color: TK.cyan }}>{row.localPath}</span>
+              <span style={{ color: TK.dim }}>=</span>
+              <span style={{ color: TK.text }}>
+                {typeof row.value === 'object' ? JSON.stringify(row.value) : String(row.value)}
+              </span>
+            </div>
+          </div>
+        ))}
+        {mode === 'batches' && Object.entries(batches).map(([entityId, batch]) => (
+          <div key={entityId} className="py-1" style={{ borderBottom: `1px solid ${TK.border}22` }}>
+            <div className="flex gap-2">
+              <span style={{ color: TK.accent }}>{entityId}</span>
+              <span style={{ color: TK.dim }}>{batch.length} rows</span>
+            </div>
+            <div className="pl-3 text-[10px]" style={{ color: TK.dim }}>
+              {batch.slice(0, 6).map(row => row.localPath).join(', ')}
+              {batch.length > 6 ? ' …' : ''}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ReplayTab() {
+  const { saveState, loadState, runFromSnapshot, execLog, tree, fieldStore, runtimeRows } = useSandbox()
+  const [snapshot, setSnapshot] = useState<string>('')
+  const [op, setOp] = useState('mk')
+  const [argsText, setArgsText] = useState('{"parent":"pchat/channels","name":"tmp","type":"channel"}')
+  const [result, setResult] = useState<unknown>(null)
+  const [diff, setDiff] = useState<ReplayDiffView | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleCapture = () => {
+    setSnapshot(JSON.stringify(saveState(), null, 2))
+    setError(null)
+  }
+
+  const handleRestore = () => {
+    try {
+      const parsed = JSON.parse(snapshot)
+      const restored = loadState(parsed)
+      setResult(restored)
+      setError(restored.ok ? null : (restored.error ?? 'restore failed'))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleRun = () => {
+    try {
+      const parsedSnapshot = JSON.parse(snapshot)
+      const parsedArgs = argsText.trim() ? JSON.parse(argsText) : {}
+      const replay = runFromSnapshot(parsedSnapshot, op, parsedArgs, '_replay')
+      setResult(replay.result)
+      setDiff(replay.diff as ReplayDiffView)
+      setError(replay.result.ok ? null : (replay.result.error ?? 'replay failed'))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-2 py-1 text-xs" style={{ borderBottom: `1px solid ${TK.border}` }}>
+        <button onClick={handleCapture} className="px-1.5 py-0.5 rounded" style={{ background: TK.surface2, color: TK.text }}>
+          Capture
+        </button>
+        <button onClick={handleRestore} className="px-1.5 py-0.5 rounded" style={{ background: TK.surface2, color: TK.text }}>
+          Restore
+        </button>
+        <button onClick={handleRun} className="px-1.5 py-0.5 rounded" style={{ background: TK.accent, color: '#fff' }}>
+          Run From Snapshot
+        </button>
+        <span style={{ color: TK.dim }} className="ml-auto">
+          {execLog.length} exec · {tree.size} nodes · {fieldStore.size} fields · {runtimeRows().length} rows
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 text-xs" style={{ fontFamily: 'monospace' }}>
+        {error && <div className="mb-2 p-2 rounded" style={{ color: TK.err, background: `${TK.err}11` }}>{error}</div>}
+
+        <div className="mb-2">
+          <div className="mb-1" style={{ color: TK.dim }}>op</div>
+          <input
+            value={op}
+            onChange={(e) => setOp(e.target.value)}
+            className="w-full px-2 py-1 rounded"
+            style={{ background: TK.bg, color: TK.text, border: `1px solid ${TK.border}` }}
+          />
+        </div>
+
+        <div className="mb-2">
+          <div className="mb-1" style={{ color: TK.dim }}>args json</div>
+          <textarea
+            value={argsText}
+            onChange={(e) => setArgsText(e.target.value)}
+            className="w-full h-20 px-2 py-1 rounded"
+            style={{ background: TK.bg, color: TK.text, border: `1px solid ${TK.border}` }}
+          />
+        </div>
+
+        <div className="mb-2">
+          <div className="mb-1" style={{ color: TK.dim }}>snapshot json</div>
+          <textarea
+            value={snapshot}
+            onChange={(e) => setSnapshot(e.target.value)}
+            className="w-full h-40 px-2 py-1 rounded"
+            style={{ background: TK.bg, color: TK.text, border: `1px solid ${TK.border}` }}
+          />
+        </div>
+
+        {result !== null && (
+          <div className="mb-2">
+            <div className="mb-1" style={{ color: TK.dim }}>result</div>
+            <JsonTree data={result} />
+          </div>
+        )}
+
+        {diff && (
+          <div>
+            <div className="mb-1" style={{ color: TK.dim }}>diff</div>
+            <JsonTree data={diff} />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -880,6 +1223,7 @@ export function DebugConsole({ visible, onClose, chatState, user, exec, initialT
                   { kind: 'projection' as const, label: 'Projection' },
                   { kind: 'free' as const, label: 'JSONata (Free)' },
                   { kind: 'objects' as const, label: 'Object List' },
+                  { kind: 'replay' as const, label: 'Replay' },
                   { kind: 'fsview' as const, label: 'FS View' },
                   { kind: 'l0log' as const, label: 'L0 Log' },
                   { kind: 'shell' as const, label: 'Shell' },
@@ -897,10 +1241,11 @@ export function DebugConsole({ visible, onClose, chatState, user, exec, initialT
           <div className="flex-1 min-h-0 overflow-hidden">
             {currentTab?.kind === 'l0log' && <L0LogTab refreshInterval={refreshInterval} />}
             {currentTab?.kind === 'inspector' && <InspectorTab user={user} />}
-            {currentTab?.kind === 'projection' && <ProjectionTab user={user} />}
+            {currentTab?.kind === 'projection' && <ProjectionTab />}
             {currentTab?.kind === 'free' && <FreeTab chatState={chatState} />}
             {currentTab?.kind === 'shell' && <ShellTab exec={exec} />}
-            {currentTab?.kind === 'objects' && <ObjectsTab exec={exec} />}
+            {currentTab?.kind === 'objects' && <RuntimeObjectsTab />}
+            {currentTab?.kind === 'replay' && <ReplayTab />}
             {currentTab?.kind === 'fsview' && <FSViewTab />}
           </div>
 

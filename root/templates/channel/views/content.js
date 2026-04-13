@@ -37,26 +37,31 @@ async function reactToMessage(msgId, emoji) {
   }
 }
 
-async function editMessageAtomic(msgPath, currentText) {
+async function editMessage(msgId, currentText) {
   const nextText = prompt('Edit message', currentText ?? '');
   if (nextText === null) return;
   setStatus('Saving...', true);
   window.chatScrollMode = 'keep';
   try {
-    await atomicPatchValue(`${msgPath}._data.content`, nextText);
-    await refreshChatContainers();
+    const res = await shellExec(`/cedit ${msgId} ${nextText}`, true, 'CMD');
+    if (!renderFromCommandResult(res)) {
+      await refreshChatContainers();
+    }
     setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
   }
 }
 
-async function deleteMessageAtomic(msgPath) {
+async function deleteMessage(msgId) {
+  if (!confirm('Are you sure you want to delete this message?')) return;
   setStatus('Deleting...', true);
   window.chatScrollMode = 'keep';
   try {
-    await atomicPatchValue(`${msgPath}._data._deleted`, true);
-    await refreshChatContainers();
+    const res = await shellExec(`/cdelete ${msgId}`, true, 'CMD');
+    if (!renderFromCommandResult(res)) {
+      await refreshChatContainers();
+    }
     setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
@@ -64,29 +69,10 @@ async function deleteMessageAtomic(msgPath) {
 }
 
 async function loadOlderMessages() {
-  const cached = loadCachedState() || {};
-  const windowInfo = cached.message_window || {};
-  const beforeRef = windowInfo.oldest_ref || '';
-  if (!beforeRef) return;
   setStatus('Loading older...', true);
   window.chatScrollMode = 'keep';
   try {
-    const olderWindow = await shellExec(`/tablewindow current_channel_messages --limit=${CHAT_PAGE_SIZE} --before-ref=${beforeRef}`, true, 'CMD');
-    const olderMessages = messagesFromTableResolved(olderWindow.table, activeChannelName);
-    const combined = mergeMessagesUnique(olderMessages, cached.messages || []);
-    const nextLimit = Math.max(combined.length, windowInfo.count || 0, CHAT_PAGE_SIZE);
-    await shellExec(`/tablewindow current_channel_messages --limit=${nextLimit} --offset=0`, true, 'CMD');
-    renderFromState({
-      ...cached,
-      messages: combined,
-      message_window: {
-        ...windowInfo,
-        limit: nextLimit,
-        oldest_ref: combined.length ? combined[0].path : '',
-        newest_ref: combined.length ? combined[combined.length - 1].path : '',
-        count: combined.length,
-      },
-    });
+    await refreshChatContainers();
     setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
@@ -94,29 +80,10 @@ async function loadOlderMessages() {
 }
 
 async function loadNewerMessages() {
-  const cached = loadCachedState() || {};
-  const windowInfo = cached.message_window || {};
-  const afterRef = windowInfo.newest_ref || '';
-  if (!afterRef) return;
   setStatus('Loading newer...', true);
   window.chatScrollMode = 'bottom';
   try {
-    const newerWindow = await shellExec(`/tablewindow current_channel_messages --limit=${CHAT_PAGE_SIZE} --after-ref=${afterRef}`, true, 'CMD');
-    const newerMessages = messagesFromTableResolved(newerWindow.table, activeChannelName);
-    const combined = mergeMessagesTail(cached.messages || [], newerMessages);
-    const nextLimit = Math.max(combined.length, windowInfo.count || 0, CHAT_PAGE_SIZE);
-    await shellExec(`/tablewindow current_channel_messages --limit=${nextLimit} --offset=0`, true, 'CMD');
-    renderFromState({
-      ...cached,
-      messages: combined,
-      message_window: {
-        ...windowInfo,
-        limit: nextLimit,
-        oldest_ref: combined.length ? combined[0].path : '',
-        newest_ref: combined.length ? combined[combined.length - 1].path : '',
-        count: combined.length,
-      },
-    });
+    await refreshChatContainers();
     setStatus('Ready');
   } catch (e) {
     setStatus('Error: ' + e.message);
@@ -131,12 +98,8 @@ function renderMessages(items, windowInfo = {}) {
     return;
   }
   const currentUser = getUsername();
-  const olderBar = windowInfo.oldest_ref
-    ? `<div class="chat-load-more"><button class="btn sm" onclick="loadOlderMessages()">Load older</button></div>`
-    : '';
-  const newerBar = windowInfo.newest_ref
-    ? `<div class="chat-load-more"><button class="btn sm" onclick="loadNewerMessages()">Load newer</button></div>`
-    : '';
+  const olderBar = '';
+  const newerBar = '';
   el.innerHTML = olderBar + msgs.map(m => {
     const meta = m.meta || {};
     const user = meta.user || 'anon';
@@ -158,8 +121,8 @@ function renderMessages(items, windowInfo = {}) {
       ${reactionHtml ? `<div class="msg-reactions">${reactionHtml}</div>` : ''}
       <div class="msg-actions">
         <button class="btn sm" onclick="reactToMessage('${esc(msgId)}','👍')">👍</button>
-        <button class="btn sm" onclick="editMessageAtomic('${esc(msgPath)}', ${JSON.stringify(content)})">Edit</button>
-        <button class="btn sm" onclick="deleteMessageAtomic('${esc(msgPath)}')">Del</button>
+        <button class="btn sm" onclick="editMessage('${esc(msgId)}', ${JSON.stringify(content)})">Edit</button>
+        <button class="btn sm" onclick="deleteMessage('${esc(msgId)}')">Del</button>
       </div>
     </div>`;
   }).join('') + newerBar;

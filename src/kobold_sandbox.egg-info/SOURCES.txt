@@ -42,6 +42,8 @@ src/kobold_sandbox/rule_runtime.py
 src/kobold_sandbox/server.py
 src/kobold_sandbox/source_refs.py
 src/kobold_sandbox/storage.py
+src/kobold_sandbox/ui_proto_panels.py
+src/kobold_sandbox/ui_proto_reactive.py
 src/kobold_sandbox/workflow_dsl.py
 src/kobold_sandbox.egg-info/PKG-INFO
 src/kobold_sandbox.egg-info/SOURCES.txt
@@ -81,6 +83,14 @@ src/kobold_sandbox/data_store/export.py
 src/kobold_sandbox/data_store/git_history.py
 src/kobold_sandbox/data_store/schema.py
 src/kobold_sandbox/data_store/store.py
+src/kobold_sandbox/ui_proto/__init__.py
+src/kobold_sandbox/ui_proto/console_patch.py
+src/kobold_sandbox/ui_proto/loader.py
+src/kobold_sandbox/ui_proto/patch_engine.py
+src/kobold_sandbox/ui_proto/patch_ops.py
+src/kobold_sandbox/ui_proto/persistence.py
+src/kobold_sandbox/ui_proto/render.py
+src/kobold_sandbox/ui_proto/schema.py
 tests/test_artifacts.py
 tests/test_assembly_async.py
 tests/test_assembly_each.py

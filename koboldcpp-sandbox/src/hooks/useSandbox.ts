@@ -10,7 +10,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Sandbox, type ExecResult } from '@/lib/sandbox'
 
-/** Singleton sandbox */
 let _sandbox: Sandbox | null = null
 function getSandbox(): Sandbox {
   if (!_sandbox) _sandbox = new Sandbox()
@@ -22,22 +21,18 @@ export function useSandbox() {
   const [, setTick] = useState(0)
   const userRef = useRef('anon')
 
-  // Subscribe to sandbox changes — triggers re-render
   useEffect(() => {
     return sandbox.subscribe(() => setTick(t => t + 1))
   }, [sandbox])
 
-  /** Local exec (sandbox-side, no server) */
   const exec = useCallback((op: string, args: Record<string, unknown> = {}): ExecResult => {
     return sandbox.exec(op, args, userRef.current)
   }, [sandbox])
 
-  /** Server exec: send CMD to /api/pchat/exec, store result in exec log */
   const serverExec = useCallback(async (cmd: string): Promise<ExecResult> => {
     return sandbox.serverExec(cmd, userRef.current)
   }, [sandbox])
 
-  /** Load server state (immutable snapshot) into sandbox tree */
   const loadServerState = useCallback(async (channel?: string): Promise<ExecResult> => {
     return sandbox.loadServerState(channel, userRef.current)
   }, [sandbox])
@@ -47,6 +42,7 @@ export function useSandbox() {
     tree: sandbox.tree,
     execLog: sandbox.execLog,
     serverState: sandbox.serverState,
+    fieldStore: sandbox.fieldStore,
 
     exec,
     serverExec,
@@ -55,8 +51,24 @@ export function useSandbox() {
     resolve: sandbox.resolve.bind(sandbox),
     roots: sandbox.roots.bind(sandbox),
     children: sandbox.children.bind(sandbox),
+    childListKinds: sandbox.childListKinds.bind(sandbox),
+    childrenByKind: sandbox.childrenByKind.bind(sandbox),
+    typedList: sandbox.typedList.bind(sandbox),
+    typedScope: sandbox.typedScope.bind(sandbox),
+    templateOf: sandbox.templateOf.bind(sandbox),
+    instancesOf: sandbox.instancesOf.bind(sandbox),
     query: sandbox.query.bind(sandbox),
     allNodes: sandbox.allNodes.bind(sandbox),
+    getEntry: sandbox.getEntry.bind(sandbox),
+    getField: sandbox.getField.bind(sandbox),
+    queryFields: sandbox.queryFields.bind(sandbox),
+    runtimeRows: sandbox.runtimeRows.bind(sandbox),
+    execScopes: sandbox.execScopes.bind(sandbox),
+    runtimeBatches: sandbox.runtimeBatches.bind(sandbox),
+    saveState: sandbox.saveState.bind(sandbox),
+    loadState: sandbox.loadState.bind(sandbox),
+    diffState: sandbox.diffState.bind(sandbox),
+    runFromSnapshot: sandbox.runFromSnapshot.bind(sandbox),
 
     setUser: (u: string) => { userRef.current = u },
     user: userRef.current,

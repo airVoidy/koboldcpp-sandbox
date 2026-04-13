@@ -1,5 +1,5 @@
 /** API client for sandbox server at localhost:5002 */
-import type { CmdResult, ChatState, MaterializeResult } from '@/types/chat'
+import type { CmdResult, ChatState } from '@/types/chat'
 
 const BASE = '/api'
 
@@ -36,11 +36,6 @@ export function getState(channel?: string, user = 'anon', since?: number): Promi
   return post('/pchat/view', params)
 }
 
-/** Materialize a runtime container */
-export function materialize(containerId: string): Promise<MaterializeResult> {
-  return post('/container/materialize', { container_id: containerId })
-}
-
 /** Convenience: select channel */
 export function selectChannel(name: string, user: string) {
   return exec(`/cselect ${name}`, user)
@@ -64,6 +59,11 @@ export function react(msgId: string, emoji: string, user: string) {
 /** Template aggregation projection */
 export function getProjection(template: string, scope?: string) {
   return post('/pchat/projection', { template, scope: scope ?? '' })
+}
+
+/** Single message projection */
+export function getMessageProjection(path: string) {
+  return post('/pchat/message-projection', { path })
 }
 
 /** Wiki commands */
