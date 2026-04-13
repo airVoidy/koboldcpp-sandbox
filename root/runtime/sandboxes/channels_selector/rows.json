@@ -17,7 +17,7 @@
     {
       "field": "selected",
       "type": "str",
-      "value": "43",
+      "value": "111",
       "path": "state.selected",
       "group": "state",
       "aliases": [
@@ -74,6 +74,17 @@
       "field": "items",
       "type": "list",
       "value": [
+        {
+          "id": "111",
+          "path": "pchat/channels/111",
+          "meta": {
+            "type": "channel",
+            "user": "anon",
+            "ts": "2026-04-13T06:18:00.255467+00:00",
+            "name": "111"
+          },
+          "data": {}
+        },
         {
           "id": "123",
           "path": "pchat/channels/123",
