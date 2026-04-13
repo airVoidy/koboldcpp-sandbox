@@ -18,3 +18,4 @@
 {"cmd": "/creact msg_4 👍", "ts": "2026-04-13T05:55:59.426666+00:00", "user": "anon"}
 {"cmd": "/creact msg_2 👍", "ts": "2026-04-13T05:56:02.459583+00:00", "user": "anon"}
 {"cmd": "/tablewindow current_channel_messages --limit=50 --before-ref=pchat/channels/43/msg_1", "ts": "2026-04-13T05:56:07.218933+00:00", "user": "anon"}
+{"cmd": "/tablewindow current_channel_messages --limit=50 --offset=0", "ts": "2026-04-13T05:56:07.721210+00:00", "user": "anon"}
