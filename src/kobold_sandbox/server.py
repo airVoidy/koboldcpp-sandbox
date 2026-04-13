@@ -5731,18 +5731,6 @@ load();
                     return patch_result
                 target_kind = "data"
 
-            if target_dir != channel_dir and target_dir.is_dir():
-                self._append_exec_entry(target_dir, {
-                    "op": "patch",
-                    "user": user,
-                    "ts": utc_now(),
-                    "target": raw_path,
-                    "target_kind": target_kind,
-                    "field_path": field_path,
-                    "atomic_path": atomic_path,
-                    "value": value,
-                })
-
             self._append_container_log("current_channel", {
                 "cmd": "cpatch",
                 "args": [raw_path],
@@ -5804,14 +5792,6 @@ load();
             patch_result = self.atomic_patch(atomic_path, reactions)
             if patch_result.get("error"):
                 return patch_result
-            self._append_exec_entry(msg_dir, {
-                "op": "react",
-                "user": user,
-                "ts": utc_now(),
-                "emoji": emoji,
-                "atomic_path": patch_result.get("atomic_path"),
-                "value": reactions,
-            })
             self._append_container_log("current_channel", {
                 "cmd": "creact",
                 "args": [msg_id, emoji],
@@ -5855,9 +5835,6 @@ load();
         def _children_log_path(self, parent: Path) -> Path:
             return parent / "_children.jsonl"
 
-        def _exec_log_path(self, node_dir: Path) -> Path:
-            return node_dir / "_exec.jsonl"
-
         def _append_child_ref(self, parent: Path, child: Path):
             rel_child = self._rel_path(child)
             entry = {
@@ -5877,29 +5854,6 @@ load();
             log_path.parent.mkdir(parents=True, exist_ok=True)
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-        def _append_exec_entry(self, node_dir: Path, entry: dict):
-            log_path = self._exec_log_path(node_dir)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-        def _read_exec_log(self, node_dir: Path) -> list[dict]:
-            log_path = self._exec_log_path(node_dir)
-            if not log_path.exists():
-                return []
-            entries = []
-            for line in log_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    parsed = json.loads(line)
-                except Exception:
-                    continue
-                if isinstance(parsed, dict):
-                    entries.append(parsed)
-            return entries
 
         def _read_child_log(self, parent: Path) -> list[dict]:
             log_path = self._children_log_path(parent)
@@ -6088,18 +6042,10 @@ load();
             slot_dir = scope.cwd / slot_name
             slot_dir.mkdir()
             meta = {"type": "message", "user": user, "ts": utc_now()}
-            data = {"content": text}
             self._write_meta(slot_dir, meta)
-            self._write_data(slot_dir, data)
-            self._append_exec_entry(slot_dir, {
-                "op": "post",
-                "user": user,
-                "ts": meta["ts"],
-                "meta": meta,
-                "data": data,
-            })
+            self._write_data(slot_dir, {"content": text})
             self._append_child_ref(scope.cwd, slot_dir)
-            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": data}
+            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": {"content": text}}
 
         def cmd_rm(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Delete a slot."""
