@@ -12,100 +12,136 @@ Requires-Dist: uvicorn>=0.35.0
 
 # Kobold Sandbox
 
-Локальный sandbox для `koboldcpp`, где каждая гипотеза живет в отдельном узле графа:
+Local agentic sandbox over KoboldCPP for structured reasoning, pipeline orchestration, and collaborative system evolution through chat.
 
-- у узла есть папка `nodes/<node>/workspace`
-- состояние узла хранится в заметках и таблицах
-- ветвление реализовано через `git branch` + `git worktree`
-- модель запускается на контексте конкретного узла, а результаты складываются в `nodes/<node>/runs`
+## What it does
 
-## Зачем это
+- **Pipeline Chat** -- Slack-like interface where CMD commands manage channels, messages, reactions
+- **FS-first architecture** -- nodes = directories with `_meta.json` + `_data.json`, git-versioned
+- **Template commands** -- `.py` files with hot-reload, resolved by type inheritance
+- **Runtime containers** -- declarative state management with auto-rebuild and materialized views
+- **LLM integration** -- KoboldCPP tool calling, GBNF grammars, structured output, think injection
+- **Project wiki** -- FS-based wiki with ingest, auto-index, and change log
 
-Такой формат удобен для задач с итеративным рассуждением:
-
-- логические головоломки типа задачи Эйнштейна
-- исследование нескольких конкурирующих гипотез
-- агентные прогоны, где надо хранить промежуточные выводы отдельно
-- анализ файлов с разными ветками интерпретации
-
-## Быстрый старт
+## Quick start
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
-kobold-sandbox init --kobold-url http://192.168.1.15:5050 --model qwen3.5-9b
+kobold-sandbox serve --host 127.0.0.1 --port 5002
 ```
 
-Создать ветку гипотезы:
+Open http://localhost:5002/pipeline-chat in browser.
+
+Requires KoboldCPP running at localhost:5001 for LLM features.
+
+## Architecture
+
+```
+root/
+  templates/          Type definitions
+    card/               Base object type
+      schema.json         Fields, inheritance, allowed commands
+      commands/*.py        Template commands (hot-reload)
+    cards/              Base container type (inherits card)
+    channel/            Chat channel (inherits cards)
+    message/            Chat message (inherits card)
+    root/               Global CMD wrappers
+  runtime/
+    containers/         Runtime state (_meta.json + state.json)
+    sandboxes/          Materialized views (resolved.json, rows.json)
+  pchat/              Source data (channels, messages)
+  wiki/               Project wiki (pages, sources, index)
+```
+
+### Layers
+
+- **L0** -- Message stack: FIFO per container, patches as messages
+- **L1** -- CMD dispatch: template commands with type inheritance resolution
+- **L2** -- Pipeline orchestration: CMD chains, verify loops, container rebuilds
+
+### CMD system
+
+Every action is a CMD -- typed container with validation, context, and composability:
 
 ```bash
-kobold-sandbox branch "red-house-hypothesis" --parent-id root --tag einstein
+/cpost hello                    # post message to selected channel
+/cselect general                # select channel
+/creact msg_1 thumbsup          # toggle reaction
+/wiki status                    # wiki status
+/wiki ingest README.md          # ingest file into wiki
+/cpatch msg_1.content "edited"  # dot-path patch
 ```
 
-Записать таблицу:
+Template commands are Python files with signature:
+```python
+def execute(args, user, scope, ws) -> dict
+```
+
+Resolved by walking the type inheritance chain: node type -> schema.inherits -> ... -> None.
+
+### Runtime containers
+
+Declarative manifests in `_meta.json` define:
+- **resolve** -- how to find source data
+- **actions** -- available commands with state mutations and rebuild triggers
+- **depends_on** -- container dependencies
+- **selected_from** -- cross-container selection binding
+
+### LLM integration
+
+KoboldCPP (localhost:5001) supports three structured output mechanisms:
+1. **GBNF grammars** -- token-level decode constraints
+2. **Tool calling** -- OpenAI-compatible `/v1/chat/completions` with tools
+3. **JSON Schema** -- constrained decoding with schema conformance guarantee
+
+## Project wiki
 
 ```bash
-kobold-sandbox table red-house-hypothesis --name clues.csv --content "house,color,owner`n1,red,?`n2,blue,?"
+/wiki init                # create wiki structure
+/wiki status              # page/source counts
+/wiki write <slug> <text> # create/update page
+/wiki ingest <path>       # ingest file as source note
+/wiki list                # list pages and sources
+/wiki read <slug>         # read page content
+/wiki index               # rebuild auto-index
 ```
 
-Прогнать модель на узле:
+Wiki lives at `root/wiki/` -- markdown pages, ingested source notes, auto-generated index, append-only change log.
+
+## Key files
+
+| File | Purpose |
+|---|---|
+| `src/kobold_sandbox/server.py` | Main server (FastAPI + PChatWorkspace) |
+| `src/kobold_sandbox/atomic_wiki.py` | Wiki API (CRUD, import/export) |
+| `src/kobold_sandbox/atomic_dsl_api.py` | DSL API (ingest, patch, resolve) |
+| `src/kobold_sandbox/data_store/` | DataStore + git versioning |
+| `tools/pipeline_chat.html` | Chat UI (vanilla JS) |
+| `tools/fs_sync.py` | FS sync daemon (server -> local folders) |
+| `root/templates/` | Type definitions + commands |
+| `root/wiki/` | Project wiki |
+| `root/ARCHITECTURE_NEXT.md` | CMD/container architecture spec |
+
+## Development
 
 ```bash
-kobold-sandbox models
-kobold-sandbox run "Проверь гипотезу и выпиши противоречия" --node-id red-house-hypothesis --model "точный-id-из-models"
+# Install in dev mode
+pip install -e .
+
+# Run server (with worktree src path)
+python -m kobold_sandbox.server
+
+# Run FS sync daemon
+python tools/fs_sync.py
+
+# Run template command tests
+python tools/test_template_commands.py
 ```
 
-Поднять локальный API:
+## See also
 
-```bash
-kobold-sandbox serve --host 127.0.0.1 --port 8060
-```
-
-## MCP-like Interface
-
-Поверх основного API есть MCP-like JSON-RPC endpoint:
-
-```text
-http://127.0.0.1:8060/api/mcp
-```
-
-Есть и `stdio`-режим для host-клиентов:
-
-```bash
-kobold-sandbox mcp-stdio
-```
-
-Для агентных клиентов см.:
-
-- `MCP_AGENTS.md`
-- `examples/mcp_host_demo.py`
-- `examples/mcp_host_demo.ps1`
-
-## Структура
-
-```text
-.sandbox/
-  state.json
-  repo/
-nodes/
-  root/
-    notes.md
-    tables/
-    runs/
-    workspace/
-  red-house-hypothesis/
-    notes.md
-    tables/
-    runs/
-    workspace/
-```
-
-## Идея развития
-
-Следующий логичный шаг: поверх `/graph` и `/nodes/{id}/run` добавить UI в виде mind map, где:
-
-- ребра соответствуют `parent_id`
-- выбор узла показывает файлы, заметки и таблицы
-- новая гипотеза создает новую git-ветку и worktree
-- сравнение веток можно делать через `git diff` и сводные таблицы
+- [Wiki Index](root/wiki/index.md) -- project knowledge base
+- [Architecture Next](root/ARCHITECTURE_NEXT.md) -- CMD wrappers, console scopes, message-based L0
+- [Architecture Summary](ARCHITECTURE_SUMMARY.md) -- core principles and pipeline design

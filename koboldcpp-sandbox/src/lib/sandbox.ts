@@ -42,6 +42,25 @@ export interface SandboxNode {
   }
 }
 
+export interface TypedListEntry {
+  kind: string
+  index: number
+  role: 'template' | 'instance'
+  virtual: boolean
+  path: string
+  node?: SandboxNode
+}
+
+export interface TypedScopeDescriptor {
+  kind: string
+  hostPath: string
+  scopePath: string
+  templatePath: string
+  instancePattern: string
+  template: TypedListEntry
+  items: TypedListEntry[]
+}
+
 export interface ServerNode {
   name: string
   path: string
@@ -62,6 +81,51 @@ export interface FieldCell {
   valueType: string
   bind?: string
   ref?: string
+}
+
+export interface RuntimeRow {
+  rowId: string
+  scopeId: string
+  originExecId?: string
+  kind: 'intent' | 'reply' | 'live'
+  entityId: string
+  entityType: string
+  name: string
+  value: unknown
+  valueType: string
+  localPath: string
+  globalPath?: string
+  meta: Record<string, unknown>
+}
+
+export interface ExecScopeSnapshot {
+  id: string
+  request?: ExecEntry
+  response?: unknown
+  rows: RuntimeRow[]
+}
+
+export interface SandboxSnapshot {
+  version: 1
+  execLog: ExecEntry[]
+  serverState: ServerNode[]
+}
+
+export interface SandboxDiff {
+  execAdded: string[]
+  execRemoved: string[]
+  nodesAdded: string[]
+  nodesRemoved: string[]
+  fieldsAdded: string[]
+  fieldsRemoved: string[]
+  rowsAdded: string[]
+  rowsRemoved: string[]
+}
+
+export interface ReplayRunResult {
+  result: ExecResult
+  after: SandboxSnapshot
+  diff: SandboxDiff
 }
 
 export type OpHandler = (sb: Sandbox, entry: ExecEntry) => ExecResult
@@ -287,7 +351,7 @@ export class Sandbox {
 
     for (const node of tree.values()) {
       node.children.sort(naturalSort)
-      node.childLists = buildChildLists(tree, node.children)
+      node.childLists = buildChildLists(tree, node, node.children)
     }
 
     this.tree = tree
@@ -328,6 +392,80 @@ export class Sandbox {
     if (!node) return []
     const refs = node.childLists[kind] ?? []
     return refs.map(p => this.tree.get(p)).filter(Boolean) as SandboxNode[]
+  }
+
+  typedList(path: string, kind: string): TypedListEntry[] {
+    const node = this.tree.get(path)
+    if (!node) return []
+
+    const refs = [...(node.childLists[kind] ?? [])]
+    const templateRef = refs.find((ref) => this.tree.get(ref)?.name === kind)
+    const instanceRefs = refs.filter((ref) => ref !== templateRef).sort(naturalSort)
+    const entries: TypedListEntry[] = []
+
+    if (templateRef) {
+      entries.push({
+        kind,
+        index: 0,
+        role: 'template',
+        virtual: false,
+        path: templateRef,
+        node: this.tree.get(templateRef),
+      })
+    } else {
+      const virtualTemplate = buildVirtualTemplateNode(path, kind)
+      entries.push({
+        kind,
+        index: 0,
+        role: 'template',
+        virtual: true,
+        path: virtualTemplate.path,
+        node: virtualTemplate,
+      })
+    }
+
+    instanceRefs.forEach((ref, offset) => {
+      entries.push({
+        kind,
+        index: offset + 1,
+        role: 'instance',
+        virtual: false,
+        path: ref,
+        node: this.tree.get(ref),
+      })
+    })
+
+    return entries
+  }
+
+  templateOf(path: string, kind: string): TypedListEntry | undefined {
+    return this.typedList(path, kind)[0]
+  }
+
+  instancesOf(path: string, kind: string): SandboxNode[] {
+    return this.typedList(path, kind)
+      .filter((entry) => entry.role === 'instance')
+      .map((entry) => entry.node)
+      .filter(Boolean) as SandboxNode[]
+  }
+
+  typedScope(path: string, kind: string): TypedScopeDescriptor | undefined {
+    const node = this.tree.get(path)
+    if (!node) return undefined
+
+    const items = this.typedList(path, kind)
+    const template = items[0]
+    if (!template) return undefined
+
+    return {
+      kind,
+      hostPath: path,
+      scopePath: `${path}.${kind}`,
+      templatePath: `${path}.${kind}[0]`,
+      instancePattern: `${path}.${kind}[{${kind}_$}]`,
+      template,
+      items,
+    }
   }
 
   query(pattern: string): SandboxNode[] {
@@ -385,6 +523,254 @@ export class Sandbox {
       if (regex.test(path)) result.push(cell)
     }
     return result
+  }
+
+  runtimeRows(): RuntimeRow[] {
+    const rows: RuntimeRow[] = []
+
+    for (const entry of this.execLog) {
+      const scopeId = `exec:${entry.id}`
+      const rawIntent = entry.args.cmd ?? entry.args
+      rows.push({
+        rowId: `${scopeId}:intent`,
+        scopeId,
+        originExecId: entry.id,
+        kind: 'intent',
+        entityId: entry.id,
+        entityType: 'exec_scope',
+        name: 'request',
+        value: rawIntent,
+        valueType: valueTypeOf(rawIntent),
+        localPath: 'request',
+        meta: {
+          op: entry.op,
+          ts: entry.ts,
+          user: entry.user,
+          local: !!entry.local,
+        },
+      })
+
+      if (entry.result !== undefined) {
+        rows.push({
+          rowId: `${scopeId}:reply`,
+          scopeId,
+          originExecId: entry.id,
+          kind: 'reply',
+          entityId: entry.id,
+          entityType: 'exec_scope',
+          name: 'response',
+          value: entry.result,
+          valueType: valueTypeOf(entry.result),
+          localPath: 'response',
+          meta: {
+            op: entry.op,
+            ts: entry.ts,
+            user: entry.user,
+            local: !!entry.local,
+          },
+        })
+
+        for (const leaf of flattenValueLeaves(entry.result, 'response')) {
+          rows.push({
+            rowId: `${scopeId}:${leaf.path}`,
+            scopeId,
+            originExecId: entry.id,
+            kind: 'reply',
+            entityId: entry.id,
+            entityType: 'exec_scope',
+            name: leaf.name,
+            value: leaf.value,
+            valueType: valueTypeOf(leaf.value),
+            localPath: leaf.path,
+            meta: {
+              op: entry.op,
+              ts: entry.ts,
+              user: entry.user,
+              local: !!entry.local,
+            },
+          })
+        }
+      }
+    }
+
+    for (const [, node] of this.tree) {
+      const scopeId = `node:${node.path}`
+      const entityType = node.type ?? (typeof node.meta.type === 'string' ? node.meta.type : 'node')
+      rows.push({
+        rowId: `${scopeId}:self`,
+        scopeId,
+        kind: 'live',
+        entityId: node.path,
+        entityType,
+        name: node.name,
+        value: {
+          meta: node.meta,
+          data: node.data,
+        },
+        valueType: 'object',
+        localPath: '.',
+        globalPath: node.path,
+        meta: {
+          path: node.path,
+          type: entityType,
+        },
+      })
+
+      for (const [key, value] of Object.entries(node.meta)) {
+        rows.push({
+          rowId: `${scopeId}:_meta.${key}`,
+          scopeId,
+          kind: 'live',
+          entityId: node.path,
+          entityType,
+          name: key,
+          value,
+          valueType: valueTypeOf(value),
+          localPath: `_meta.${key}`,
+          globalPath: `${node.path}._meta.${key}`,
+          meta: {
+            scope: '_meta',
+            path: node.path,
+            type: entityType,
+          },
+        })
+      }
+
+      for (const [key, value] of Object.entries(node.data)) {
+        rows.push({
+          rowId: `${scopeId}:_data.${key}`,
+          scopeId,
+          kind: 'live',
+          entityId: node.path,
+          entityType,
+          name: key,
+          value,
+          valueType: valueTypeOf(value),
+          localPath: `_data.${key}`,
+          globalPath: `${node.path}._data.${key}`,
+          meta: {
+            scope: '_data',
+            path: node.path,
+            type: entityType,
+          },
+        })
+      }
+    }
+
+    return rows
+  }
+
+  execScopes(): ExecScopeSnapshot[] {
+    return this.execLog.map((entry) => {
+      const scopeId = `exec:${entry.id}`
+      return {
+        id: scopeId,
+        request: entry,
+        response: entry.result,
+        rows: this.runtimeRows().filter(row => row.scopeId === scopeId),
+      }
+    })
+  }
+
+  runtimeBatches(by: 'entityId' | 'scopeId' | 'entityType' | 'kind' = 'entityId'): Record<string, RuntimeRow[]> {
+    const batches: Record<string, RuntimeRow[]> = {}
+    for (const row of this.runtimeRows()) {
+      const key = String(row[by] ?? '')
+      if (!batches[key]) batches[key] = []
+      batches[key].push(row)
+    }
+    return batches
+  }
+
+  saveState(): SandboxSnapshot {
+    return {
+      version: 1,
+      execLog: JSON.parse(JSON.stringify(this.execLog)) as ExecEntry[],
+      serverState: JSON.parse(JSON.stringify(this.serverState)) as ServerNode[],
+    }
+  }
+
+  loadState(snapshot: SandboxSnapshot): ExecResult {
+    if (!snapshot || snapshot.version !== 1) {
+      return { ok: false, error: 'loadState: unsupported snapshot version' }
+    }
+    if (!Array.isArray(snapshot.execLog) || !Array.isArray(snapshot.serverState)) {
+      return { ok: false, error: 'loadState: invalid snapshot shape' }
+    }
+
+    this.execLog = JSON.parse(JSON.stringify(snapshot.execLog)) as ExecEntry[]
+    this.serverState = JSON.parse(JSON.stringify(snapshot.serverState)) as ServerNode[]
+    this.rebuildTree()
+    this.rebuildFieldStore()
+    this.notify()
+
+    return {
+      ok: true,
+      data: {
+        exec_count: this.execLog.length,
+        node_count: this.tree.size,
+      },
+    }
+  }
+
+  diffState(before: SandboxSnapshot, after: SandboxSnapshot): SandboxDiff {
+    const beforeSandbox = new Sandbox()
+    beforeSandbox.loadState(before)
+
+    const afterSandbox = new Sandbox()
+    afterSandbox.loadState(after)
+
+    return {
+      execAdded: diffAdded(
+        beforeSandbox.execLog.map((entry) => entry.id),
+        afterSandbox.execLog.map((entry) => entry.id),
+      ),
+      execRemoved: diffAdded(
+        afterSandbox.execLog.map((entry) => entry.id),
+        beforeSandbox.execLog.map((entry) => entry.id),
+      ),
+      nodesAdded: diffAdded(
+        Array.from(beforeSandbox.tree.keys()),
+        Array.from(afterSandbox.tree.keys()),
+      ),
+      nodesRemoved: diffAdded(
+        Array.from(afterSandbox.tree.keys()),
+        Array.from(beforeSandbox.tree.keys()),
+      ),
+      fieldsAdded: diffAdded(
+        Array.from(beforeSandbox.fieldStore.keys()),
+        Array.from(afterSandbox.fieldStore.keys()),
+      ),
+      fieldsRemoved: diffAdded(
+        Array.from(afterSandbox.fieldStore.keys()),
+        Array.from(beforeSandbox.fieldStore.keys()),
+      ),
+      rowsAdded: diffAdded(
+        beforeSandbox.runtimeRows().map((row) => row.rowId),
+        afterSandbox.runtimeRows().map((row) => row.rowId),
+      ),
+      rowsRemoved: diffAdded(
+        afterSandbox.runtimeRows().map((row) => row.rowId),
+        beforeSandbox.runtimeRows().map((row) => row.rowId),
+      ),
+    }
+  }
+
+  runFromSnapshot(snapshot: SandboxSnapshot, op: string, args: Record<string, unknown> = {}, user = 'anon'): ReplayRunResult {
+    const branch = new Sandbox()
+    const loaded = branch.loadState(snapshot)
+    if (!loaded.ok) {
+      return {
+        result: loaded,
+        after: snapshot,
+        diff: emptyDiff(),
+      }
+    }
+
+    const result = branch.exec(op, args, user)
+    const after = branch.saveState()
+    const diff = this.diffState(snapshot, after)
+    return { result, after, diff }
   }
 
   subscribe(fn: () => void): () => void {
@@ -518,6 +904,63 @@ function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true })
 }
 
+function valueTypeOf(value: unknown): string {
+  if (Array.isArray(value)) return 'array'
+  if (value === null) return 'null'
+  return typeof value
+}
+
+function flattenValueLeaves(
+  value: unknown,
+  prefix: string,
+): Array<{ path: string; name: string; value: unknown }> {
+  const result: Array<{ path: string; name: string; value: unknown }> = []
+
+  function walk(current: unknown, path: string) {
+    if (Array.isArray(current)) {
+      if (current.length === 0) {
+        result.push({ path, name: path.split('.').pop() ?? path, value: current })
+        return
+      }
+      current.forEach((item, index) => walk(item, path ? `${path}.${index}` : String(index)))
+      return
+    }
+    if (current && typeof current === 'object') {
+      const entries = Object.entries(current as Record<string, unknown>)
+      if (entries.length === 0) {
+        result.push({ path, name: path.split('.').pop() ?? path, value: current })
+        return
+      }
+      for (const [key, next] of entries) {
+        walk(next, path ? `${path}.${key}` : key)
+      }
+      return
+    }
+    result.push({ path, name: path.split('.').pop() ?? path, value: current })
+  }
+
+  walk(value, prefix)
+  return result
+}
+
+function diffAdded(before: string[], after: string[]): string[] {
+  const beforeSet = new Set(before)
+  return after.filter((value) => !beforeSet.has(value)).sort(naturalSort)
+}
+
+function emptyDiff(): SandboxDiff {
+  return {
+    execAdded: [],
+    execRemoved: [],
+    nodesAdded: [],
+    nodesRemoved: [],
+    fieldsAdded: [],
+    fieldsRemoved: [],
+    rowsAdded: [],
+    rowsRemoved: [],
+  }
+}
+
 function childKinds(node: SandboxNode): string[] {
   const result = new Set<string>()
   if (node.type) result.add(node.type)
@@ -528,8 +971,23 @@ function childKinds(node: SandboxNode): string[] {
   return Array.from(result)
 }
 
-function buildChildLists(tree: Map<string, SandboxNode>, childPaths: string[]): Record<string, string[]> {
+function buildChildLists(tree: Map<string, SandboxNode>, parent: SandboxNode, childPaths: string[]): Record<string, string[]> {
   const lists: Record<string, string[]> = {}
+  const declaredKinds = new Set<string>()
+
+  if (Array.isArray(parent.capabilities.children)) {
+    for (const kind of parent.capabilities.children) declaredKinds.add(kind)
+  }
+  if (parent.capabilities.append) {
+    for (const [kind, allowed] of Object.entries(parent.capabilities.append)) {
+      if (allowed) declaredKinds.add(kind)
+    }
+  }
+
+  for (const kind of declaredKinds) {
+    lists[kind] = []
+  }
+
   for (const childPath of childPaths) {
     const child = tree.get(childPath)
     if (!child) continue
@@ -542,6 +1000,25 @@ function buildChildLists(tree: Map<string, SandboxNode>, childPaths: string[]): 
     refs.sort(naturalSort)
   }
   return lists
+}
+
+function buildVirtualTemplateNode(parentPath: string, kind: string): SandboxNode {
+  return {
+    name: kind,
+    path: parentPath ? `${parentPath}/${kind}` : kind,
+    type: kind,
+    meta: {
+      type: kind,
+      template: true,
+      virtual: true,
+      inherited: true,
+    },
+    data: {},
+    children: [],
+    childLists: {},
+    exec: [],
+    capabilities: capabilitiesFromType(kind),
+  }
 }
 
 /** Derive default capabilities from node type */

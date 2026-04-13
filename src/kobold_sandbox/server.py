@@ -4273,7 +4273,6 @@ load();
 
             # Default templates
             self._init_templates()
-            self._init_runtime_containers()
 
             # Precompile + preload all template commands
             import compileall
@@ -4317,21 +4316,6 @@ load();
                 if not dst_path.exists():
                     dst_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(src_path, dst_path)
-
-        def _init_runtime_containers(self):
-            """Create default runtime container manifests for generic materialization."""
-            for container_id in ("channels_selector", "current_channel", "current_channel_messages"):
-                meta, state = self._load_default_container_spec(container_id)
-                self._ensure_container(container_id, meta, state)
-
-        def _load_default_container_spec(self, container_id: str) -> tuple[dict, dict]:
-            """Load default container manifest/state from the checkout's root/runtime tree."""
-            defaults_root = Path(__file__).resolve().parents[2] / "root" / "runtime" / "containers" / container_id
-            meta = self._read_json(defaults_root / "_meta.json")
-            state = self._read_json(defaults_root / "state.json")
-            if isinstance(meta, dict) and isinstance(state, dict):
-                return meta, state
-            raise RuntimeError(f"missing default runtime container spec for {container_id}")
 
         def _ensure_container(self, container_id: str, meta: dict, state: dict):
             cdir = self.containers_dir / container_id
@@ -5971,82 +5955,6 @@ load();
                 "refs": refs,
             }
 
-        def container_select_channel(self, name: str, user: str) -> dict:
-            container_id = "channels_selector"
-            spec = self._container_action_spec(container_id, "select")
-            state_path = spec.get("state_path", "selected")
-            state = self._read_container_state(container_id)
-            self._set_by_dotpath(state, state_path, name)
-            self._write_container_state(container_id, state)
-            self._append_container_log("channels_selector", {
-                "cmd": "cselect",
-                "args": [name],
-                "user": user,
-                "ts": utc_now(),
-            })
-            mats = self._run_action_rebuilds(container_id, "select", [container_id, "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": name,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
-        def container_post_selected(self, text: str, user: str) -> dict:
-            channel_name = self._container_selected_value("current_channel")
-            if not channel_name:
-                return {"error": "no selected channel"}
-            ch_dir = self._action_target_dir("current_channel", "post")
-            if not ch_dir.is_dir():
-                return {"error": f"selected channel not found: {channel_name}"}
-
-            ch_scope = self.get_scope(f"channel:{channel_name}")
-            ch_scope.cwd = ch_dir
-            post_result = self.cmd_post([text], user, ch_scope)
-            self._append_container_log("current_channel", {
-                "cmd": "cpost",
-                "args": [text],
-                "user": user,
-                "ts": utc_now(),
-                "selected": channel_name,
-            })
-            mats = self._run_action_rebuilds("current_channel", "post", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": bool(post_result.get("ok")),
-                "selected": channel_name,
-                "post": post_result,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
-        def container_create_channel(self, name: str, user: str, scope: "ConsoleScope") -> dict:
-            mk_result = self.cmd_mkchannel([name], user, scope)
-            if mk_result.get("error"):
-                return mk_result
-
-            spec = self._container_action_spec("channels_selector", "create_channel")
-            selector_state = self._read_container_state("channels_selector")
-            if spec.get("select_new", True):
-                selector_state["selected"] = name
-            self._write_container_state("channels_selector", selector_state)
-            self._append_container_log("channels_selector", {
-                "cmd": "cmkchannel",
-                "args": [name],
-                "user": user,
-                "ts": utc_now(),
-            })
-            mats = self._run_action_rebuilds("channels_selector", "create_channel", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": name,
-                "channel": mk_result,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
         def container_create_projection(self, container_id: str, source_path: str, local_root: str, fields: list[str], user: str) -> dict:
             if not container_id:
                 return {"error": "container_id is required"}
@@ -6259,137 +6167,6 @@ load();
                 "pagination": pagination,
             }
 
-        def container_patch_selected(self, raw_path: str, value: Any, user: str) -> dict:
-            channel_name = self._container_selected_value("current_channel")
-            if not channel_name:
-                return {"error": "no selected channel"}
-            channel_dir = self._action_target_dir("current_channel", "patch")
-            if not channel_dir.is_dir():
-                return {"error": f"selected channel not found: {channel_name}"}
-
-            target_dir = channel_dir
-            field_path = raw_path
-            parts = raw_path.split(".")
-            candidate = channel_dir / parts[0]
-            if candidate.is_dir() and len(parts) > 1:
-                target_dir = candidate
-                field_path = ".".join(parts[1:])
-
-            if field_path.startswith("meta."):
-                atomic_path = f"{self._rel_path(target_dir)}._meta.{field_path[len('meta.'):]}"
-                patch_result = self.atomic_patch(atomic_path, value)
-                if patch_result.get("error"):
-                    return patch_result
-                target_kind = "meta"
-            else:
-                atomic_path = f"{self._rel_path(target_dir)}._data.{field_path}"
-                patch_result = self.atomic_patch(atomic_path, value)
-                if patch_result.get("error"):
-                    return patch_result
-                target_kind = "data"
-
-            if target_dir != channel_dir and target_dir.is_dir():
-                self._append_exec_entry(target_dir, {
-                    "op": "patch",
-                    "user": user,
-                    "ts": utc_now(),
-                    "target": raw_path,
-                    "target_kind": target_kind,
-                    "field_path": field_path,
-                    "atomic_path": atomic_path,
-                    "value": value,
-                })
-
-            self._append_container_log("current_channel", {
-                "cmd": "cpatch",
-                "args": [raw_path],
-                "user": user,
-                "ts": utc_now(),
-                "selected": channel_name,
-                "target": raw_path,
-                "atomic_path": atomic_path,
-                "value": value,
-            })
-            mats = self._run_action_rebuilds("current_channel", "patch", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": channel_name,
-                "path": self._rel_path(target_dir),
-                "target": raw_path,
-                "atomic_path": atomic_path,
-                "target_kind": target_kind,
-                "value": value,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
-        def container_react_selected(self, msg_id: str, emoji: str, user: str) -> dict:
-            channel_name = self._container_selected_value("current_channel")
-            if not channel_name:
-                return {"error": "no selected channel"}
-            base_dir = self._action_target_dir("current_channel", "react")
-            msg_dir = base_dir / msg_id
-            if not msg_dir.is_dir():
-                return {"error": f"message not found: {msg_id}"}
-
-            atomic_path = f"{self._rel_path(msg_dir)}._data.reactions"
-            current = self.atomic_read(atomic_path)
-            if current.get("error"):
-                return current
-
-            reactions = current.get("value")
-            if not isinstance(reactions, dict):
-                reactions = {}
-            entry = reactions.get(emoji)
-            if not isinstance(entry, dict):
-                entry = {"users": [], "count": 0}
-            users = entry.get("users")
-            if not isinstance(users, list):
-                users = []
-
-            if user in users:
-                users = [u for u in users if u != user]
-            else:
-                users = users + [user]
-
-            if users:
-                reactions[emoji] = {"users": users, "count": len(users)}
-            else:
-                reactions.pop(emoji, None)
-
-            patch_result = self.atomic_patch(atomic_path, reactions)
-            if patch_result.get("error"):
-                return patch_result
-            self._append_exec_entry(msg_dir, {
-                "op": "react",
-                "user": user,
-                "ts": utc_now(),
-                "emoji": emoji,
-                "atomic_path": patch_result.get("atomic_path"),
-                "value": reactions,
-            })
-            self._append_container_log("current_channel", {
-                "cmd": "creact",
-                "args": [msg_id, emoji],
-                "user": user,
-                "ts": utc_now(),
-                "selected": channel_name,
-                "atomic_path": patch_result.get("atomic_path"),
-            })
-            mats = self._run_action_rebuilds("current_channel", "react", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": channel_name,
-                "message": msg_id,
-                "emoji": emoji,
-                "atomic_path": patch_result.get("atomic_path"),
-                "reactions": reactions,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
         def _next_slot_id(self, parent: Path, type_prefix: str) -> str:
             """Find next sequential slot: msg_1, msg_2, ..."""
             existing = []
@@ -6448,6 +6225,31 @@ load();
                 if isinstance(parsed, dict):
                     entries.append(parsed)
             return entries
+
+        def _channel_dir_from_scope(self, scope: "ConsoleScope") -> Path | None:
+            current = scope.cwd
+            visited: set[Path] = set()
+            while current not in visited:
+                visited.add(current)
+                meta = self._read_meta(current) or {}
+                if meta.get("type") == "channel":
+                    return current
+                if current == self.root:
+                    break
+                parent = current.parent
+                if parent == current:
+                    break
+                current = parent
+            return None
+
+        def _selected_message_dir(self, msg_id: str, scope: "ConsoleScope") -> tuple[Path | None, str | None]:
+            channel_dir = self._channel_dir_from_scope(scope)
+            if channel_dir is None:
+                return None, "no selected channel"
+            msg_dir = channel_dir / msg_id
+            if not msg_dir.is_dir():
+                return None, f"message not found: {msg_id}"
+            return msg_dir, None
 
         # ── Commands ──────────────────────────────────────────
 
@@ -6646,6 +6448,117 @@ load();
             })
             self._append_child_ref(scope.cwd, slot_dir)
             return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": data}
+
+        def cmd_cpatch(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            if len(args) < 2:
+                return {"error": "usage: /cpatch <path> <value>"}
+            raw_path = args[0]
+            raw_value = " ".join(args[1:])
+            try:
+                value = json.loads(raw_value)
+            except Exception:
+                value = raw_value
+
+            channel_dir = self._channel_dir_from_scope(scope)
+            if channel_dir is None:
+                return {"error": "no selected channel"}
+
+            target_dir = channel_dir
+            field_path = raw_path
+            parts = raw_path.split(".")
+            candidate = channel_dir / parts[0]
+            if candidate.is_dir() and len(parts) > 1:
+                target_dir = candidate
+                field_path = ".".join(parts[1:])
+
+            if field_path.startswith("meta."):
+                atomic_path = f"{self._rel_path(target_dir)}._meta.{field_path[len('meta.'):]}"
+                patch_result = self.atomic_patch(atomic_path, value)
+                if patch_result.get("error"):
+                    return patch_result
+                target_kind = "meta"
+            else:
+                atomic_path = f"{self._rel_path(target_dir)}._data.{field_path}"
+                patch_result = self.atomic_patch(atomic_path, value)
+                if patch_result.get("error"):
+                    return patch_result
+                target_kind = "data"
+
+            if target_dir != channel_dir and target_dir.is_dir():
+                self._append_exec_entry(target_dir, {
+                    "op": "patch",
+                    "user": user,
+                    "ts": utc_now(),
+                    "target": raw_path,
+                    "target_kind": target_kind,
+                    "field_path": field_path,
+                    "atomic_path": atomic_path,
+                    "value": value,
+                })
+
+            return {
+                "ok": True,
+                "selected": channel_dir.name,
+                "path": self._rel_path(target_dir),
+                "target": raw_path,
+                "atomic_path": atomic_path,
+                "target_kind": target_kind,
+                "value": value,
+            }
+
+        def cmd_creact(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            if len(args) < 2:
+                return {"error": "usage: /creact <msg_id> <emoji>"}
+            msg_id, emoji = args[0], args[1]
+            msg_dir, error = self._selected_message_dir(msg_id, scope)
+            if error:
+                return {"error": error}
+            assert msg_dir is not None
+
+            atomic_path = f"{self._rel_path(msg_dir)}._data.reactions"
+            current = self.atomic_read(atomic_path)
+            if current.get("error"):
+                return current
+
+            reactions = current.get("value")
+            if not isinstance(reactions, dict):
+                reactions = {}
+            entry = reactions.get(emoji)
+            if not isinstance(entry, dict):
+                entry = {"users": [], "count": 0}
+            users = entry.get("users")
+            if not isinstance(users, list):
+                users = []
+
+            if user in users:
+                users = [u for u in users if u != user]
+            else:
+                users = users + [user]
+
+            if users:
+                reactions[emoji] = {"users": users, "count": len(users)}
+            else:
+                reactions.pop(emoji, None)
+
+            patch_result = self.atomic_patch(atomic_path, reactions)
+            if patch_result.get("error"):
+                return patch_result
+            self._append_exec_entry(msg_dir, {
+                "op": "react",
+                "user": user,
+                "ts": utc_now(),
+                "emoji": emoji,
+                "atomic_path": patch_result.get("atomic_path"),
+                "value": reactions,
+            })
+            return {
+                "ok": True,
+                "selected": msg_dir.parent.name,
+                "message": msg_id,
+                "emoji": emoji,
+                "atomic_path": patch_result.get("atomic_path"),
+                "reactions": reactions,
+            }
 
         def cmd_mcheckpoint(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Create a child checkpoint node inside a message slot."""
@@ -6938,42 +6851,6 @@ load();
         return state
 
     def _pchat_build_state(channel: str | None, msg_limit: int, user: str) -> dict:
-        selected = workspace._container_selected_value("current_channel")
-        if selected and (channel is None or channel == selected):
-            selector = workspace.materialize_container("channels_selector")
-            current = workspace.materialize_container("current_channel")
-            source_path = current.get("resolved", {}).get("source", {}).get("path")
-            source_dir = workspace.root / Path(source_path) if source_path else None
-            if selector.get("ok") and current.get("ok") and source_dir and source_dir.is_dir():
-                state = selector["resolved"].get("state", {})
-                channels = []
-                for item in selector["resolved"].get("items", []):
-                    channels.append({
-                        "name": item.get("meta", {}).get("name") or item.get("id"),
-                        "path": item.get("path"),
-                        "meta": item.get("meta", {}),
-                        "data": item.get("data", {}),
-                    })
-                messages = []
-                for item in current["resolved"].get("items", []):
-                    data = item.get("data", {}) or {}
-                    if data.get("_deleted"):
-                        continue
-                    messages.append({
-                        "name": item.get("id"),
-                        "path": item.get("path"),
-                        "meta": item.get("meta", {}),
-                        "data": data,
-                    })
-                return {
-                    "channels": channels,
-                    "messages": messages[-msg_limit:],
-                    "active_channel": state.get("selected"),
-                    "user": user,
-                    "ts": utc_now(),
-                    "source": "containers",
-                }
-
         channels_dir = workspace.pchat_dir / "channels"
         channels = []
         if channels_dir.is_dir():
@@ -6994,6 +6871,8 @@ load();
                 for d in msg_dirs[-msg_limit:]:
                     meta = workspace._read_meta(d)
                     data = workspace._read_data(d)
+                    if data and data.get("_deleted"):
+                        continue
                     entry = {"name": d.name, "path": workspace._rel_path(d)}
                     if meta:
                         entry["meta"] = meta
@@ -7007,6 +6886,7 @@ load();
             "active_channel": channel,
             "user": user,
             "ts": utc_now(),
+            "source": "fs",
         }
 
     @app.get("/api/imagegen/samplers")

@@ -143,10 +143,35 @@ function NodeTree({ sandbox, node, depth, onSelect }: {
                 virtual lists
               </div>
               {listKinds.map(kind => (
-                <div key={kind} className="text-[9px] flex gap-2 py-0.5">
-                  <span style={{ color: TK.purple }}>{kind}[</span>
-                  <span style={{ color: TK.dim }}>{node.childLists[kind].length}</span>
-                  <span style={{ color: TK.purple }}>]</span>
+                <div key={kind} className="text-[9px] py-0.5">
+                  {(() => {
+                    const scope = sandbox.typedScope(node.path, kind)
+                    if (!scope) return null
+                    return (
+                      <>
+                  <div className="flex gap-2">
+                    <span style={{ color: TK.purple }}>{kind}[</span>
+                    <span style={{ color: TK.dim }}>{scope.items.length}</span>
+                    <span style={{ color: TK.purple }}>]</span>
+                  </div>
+                  <div className="ml-3" style={{ color: TK.dim }}>
+                    <span>0=template</span>
+                    {scope.template.virtual ? (
+                      <span> (virtual)</span>
+                    ) : (
+                      <span> (local)</span>
+                    )}
+                    <span>, instances={scope.items.filter(item => item.role === 'instance').length}</span>
+                  </div>
+                  <div className="ml-3" style={{ color: TK.dim }}>
+                    <span>{scope.scopePath}</span>
+                  </div>
+                  <div className="ml-3" style={{ color: TK.dim }}>
+                    <span>{scope.instancePattern}</span>
+                  </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ))}
             </div>

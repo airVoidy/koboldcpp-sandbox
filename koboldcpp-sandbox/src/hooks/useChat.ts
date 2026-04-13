@@ -43,7 +43,8 @@ function parseCmd(cmd: string): { op: string; args: string[] } {
 export function useChat() {
   const {
     sandbox,
-    serverState,
+    resolve,
+    instancesOf,
     loadServerState,
     serverExec,
     setUser: setSandboxUser,
@@ -61,8 +62,7 @@ export function useChat() {
   }, [setSandboxUser, user])
 
   const channels = useMemo<ChatItem[]>(() => {
-    return serverState
-      .filter(node => (node.meta?.type as string | undefined) === 'channel')
+    return instancesOf('pchat/channels', 'channel')
       .map(node => ({
         name: node.name,
         path: node.path,
@@ -70,16 +70,14 @@ export function useChat() {
         data: toNodeData(node.data),
       }))
       .sort(byPathDepth)
-  }, [serverState])
+  }, [instancesOf, sandbox.tree])
 
   const messages = useMemo<ChatItem[]>(() => {
     const channel = activeChannel ?? null
-    return serverState
-      .filter(node => {
-        if ((node.meta?.type as string | undefined) !== 'message') return false
-        if (!channel) return false
-        return node.path.startsWith(`pchat/channels/${channel}/`)
-      })
+    if (!channel) return []
+    const channelNode = resolve(`pchat/channels/${channel}`)
+    if (!channelNode) return []
+    return instancesOf(channelNode.path, 'message')
       .map(node => ({
         name: node.name || lastSegment(node.path),
         path: node.path,
@@ -88,7 +86,7 @@ export function useChat() {
       }))
       .filter(msg => !msg.data?._deleted)
       .sort(byPathDepth)
-  }, [activeChannel, serverState])
+  }, [activeChannel, instancesOf, resolve, sandbox.tree])
 
   const state = useMemo<ChatState>(() => ({
     channels,

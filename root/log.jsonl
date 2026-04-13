@@ -1,1 +1,18 @@
 {"cmd": "/reset", "ts": "2026-04-06T00:18:08.185127+00:00", "user": "alice"}
+{"cmd": "/cselect 43", "ts": "2026-04-13T03:17:33.712013+00:00", "user": "anon"}
+{"cmd": "/cselect 323", "ts": "2026-04-13T03:17:34.056697+00:00", "user": "anon"}
+{"cmd": "/cselect 123", "ts": "2026-04-13T03:17:35.945789+00:00", "user": "anon"}
+{"cmd": "/creact msg_7 thumbsup", "ts": "2026-04-13T03:17:37.348140+00:00", "user": "anon"}
+{"cmd": "/cpost HELLO", "ts": "2026-04-13T03:17:40.898160+00:00", "user": "anon"}
+{"cmd": "/cselect 323", "ts": "2026-04-13T03:17:49.942722+00:00", "user": "anon"}
+{"cmd": "/cselect general", "ts": "2026-04-13T03:17:50.865253+00:00", "user": "anon"}
+{"cmd": "/creact msg_4 thumbsup", "ts": "2026-04-13T03:17:53.527735+00:00", "user": "anon"}
+{"cmd": "/creact msg_4 thumbsup", "ts": "2026-04-13T03:17:53.981748+00:00", "user": "anon"}
+{"cmd": "/cselect 123", "ts": "2026-04-13T03:17:57.099085+00:00", "user": "anon"}
+{"cmd": "/cselect 323", "ts": "2026-04-13T03:17:57.434073+00:00", "user": "anon"}
+{"cmd": "/cselect 43", "ts": "2026-04-13T03:17:58.066010+00:00", "user": "anon"}
+{"cmd": "/cselect 123", "ts": "2026-04-13T03:17:58.701955+00:00", "user": "anon"}
+{"cmd": "/creact msg_15 thumbsup", "ts": "2026-04-13T03:19:01.780934+00:00", "user": "anon"}
+{"cmd": "/creact msg_15 👍", "ts": "2026-04-13T03:19:02.161092+00:00", "user": "anon"}
+{"cmd": "/cselect general", "ts": "2026-04-13T03:19:03.246276+00:00", "user": "anon"}
+{"cmd": "/cselect 323", "ts": "2026-04-13T03:19:03.810121+00:00", "user": "anon"}
