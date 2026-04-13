@@ -1,0 +1,15 @@
+{
+  "id": "current_channel_messages__43",
+  "kind": "projection",
+  "projection": {
+    "source_path": "pchat/channels/43",
+    "local_root": "item",
+    "fields": [
+      "pchat/channels/43._meta.user",
+      "pchat/channels/43._data.content",
+      "pchat/channels/43._meta.ts",
+      "pchat/channels/43._data.reactions",
+      "pchat/channels/43._data._deleted"
+    ]
+  }
+}

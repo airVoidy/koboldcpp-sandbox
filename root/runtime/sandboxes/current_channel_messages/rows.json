@@ -1,0 +1,510 @@
+{
+  "rows": [
+    {
+      "field": "container_id",
+      "type": "str",
+      "value": "current_channel_messages",
+      "path": "container_id",
+      "group": "root",
+      "aliases": [
+        "container_id",
+        "container_id"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "limit",
+      "type": "int",
+      "value": 50,
+      "path": "state.pagination.limit",
+      "group": "state",
+      "aliases": [
+        "state.pagination.limit",
+        "state.pagination.limit"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "offset",
+      "type": "int",
+      "value": 0,
+      "path": "state.pagination.offset",
+      "group": "state",
+      "aliases": [
+        "state.pagination.offset",
+        "state.pagination.offset"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "before_ref",
+      "type": "str",
+      "value": "",
+      "path": "state.pagination.before_ref",
+      "group": "state",
+      "aliases": [
+        "state.pagination.before_ref",
+        "state.pagination.before_ref"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "after_ref",
+      "type": "str",
+      "value": "",
+      "path": "state.pagination.after_ref",
+      "group": "state",
+      "aliases": [
+        "state.pagination.after_ref",
+        "state.pagination.after_ref"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "path",
+      "type": "null",
+      "value": null,
+      "path": "source.path",
+      "group": "source",
+      "aliases": [
+        "source.path",
+        "source.path"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "id",
+      "type": "str",
+      "value": "current_channel_messages",
+      "path": "source.meta.id",
+      "group": "source",
+      "aliases": [
+        "source.meta.id",
+        "source.meta.id"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "kind",
+      "type": "str",
+      "value": "table",
+      "path": "source.meta.kind",
+      "group": "source",
+      "aliases": [
+        "source.meta.kind",
+        "source.meta.kind"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "depends_on",
+      "type": "list",
+      "value": [
+        "channels_selector"
+      ],
+      "path": "source.meta.depends_on",
+      "group": "source",
+      "aliases": [
+        "source.meta.depends_on",
+        "source.meta.depends_on"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    },
+    {
+      "field": "container",
+      "type": "str",
+      "value": "channels_selector",
+      "path": "source.meta.selected_from.container",
+      "group": "source",
+      "aliases": [
+        "source.meta.selected_from.container",
+        "source.meta.selected_from.container"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "state_path",
+      "type": "str",
+      "value": "selected",
+      "path": "source.meta.selected_from.state_path",
+      "group": "source",
+      "aliases": [
+        "source.meta.selected_from.state_path",
+        "source.meta.selected_from.state_path"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "local_root",
+      "type": "str",
+      "value": "rows",
+      "path": "source.meta.table.local_root",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.local_root",
+        "source.meta.table.local_root"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "columns",
+      "type": "list",
+      "value": [
+        "user",
+        "content",
+        "ts",
+        "reactions",
+        "_deleted"
+      ],
+      "path": "source.meta.table.columns",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.columns",
+        "source.meta.table.columns"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    },
+    {
+      "field": "op",
+      "type": "str",
+      "value": "load_child_log",
+      "path": "source.meta.table.autoload.op",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.op",
+        "source.meta.table.autoload.op"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "source_path_template",
+      "type": "str",
+      "value": "pchat/channels/{containers.channels_selector.state.selected}",
+      "path": "source.meta.table.autoload.source_path_template",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.source_path_template",
+        "source.meta.table.autoload.source_path_template"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "projection_root",
+      "type": "str",
+      "value": "item",
+      "path": "source.meta.table.autoload.projection_root",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.projection_root",
+        "source.meta.table.autoload.projection_root"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "fields",
+      "type": "list",
+      "value": [
+        "_meta.user",
+        "_data.content",
+        "_meta.ts",
+        "_data.reactions",
+        "_data._deleted"
+      ],
+      "path": "source.meta.table.autoload.fields",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.fields",
+        "source.meta.table.autoload.fields"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    },
+    {
+      "field": "replace",
+      "type": "bool",
+      "value": true,
+      "path": "source.meta.table.autoload.replace",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.replace",
+        "source.meta.table.autoload.replace"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "from_end",
+      "type": "bool",
+      "value": true,
+      "path": "source.meta.table.autoload.from_end",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.from_end",
+        "source.meta.table.autoload.from_end"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "visible_only",
+      "type": "bool",
+      "value": true,
+      "path": "source.meta.table.autoload.visible_only",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.visible_only",
+        "source.meta.table.autoload.visible_only"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "limit",
+      "type": "int",
+      "value": 50,
+      "path": "source.meta.table.autoload.limit",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.autoload.limit",
+        "source.meta.table.autoload.limit"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "rows",
+      "type": "list",
+      "value": [
+        {
+          "projection": "current_channel_messages__323",
+          "row_key": "323",
+          "ref": "pchat/channels/323"
+        },
+        {
+          "projection": "current_channel_messages__43",
+          "row_key": "43",
+          "ref": "pchat/channels/43"
+        }
+      ],
+      "path": "source.meta.table.rows",
+      "group": "source",
+      "aliases": [
+        "source.meta.table.rows",
+        "source.meta.table.rows"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    },
+    {
+      "field": "kind",
+      "type": "str",
+      "value": "virtual_table",
+      "path": "table.kind",
+      "group": "table",
+      "aliases": [
+        "table.kind",
+        "table.kind"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "local_root",
+      "type": "str",
+      "value": "rows",
+      "path": "table.local_root",
+      "group": "table",
+      "aliases": [
+        "table.local_root",
+        "table.local_root"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "columns",
+      "type": "list",
+      "value": [
+        "user",
+        "content",
+        "ts",
+        "reactions",
+        "_deleted"
+      ],
+      "path": "table.columns",
+      "group": "table",
+      "aliases": [
+        "table.columns",
+        "table.columns"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    },
+    {
+      "field": "rows",
+      "type": "list",
+      "value": [
+        {
+          "row_key": "323",
+          "projection": "current_channel_messages__323",
+          "ref": "pchat/channels/323",
+          "cells": [
+            {
+              "kind": "field",
+              "path": "rows.323.user",
+              "local_name": "user",
+              "bind": "pchat/channels/323._meta.user",
+              "atomic_path": "pchat/channels/323._meta.user",
+              "value": "323",
+              "value_type": "str"
+            },
+            {
+              "kind": "field",
+              "path": "rows.323.content",
+              "local_name": "content",
+              "bind": "pchat/channels/323._data.content",
+              "atomic_path": "pchat/channels/323._data.content",
+              "value": null,
+              "value_type": "null"
+            },
+            {
+              "kind": "field",
+              "path": "rows.323.ts",
+              "local_name": "ts",
+              "bind": "pchat/channels/323._meta.ts",
+              "atomic_path": "pchat/channels/323._meta.ts",
+              "value": "2026-04-12T05:15:40.952332+00:00",
+              "value_type": "str"
+            },
+            {
+              "kind": "field",
+              "path": "rows.323.reactions",
+              "local_name": "reactions",
+              "bind": "pchat/channels/323._data.reactions",
+              "atomic_path": "pchat/channels/323._data.reactions",
+              "value": null,
+              "value_type": "null"
+            },
+            {
+              "kind": "field",
+              "path": "rows.323._deleted",
+              "local_name": "_deleted",
+              "bind": "pchat/channels/323._data._deleted",
+              "atomic_path": "pchat/channels/323._data._deleted",
+              "value": null,
+              "value_type": "null"
+            }
+          ]
+        },
+        {
+          "row_key": "43",
+          "projection": "current_channel_messages__43",
+          "ref": "pchat/channels/43",
+          "cells": [
+            {
+              "kind": "field",
+              "path": "rows.43.user",
+              "local_name": "user",
+              "bind": "pchat/channels/43._meta.user",
+              "atomic_path": "pchat/channels/43._meta.user",
+              "value": "anon",
+              "value_type": "str"
+            },
+            {
+              "kind": "field",
+              "path": "rows.43.content",
+              "local_name": "content",
+              "bind": "pchat/channels/43._data.content",
+              "atomic_path": "pchat/channels/43._data.content",
+              "value": null,
+              "value_type": "null"
+            },
+            {
+              "kind": "field",
+              "path": "rows.43.ts",
+              "local_name": "ts",
+              "bind": "pchat/channels/43._meta.ts",
+              "atomic_path": "pchat/channels/43._meta.ts",
+              "value": "2026-04-11T20:00:16.227732+00:00",
+              "value_type": "str"
+            },
+            {
+              "kind": "field",
+              "path": "rows.43.reactions",
+              "local_name": "reactions",
+              "bind": "pchat/channels/43._data.reactions",
+              "atomic_path": "pchat/channels/43._data.reactions",
+              "value": null,
+              "value_type": "null"
+            },
+            {
+              "kind": "field",
+              "path": "rows.43._deleted",
+              "local_name": "_deleted",
+              "bind": "pchat/channels/43._data._deleted",
+              "atomic_path": "pchat/channels/43._data._deleted",
+              "value": null,
+              "value_type": "null"
+            }
+          ]
+        }
+      ],
+      "path": "table.rows",
+      "group": "table",
+      "aliases": [
+        "table.rows",
+        "table.rows"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    }
+  ]
+}

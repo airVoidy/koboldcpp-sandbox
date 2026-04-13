@@ -1,0 +1,181 @@
+{
+  "container_id": "current_channel_messages",
+  "state": {
+    "pagination": {
+      "limit": 50,
+      "offset": 0,
+      "before_ref": "",
+      "after_ref": ""
+    }
+  },
+  "source": {
+    "path": null,
+    "meta": {
+      "id": "current_channel_messages",
+      "kind": "table",
+      "depends_on": [
+        "channels_selector"
+      ],
+      "selected_from": {
+        "container": "channels_selector",
+        "state_path": "selected"
+      },
+      "table": {
+        "local_root": "rows",
+        "columns": [
+          "user",
+          "content",
+          "ts",
+          "reactions",
+          "_deleted"
+        ],
+        "autoload": {
+          "op": "load_child_log",
+          "source_path_template": "pchat/channels/{containers.channels_selector.state.selected}",
+          "projection_root": "item",
+          "fields": [
+            "_meta.user",
+            "_data.content",
+            "_meta.ts",
+            "_data.reactions",
+            "_data._deleted"
+          ],
+          "replace": true,
+          "from_end": true,
+          "visible_only": true,
+          "limit": 50
+        },
+        "rows": [
+          {
+            "projection": "current_channel_messages__323",
+            "row_key": "323",
+            "ref": "pchat/channels/323"
+          },
+          {
+            "projection": "current_channel_messages__43",
+            "row_key": "43",
+            "ref": "pchat/channels/43"
+          }
+        ]
+      }
+    },
+    "data": {}
+  },
+  "table": {
+    "kind": "virtual_table",
+    "local_root": "rows",
+    "columns": [
+      "user",
+      "content",
+      "ts",
+      "reactions",
+      "_deleted"
+    ],
+    "rows": [
+      {
+        "row_key": "323",
+        "projection": "current_channel_messages__323",
+        "ref": "pchat/channels/323",
+        "cells": [
+          {
+            "kind": "field",
+            "path": "rows.323.user",
+            "local_name": "user",
+            "bind": "pchat/channels/323._meta.user",
+            "atomic_path": "pchat/channels/323._meta.user",
+            "value": "323",
+            "value_type": "str"
+          },
+          {
+            "kind": "field",
+            "path": "rows.323.content",
+            "local_name": "content",
+            "bind": "pchat/channels/323._data.content",
+            "atomic_path": "pchat/channels/323._data.content",
+            "value": null,
+            "value_type": "null"
+          },
+          {
+            "kind": "field",
+            "path": "rows.323.ts",
+            "local_name": "ts",
+            "bind": "pchat/channels/323._meta.ts",
+            "atomic_path": "pchat/channels/323._meta.ts",
+            "value": "2026-04-12T05:15:40.952332+00:00",
+            "value_type": "str"
+          },
+          {
+            "kind": "field",
+            "path": "rows.323.reactions",
+            "local_name": "reactions",
+            "bind": "pchat/channels/323._data.reactions",
+            "atomic_path": "pchat/channels/323._data.reactions",
+            "value": null,
+            "value_type": "null"
+          },
+          {
+            "kind": "field",
+            "path": "rows.323._deleted",
+            "local_name": "_deleted",
+            "bind": "pchat/channels/323._data._deleted",
+            "atomic_path": "pchat/channels/323._data._deleted",
+            "value": null,
+            "value_type": "null"
+          }
+        ]
+      },
+      {
+        "row_key": "43",
+        "projection": "current_channel_messages__43",
+        "ref": "pchat/channels/43",
+        "cells": [
+          {
+            "kind": "field",
+            "path": "rows.43.user",
+            "local_name": "user",
+            "bind": "pchat/channels/43._meta.user",
+            "atomic_path": "pchat/channels/43._meta.user",
+            "value": "anon",
+            "value_type": "str"
+          },
+          {
+            "kind": "field",
+            "path": "rows.43.content",
+            "local_name": "content",
+            "bind": "pchat/channels/43._data.content",
+            "atomic_path": "pchat/channels/43._data.content",
+            "value": null,
+            "value_type": "null"
+          },
+          {
+            "kind": "field",
+            "path": "rows.43.ts",
+            "local_name": "ts",
+            "bind": "pchat/channels/43._meta.ts",
+            "atomic_path": "pchat/channels/43._meta.ts",
+            "value": "2026-04-11T20:00:16.227732+00:00",
+            "value_type": "str"
+          },
+          {
+            "kind": "field",
+            "path": "rows.43.reactions",
+            "local_name": "reactions",
+            "bind": "pchat/channels/43._data.reactions",
+            "atomic_path": "pchat/channels/43._data.reactions",
+            "value": null,
+            "value_type": "null"
+          },
+          {
+            "kind": "field",
+            "path": "rows.43._deleted",
+            "local_name": "_deleted",
+            "bind": "pchat/channels/43._data._deleted",
+            "atomic_path": "pchat/channels/43._data._deleted",
+            "value": null,
+            "value_type": "null"
+          }
+        ]
+      }
+    ]
+  }
+}

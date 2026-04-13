@@ -1,0 +1,9 @@
+{"op": "post", "user": "anon", "ts": "2026-04-11T20:52:52.735235+00:00", "meta": {"type": "message", "user": "anon", "ts": "2026-04-11T20:52:52.735235+00:00"}, "data": {"content": "exec batch"}}
+{"op": "react", "user": "anon", "ts": "2026-04-12T03:58:02.533676+00:00", "emoji": "thumbsup", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T06:32:34.296770+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}, "👍": {"users": ["323"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T06:32:35.070141+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T09:10:17.564903+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}, "👍": {"users": ["323"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T09:10:18.262494+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T09:10:20.582796+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}, "👍": {"users": ["323"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T10:21:25.783379+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T10:21:27.470999+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_14._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}, "👍": {"users": ["323"], "count": 1}}}

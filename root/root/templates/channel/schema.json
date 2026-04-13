@@ -1,0 +1,14 @@
+{
+  "fields": {
+    "name": "str"
+  },
+  "commands": [
+    "post",
+    "select",
+    "rename"
+  ],
+  "panels": [
+    "panel_sidebar"
+  ],
+  "renders": []
+}

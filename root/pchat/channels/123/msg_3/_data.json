@@ -1,0 +1,11 @@
+{
+  "content": "hi there",
+  "reactions": {
+    "thumbsup": {
+      "users": [
+        "anon"
+      ],
+      "count": 1
+    }
+  }
+}

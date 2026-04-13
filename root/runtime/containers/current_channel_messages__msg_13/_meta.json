@@ -1,0 +1,15 @@
+{
+  "id": "current_channel_messages__msg_13",
+  "kind": "projection",
+  "projection": {
+    "source_path": "pchat/channels/123/msg_13",
+    "local_root": "item",
+    "fields": [
+      "pchat/channels/123/msg_13._meta.user",
+      "pchat/channels/123/msg_13._data.content",
+      "pchat/channels/123/msg_13._meta.ts",
+      "pchat/channels/123/msg_13._data.reactions",
+      "pchat/channels/123/msg_13._data._deleted"
+    ]
+  }
+}

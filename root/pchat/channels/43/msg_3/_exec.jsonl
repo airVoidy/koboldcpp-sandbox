@@ -1,0 +1,2 @@
+{"op": "post", "user": "anon", "ts": "2026-04-12T04:58:13.394277+00:00", "meta": {"type": "message", "user": "anon", "ts": "2026-04-12T04:58:13.394277+00:00"}, "data": {"content": "hello"}}
+{"op": "react", "user": "323", "ts": "2026-04-12T09:37:49.386845+00:00", "emoji": "👍", "atomic_path": "pchat/channels/43/msg_3._data.reactions", "value": {"👍": {"users": ["323"], "count": 1}}}

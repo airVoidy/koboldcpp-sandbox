@@ -1,0 +1,172 @@
+INFO:     127.0.0.1:62546 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59852 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59852 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63349 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63349 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64060 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64059 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64062 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64064 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52073 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55039 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54398 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56930 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61416 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55809 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59054 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57019 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64682 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60633 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57415 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56769 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60468 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63454 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50203 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65299 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50799 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50798 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65129 - "GET /api/endpoint-logs/exec?tail=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60604 - "GET /api/endpoint-logs/exec?tail=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50314 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50823 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50825 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54070 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54072 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54074 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53157 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59059 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52699 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53070 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60130 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50070 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58910 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60125 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "GET /tpl/channel/views/content.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60125 - "GET /tpl/channels/views/sidebar.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "GET /tpl/channel/views/content.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60125 - "GET /tpl/channels/views/sidebar.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52596 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60125 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63107 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63107 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60125 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52596 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60125 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63107 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63107 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60125 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52596 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60125 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63107 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60125 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62247 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62247 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60447 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55037 - "POST /api/container/materialize HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60177 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53164 - "GET /tpl/channel/views/content.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /tpl/channels/views/sidebar.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /tpl/channels/views/sidebar.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53164 - "GET /tpl/channel/views/content.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53164 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53164 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52112 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57748 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57748 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52266 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52266 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52266 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52266 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59141 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52266 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52266 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52266 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/batch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57311 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57311 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57311 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57311 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57311 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57311 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51574 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60179 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49742 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49742 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49742 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57934 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57934 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57934 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57934 - "GET /pipeline-chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57934 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57934 - "POST /api/pchat/exec HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57934 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61538 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61538 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60259 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60259 - "GET /api/pchat/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60259 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60259 - "POST /api/pchat/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50060 - "GET /api/pchat/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60564 - "POST /api/pchat/exec HTTP/1.1" 200 OK

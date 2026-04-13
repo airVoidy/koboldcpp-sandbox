@@ -1,0 +1,47 @@
+{
+  "rows": [
+    {
+      "field": "container_id",
+      "type": "str",
+      "value": "current_channel",
+      "path": "container_id",
+      "group": "root",
+      "aliases": [
+        "container_id",
+        "container_id"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "path",
+      "type": "null",
+      "value": null,
+      "path": "source.path",
+      "group": "source",
+      "aliases": [
+        "source.path",
+        "source.path"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "items",
+      "type": "list",
+      "value": [],
+      "path": "items",
+      "group": "root",
+      "aliases": [
+        "items",
+        "items"
+      ],
+      "meta": {
+        "cell_kind": "plain",
+        "is_collection": true
+      }
+    }
+  ]
+}

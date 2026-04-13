@@ -1,0 +1,3 @@
+{"op": "post", "user": "anon", "ts": "2026-04-11T20:52:46.922604+00:00", "meta": {"type": "message", "user": "anon", "ts": "2026-04-11T20:52:46.922604+00:00"}, "data": {"content": "32"}}
+{"op": "react", "user": "anon", "ts": "2026-04-12T03:58:03.184600+00:00", "emoji": "thumbsup", "atomic_path": "pchat/channels/123/msg_13._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}}}
+{"op": "react", "user": "323", "ts": "2026-04-12T09:08:27.533712+00:00", "emoji": "👍", "atomic_path": "pchat/channels/123/msg_13._data.reactions", "value": {"thumbsup": {"users": ["anon"], "count": 1}, "👍": {"users": ["323"], "count": 1}}}

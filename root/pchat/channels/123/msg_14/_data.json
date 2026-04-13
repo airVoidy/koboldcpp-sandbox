@@ -1,0 +1,17 @@
+{
+  "content": "exec batch",
+  "reactions": {
+    "thumbsup": {
+      "users": [
+        "anon"
+      ],
+      "count": 1
+    },
+    "\ud83d\udc4d": {
+      "users": [
+        "323"
+      ],
+      "count": 1
+    }
+  }
+}

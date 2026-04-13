@@ -1,0 +1,60 @@
+{
+  "container_id": "channels_selector",
+  "state": {
+    "selected": null
+  },
+  "source": {
+    "path": "pchat/channels",
+    "meta": {
+      "type": "channels",
+      "name": "channels"
+    },
+    "data": {}
+  },
+  "items": [
+    {
+      "id": "123",
+      "path": "pchat/channels/123",
+      "meta": {
+        "type": "channel",
+        "user": "anon",
+        "ts": "2026-04-06T08:53:11.607256+00:00",
+        "name": "123"
+      },
+      "data": {}
+    },
+    {
+      "id": "323",
+      "path": "pchat/channels/323",
+      "meta": {
+        "type": "channel",
+        "user": "323",
+        "ts": "2026-04-12T05:15:40.952332+00:00",
+        "name": "323"
+      },
+      "data": {}
+    },
+    {
+      "id": "43",
+      "path": "pchat/channels/43",
+      "meta": {
+        "type": "channel",
+        "user": "anon",
+        "ts": "2026-04-11T20:00:16.227732+00:00",
+        "name": "43"
+      },
+      "data": {}
+    },
+    {
+      "id": "general",
+      "path": "pchat/channels/general",
+      "meta": {
+        "type": "channel",
+        "user": "anon",
+        "ts": "2026-04-06T11:00:35.953507+00:00",
+        "name": "general"
+      },
+      "data": {}
+    }
+  ]
+}

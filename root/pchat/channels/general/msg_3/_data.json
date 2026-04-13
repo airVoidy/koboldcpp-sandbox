@@ -1,0 +1,12 @@
+{
+  "content": "hello",
+  "reactions": {
+    "\ud83d\udc4d": {
+      "users": [
+        "323"
+      ],
+      "count": 1
+    }
+  },
+  "_deleted": true
+}

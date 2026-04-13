@@ -1,0 +1,15 @@
+{
+  "fields": {},
+  "commands": [
+    "materialize",
+    "cselect",
+    "cpost",
+    "cmkchannel",
+    "cpatch",
+    "cedit",
+    "cdelete",
+    "creact"
+  ],
+  "panels": [],
+  "renders": []
+}

@@ -1,0 +1,8 @@
+{
+  "pagination": {
+    "limit": 50,
+    "offset": 0,
+    "before_ref": "",
+    "after_ref": ""
+  }
+}
