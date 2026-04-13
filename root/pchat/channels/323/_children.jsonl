@@ -1,3 +1,4 @@
 {"ref": "pchat/channels/323/msg_1", "name": "msg_1", "ts": "2026-04-12T10:09:51.122794+00:00", "meta": {"type": "message", "name": null, "user": "323", "ts": "2026-04-12T10:09:51.121781+00:00"}}
 {"ref": "pchat/channels/323/msg_2", "name": "msg_2", "ts": "2026-04-13T05:15:18.911674+00:00", "meta": {"type": "message", "name": null, "user": "anon", "ts": "2026-04-13T05:15:18.910900+00:00"}}
 {"ref": "pchat/channels/323/msg_3", "name": "msg_3", "ts": "2026-04-13T06:15:28.077518+00:00", "meta": {"type": "message", "name": null, "user": "anon", "ts": "2026-04-13T06:15:28.076986+00:00"}}
+{"ref": "pchat/channels/323/msg_4", "name": "msg_4", "ts": "2026-04-13T06:20:42.676686+00:00", "meta": {"type": "message", "name": null, "user": "anon", "ts": "2026-04-13T06:20:42.676119+00:00"}}
