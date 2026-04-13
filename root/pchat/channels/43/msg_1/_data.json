@@ -3,9 +3,10 @@
   "reactions": {
     "\ud83d\udc4d": {
       "users": [
-        "323"
+        "323",
+        "anon"
       ],
-      "count": 1
+      "count": 2
     }
   }
 }
