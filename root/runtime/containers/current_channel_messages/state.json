@@ -2,7 +2,7 @@
   "pagination": {
     "limit": 50,
     "offset": 0,
-    "before_ref": "",
+    "before_ref": "pchat/channels/43/msg_1",
     "after_ref": ""
   }
 }
