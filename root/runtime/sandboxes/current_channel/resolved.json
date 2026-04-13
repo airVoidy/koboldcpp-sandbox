@@ -2,9 +2,48 @@
   "container_id": "current_channel",
   "state": {},
   "source": {
-    "path": null,
-    "meta": {},
+    "path": "pchat/channels/323",
+    "meta": {
+      "type": "channel",
+      "user": "323",
+      "ts": "2026-04-12T05:15:40.952332+00:00",
+      "name": "323"
+    },
     "data": {}
   },
-  "items": []
+  "items": [
+    {
+      "id": "msg_1",
+      "path": "pchat/channels/323/msg_1",
+      "meta": {
+        "type": "message",
+        "user": "323",
+        "ts": "2026-04-12T10:09:51.121781+00:00"
+      },
+      "data": {
+        "content": "321",
+        "_deleted": true
+      }
+    },
+    {
+      "id": "msg_2",
+      "path": "pchat/channels/323/msg_2",
+      "meta": {
+        "type": "message",
+        "user": "anon",
+        "ts": "2026-04-13T05:15:18.910900+00:00"
+      },
+      "data": {
+        "content": "ello",
+        "reactions": {
+          "👍": {
+            "users": [
+              "anon"
+            ],
+            "count": 1
+          }
+        }
+      }
+    }
+  ]
 }

@@ -16,8 +16,8 @@
     },
     {
       "field": "path",
-      "type": "null",
-      "value": null,
+      "type": "str",
+      "value": "pchat/channels/323",
       "path": "source.path",
       "group": "source",
       "aliases": [
@@ -29,9 +29,99 @@
       }
     },
     {
+      "field": "type",
+      "type": "str",
+      "value": "channel",
+      "path": "source.meta.type",
+      "group": "source",
+      "aliases": [
+        "source.meta.type",
+        "source.meta.type"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "user",
+      "type": "str",
+      "value": "323",
+      "path": "source.meta.user",
+      "group": "source",
+      "aliases": [
+        "source.meta.user",
+        "source.meta.user"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "ts",
+      "type": "str",
+      "value": "2026-04-12T05:15:40.952332+00:00",
+      "path": "source.meta.ts",
+      "group": "source",
+      "aliases": [
+        "source.meta.ts",
+        "source.meta.ts"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
+      "field": "name",
+      "type": "str",
+      "value": "323",
+      "path": "source.meta.name",
+      "group": "source",
+      "aliases": [
+        "source.meta.name",
+        "source.meta.name"
+      ],
+      "meta": {
+        "cell_kind": "plain"
+      }
+    },
+    {
       "field": "items",
       "type": "list",
-      "value": [],
+      "value": [
+        {
+          "id": "msg_1",
+          "path": "pchat/channels/323/msg_1",
+          "meta": {
+            "type": "message",
+            "user": "323",
+            "ts": "2026-04-12T10:09:51.121781+00:00"
+          },
+          "data": {
+            "content": "321",
+            "_deleted": true
+          }
+        },
+        {
+          "id": "msg_2",
+          "path": "pchat/channels/323/msg_2",
+          "meta": {
+            "type": "message",
+            "user": "anon",
+            "ts": "2026-04-13T05:15:18.910900+00:00"
+          },
+          "data": {
+            "content": "ello",
+            "reactions": {
+              "👍": {
+                "users": [
+                  "anon"
+                ],
+                "count": 1
+              }
+            }
+          }
+        }
+      ],
       "path": "items",
       "group": "root",
       "aliases": [

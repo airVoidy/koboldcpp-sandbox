@@ -1,3 +1,16 @@
 {
-  "refs": []
+  "refs": [
+    {
+      "path": "pchat/channels/323",
+      "hash": null
+    },
+    {
+      "path": "pchat/channels/323/msg_1",
+      "hash": null
+    },
+    {
+      "path": "pchat/channels/323/msg_2",
+      "hash": null
+    }
+  ]
 }

@@ -16,8 +16,8 @@
     },
     {
       "field": "selected",
-      "type": "null",
-      "value": null,
+      "type": "str",
+      "value": "323",
       "path": "state.selected",
       "group": "state",
       "aliases": [

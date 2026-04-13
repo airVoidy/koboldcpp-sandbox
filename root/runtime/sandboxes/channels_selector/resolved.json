@@ -1,7 +1,7 @@
 {
   "container_id": "channels_selector",
   "state": {
-    "selected": null
+    "selected": "323"
   },
   "source": {
     "path": "pchat/channels",

@@ -316,14 +316,14 @@
       "type": "list",
       "value": [
         {
-          "projection": "current_channel_messages__323",
-          "row_key": "323",
-          "ref": "pchat/channels/323"
+          "projection": "current_channel_messages__msg_2",
+          "row_key": "msg_2",
+          "ref": "pchat/channels/323/msg_2"
         },
         {
-          "projection": "current_channel_messages__43",
-          "row_key": "43",
-          "ref": "pchat/channels/43"
+          "projection": "current_channel_messages__msg_1",
+          "row_key": "msg_1",
+          "ref": "pchat/channels/323/msg_1"
         }
       ],
       "path": "source.meta.table.rows",
@@ -391,106 +391,113 @@
       "type": "list",
       "value": [
         {
-          "row_key": "323",
-          "projection": "current_channel_messages__323",
-          "ref": "pchat/channels/323",
+          "row_key": "msg_2",
+          "projection": "current_channel_messages__msg_2",
+          "ref": "pchat/channels/323/msg_2",
           "cells": [
             {
               "kind": "field",
-              "path": "rows.323.user",
+              "path": "rows.msg_2.user",
               "local_name": "user",
-              "bind": "pchat/channels/323._meta.user",
-              "atomic_path": "pchat/channels/323._meta.user",
-              "value": "323",
+              "bind": "pchat/channels/323/msg_2._meta.user",
+              "atomic_path": "pchat/channels/323/msg_2._meta.user",
+              "value": "anon",
               "value_type": "str"
             },
             {
               "kind": "field",
-              "path": "rows.323.content",
+              "path": "rows.msg_2.content",
               "local_name": "content",
-              "bind": "pchat/channels/323._data.content",
-              "atomic_path": "pchat/channels/323._data.content",
-              "value": null,
-              "value_type": "null"
-            },
-            {
-              "kind": "field",
-              "path": "rows.323.ts",
-              "local_name": "ts",
-              "bind": "pchat/channels/323._meta.ts",
-              "atomic_path": "pchat/channels/323._meta.ts",
-              "value": "2026-04-12T05:15:40.952332+00:00",
+              "bind": "pchat/channels/323/msg_2._data.content",
+              "atomic_path": "pchat/channels/323/msg_2._data.content",
+              "value": "ello",
               "value_type": "str"
             },
             {
               "kind": "field",
-              "path": "rows.323.reactions",
-              "local_name": "reactions",
-              "bind": "pchat/channels/323._data.reactions",
-              "atomic_path": "pchat/channels/323._data.reactions",
-              "value": null,
-              "value_type": "null"
+              "path": "rows.msg_2.ts",
+              "local_name": "ts",
+              "bind": "pchat/channels/323/msg_2._meta.ts",
+              "atomic_path": "pchat/channels/323/msg_2._meta.ts",
+              "value": "2026-04-13T05:15:18.910900+00:00",
+              "value_type": "str"
             },
             {
               "kind": "field",
-              "path": "rows.323._deleted",
+              "path": "rows.msg_2.reactions",
+              "local_name": "reactions",
+              "bind": "pchat/channels/323/msg_2._data.reactions",
+              "atomic_path": "pchat/channels/323/msg_2._data.reactions",
+              "value": {
+                "👍": {
+                  "users": [
+                    "anon"
+                  ],
+                  "count": 1
+                }
+              },
+              "value_type": "dict"
+            },
+            {
+              "kind": "field",
+              "path": "rows.msg_2._deleted",
               "local_name": "_deleted",
-              "bind": "pchat/channels/323._data._deleted",
-              "atomic_path": "pchat/channels/323._data._deleted",
+              "bind": "pchat/channels/323/msg_2._data._deleted",
+              "atomic_path": "pchat/channels/323/msg_2._data._deleted",
               "value": null,
               "value_type": "null"
             }
           ]
         },
         {
-          "row_key": "43",
-          "projection": "current_channel_messages__43",
-          "ref": "pchat/channels/43",
+          "row_key": "msg_1",
+          "projection": "current_channel_messages__msg_1",
+          "ref": "pchat/channels/323/msg_1",
           "cells": [
             {
               "kind": "field",
-              "path": "rows.43.user",
+              "path": "rows.msg_1.user",
               "local_name": "user",
-              "bind": "pchat/channels/43._meta.user",
-              "atomic_path": "pchat/channels/43._meta.user",
-              "value": "anon",
+              "bind": "pchat/channels/323/msg_1._meta.user",
+              "atomic_path": "pchat/channels/323/msg_1._meta.user",
+              "value": "323",
               "value_type": "str"
             },
             {
               "kind": "field",
-              "path": "rows.43.content",
+              "path": "rows.msg_1.content",
               "local_name": "content",
-              "bind": "pchat/channels/43._data.content",
-              "atomic_path": "pchat/channels/43._data.content",
-              "value": null,
-              "value_type": "null"
-            },
-            {
-              "kind": "field",
-              "path": "rows.43.ts",
-              "local_name": "ts",
-              "bind": "pchat/channels/43._meta.ts",
-              "atomic_path": "pchat/channels/43._meta.ts",
-              "value": "2026-04-11T20:00:16.227732+00:00",
+              "bind": "pchat/channels/323/msg_1._data.content",
+              "atomic_path": "pchat/channels/323/msg_1._data.content",
+              "value": "321",
               "value_type": "str"
             },
             {
               "kind": "field",
-              "path": "rows.43.reactions",
+              "path": "rows.msg_1.ts",
+              "local_name": "ts",
+              "bind": "pchat/channels/323/msg_1._meta.ts",
+              "atomic_path": "pchat/channels/323/msg_1._meta.ts",
+              "value": "2026-04-12T10:09:51.121781+00:00",
+              "value_type": "str"
+            },
+            {
+              "kind": "field",
+              "path": "rows.msg_1.reactions",
               "local_name": "reactions",
-              "bind": "pchat/channels/43._data.reactions",
-              "atomic_path": "pchat/channels/43._data.reactions",
+              "bind": "pchat/channels/323/msg_1._data.reactions",
+              "atomic_path": "pchat/channels/323/msg_1._data.reactions",
               "value": null,
               "value_type": "null"
             },
             {
               "kind": "field",
-              "path": "rows.43._deleted",
+              "path": "rows.msg_1._deleted",
               "local_name": "_deleted",
-              "bind": "pchat/channels/43._data._deleted",
-              "atomic_path": "pchat/channels/43._data._deleted",
-              "value": null,
-              "value_type": "null"
+              "bind": "pchat/channels/323/msg_1._data._deleted",
+              "atomic_path": "pchat/channels/323/msg_1._data._deleted",
+              "value": true,
+              "value_type": "bool"
             }
           ]
         }
