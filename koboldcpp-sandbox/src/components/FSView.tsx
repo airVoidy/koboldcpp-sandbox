@@ -108,22 +108,6 @@ function NodeTree({ sandbox, node, depth, onSelect }: {
           <span className="text-[9px]" style={{ color: TK.dim }}>
             [{node.children.length}]
           </span>
-        </div>
-        {roots.length === 0 ? (
-          <div className="text-[10px] py-4 text-center" style={{ color: TK.dim }}>
-            empty — run loadServerState() or exec('mk', ...)
-          </div>
-        ) : (
-          roots.map(node => (
-            <NodeTree
-              key={node.path}
-              sandbox={sandbox}
-              node={node}
-              depth={0}
-              selectedPath={selectedPath}
-              onSelect={handleSelect}
-            />
-          ))
         )}
       </div>
 
