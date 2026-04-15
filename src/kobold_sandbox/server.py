@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 from dataclasses import asdict, is_dataclass
+import hashlib
 import shutil
 import uuid
 import json
@@ -15,6 +17,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import httpx
+import jsonata
 import yaml
 from pydantic import BaseModel
 
@@ -55,6 +58,11 @@ from .data_store.store import DataStore
 from .atomic_data_revision import create_atomic_data_revision_router
 from .atomic_wiki import create_atomic_wiki_router
 from .atomic_dsl_api import create_atomic_dsl_router, flatten_json
+try:
+    import jsonata as _jsonata_mod
+    _HAS_JSONATA = True
+except ImportError:
+    _HAS_JSONATA = False
 try:
     from .ui_proto import (
         AddNodeOp,
@@ -145,6 +153,13 @@ class RunRequest(BaseModel):
     commit: bool = False
 
 
+class ProjectionRequest(BaseModel):
+    template: str
+    scope: str = ""
+
+
+class MessageProjectionRequest(BaseModel):
+    path: str
 class ContainerMaterializeRequest(BaseModel):
     container_id: str
 
@@ -4258,7 +4273,6 @@ load();
 
             # Default templates
             self._init_templates()
-            self._init_runtime_containers()
 
             # Precompile + preload all template commands
             import compileall
@@ -4302,21 +4316,6 @@ load();
                 if not dst_path.exists():
                     dst_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(src_path, dst_path)
-
-        def _init_runtime_containers(self):
-            """Create default runtime container manifests for generic materialization."""
-            for container_id in ("channels_selector", "current_channel", "current_channel_messages"):
-                meta, state = self._load_default_container_spec(container_id)
-                self._ensure_container(container_id, meta, state)
-
-        def _load_default_container_spec(self, container_id: str) -> tuple[dict, dict]:
-            """Load default container manifest/state from the checkout's root/runtime tree."""
-            defaults_root = Path(__file__).resolve().parents[2] / "root" / "runtime" / "containers" / container_id
-            meta = self._read_json(defaults_root / "_meta.json")
-            state = self._read_json(defaults_root / "state.json")
-            if isinstance(meta, dict) and isinstance(state, dict):
-                return meta, state
-            raise RuntimeError(f"missing default runtime container spec for {container_id}")
 
         def _ensure_container(self, container_id: str, meta: dict, state: dict):
             cdir = self.containers_dir / container_id
@@ -4367,6 +4366,58 @@ load();
                     break
             return None
 
+        # ── Exec-as-capability ────────────────────────────
+
+        def _get_node_schema(self, node_dir: Path) -> dict:
+            """Get merged schema for node by walking template inheritance chain."""
+            meta = self._read_meta(node_dir)
+            node_type = (meta or {}).get("type", "")
+            if not node_type:
+                return {}
+            merged: dict[str, Any] = {}
+            visited = set()
+            current_type = node_type
+            while current_type and current_type not in visited:
+                visited.add(current_type)
+                schema_path = self.templates_dir / current_type / "schema.json"
+                if schema_path.is_file():
+                    try:
+                        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+                        # Earlier in chain = more specific, takes priority
+                        for k, v in schema.items():
+                            if k not in merged:
+                                merged[k] = v
+                            elif k == "children" and isinstance(v, dict):
+                                # Merge children from parent into child (child overrides)
+                                parent_children = dict(v)
+                                parent_children.update(merged.get("children", {}))
+                                merged["children"] = parent_children
+                        current_type = schema.get("inherits", "")
+                    except Exception:
+                        break
+                else:
+                    break
+            return merged
+
+        def _node_has_exec(self, node_dir: Path) -> bool:
+            """Check if node's template declares exec capability."""
+            schema = self._get_node_schema(node_dir)
+            return bool(schema.get("exec", False))
+
+        def _node_can_append(self, node_dir: Path, child_type: str) -> bool:
+            """Check if node allows appending children of given type."""
+            schema = self._get_node_schema(node_dir)
+            children = schema.get("children", {})
+            if not children:
+                return False
+            # Check exact type or wildcard
+            spec = children.get(child_type, children.get("*"))
+            if not spec:
+                return False
+            if isinstance(spec, dict):
+                return bool(spec.get("append", False))
+            return bool(spec)
+
         _cmd_cache: dict[str, tuple] = {}  # path_str -> (execute_fn, mtime)
 
         def _preload_commands(self):
@@ -4406,7 +4457,14 @@ load();
 
         def exec_cmd(self, cmd_str: str, user: str = "anon", log: bool = True, scope_name: str = "CMD") -> dict:
             """Parse and execute a shell command in a named scope.
-            Resolution order: template command .py (by inheritance) -> hardcoded cmd_* method."""
+            Resolution order: template command .py (by inheritance) -> hardcoded cmd_* method.
+            Supports -- raw tail: everything after -- is passed as single last arg."""
+            # Raw tail mode: split at -- before shlex
+            raw_tail = None
+            if " -- " in cmd_str:
+                head, raw_tail = cmd_str.split(" -- ", 1)
+                cmd_str = head
+
             try:
                 parts = shlex.split(cmd_str)
             except ValueError as e:
@@ -4415,6 +4473,8 @@ load();
                 return {"error": "empty command"}
             command = parts[0].lstrip("/").lower()
             args = parts[1:]
+            if raw_tail is not None:
+                args.append(raw_tail)
             scope = self.get_scope(scope_name)
 
             # 1. Try template command (from .py files)
@@ -4461,6 +4521,296 @@ load();
         def _write_data(self, path: Path, data: dict):
             (path / "_data.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+        # ── L0: Exec log (append-only per node) ──────────────
+
+        def _exec_log_path(self, node_dir: Path) -> Path:
+            return node_dir / "_exec.jsonl"
+
+        def _append_exec_entry(self, node_dir: Path, entry: dict):
+            log_path = self._exec_log_path(node_dir)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        def _read_exec_log(self, node_dir: Path) -> list[dict]:
+            log_path = self._exec_log_path(node_dir)
+            if not log_path.exists():
+                return []
+            entries = []
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+            return entries
+
+        # ── Patch-only response builder ───────────────────
+
+        def _build_patch_response(self, before: dict, after: dict, prefix: str = "") -> list[dict]:
+            """Diff two state dicts, return list of patches [{path, value, op}]."""
+            patches: list[dict] = []
+            all_keys = set(list(before.keys()) + list(after.keys()))
+            for key in all_keys:
+                path = f"{prefix}.{key}" if prefix else key
+                old_val = before.get(key)
+                new_val = after.get(key)
+                if key not in before:
+                    patches.append({"path": path, "value": new_val, "op": "add"})
+                elif key not in after:
+                    patches.append({"path": path, "value": None, "op": "remove"})
+                elif isinstance(old_val, dict) and isinstance(new_val, dict):
+                    patches.extend(self._build_patch_response(old_val, new_val, path))
+                elif isinstance(old_val, list) and isinstance(new_val, list):
+                    if old_val != new_val:
+                        patches.append({"path": path, "value": new_val, "op": "update"})
+                elif old_val != new_val:
+                    patches.append({"path": path, "value": new_val, "op": "update"})
+            return patches
+
+        # ── L1: Projection / flat_store ──────────────────────
+
+        def _field_type_name(self, value: Any) -> str:
+            if value is None:
+                return "null"
+            if isinstance(value, bool):
+                return "bool"
+            if isinstance(value, int) and not isinstance(value, bool):
+                return "int"
+            if isinstance(value, float):
+                return "float"
+            if isinstance(value, str):
+                return "str"
+            if isinstance(value, list):
+                return "list"
+            if isinstance(value, dict):
+                return "dict"
+            return type(value).__name__
+
+        def _projection_hash(self, source_path: str, field_path: str) -> str:
+            raw = f"{source_path}::{field_path}".encode("utf-8")
+            return hashlib.sha1(raw).hexdigest()[:12]
+
+        def _projection_field_entry(self, source_path: str, scope: str, key: str, value: Any) -> dict:
+            field_path = f"{scope}.{key}"
+            bind = f"{source_path}.{field_path}"
+            field_hash = self._projection_hash(source_path, field_path)
+            return {
+                "hash": field_hash,
+                "scope": scope,
+                "path": field_path,
+                "full_relative_path": field_path,
+                "bind": bind,
+                "value": value,
+                "value_type": self._field_type_name(value),
+            }
+
+        def _projection_views(self, flat_store: dict[str, list[Any]], view_filters: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+            views: dict[str, list[dict[str, Any]]] = {}
+            for view_name, paths in view_filters.items():
+                rows: list[dict[str, Any]] = []
+                for path in paths:
+                    item = flat_store.get(path)
+                    if not item:
+                        continue
+                    rows.append({"hash": item[0], "path": item[1], "value": item[2]})
+                views[view_name] = rows
+            return views
+
+        def _build_message_projection(self, msg_dir: Path) -> dict:
+            """Build L1 projection for a message node: flat_store + views."""
+            source_path = self._rel_path(msg_dir)
+            meta = self._read_meta(msg_dir) or {}
+            data = self._read_data(msg_dir) or {}
+            fields = []
+            flat_store: dict[str, list[Any]] = {}
+            view_filters: dict[str, list[str]] = {"all": [], "_meta": [], "_data": []}
+
+            for key, value in meta.items():
+                entry = self._projection_field_entry(source_path, "_meta", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_meta"].append(entry["full_relative_path"])
+
+            for key, value in data.items():
+                entry = self._projection_field_entry(source_path, "_data", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_data"].append(entry["full_relative_path"])
+
+            return {
+                "source_node": source_path,
+                "_meta": {"global_path": f"{source_path}.(_meta.json)", "schema": {k: k for k in meta.keys()}, "value": meta},
+                "_data": {"global_path": f"{source_path}.(_data.json)", "schema": {k: k for k in data.keys()}, "value": data},
+                "fields": fields,
+                "flat_store": flat_store,
+                "view_filters": view_filters,
+                "views": self._projection_views(flat_store, view_filters),
+            }
+
+        # ── JSONata eval over projection ─────────────────────
+
+        def _build_jsonata_bindings(self, projection: dict) -> dict[str, Any]:
+            flat_store = projection.get("flat_store") or {}
+            views = projection.get("views") or {}
+
+            def field(path: str) -> dict[str, Any] | None:
+                item = flat_store.get(str(path))
+                if not item:
+                    return None
+                return {"hash": item[0], "path": item[1], "value": item[2]}
+
+            def value(path: str) -> Any:
+                item = flat_store.get(str(path))
+                return item[2] if item else None
+
+            def view(name: str) -> list[dict[str, Any]]:
+                return list(views.get(str(name)) or [])
+
+            return {
+                "projection": projection,
+                "flat_store": flat_store,
+                "views": views,
+                "field": field,
+                "value": value,
+                "view": view,
+            }
+
+        def eval_message_projection_jsonata(self, msg_dir: Path, expr: str, *, view_name: str = "all", input_name: str = "view") -> dict:
+            """Evaluate JSONata expression against a message projection."""
+            if not _HAS_JSONATA:
+                return {"error": "jsonata-python not installed (pip install jsonata)"}
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            input_map = {
+                "projection": projection,
+                "flat_store": projection.get("flat_store") or {},
+                "view": (projection.get("views") or {}).get(view_name) or [],
+            }
+            if input_name not in input_map:
+                return {"error": f"unsupported input '{input_name}'"}
+
+            expression = _jsonata_mod.Jsonata(expr)
+            bindings = self._build_jsonata_bindings(projection)
+            expression.assign("projection", bindings["projection"])
+            expression.assign("flat_store", bindings["flat_store"])
+            expression.assign("views", bindings["views"])
+            expression.register_lambda("field", bindings["field"])
+            expression.register_lambda("value", bindings["value"])
+            expression.register_lambda("view", bindings["view"])
+            result = expression.evaluate(input_map[input_name])
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "input": input_name,
+                "view": view_name,
+                "expr": expr,
+                "result": result,
+                "projection": projection,
+            }
+
+        # ── Checkpoint ───────────────────────────────────────
+
+        def create_message_checkpoint(self, msg_dir: Path, user: str) -> dict:
+            """Create child checkpoint node capturing message projection state."""
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            checkpoint_name = self._next_slot_id(msg_dir, "checkpoint")
+            checkpoint_dir = msg_dir / checkpoint_name
+            checkpoint_dir.mkdir()
+
+            checkpoint_meta = {
+                "type": "message", "kind": "checkpoint",
+                "user": user, "ts": utc_now(),
+                "source": projection["source_node"],
+            }
+            checkpoint_data = {
+                "projection": projection,
+                "resolved": {"meta": projection["_meta"]["value"], "data": projection["_data"]["value"]},
+            }
+            self._write_meta(checkpoint_dir, checkpoint_meta)
+            self._write_data(checkpoint_dir, checkpoint_data)
+            self._append_exec_entry(msg_dir, {
+                "op": "checkpoint", "user": user, "ts": checkpoint_meta["ts"],
+                "checkpoint": self._rel_path(checkpoint_dir),
+                "source": projection["source_node"],
+                "resolved": checkpoint_data["resolved"],
+            })
+            return {
+                "ok": True, "source": self._rel_path(msg_dir),
+                "projection": projection,
+                "checkpoint": {"path": self._rel_path(checkpoint_dir), "meta": checkpoint_meta, "data": checkpoint_data},
+            }
+
+        # ── Template aggregation ──────────────────────────
+
+        def _build_template_aggregation(self, template_type: str, scope_dir: Path) -> dict:
+            """Aggregate projection of all instances matching template type.
+            e.g. type='msg' finds all msg_* dirs, builds projection for each, unions flat_stores."""
+            prefix = f"{template_type}_"
+            instances = []
+            merged_flat_store: dict[str, list[Any]] = {}
+            merged_fields: list[dict] = []
+            instance_views: dict[str, dict] = {}
+
+            for child in sorted(scope_dir.iterdir(), key=lambda p: p.name):
+                if not child.is_dir() or child.name.startswith("_"):
+                    continue
+                if not child.name.startswith(prefix):
+                    continue
+                meta = self._read_meta(child)
+                if not meta or meta.get("type") != template_type:
+                    # Also check by prefix match even without exact type
+                    if meta and meta.get("type"):
+                        continue
+
+                projection = self._build_message_projection(child)
+                instance_id = child.name
+                instances.append({
+                    "id": instance_id,
+                    "path": self._rel_path(child),
+                    "meta": meta or {},
+                })
+
+                # Namespace fields under instance_id
+                for field_path, entry in projection.get("flat_store", {}).items():
+                    namespaced = f"{instance_id}.{field_path}"
+                    merged_flat_store[namespaced] = [entry[0], namespaced, entry[2]]
+                    merged_fields.append({
+                        "instance": instance_id,
+                        "path": field_path,
+                        "namespaced_path": namespaced,
+                        "hash": entry[0],
+                        "value": entry[2],
+                    })
+
+                # Per-instance views
+                instance_views[instance_id] = projection.get("views", {})
+
+            return {
+                "ok": True,
+                "type": template_type,
+                "scope": self._rel_path(scope_dir),
+                "count": len(instances),
+                "instances": instances,
+                "flat_store": merged_flat_store,
+                "fields": merged_fields,
+                "instance_views": instance_views,
+            }
+
         def _read_json(self, path: Path):
             if path.exists():
                 return json.loads(path.read_text(encoding="utf-8"))
@@ -4470,6 +4820,168 @@ load();
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+        # ── L1: Message projection / flat_store ─────────────────────
+
+        def _field_type_name(self, value: Any) -> str:
+            if value is None:
+                return "null"
+            if isinstance(value, bool):
+                return "bool"
+            if isinstance(value, int) and not isinstance(value, bool):
+                return "int"
+            if isinstance(value, float):
+                return "float"
+            if isinstance(value, str):
+                return "str"
+            if isinstance(value, list):
+                return "list"
+            if isinstance(value, dict):
+                return "dict"
+            return type(value).__name__
+
+        def _projection_hash(self, source_path: str, field_path: str) -> str:
+            raw = f"{source_path}::{field_path}".encode("utf-8")
+            return hashlib.sha1(raw).hexdigest()[:12]
+
+        def _projection_field_entry(self, source_path: str, scope: str, key: str, value: Any) -> dict:
+            field_path = f"{scope}.{key}"
+            bind = f"{source_path}.{field_path}"
+            field_hash = self._projection_hash(source_path, field_path)
+            return {
+                "hash": field_hash,
+                "scope": scope,
+                "path": field_path,
+                "full_relative_path": field_path,
+                "bind": bind,
+                "value": value,
+                "value_type": self._field_type_name(value),
+            }
+
+        def _projection_views(self, flat_store: dict[str, list[Any]], view_filters: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+            views: dict[str, list[dict[str, Any]]] = {}
+            for view_name, paths in view_filters.items():
+                rows: list[dict[str, Any]] = []
+                for path in paths:
+                    item = flat_store.get(path)
+                    if not item:
+                        continue
+                    rows.append({
+                        "hash": item[0],
+                        "path": item[1],
+                        "value": item[2],
+                    })
+                views[view_name] = rows
+            return views
+
+        def _build_message_projection(self, msg_dir: Path) -> dict:
+            source_path = self._rel_path(msg_dir)
+            meta = self._read_meta(msg_dir) or {}
+            data = self._read_data(msg_dir) or {}
+
+            fields: list[dict[str, Any]] = []
+            flat_store: dict[str, list[Any]] = {}
+            view_filters: dict[str, list[str]] = {"all": [], "_meta": [], "_data": []}
+
+            for key, value in meta.items():
+                entry = self._projection_field_entry(source_path, "_meta", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_meta"].append(entry["full_relative_path"])
+
+            for key, value in data.items():
+                entry = self._projection_field_entry(source_path, "_data", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_data"].append(entry["full_relative_path"])
+
+            return {
+                "source_node": source_path,
+                "_meta": {
+                    "global_path": f"{source_path}._meta",
+                    "schema": {key: key for key in meta.keys()},
+                    "value": meta,
+                },
+                "_data": {
+                    "global_path": f"{source_path}._data",
+                    "schema": {key: key for key in data.keys()},
+                    "value": data,
+                },
+                "fields": fields,
+                "flat_store": flat_store,
+                "view_filters": view_filters,
+                "views": self._projection_views(flat_store, view_filters),
+            }
+
+        def _build_jsonata_bindings(self, projection: dict) -> dict[str, Any]:
+            flat_store = projection.get("flat_store") or {}
+            views = projection.get("views") or {}
+
+            def field(path: str) -> dict[str, Any] | None:
+                item = flat_store.get(str(path))
+                if not item:
+                    return None
+                return {"hash": item[0], "path": item[1], "value": item[2]}
+
+            def value(path: str) -> Any:
+                item = flat_store.get(str(path))
+                return item[2] if item else None
+
+            def view(name: str) -> Any:
+                return views.get(str(name)) or []
+
+            return {
+                "projection": projection,
+                "flat_store": flat_store,
+                "views": views,
+                "field": field,
+                "value": value,
+                "view": view,
+            }
+
+        def eval_message_projection_jsonata(
+            self,
+            msg_dir: Path,
+            expr: str,
+            *,
+            view_name: str = "all",
+            input_name: str = "view",
+        ) -> dict:
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            input_map = {
+                "projection": projection,
+                "flat_store": projection.get("flat_store") or {},
+                "view": (projection.get("views") or {}).get(view_name) or [],
+            }
+            if input_name not in input_map:
+                return {"error": f"unsupported input '{input_name}'"}
+
+            expression = jsonata.Jsonata(expr)
+            bindings = self._build_jsonata_bindings(projection)
+            expression.assign("projection", bindings["projection"])
+            expression.assign("flat_store", bindings["flat_store"])
+            expression.assign("views", bindings["views"])
+            expression.register_lambda("field", bindings["field"])
+            expression.register_lambda("value", bindings["value"])
+            expression.register_lambda("view", bindings["view"])
+            result = expression.evaluate(input_map[input_name])
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "input": input_name,
+                "view": view_name,
+                "expr": expr,
+                "projection": projection,
+                "result": result,
+            }
+
         def _container_dir(self, container_id: str) -> Path:
             return self.containers_dir / container_id
 
@@ -4477,9 +4989,38 @@ load();
             return self._read_json(self._container_dir(container_id) / "_meta.json") or {}
 
         def _read_container_state(self, container_id: str) -> dict:
-            return self._read_json(self._container_dir(container_id) / "state.json") or {}
+            """Read container state. Try state.json cache first, fallback to log replay."""
+            cached = self._read_json(self._container_dir(container_id) / "state.json")
+            if cached:
+                return cached
+            return self._container_state_from_log(container_id)
+
+        def _container_state_from_log(self, container_id: str) -> dict:
+            """Replay cmd_log.jsonl to rebuild container state."""
+            log_path = self._container_dir(container_id) / "cmd_log.jsonl"
+            if not log_path.exists():
+                return {}
+            state: dict[str, Any] = {}
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # Replay state mutations from log entries
+                cmd = entry.get("cmd", "")
+                if cmd == "cselect" and entry.get("args"):
+                    state["selected"] = entry["args"][0]
+                elif "state_patch" in entry:
+                    # Generic state patch entry
+                    for k, v in entry["state_patch"].items():
+                        self._set_by_dotpath(state, k, v)
+            return state
 
         def _write_container_state(self, container_id: str, state: dict):
+            """Write container state cache + append to exec log."""
             self._write_json(self._container_dir(container_id) / "state.json", state)
 
         def _append_container_log(self, container_id: str, entry: dict):
@@ -5414,82 +5955,6 @@ load();
                 "refs": refs,
             }
 
-        def container_select_channel(self, name: str, user: str) -> dict:
-            container_id = "channels_selector"
-            spec = self._container_action_spec(container_id, "select")
-            state_path = spec.get("state_path", "selected")
-            state = self._read_container_state(container_id)
-            self._set_by_dotpath(state, state_path, name)
-            self._write_container_state(container_id, state)
-            self._append_container_log("channels_selector", {
-                "cmd": "cselect",
-                "args": [name],
-                "user": user,
-                "ts": utc_now(),
-            })
-            mats = self._run_action_rebuilds(container_id, "select", [container_id, "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": name,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
-        def container_post_selected(self, text: str, user: str) -> dict:
-            channel_name = self._container_selected_value("current_channel")
-            if not channel_name:
-                return {"error": "no selected channel"}
-            ch_dir = self._action_target_dir("current_channel", "post")
-            if not ch_dir.is_dir():
-                return {"error": f"selected channel not found: {channel_name}"}
-
-            ch_scope = self.get_scope(f"channel:{channel_name}")
-            ch_scope.cwd = ch_dir
-            post_result = self.cmd_post([text], user, ch_scope)
-            self._append_container_log("current_channel", {
-                "cmd": "cpost",
-                "args": [text],
-                "user": user,
-                "ts": utc_now(),
-                "selected": channel_name,
-            })
-            mats = self._run_action_rebuilds("current_channel", "post", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": bool(post_result.get("ok")),
-                "selected": channel_name,
-                "post": post_result,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
-        def container_create_channel(self, name: str, user: str, scope: "ConsoleScope") -> dict:
-            mk_result = self.cmd_mkchannel([name], user, scope)
-            if mk_result.get("error"):
-                return mk_result
-
-            spec = self._container_action_spec("channels_selector", "create_channel")
-            selector_state = self._read_container_state("channels_selector")
-            if spec.get("select_new", True):
-                selector_state["selected"] = name
-            self._write_container_state("channels_selector", selector_state)
-            self._append_container_log("channels_selector", {
-                "cmd": "cmkchannel",
-                "args": [name],
-                "user": user,
-                "ts": utc_now(),
-            })
-            mats = self._run_action_rebuilds("channels_selector", "create_channel", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": name,
-                "channel": mk_result,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
         def container_create_projection(self, container_id: str, source_path: str, local_root: str, fields: list[str], user: str) -> dict:
             if not container_id:
                 return {"error": "container_id is required"}
@@ -5702,117 +6167,6 @@ load();
                 "pagination": pagination,
             }
 
-        def container_patch_selected(self, raw_path: str, value: Any, user: str) -> dict:
-            channel_name = self._container_selected_value("current_channel")
-            if not channel_name:
-                return {"error": "no selected channel"}
-            channel_dir = self._action_target_dir("current_channel", "patch")
-            if not channel_dir.is_dir():
-                return {"error": f"selected channel not found: {channel_name}"}
-
-            target_dir = channel_dir
-            field_path = raw_path
-            parts = raw_path.split(".")
-            candidate = channel_dir / parts[0]
-            if candidate.is_dir() and len(parts) > 1:
-                target_dir = candidate
-                field_path = ".".join(parts[1:])
-
-            if field_path.startswith("meta."):
-                atomic_path = f"{self._rel_path(target_dir)}._meta.{field_path[len('meta.'):]}"
-                patch_result = self.atomic_patch(atomic_path, value)
-                if patch_result.get("error"):
-                    return patch_result
-                target_kind = "meta"
-            else:
-                atomic_path = f"{self._rel_path(target_dir)}._data.{field_path}"
-                patch_result = self.atomic_patch(atomic_path, value)
-                if patch_result.get("error"):
-                    return patch_result
-                target_kind = "data"
-
-            self._append_container_log("current_channel", {
-                "cmd": "cpatch",
-                "args": [raw_path],
-                "user": user,
-                "ts": utc_now(),
-                "selected": channel_name,
-                "target": raw_path,
-                "atomic_path": atomic_path,
-                "value": value,
-            })
-            mats = self._run_action_rebuilds("current_channel", "patch", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": channel_name,
-                "path": self._rel_path(target_dir),
-                "target": raw_path,
-                "atomic_path": atomic_path,
-                "target_kind": target_kind,
-                "value": value,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
-        def container_react_selected(self, msg_id: str, emoji: str, user: str) -> dict:
-            channel_name = self._container_selected_value("current_channel")
-            if not channel_name:
-                return {"error": "no selected channel"}
-            base_dir = self._action_target_dir("current_channel", "react")
-            msg_dir = base_dir / msg_id
-            if not msg_dir.is_dir():
-                return {"error": f"message not found: {msg_id}"}
-
-            atomic_path = f"{self._rel_path(msg_dir)}._data.reactions"
-            current = self.atomic_read(atomic_path)
-            if current.get("error"):
-                return current
-
-            reactions = current.get("value")
-            if not isinstance(reactions, dict):
-                reactions = {}
-            entry = reactions.get(emoji)
-            if not isinstance(entry, dict):
-                entry = {"users": [], "count": 0}
-            users = entry.get("users")
-            if not isinstance(users, list):
-                users = []
-
-            if user in users:
-                users = [u for u in users if u != user]
-            else:
-                users = users + [user]
-
-            if users:
-                reactions[emoji] = {"users": users, "count": len(users)}
-            else:
-                reactions.pop(emoji, None)
-
-            patch_result = self.atomic_patch(atomic_path, reactions)
-            if patch_result.get("error"):
-                return patch_result
-            self._append_container_log("current_channel", {
-                "cmd": "creact",
-                "args": [msg_id, emoji],
-                "user": user,
-                "ts": utc_now(),
-                "selected": channel_name,
-                "atomic_path": patch_result.get("atomic_path"),
-            })
-            mats = self._run_action_rebuilds("current_channel", "react", ["channels_selector", "current_channel", "current_channel_messages"])
-            return {
-                "ok": True,
-                "selected": channel_name,
-                "message": msg_id,
-                "emoji": emoji,
-                "atomic_path": patch_result.get("atomic_path"),
-                "reactions": reactions,
-                "selector": mats.get("channels_selector"),
-                "current_channel": mats.get("current_channel"),
-                "current_channel_messages": mats.get("current_channel_messages"),
-            }
-
         def _next_slot_id(self, parent: Path, type_prefix: str) -> str:
             """Find next sequential slot: msg_1, msg_2, ..."""
             existing = []
@@ -5872,6 +6226,31 @@ load();
                     entries.append(parsed)
             return entries
 
+        def _channel_dir_from_scope(self, scope: "ConsoleScope") -> Path | None:
+            current = scope.cwd
+            visited: set[Path] = set()
+            while current not in visited:
+                visited.add(current)
+                meta = self._read_meta(current) or {}
+                if meta.get("type") == "channel":
+                    return current
+                if current == self.root:
+                    break
+                parent = current.parent
+                if parent == current:
+                    break
+                current = parent
+            return None
+
+        def _selected_message_dir(self, msg_id: str, scope: "ConsoleScope") -> tuple[Path | None, str | None]:
+            channel_dir = self._channel_dir_from_scope(scope)
+            if channel_dir is None:
+                return None, "no selected channel"
+            msg_dir = channel_dir / msg_id
+            if not msg_dir.is_dir():
+                return None, f"message not found: {msg_id}"
+            return msg_dir, None
+
         # ── Commands ──────────────────────────────────────────
 
         def cmd_mktype(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
@@ -5909,16 +6288,22 @@ load();
             self._write_meta(ch_dir, meta)
             self._write_data(ch_dir, {})
             self._append_child_ref(channels_dir, ch_dir)
+            self._append_exec_entry(ch_dir, {
+                "op": "mkchannel", "user": user, "ts": meta["ts"], "name": name,
+            })
             # Auto-create channel scope
             ch_scope = self.get_scope(f"channel:{name}")
             ch_scope.cwd = ch_dir
             return {"ok": True, "path": self._rel_path(ch_dir), "meta": meta, "scope": f"channel:{name}"}
 
         def cmd_mk(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Create a node of given type in current scope."""
+            """Create a node of given type in current scope. Checks children capability."""
             if len(args) < 2:
                 return {"error": "usage: /mk <type> <name>"}
             node_type, name = args[0], args[1]
+            # Capability check: can this container accept children of this type?
+            if not self._node_can_append(scope.cwd, node_type):
+                return {"error": f"cannot create {node_type} in {self._rel_path(scope.cwd)}: no children scope for this type"}
             node_dir = scope.cwd / name
             if node_dir.exists():
                 meta = self._read_meta(node_dir) or {}
@@ -5928,6 +6313,10 @@ load();
             self._write_meta(node_dir, meta)
             self._write_data(node_dir, {})
             self._append_child_ref(scope.cwd, node_dir)
+            self._append_exec_entry(node_dir, {
+                "op": "mk", "user": user, "ts": meta["ts"],
+                "type": node_type, "name": name,
+            })
             return {"ok": True, "path": self._rel_path(node_dir), "meta": meta}
 
         def cmd_cd(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
@@ -6036,16 +6425,182 @@ load();
             return {"path": self._rel_path(target), "meta": meta, "data": data}
 
         def cmd_post(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Create a message in current scope."""
+            """Create a message in current scope. Checks msg append capability."""
+            if not self._node_can_append(scope.cwd, "msg"):
+                # Fallback: allow if node type is channel/cards (backward compat)
+                meta = self._read_meta(scope.cwd) or {}
+                if meta.get("type") not in ("channel", "channels", "cards"):
+                    return {"error": f"cannot post in {self._rel_path(scope.cwd)}: no msg children scope"}
             text = " ".join(args) if args else ""
             slot_name = self._next_slot_id(scope.cwd, "msg")
             slot_dir = scope.cwd / slot_name
             slot_dir.mkdir()
             meta = {"type": "message", "user": user, "ts": utc_now()}
+            data = {"content": text}
             self._write_meta(slot_dir, meta)
-            self._write_data(slot_dir, {"content": text})
+            self._write_data(slot_dir, data)
+            self._append_exec_entry(slot_dir, {
+                "op": "post",
+                "user": user,
+                "ts": meta["ts"],
+                "meta": meta,
+                "data": data,
+            })
             self._append_child_ref(scope.cwd, slot_dir)
-            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": {"content": text}}
+            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": data}
+
+        def cmd_cpatch(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            if len(args) < 2:
+                return {"error": "usage: /cpatch <path> <value>"}
+            raw_path = args[0]
+            raw_value = " ".join(args[1:])
+            try:
+                value = json.loads(raw_value)
+            except Exception:
+                value = raw_value
+
+            channel_dir = self._channel_dir_from_scope(scope)
+            if channel_dir is None:
+                return {"error": "no selected channel"}
+
+            target_dir = channel_dir
+            field_path = raw_path
+            parts = raw_path.split(".")
+            candidate = channel_dir / parts[0]
+            if candidate.is_dir() and len(parts) > 1:
+                target_dir = candidate
+                field_path = ".".join(parts[1:])
+
+            if field_path.startswith("meta."):
+                atomic_path = f"{self._rel_path(target_dir)}._meta.{field_path[len('meta.'):]}"
+                patch_result = self.atomic_patch(atomic_path, value)
+                if patch_result.get("error"):
+                    return patch_result
+                target_kind = "meta"
+            else:
+                atomic_path = f"{self._rel_path(target_dir)}._data.{field_path}"
+                patch_result = self.atomic_patch(atomic_path, value)
+                if patch_result.get("error"):
+                    return patch_result
+                target_kind = "data"
+
+            if target_dir != channel_dir and target_dir.is_dir():
+                self._append_exec_entry(target_dir, {
+                    "op": "patch",
+                    "user": user,
+                    "ts": utc_now(),
+                    "target": raw_path,
+                    "target_kind": target_kind,
+                    "field_path": field_path,
+                    "atomic_path": atomic_path,
+                    "value": value,
+                })
+
+            return {
+                "ok": True,
+                "selected": channel_dir.name,
+                "path": self._rel_path(target_dir),
+                "target": raw_path,
+                "atomic_path": atomic_path,
+                "target_kind": target_kind,
+                "value": value,
+            }
+
+        def cmd_creact(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            if len(args) < 2:
+                return {"error": "usage: /creact <msg_id> <emoji>"}
+            msg_id, emoji = args[0], args[1]
+            msg_dir, error = self._selected_message_dir(msg_id, scope)
+            if error:
+                return {"error": error}
+            assert msg_dir is not None
+
+            atomic_path = f"{self._rel_path(msg_dir)}._data.reactions"
+            current = self.atomic_read(atomic_path)
+            if current.get("error"):
+                return current
+
+            reactions = current.get("value")
+            if not isinstance(reactions, dict):
+                reactions = {}
+            entry = reactions.get(emoji)
+            if not isinstance(entry, dict):
+                entry = {"users": [], "count": 0}
+            users = entry.get("users")
+            if not isinstance(users, list):
+                users = []
+
+            if user in users:
+                users = [u for u in users if u != user]
+            else:
+                users = users + [user]
+
+            if users:
+                reactions[emoji] = {"users": users, "count": len(users)}
+            else:
+                reactions.pop(emoji, None)
+
+            patch_result = self.atomic_patch(atomic_path, reactions)
+            if patch_result.get("error"):
+                return patch_result
+            self._append_exec_entry(msg_dir, {
+                "op": "react",
+                "user": user,
+                "ts": utc_now(),
+                "emoji": emoji,
+                "atomic_path": patch_result.get("atomic_path"),
+                "value": reactions,
+            })
+            return {
+                "ok": True,
+                "selected": msg_dir.parent.name,
+                "message": msg_id,
+                "emoji": emoji,
+                "atomic_path": patch_result.get("atomic_path"),
+                "reactions": reactions,
+            }
+
+        def cmd_mcheckpoint(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Create a child checkpoint node inside a message slot."""
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if args:
+                    return {"error": "usage: /mcheckpoint  (inside message) or /mcheckpoint <msg_id> (inside channel)"}
+                return self.create_message_checkpoint(target, user)
+
+            if not args:
+                return {"error": "usage: /mcheckpoint <msg_id>"}
+            msg_dir = scope.cwd / args[0]
+            return self.create_message_checkpoint(msg_dir, user)
+
+        def cmd_mjsonata(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Evaluate JSONata expression against a message projection."""
+            view_name = "all"
+            input_name = "view"
+            positional: list[str] = []
+            for arg in args:
+                if arg.startswith("--view="):
+                    view_name = arg.split("=", 1)[1].strip() or "all"
+                    continue
+                if arg.startswith("--input="):
+                    input_name = arg.split("=", 1)[1].strip() or "view"
+                    continue
+                positional.append(arg)
+
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if not positional:
+                    return {"error": "usage: /mjsonata <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+                expr = " ".join(positional)
+                return self.eval_message_projection_jsonata(target, expr, view_name=view_name, input_name=input_name)
+
+            if len(positional) < 2:
+                return {"error": "usage: /mjsonata <msg_id> <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+            msg_dir = scope.cwd / positional[0]
+            expr = " ".join(positional[1:])
+            return self.eval_message_projection_jsonata(msg_dir, expr, view_name=view_name, input_name=input_name)
 
         def cmd_rm(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Delete a slot."""
@@ -6055,6 +6610,11 @@ load();
             target = scope.cwd / name
             if not target.is_dir():
                 return {"error": f"not found: {name}"}
+            # Log before deletion
+            self._append_exec_entry(scope.cwd, {
+                "op": "rm", "user": user, "ts": utc_now(),
+                "target": name, "path": self._rel_path(target),
+            })
             import shutil
             shutil.rmtree(target)
             return {"ok": True, "removed": name}
@@ -6149,9 +6709,58 @@ load();
     workspace = PChatWorkspace(Path(root))
     # No replay needed — FS IS the state. Log is for audit/migration only.
 
+    # ── Endpoint logger: every API call → JSONL ──
+    import traceback as _tb
+
+    _endpoint_log_dir = workspace.root / "runtime" / "endpoint_logs"
+    _endpoint_log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _json_log_safe(value):
+        """Return a JSON-serializable copy without dropping runtime object shape."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            return {str(k): _json_log_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [_json_log_safe(v) for v in value]
+        try:
+            json.dumps(value, ensure_ascii=False)
+            return value
+        except TypeError:
+            return str(value)
+
+    def _log_endpoint(endpoint: str, req_data: dict, result: dict | None = None, error: str | None = None):
+        log_path = _endpoint_log_dir / f"{endpoint}.jsonl"
+        entry = {"ts": utc_now(), "endpoint": endpoint, "req": req_data}
+        if result is not None:
+            ok = result.get("ok")
+            err = result.get("error")
+            entry["ok"] = ok
+            if err:
+                entry["error"] = err
+            entry["result"] = _json_log_safe(result)
+        if error:
+            entry["error"] = error
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+
+    def _safe_endpoint(endpoint: str, req_data: dict, fn):
+        """Wrap endpoint: log request, catch errors, log result."""
+        try:
+            result = fn()
+            _log_endpoint(endpoint, req_data, result=result if isinstance(result, dict) else {})
+            return result
+        except Exception as e:
+            tb = _tb.format_exc()
+            _log_endpoint(endpoint, req_data, error=f"{e}\n{tb}")
+            raise
+
     @app.post("/api/pchat/exec")
     def pchat_exec(req: PChatExecRequest) -> dict:
-        return workspace.exec_cmd(req.cmd, req.user, log=req.log, scope_name=req.scope)
+        return _safe_endpoint("exec", {"cmd": req.cmd, "user": req.user, "scope": req.scope},
+            lambda: workspace.exec_cmd(req.cmd, req.user, log=req.log, scope_name=req.scope))
 
     @app.post("/api/pchat/sys")
     def pchat_sys(req: PChatSysRequest) -> dict:
@@ -6161,19 +6770,56 @@ load();
     @app.post("/api/pchat/batch")
     def pchat_batch(req: PChatBatchRequest) -> dict:
         """Execute multiple commands in one HTTP request. Returns list of results."""
-        results = []
-        for cmd in req.cmds:
-            results.append(workspace.exec_cmd(cmd, req.user, log=req.log, scope_name=req.scope))
-        return {"results": results}
+        def run():
+            results = []
+            for cmd in req.cmds:
+                results.append(workspace.exec_cmd(cmd, req.user, log=req.log, scope_name=req.scope))
+            return {"results": results}
+        return _safe_endpoint("batch", {"cmds": req.cmds, "user": req.user}, run)
 
     @app.post("/api/pchat/view")
     def pchat_view(req: PChatStateRequest) -> dict:
         """Return full chat state in one request: channels + messages for active channel."""
-        return _pchat_build_state(req.channel, req.msg_limit, req.user)
+        return _safe_endpoint("view", {"channel": req.channel, "user": req.user},
+            lambda: _pchat_build_state(req.channel, req.msg_limit, req.user))
 
-    @app.post("/api/container/materialize")
-    def container_materialize(req: ContainerMaterializeRequest) -> dict:
-        return workspace.materialize_container(req.container_id)
+    @app.get("/api/endpoint-logs/{endpoint}")
+    def get_endpoint_log(endpoint: str, tail: int = 50) -> dict:
+        """Read last N entries from endpoint log."""
+        log_path = _endpoint_log_dir / f"{endpoint}.jsonl"
+        if not log_path.exists():
+            return {"endpoint": endpoint, "entries": [], "total": 0}
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        entries = []
+        for line in lines[-tail:]:
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        return {"endpoint": endpoint, "entries": entries, "total": len(lines)}
+
+    @app.get("/api/endpoint-logs")
+    def list_endpoint_logs() -> dict:
+        """List all endpoint logs with sizes."""
+        logs = []
+        if _endpoint_log_dir.is_dir():
+            for f in sorted(_endpoint_log_dir.glob("*.jsonl")):
+                logs.append({"endpoint": f.stem, "size": f.stat().st_size, "lines": sum(1 for _ in open(f, encoding="utf-8"))})
+        return {"logs": logs}
+    @app.post("/api/pchat/projection")
+    def pchat_projection(req: ProjectionRequest) -> dict:
+        scope_dir = workspace.root / req.scope if req.scope else workspace.pchat_dir
+        if not scope_dir.is_dir():
+            scope_dir = workspace.pchat_dir
+        return workspace._build_template_aggregation(req.template, scope_dir)
+
+    @app.post("/api/pchat/message-projection")
+    def pchat_message_projection(req: MessageProjectionRequest) -> dict:
+        return _safe_endpoint(
+            "message_projection",
+            {"path": req.path},
+            lambda: workspace._build_message_projection(workspace.root / Path(req.path)),
+        )
 
     @app.post("/api/atomic/view")
     def atomic_view(req: AtomicViewRequest) -> dict:
@@ -6188,47 +6834,23 @@ load();
         return workspace.atomic_define_field(req.atomic_path, req.value_type, req.default)
 
     @app.get("/api/pchat/state")
-    def pchat_state_get(channel: str | None = None, msg_limit: int = 50) -> dict:
-        """GET variant — returns channels + optional channel messages."""
-        return _pchat_build_state(channel, msg_limit, "anon")
+    def pchat_state_get(channel: str | None = None, msg_limit: int = 50, since: int | None = None) -> dict:
+        """GET variant — returns channels + optional channel messages.
+        since=N: return only exec entries after index N (inverted: 0=latest)."""
+        state = _pchat_build_state(channel, msg_limit, "anon")
+        if since is not None and isinstance(state.get("messages"), list):
+            total = len(state["messages"])
+            # since=0 means client has latest, return empty
+            # since=5 means client is 5 behind, return last 5
+            if since == 0:
+                state["messages"] = []
+            elif since < total:
+                state["messages"] = state["messages"][-since:]
+            state["since"] = since
+            state["total"] = total
+        return state
 
     def _pchat_build_state(channel: str | None, msg_limit: int, user: str) -> dict:
-        selected = workspace._container_selected_value("current_channel")
-        if selected and (channel is None or channel == selected):
-            selector = workspace.materialize_container("channels_selector")
-            current = workspace.materialize_container("current_channel")
-            source_path = current.get("resolved", {}).get("source", {}).get("path")
-            source_dir = workspace.root / Path(source_path) if source_path else None
-            if selector.get("ok") and current.get("ok") and source_dir and source_dir.is_dir():
-                state = selector["resolved"].get("state", {})
-                channels = []
-                for item in selector["resolved"].get("items", []):
-                    channels.append({
-                        "name": item.get("meta", {}).get("name") or item.get("id"),
-                        "path": item.get("path"),
-                        "meta": item.get("meta", {}),
-                        "data": item.get("data", {}),
-                    })
-                messages = []
-                for item in current["resolved"].get("items", []):
-                    data = item.get("data", {}) or {}
-                    if data.get("_deleted"):
-                        continue
-                    messages.append({
-                        "name": item.get("id"),
-                        "path": item.get("path"),
-                        "meta": item.get("meta", {}),
-                        "data": data,
-                    })
-                return {
-                    "channels": channels,
-                    "messages": messages[-msg_limit:],
-                    "active_channel": state.get("selected"),
-                    "user": user,
-                    "ts": utc_now(),
-                    "source": "containers",
-                }
-
         channels_dir = workspace.pchat_dir / "channels"
         channels = []
         if channels_dir.is_dir():
@@ -6249,6 +6871,8 @@ load();
                 for d in msg_dirs[-msg_limit:]:
                     meta = workspace._read_meta(d)
                     data = workspace._read_data(d)
+                    if data and data.get("_deleted"):
+                        continue
                     entry = {"name": d.name, "path": workspace._rel_path(d)}
                     if meta:
                         entry["meta"] = meta
@@ -6262,6 +6886,7 @@ load();
             "active_channel": channel,
             "user": user,
             "ts": utc_now(),
+            "source": "fs",
         }
 
     @app.get("/api/imagegen/samplers")

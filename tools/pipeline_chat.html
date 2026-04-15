@@ -51,12 +51,6 @@ textarea { resize:vertical; }
 .chat-msg .msg-ts { font-size:9px; color:var(--text-dim); margin-left:auto; }
 .chat-msg .msg-user { color:var(--green); font-weight:600; margin-right:4px; }
 .chat-msg .msg-content { }
-.chat-msg .msg-reactions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
-.chat-msg .msg-reaction { font-size:10px; padding:1px 6px; border:1px solid var(--border); border-radius:999px; background:var(--surface2); color:var(--text-dim); }
-.chat-msg .msg-reaction.self { border-color:var(--accent); color:var(--accent); }
-.chat-msg .msg-actions { display:flex; gap:4px; margin-top:6px; }
-.chat-msg .msg-actions button { font-size:10px; padding:1px 6px; }
-.chat-load-more { display:flex; justify-content:center; padding:4px 0 8px; }
 .top-bar input { width:100px; font-size:11px; padding:2px 6px; }
 .chat-input-bar { display:flex; gap:4px; padding:6px 12px; border-top:1px solid var(--border); flex-shrink:0; }
 .chat-input-bar textarea { flex:1; min-height:32px; max-height:120px; resize:vertical; font-size:11px; }
@@ -93,22 +87,6 @@ textarea { resize:vertical; }
 .new-ch { display:flex; gap:2px; padding:4px; border-top:1px solid var(--border); flex-shrink:0; }
 .new-ch input { flex:1; font-size:10px; padding:2px 4px; }
 
-/* FS tree */
-.fs-breadcrumb span { cursor:pointer; }
-.fs-breadcrumb span:hover { color:var(--accent); text-decoration:underline; }
-.fs-breadcrumb .sep { color:var(--border); cursor:default; }
-.fs-breadcrumb .sep:hover { color:var(--border); text-decoration:none; }
-.fs-tree { padding-left:16px; }
-.fs-node { margin:1px 0; }
-.fs-node-hdr { display:flex; align-items:center; gap:4px; padding:2px 4px; border-radius:3px; cursor:pointer; font-size:11px; }
-.fs-node-hdr:hover { background:var(--surface2); }
-.fs-node-hdr .fs-icon { color:var(--text-dim); font-size:10px; width:12px; text-align:center; }
-.fs-node-hdr .fs-name { color:var(--text); }
-.fs-node-hdr .fs-type { font-size:9px; padding:0 3px; border-radius:2px; background:var(--surface2); color:var(--text-dim); margin-left:auto; }
-.fs-node-meta { display:none; padding:2px 4px 2px 20px; font-size:10px; color:var(--text-dim); }
-.fs-node-meta.open { display:block; }
-.fs-node-meta pre { margin:0; white-space:pre-wrap; word-break:break-word; line-height:1.3; }
-
 /* Status */
 .status-bar { font-size:10px; color:var(--text-dim); padding:2px 12px; border-top:1px solid var(--border); flex-shrink:0; background:var(--surface); }
 .status-bar.loading { color:var(--yellow); }
@@ -130,13 +108,27 @@ textarea { resize:vertical; }
   <button class="page-tab" data-page="raw">Raw</button>
 </div>
 
-<!-- Chat Tab — assembled from template panels -->
+<!-- Chat Tab -->
 <div class="page active" id="page-chat">
   <div class="main-layout">
-    <!-- Panel: channels/views/sidebar — loads into this container -->
-    <div id="panel-sidebar" class="sidebar"></div>
-    <!-- Panel: channel/views/content — loads into this container -->
-    <div id="panel-content" class="content-area"></div>
+    <div class="sidebar">
+      <div class="sidebar-hdr">Channels</div>
+      <div class="sidebar-body" id="channel-list"></div>
+      <div class="new-ch">
+        <input id="new-ch-input" placeholder="new channel" onkeydown="if(event.key==='Enter')createChannel()">
+        <button class="btn sm" onclick="createChannel()">+</button>
+      </div>
+    </div>
+    <div class="content-area">
+      <div class="channel-label" id="channel-label">Select or create a channel</div>
+      <div class="chat-thread" id="chat-thread">
+        <div class="chat-empty">No channel selected</div>
+      </div>
+      <div class="chat-input-bar">
+        <textarea id="chat-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+        <button class="btn primary" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -153,8 +145,7 @@ textarea { resize:vertical; }
 </div>
 
 <!-- FS Tab -->
-<div class="page" id="page-fs" style="flex-direction:column;">
-  <div class="fs-breadcrumb" id="fs-breadcrumb" style="padding:4px 8px; font-size:10px; color:var(--text-dim); border-bottom:1px solid var(--border); flex-shrink:0; display:flex; gap:2px; align-items:center;"></div>
+<div class="page" id="page-fs">
   <div class="node-list" id="fs-view"></div>
 </div>
 
@@ -176,10 +167,9 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt
 //  State
 // ══════════════════════════════════════════════════════════
 
-let activeChannelName = localStorage.getItem('pchat_channel') || null;
+let activeChannelPath = null;  // e.g. "pchat/channels/lobby"
+let activeChannelName = null;
 let cmdLog = [];  // shell history for Raw tab
-const LS_KEY = 'pchat_state';  // localStorage cache
-const CHAT_PAGE_SIZE = 50;
 
 document.querySelectorAll('.page-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -206,191 +196,158 @@ async function api(method, path, body) {
   return data;
 }
 
-function getUsername() {
-  return document.getElementById('username-input').value.trim() || 'anon';
-}
-
 // ══════════════════════════════════════════════════════════
-//  Core: one-request state fetch
+//  Shell exec — all commands go through /api/pchat/exec
 // ══════════════════════════════════════════════════════════
 
-async function fetchState(channel) {
-  return api('POST', '/api/pchat/view', {
-    channel: channel || null,
-    user: getUsername(),
-    msg_limit: 50,
-  });
-}
-
-async function materializeContainer(containerId) {
-  return api('POST', '/api/container/materialize', { container_id: containerId });
-}
-
-function messagesFromTableResolved(messagesRes, active) {
-  const messageTable = messagesRes?.resolved?.table || {};
-  const rows = Array.isArray(messageTable.rows) ? messageTable.rows : [];
-  return rows.map(row => {
-    const rowKey = row?.row_key || '';
-    const ref = row?.ref || '';
-    const cells = Array.isArray(row?.cells) ? row.cells : [];
-    const cellMap = Object.fromEntries(cells.map(cell => [cell.local_name || cell.path, cell]));
-    const ts = cellMap.ts?.value || null;
-    const user = cellMap.user?.value || 'anon';
-    const content = cellMap.content?.value || '';
-    const reactions = cellMap.reactions?.value || {};
-    const deleted = !!cellMap._deleted?.value;
-    return {
-      name: rowKey,
-      path: ref || (active ? `pchat/channels/${active}/${rowKey}` : rowKey),
-      meta: { type: 'message', user, ts },
-      data: { content, reactions, _deleted: deleted },
-    };
-  }).filter(item => !item.data?._deleted).reverse();
-}
-
-function mergeMessagesUnique(older, current) {
-  const seen = new Set();
-  const merged = [];
-  for (const item of [...older, ...current]) {
-    const key = item?.path || item?.name;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(item);
-  }
-  return merged;
-}
-
-function mergeMessagesTail(current, newer) {
-  const seen = new Set();
-  const merged = [];
-  for (const item of [...current, ...newer]) {
-    const key = item?.path || item?.name;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(item);
-  }
-  return merged;
-}
-
-function buildStateFromContainers(selectorRes, currentRes, messagesRes) {
-  const selector = selectorRes?.resolved || {};
-  const current = currentRes?.resolved || {};
-  const messageState = messagesRes?.resolved?.state || {};
-  const messagePagination = messageState?.pagination || {};
-  const active = selector.state?.selected || activeChannelName || null;
-  const channels = (selector.items || []).map(item => ({
-    name: item.meta?.name || item.id,
-    path: item.path,
-    meta: item.meta || {},
-    data: item.data || {},
-  }));
-  const messages = messagesFromTableResolved(messagesRes, active);
-  const oldestRef = messages.length ? messages[0].path : '';
-  const newestRef = messages.length ? messages[messages.length - 1].path : '';
-  return {
-    channels,
-    messages,
-    message_window: {
-      limit: Number(messagePagination.limit ?? CHAT_PAGE_SIZE) || CHAT_PAGE_SIZE,
-      offset: Number(messagePagination.offset ?? 0) || 0,
-      before_ref: messagePagination.before_ref || '',
-      after_ref: messagePagination.after_ref || '',
-      oldest_ref: oldestRef,
-      newest_ref: newestRef,
-      has_any: messages.length > 0,
-      count: messages.length,
-    },
-    active_channel: active,
-    user: getUsername(),
-    ts: new Date().toISOString(),
-  };
-}
-
-function renderFromCommandResult(res) {
-  const selectorRes = res?.selector;
-  const currentRes = res?.current_channel;
-  const messagesRes = res?.current_channel_messages;
-  if (!selectorRes?.resolved || !currentRes?.resolved || !messagesRes?.resolved) return false;
-  const state = buildStateFromContainers(selectorRes, currentRes, messagesRes);
-  renderFromState(state);
-  return true;
-}
-
-async function refreshChatContainers() {
-  const [selectorRes, currentRes, messagesRes] = await Promise.all([
-    materializeContainer('channels_selector'),
-    materializeContainer('current_channel'),
-    materializeContainer('current_channel_messages'),
-  ]);
-  if (selectorRes.error) throw new Error(selectorRes.error);
-  if (currentRes.error) throw new Error(currentRes.error);
-  if (messagesRes.error) throw new Error(messagesRes.error);
-  const state = buildStateFromContainers(selectorRes, currentRes, messagesRes);
-  renderFromState(state);
-  return state;
-}
-
-function cacheState(state) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
-}
-
-function loadCachedState() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { return null; }
-}
-
-// ══════════════════════════════════════════════════════════
-//  Shell exec — for Shell tab and mutations
-// ══════════════════════════════════════════════════════════
-
-async function shellExec(cmd, log = true, scope = 'CMD') {
+async function shellExec(cmd, log = true) {
   const user = getUsername();
-  const res = await api('POST', '/api/pchat/exec', { cmd, user, log, scope });
+  const res = await api('POST', '/api/pchat/exec', { cmd, user, log });
   cmdLog.push({ cmd, user, result: res, ts: new Date().toISOString() });
   return res;
 }
 
-async function shellBatch(cmds, log = true, scope = 'CMD') {
-  const user = getUsername();
-  const res = await api('POST', '/api/pchat/batch', { cmds, user, log, scope });
-  for (let i = 0; i < cmds.length; i++) {
-    cmdLog.push({ cmd: cmds[i], user, result: res.results[i], ts: new Date().toISOString() });
-  }
-  return res.results;
+// ══════════════════════════════════════════════════════════
+//  Channels
+// ══════════════════════════════════════════════════════════
+
+async function createChannel() {
+  const input = document.getElementById('new-ch-input');
+  const name = input.value.trim();
+  if (!name) return;
+  input.value = '';
+  setStatus('Creating channel...', true);
+  try {
+    // Navigate to pchat/channels first, then create
+    await shellExec('/select pchat');
+    const mkRes = await shellExec('/select channels');
+    if (mkRes.error) {
+      // channels dir might not exist, create it
+      await shellExec('/mk channels channels');
+      await shellExec('/select channels');
+    }
+    await shellExec(`/mk channel ${name}`);
+    // Go back to pchat for consistent state
+    await shellExec('/up');
+    await shellExec('/up');
+    await loadChannels();
+    selectChannel(name);
+    setStatus('Ready');
+  } catch (e) { setStatus('Error: ' + e.message); }
 }
 
-async function atomicPatchValue(atomicPath, value) {
-  const user = getUsername();
-  const res = await api('POST', '/api/atomic/patch', { atomic_path: atomicPath, value });
-  cmdLog.push({
-    cmd: `@atomic_patch ${atomicPath}`,
-    user,
-    result: res,
-    ts: new Date().toISOString(),
-  });
-  return res;
+async function loadChannels() {
+  try {
+    // Navigate to channels dir and list (read-only, no log)
+    await shellExec('/select pchat', false);
+    const selRes = await shellExec('/select channels', false);
+    if (selRes.error) {
+      await shellExec('/up', false);
+      renderChannelList([]);
+      return;
+    }
+    const ls = await shellExec('/ls', false);
+    await shellExec('/up', false);
+    await shellExec('/up', false);
+    renderChannelList(ls.children || []);
+  } catch (e) {
+    renderChannelList([]);
+  }
+}
+
+function renderChannelList(channels) {
+  const el = document.getElementById('channel-list');
+  if (!channels.length) { el.innerHTML = '<div class="chat-empty" style="font-size:10px">No channels</div>'; return; }
+  el.innerHTML = channels.map(ch => {
+    const name = ch.meta?.name || ch.name;
+    const active = name === activeChannelName ? ' active' : '';
+    return `<div class="channel-item${active}" onclick="selectChannel('${esc(name)}')"><span class="ch-hash">#</span> ${esc(name)}</div>`;
+  }).join('');
+}
+
+async function selectChannel(name) {
+  activeChannelName = name;
+  activeChannelPath = `pchat/channels/${name}`;
+  document.getElementById('channel-label').innerHTML = '# <strong>' + esc(name) + '</strong>';
+  await loadMessages();
+  // Re-render channel list to highlight active
+  await loadChannels();
 }
 
 // ══════════════════════════════════════════════════════════
-//  Render from state object (orchestrator)
+//  Messages
 // ══════════════════════════════════════════════════════════
 
-function renderFromState(state) {
-  renderChannelList(state.channels || []);
-  if (state.active_channel) {
-    activeChannelName = state.active_channel;
-    localStorage.setItem('pchat_channel', activeChannelName);
-    document.getElementById('channel-label').innerHTML = '# <strong>' + esc(activeChannelName) + '</strong>';
-    renderMessages(state.messages || [], state.message_window || {});
-  } else {
-    document.getElementById('channel-label').textContent = 'Select or create a channel';
-    document.getElementById('chat-thread').innerHTML = '<div class="chat-empty">No channel selected</div>';
-  }
-  cacheState(state);
+function getUsername() {
+  return document.getElementById('username-input').value.trim() || 'anon';
 }
 
-// Panel render functions loaded from:
-//   /tpl/channels/views/sidebar.js  (renderChannelList, createChannel, selectChannel)
-//   /tpl/channel/views/content.js   (sendMessage, renderMessages)
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  if (!activeChannelName) {
+    // Auto-create general channel
+    document.getElementById('new-ch-input').value = 'general';
+    await createChannel();
+  }
+  input.value = '';
+  setStatus('Posting...', true);
+  try {
+    // Navigate to channel, post, come back
+    await shellExec('/select pchat');
+    await shellExec('/select channels');
+    await shellExec(`/select ${activeChannelName}`);
+    await shellExec(`/post ${msg}`);
+    // Get updated message list
+    const ls = await shellExec('/ls --sort=date');
+    await shellExec('/up');
+    await shellExec('/up');
+    await shellExec('/up');
+    renderMessages(ls.children || []);
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+async function loadMessages() {
+  if (!activeChannelName) return;
+  try {
+    await shellExec('/select pchat', false);
+    await shellExec('/select channels', false);
+    await shellExec(`/select ${activeChannelName}`, false);
+    const ls = await shellExec('/ls --sort=date', false);
+    await shellExec('/up', false);
+    await shellExec('/up', false);
+    await shellExec('/up', false);
+    renderMessages(ls.children || []);
+  } catch (e) {
+    renderMessages([]);
+  }
+}
+
+function renderMessages(items) {
+  const el = document.getElementById('chat-thread');
+  const msgs = items.filter(i => i.meta?.type === 'message');
+  if (!msgs.length) {
+    el.innerHTML = '<div class="chat-empty">No messages yet. Say something!</div>';
+    return;
+  }
+  const currentUser = getUsername();
+  el.innerHTML = msgs.map(m => {
+    const meta = m.meta || {};
+    const user = meta.user || 'anon';
+    const ts = meta.ts ? new Date(meta.ts).toLocaleTimeString() : '';
+    const content = m.data?.content || m.name || '';
+    const isSelf = user === currentUser;
+    return `<div class="chat-msg${isSelf ? ' self' : ''}">
+      <div class="msg-hdr"><span class="msg-user">${esc(user)}</span><span class="msg-ts">${esc(ts)}</span></div>
+      <div class="msg-content">${esc(content)}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
 
 // ══════════════════════════════════════════════════════════
 //  Shell interactive tab
@@ -404,7 +361,7 @@ async function runShell() {
   const outputEl = document.getElementById('shell-output');
   outputEl.innerHTML += `<div class="sh-line"><span class="sh-cmd">$ ${esc(cmd)}</span></div>`;
   try {
-    const res = await shellExec(cmd, true, 'shell');
+    const res = await shellExec(cmd);
     const cls = res.error ? 'sh-error' : 'sh-result';
     outputEl.innerHTML += `<div class="sh-line"><span class="${cls}">${esc(JSON.stringify(res, null, 2))}</span></div>`;
   } catch (e) {
@@ -418,85 +375,25 @@ async function runShell() {
 //  FS view tab
 // ══════════════════════════════════════════════════════════
 
-let fsCwd = 'pchat';  // current FS view path
-
-function renderFsTree(node, depth = 0) {
-  const meta = node.meta || {};
-  const name = node.name || '?';
-  const type = meta.type || meta.name || '';
-  const hasChildren = (node.children || []).length > 0;
-  const icon = hasChildren ? '▸' : '·';
-  const path = node.path || '';
-  const metaStr = JSON.stringify(meta, null, 2);
-  const dataStr = node.data ? JSON.stringify(node.data, null, 2) : '';
-  const detailStr = dataStr ? metaStr + '\n─── data ───\n' + dataStr : metaStr;
-
-  let html = `<div class="fs-node">
-    <div class="fs-node-hdr" onclick="fsToggle(this)" data-path="${esc(path)}">
-      <span class="fs-icon">${icon}</span>
-      <span class="fs-name">${esc(name)}</span>
-      ${type ? `<span class="fs-type">${esc(type)}</span>` : ''}
-    </div>
-    <div class="fs-node-meta"><pre>${esc(detailStr)}</pre></div>`;
-
-  if (hasChildren) {
-    html += `<div class="fs-tree" style="display:none;">`;
-    for (const child of node.children) {
-      html += renderFsTree(child, depth + 1);
-    }
-    html += `</div>`;
-  }
-  html += `</div>`;
-  return html;
-}
-
-function fsToggle(hdr) {
-  // Toggle meta
-  const meta = hdr.nextElementSibling;
-  meta.classList.toggle('open');
-  // Toggle children tree
-  const tree = meta.nextElementSibling;
-  if (tree && tree.classList.contains('fs-tree')) {
-    const show = tree.style.display === 'none';
-    tree.style.display = show ? 'block' : 'none';
-    hdr.querySelector('.fs-icon').textContent = show ? '▾' : '▸';
-  }
-}
-
-function renderFsBreadcrumb(path) {
-  const el = document.getElementById('fs-breadcrumb');
-  const parts = path.split('/');
-  let html = '';
-  let acc = '';
-  for (let i = 0; i < parts.length; i++) {
-    if (i > 0) { html += '<span class="sep">/</span>'; acc += '/'; }
-    acc += parts[i];
-    const p = acc;
-    html += `<span onclick="fsNavigate('${esc(p)}')">${esc(parts[i])}</span>`;
-  }
-  el.innerHTML = html;
-}
-
-async function fsNavigate(path) {
-  fsCwd = path;
-  await renderFsView();
-}
-
 async function renderFsView() {
   const el = document.getElementById('fs-view');
-  renderFsBreadcrumb(fsCwd);
   try {
-    const res = await shellExec(`/query ${fsCwd} --depth=3 --limit=100`, false, 'sys');
-    if (res.error) {
-      el.innerHTML = `<div class="chat-empty" style="padding:12px">${esc(res.error)}</div>`;
-      return;
-    }
+    const res = await api('GET', '/api/pchat/state');
     const children = res.children || [];
     if (!children.length) {
-      el.innerHTML = '<div class="chat-empty" style="padding:12px">Empty</div>';
+      el.innerHTML = '<div class="chat-empty" style="padding:12px">Empty workspace</div>';
       return;
     }
-    el.innerHTML = children.map(c => renderFsTree(c)).join('');
+    el.innerHTML = children.map(c => {
+      const meta = c.meta || {};
+      return `<div class="pnode">
+        <div class="pnode-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
+          <span class="pnode-id">${esc(c.path)}</span>
+          <span class="pnode-kind">${esc(meta.type || '?')}</span>
+        </div>
+        <div class="pnode-body"><pre>${esc(JSON.stringify(c, null, 2))}</pre></div>
+      </div>`;
+    }).join('');
   } catch (e) {
     el.innerHTML = `<div class="chat-empty">${esc(e.message)}</div>`;
   }
@@ -516,9 +413,8 @@ function renderRaw() {
 async function resetAll() {
   await shellExec('/reset');
   cmdLog = [];
+  activeChannelPath = null;
   activeChannelName = null;
-  localStorage.removeItem('pchat_channel');
-  localStorage.removeItem(LS_KEY);
   document.getElementById('channel-label').textContent = 'Select or create a channel';
   document.getElementById('chat-thread').innerHTML = '<div class="chat-empty">No channel selected</div>';
   renderChannelList([]);
@@ -542,61 +438,7 @@ document.querySelectorAll('.page-tab').forEach(btn => {
   });
 });
 
-// ── Panel loader ──
-async function loadPanel(containerId, htmlUrl) {
-  const el = document.getElementById(containerId);
-  try {
-    const r = await fetch(htmlUrl);
-    if (r.ok) el.innerHTML = await r.text();
-  } catch {}
-}
-
-function loadScript(url) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = url;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.body.appendChild(s);
-  });
-}
-
-// Boot: load panels, then state
-(async () => {
-  // 0. Load panel HTML from templates
-  await Promise.all([
-    loadPanel('panel-sidebar', '/tpl/channels/views/sidebar.html'),
-    loadPanel('panel-content', '/tpl/channel/views/content.html'),
-  ]);
-  // 0b. Load panel JS
-  await Promise.all([
-    loadScript('/tpl/channels/views/sidebar.js'),
-    loadScript('/tpl/channel/views/content.js'),
-  ]);
-
-  // 1. Render from localStorage cache (instant)
-  const cached = loadCachedState();
-  if (cached) {
-    renderFromState(cached);
-    setStatus('Cached — refreshing...', true);
-  }
-
-  // 2. Fetch fresh state from server (one request)
-  try {
-    // Session start
-    await shellExec(`/session`, true);
-    try {
-      await refreshChatContainers();
-    } catch {
-      const state = await fetchState(activeChannelName);
-      renderFromState(state);
-    }
-    setStatus('Ready');
-  } catch (e) {
-    if (!cached) setStatus('Server unavailable');
-    else setStatus('Using cached data (server unavailable)');
-  }
-})();
+loadChannels().then(() => setStatus('Ready'));
 </script>
 </body>
 </html>
