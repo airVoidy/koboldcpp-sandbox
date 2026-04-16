@@ -35,7 +35,7 @@ export async function execCmd(
     setState(prev => ({ ...prev, active_channel: name }))
     // Fetch fresh state for that channel
     try {
-      const fresh = await api.getState(name, user)
+      const fresh = await api.loadState(name, user)
       setState(() => fresh)
     } catch {
       // server failed, navigation state still valid
@@ -49,7 +49,7 @@ export async function execCmd(
     // Refresh state after mutations
     if (!READ_OPS.has(op)) {
       try {
-        const fresh = await api.getState(state.active_channel ?? undefined, user)
+        const fresh = await api.loadState(state.active_channel ?? undefined, user)
         setState(() => fresh)
       } catch {
         // refresh failed

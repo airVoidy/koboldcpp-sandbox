@@ -7,6 +7,7 @@ import { useLocalStorageState } from 'ahooks'
 import type { ChatState } from '@/types/chat'
 import { execCmd, type StateUpdater } from '@/lib/client-cmd'
 import * as api from '@/lib/api'
+import { ingestChatState } from '@/data'
 
 const LS_KEY = 'pchat_state'
 const LS_USER = 'pchat_user'
@@ -44,8 +45,10 @@ export function useChat() {
 
   const refresh = useCallback(async (channel?: string) => {
     try {
-      const s = await api.getState(channel ?? activeChannel ?? undefined, user ?? 'anon')
+      const s = await api.loadState(channel ?? activeChannel ?? undefined, user ?? 'anon')
       setState(s)
+      // Ingest into Data Layer Store (parallel path — doesn't break existing flow)
+      ingestChatState(s, 'server')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'fetch failed')
     }
