@@ -51,6 +51,12 @@ textarea { resize:vertical; }
 .chat-msg .msg-ts { font-size:9px; color:var(--text-dim); margin-left:auto; }
 .chat-msg .msg-user { color:var(--green); font-weight:600; margin-right:4px; }
 .chat-msg .msg-content { }
+.chat-msg .msg-reactions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+.chat-msg .msg-reaction { font-size:10px; padding:1px 6px; border:1px solid var(--border); border-radius:999px; background:var(--surface2); color:var(--text-dim); }
+.chat-msg .msg-reaction.self { border-color:var(--accent); color:var(--accent); }
+.chat-msg .msg-actions { display:flex; gap:4px; margin-top:6px; }
+.chat-msg .msg-actions button { font-size:10px; padding:1px 6px; }
+.chat-load-more { display:flex; justify-content:center; padding:4px 0 8px; }
 .top-bar input { width:100px; font-size:11px; padding:2px 6px; }
 .chat-input-bar { display:flex; gap:4px; padding:6px 12px; border-top:1px solid var(--border); flex-shrink:0; }
 .chat-input-bar textarea { flex:1; min-height:32px; max-height:120px; resize:vertical; font-size:11px; }
@@ -173,6 +179,7 @@ function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt
 let activeChannelName = localStorage.getItem('pchat_channel') || null;
 let cmdLog = [];  // shell history for Raw tab
 const LS_KEY = 'pchat_state';  // localStorage cache
+const CHAT_PAGE_SIZE = 50;
 
 document.querySelectorAll('.page-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -215,6 +222,114 @@ async function fetchState(channel) {
   });
 }
 
+async function materializeContainer(containerId) {
+  return api('POST', '/api/container/materialize', { container_id: containerId });
+}
+
+function messagesFromTableResolved(messagesRes, active) {
+  const messageTable = messagesRes?.resolved?.table || {};
+  const rows = Array.isArray(messageTable.rows) ? messageTable.rows : [];
+  return rows.map(row => {
+    const rowKey = row?.row_key || '';
+    const ref = row?.ref || '';
+    const cells = Array.isArray(row?.cells) ? row.cells : [];
+    const cellMap = Object.fromEntries(cells.map(cell => [cell.local_name || cell.path, cell]));
+    const ts = cellMap.ts?.value || null;
+    const user = cellMap.user?.value || 'anon';
+    const content = cellMap.content?.value || '';
+    const reactions = cellMap.reactions?.value || {};
+    const deleted = !!cellMap._deleted?.value;
+    return {
+      name: rowKey,
+      path: ref || (active ? `pchat/channels/${active}/${rowKey}` : rowKey),
+      meta: { type: 'message', user, ts },
+      data: { content, reactions, _deleted: deleted },
+    };
+  }).filter(item => !item.data?._deleted).reverse();
+}
+
+function mergeMessagesUnique(older, current) {
+  const seen = new Set();
+  const merged = [];
+  for (const item of [...older, ...current]) {
+    const key = item?.path || item?.name;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function mergeMessagesTail(current, newer) {
+  const seen = new Set();
+  const merged = [];
+  for (const item of [...current, ...newer]) {
+    const key = item?.path || item?.name;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function buildStateFromContainers(selectorRes, currentRes, messagesRes) {
+  const selector = selectorRes?.resolved || {};
+  const current = currentRes?.resolved || {};
+  const messageState = messagesRes?.resolved?.state || {};
+  const messagePagination = messageState?.pagination || {};
+  const active = selector.state?.selected || activeChannelName || null;
+  const channels = (selector.items || []).map(item => ({
+    name: item.meta?.name || item.id,
+    path: item.path,
+    meta: item.meta || {},
+    data: item.data || {},
+  }));
+  const messages = messagesFromTableResolved(messagesRes, active);
+  const oldestRef = messages.length ? messages[0].path : '';
+  const newestRef = messages.length ? messages[messages.length - 1].path : '';
+  return {
+    channels,
+    messages,
+    message_window: {
+      limit: Number(messagePagination.limit ?? CHAT_PAGE_SIZE) || CHAT_PAGE_SIZE,
+      offset: Number(messagePagination.offset ?? 0) || 0,
+      before_ref: messagePagination.before_ref || '',
+      after_ref: messagePagination.after_ref || '',
+      oldest_ref: oldestRef,
+      newest_ref: newestRef,
+      has_any: messages.length > 0,
+      count: messages.length,
+    },
+    active_channel: active,
+    user: getUsername(),
+    ts: new Date().toISOString(),
+  };
+}
+
+function renderFromCommandResult(res) {
+  const selectorRes = res?.selector;
+  const currentRes = res?.current_channel;
+  const messagesRes = res?.current_channel_messages;
+  if (!selectorRes?.resolved || !currentRes?.resolved || !messagesRes?.resolved) return false;
+  const state = buildStateFromContainers(selectorRes, currentRes, messagesRes);
+  renderFromState(state);
+  return true;
+}
+
+async function refreshChatContainers() {
+  const [selectorRes, currentRes, messagesRes] = await Promise.all([
+    materializeContainer('channels_selector'),
+    materializeContainer('current_channel'),
+    materializeContainer('current_channel_messages'),
+  ]);
+  if (selectorRes.error) throw new Error(selectorRes.error);
+  if (currentRes.error) throw new Error(currentRes.error);
+  if (messagesRes.error) throw new Error(messagesRes.error);
+  const state = buildStateFromContainers(selectorRes, currentRes, messagesRes);
+  renderFromState(state);
+  return state;
+}
+
 function cacheState(state) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
 }
@@ -243,6 +358,18 @@ async function shellBatch(cmds, log = true, scope = 'CMD') {
   return res.results;
 }
 
+async function atomicPatchValue(atomicPath, value) {
+  const user = getUsername();
+  const res = await api('POST', '/api/atomic/patch', { atomic_path: atomicPath, value });
+  cmdLog.push({
+    cmd: `@atomic_patch ${atomicPath}`,
+    user,
+    result: res,
+    ts: new Date().toISOString(),
+  });
+  return res;
+}
+
 // ══════════════════════════════════════════════════════════
 //  Render from state object (orchestrator)
 // ══════════════════════════════════════════════════════════
@@ -253,7 +380,7 @@ function renderFromState(state) {
     activeChannelName = state.active_channel;
     localStorage.setItem('pchat_channel', activeChannelName);
     document.getElementById('channel-label').innerHTML = '# <strong>' + esc(activeChannelName) + '</strong>';
-    renderMessages(state.messages || []);
+    renderMessages(state.messages || [], state.message_window || {});
   } else {
     document.getElementById('channel-label').textContent = 'Select or create a channel';
     document.getElementById('chat-thread').innerHTML = '<div class="chat-empty">No channel selected</div>';
@@ -458,8 +585,12 @@ function loadScript(url) {
   try {
     // Session start
     await shellExec(`/session`, true);
-    const state = await fetchState(activeChannelName);
-    renderFromState(state);
+    try {
+      await refreshChatContainers();
+    } catch {
+      const state = await fetchState(activeChannelName);
+      renderFromState(state);
+    }
     setStatus('Ready');
   } catch (e) {
     if (!cached) setStatus('Server unavailable');

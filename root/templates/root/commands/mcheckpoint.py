@@ -1,7 +1,8 @@
-"""mcheckpoint - create a child checkpoint node for a message.
+"""mcheckpoint - create projection checkpoint for a message slot.
 
 Usage:
-  /mcheckpoint <msg_id>
+  /mcheckpoint           (inside message node)
+  /mcheckpoint <msg_id>  (inside channel)
 """
 
 

@@ -4,3 +4,17 @@ __pycache__/
 .sandbox/
 .claude/
 tools/stockfish/
+node_modules/
+examples/prompt-pal/node_modules/
+root/root/
+root/pchat/
+root/msg_*/
+root/_children.jsonl
+root/runtime/endpoint_logs/
+root/runtime/sandboxes/
+root/runtime/containers/**/cmd_log.jsonl
+root/runtime/containers/current_channel_messages__*/
+
+.codex-backups/
+
+koboldcpp-sandbox/dist/

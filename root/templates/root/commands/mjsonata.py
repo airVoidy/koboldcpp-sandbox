@@ -1,8 +1,13 @@
-"""mjsonata - evaluate JSONata against a message projection.
+"""mjsonata - evaluate JSONata expression against message projection.
 
 Usage:
-  /mjsonata <msg_id> <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]
-  /mjsonata <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]
+  /mjsonata <expr>                         (inside message)
+  /mjsonata <msg_id> <expr>                (inside channel)
+  /mjsonata <msg_id> -- <raw expression>   (raw tail mode)
+
+Options:
+  --view=all|_meta|_data     which view to filter (default: all)
+  --input=view|projection|flat_store  what to pass to JSONata (default: view)
 """
 
 

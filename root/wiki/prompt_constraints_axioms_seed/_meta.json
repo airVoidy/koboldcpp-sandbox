@@ -1,0 +1,13 @@
+{
+  "type": "wiki_page",
+  "slug": "prompt_constraints_axioms_seed",
+  "title": "$config.prompt_constraints_axioms_seed",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "updated_at": "2026-03-27T18:22:01.241138+00:00"
+}

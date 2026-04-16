@@ -1,0 +1,33 @@
+{
+  "type": "root",
+  "description": "Runtime root container for global CMD wrappers",
+  "fields": {},
+  "inherits": null,
+  "commands": [
+    "cselect",
+    "cpost",
+    "cmkchannel",
+    "cpatch",
+    "cedit",
+    "cdelete",
+    "creact",
+    "mcheckpoint",
+    "mjsonata",
+    "mkprojection",
+    "projectionexec",
+    "projectionconcat",
+    "mktable",
+    "tableexec",
+    "tablerow",
+    "tablechildren",
+    "tablechildlog",
+    "tablewindow",
+    "tablesort",
+    "tablefilter",
+    "tablerange",
+    "wiki",
+    "mcheckpoint",
+    "mjsonata",
+    "mproject"
+  ]
+}

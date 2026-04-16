@@ -3,5 +3,9 @@
   "description": "Chat channel — contains messages",
   "fields": {"name": "str"},
   "inherits": "cards",
+  "exec": true,
+  "children": {
+    "msg": {"append": true}
+  },
   "commands": []
 }

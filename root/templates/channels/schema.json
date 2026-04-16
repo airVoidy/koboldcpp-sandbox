@@ -3,5 +3,9 @@
   "description": "Channel list container",
   "fields": {},
   "inherits": "cards",
+  "exec": true,
+  "children": {
+    "channel": {"append": true}
+  },
   "commands": []
 }
