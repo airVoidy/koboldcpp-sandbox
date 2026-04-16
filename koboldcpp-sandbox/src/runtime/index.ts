@@ -3,16 +3,20 @@
  */
 import { RuntimeLayer } from './layer'
 import { getStore } from '@/data'
+import { createSignalAdapter } from './adapters/signal'
 
 export * from './types'
 export { RuntimeLayer } from './layer'
 export { createVirtualAdapter } from './adapters/virtual'
+export { createSignalAdapter } from './adapters/signal'
 
 let _runtime: RuntimeLayer | null = null
 
 export function getRuntime(): RuntimeLayer {
   if (!_runtime) {
     _runtime = new RuntimeLayer(getStore())
+    // Register Phase 1c adapters as they come online
+    _runtime.registerAdapter('signal', createSignalAdapter())
     if (typeof window !== 'undefined') {
       ;(window as unknown as { __runtime: RuntimeLayer }).__runtime = _runtime
     }
