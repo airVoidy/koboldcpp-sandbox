@@ -63,6 +63,12 @@ export function ingestChatState(state: ChatState, writer = 'server'): void {
   }
 
   store.applyBatch(ops)
+
+  // Instantiate RuntimeObjects for all VirtualObjects (virtual adapter by default)
+  // Runtime layer is a separate module; defer to avoid circular import.
+  void import('@/runtime').then(({ instantiateAllFromStore }) => {
+    instantiateAllFromStore()
+  })
 }
 
 function itemToOps(
