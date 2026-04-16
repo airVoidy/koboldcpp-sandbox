@@ -40,65 +40,6 @@ export interface RuntimeNode {
   fields: Record<string, Field>
 }
 
-/** Projection field entry (server format) */
-export interface ProjectionFieldRow {
-  hash: string
-  path: string
-  value: unknown
-}
-
-/** Projection — derived view over fields (mirrors server _build_message_projection) */
-export interface Projection {
-  /** Source node path */
-  source_node: string
-  /** Meta scope */
-  _meta: { global_path: string; schema: Record<string, string>; value: Record<string, unknown> }
-  /** Data scope */
-  _data: { global_path: string; schema: Record<string, string>; value: Record<string, unknown> }
-  /** All field entries */
-  fields: Array<{
-    hash: string; scope: string; path: string
-    full_relative_path: string; bind: string
-    value: unknown; value_type: string
-  }>
-  /** Flat field store: path → [hash, path, value] */
-  flat_store: Record<string, FieldEntry>
-  /** View filters: view_name → list of paths */
-  view_filters: Record<string, string[]>
-  /** Named views: view_name → rows of {hash, path, value} */
-  views: Record<string, ProjectionFieldRow[]>
-}
-
-/** Template aggregation result (from /mproject) */
-export interface TemplateAggregation {
-  ok: boolean
-  type: string
-  scope: string
-  count: number
-  instances: Array<{ id: string; path: string; meta: Record<string, unknown> }>
-  flat_store: Record<string, FieldEntry>
-  fields: Array<{ instance: string; path: string; namespaced_path: string; hash: string; value: unknown }>
-  instance_views: Record<string, Record<string, ProjectionFieldRow[]>>
-}
-
-/** Runtime container state as rows + patch_log (not mutable state.json) */
-export interface ContainerRuntime {
-  id: string
-  /** Canonical rows (atomic-dsl format) */
-  rows: Array<Record<string, unknown>>
-  /** Append-only patch log */
-  patch_log: ExecEntry[]
-  /** Optional manifest for resolve rules */
-  manifest?: Record<string, unknown>
-}
-
-/**
- * L0/L1/L2 layer model:
- * - L0 = immutable exec/messages/patches
- * - L1 = rows / linked runtime field layer
- * - L2 = resolved serializations (lists, tables, cards, trees)
- */
-
 // ── JSONata-compatible path utilities ──
 
 /** Resolve dot-path on object (JSONata `.` step) */

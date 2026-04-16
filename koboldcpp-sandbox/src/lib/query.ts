@@ -11,7 +11,7 @@
  * One expression, two runtimes.
  */
 import jsonata from 'jsonata'
-import type { FieldEntry, Projection } from '@/types/runtime'
+import type { FieldEntry } from '@/types/runtime'
 import { getByPath, toFieldStore, fromFieldStore } from '@/types/runtime'
 
 /** Pre-compiled expression cache */
@@ -27,7 +27,7 @@ function compile(expr: string): jsonata.Expression {
 }
 
 /** Runtime lambda bindings — mirrors server-side registered functions */
-function createBindings(projection?: Projection) {
+function createBindings(projection?: { flat_store?: Record<string, FieldEntry>; views?: Record<string, unknown> }) {
   return {
     /** $field(path) — get field entry from flat store */
     field: (path: string): FieldEntry | undefined => {
@@ -91,7 +91,7 @@ function registerBindings(
 export async function evaluate(
   expr: string,
   data: unknown,
-  projection?: Projection,
+  projection?: { flat_store?: Record<string, FieldEntry>; views?: Record<string, unknown> },
   extraBindings?: Record<string, unknown>,
 ): Promise<unknown> {
   const compiled = compile(expr)
@@ -114,7 +114,7 @@ export async function evaluate(
 export async function query<T = unknown>(
   expr: string,
   data: unknown,
-  projection?: Projection,
+  projection?: { flat_store?: Record<string, FieldEntry>; views?: Record<string, unknown> },
 ): Promise<T> {
   return evaluate(expr, data, projection) as Promise<T>
 }
@@ -126,7 +126,7 @@ export async function query<T = unknown>(
 export async function transform(
   expr: string,
   data: Record<string, unknown>,
-  projection?: Projection,
+  projection?: { flat_store?: Record<string, FieldEntry>; views?: Record<string, unknown> },
 ): Promise<{ result: unknown; patches: Array<{ path: string; value: unknown }> }> {
   const before = toFieldStore(data)
   const result = await evaluate(expr, data, projection)

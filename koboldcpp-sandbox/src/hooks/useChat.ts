@@ -1,3 +1,7 @@
+/**
+ * useChat — all actions through exec CMD.
+ * Server = source of truth. No optimistic updates.
+ */
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocalStorageState } from 'ahooks'
 import type { ChatState } from '@/types/chat'
@@ -23,82 +27,62 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null)
   const stateRef = useRef(state)
 
-  // Keep ref in sync — avoids stale closures
   const setState = useCallback((fn: ChatState | ((prev: ChatState) => ChatState)) => {
     _setState(prev => {
       const next = typeof fn === 'function' ? fn(prev) : fn
       stateRef.current = next
+      setCached(next)
       return next
     })
-  }, [])
+  }, [setCached])
 
-  // Optimistic state updater for client-cmd
-  const optimisticUpdate: StateUpdater = useCallback((fn) => {
-    setState(prev => {
-      const next = fn(prev)
-      setCached(next) // persist to localStorage too
-      return next
-    })
-  }, [setState, setCached])
+  const stateUpdater: StateUpdater = useCallback((fn) => {
+    setState(prev => fn(prev))
+  }, [setState])
 
   const activeChannel = state.active_channel
 
-  // Fetch state from server — silent reconciliation, no loading flash
   const refresh = useCallback(async (channel?: string) => {
     try {
       const s = await api.getState(channel ?? activeChannel ?? undefined, user ?? 'anon')
       setState(s)
-      setCached(s)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'fetch failed')
     }
-  }, [activeChannel, user, setCached, setState])
+  }, [activeChannel, user, setState])
 
-  // Full refresh with loading indicator (initial load only)
-  const initialLoad = useCallback(async () => {
-    setLoading(true)
-    await refresh()
-    setLoading(false)
-  }, [refresh])
-
-  // ── Actions via client-cmd resolver ──
+  // ── All actions through exec CMD ──
 
   const selectChannel = useCallback(async (name: string) => {
-    // Pure optimistic — no loading, no flicker
-    await execCmd(`/cselect ${name}`, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
+    await execCmd(`/cselect ${name}`, user ?? 'anon', stateRef.current, stateUpdater)
+  }, [user, stateUpdater])
 
   const postMessage = useCallback(async (text: string) => {
     if (!text.trim()) return
-    await execCmd(`/cpost ${text}`, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
+    setLoading(true)
+    await execCmd(`/cpost ${text}`, user ?? 'anon', stateRef.current, stateUpdater)
+    setLoading(false)
+  }, [user, stateUpdater])
 
   const createChannel = useCallback(async (name: string) => {
     setLoading(true)
-    try {
-      await api.createChannel(name, user ?? 'anon')
-      await refresh(name)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'create failed')
-    } finally {
-      setLoading(false)
-    }
-  }, [user, refresh])
+    await execCmd(`/cmkchannel ${name}`, user ?? 'anon', stateRef.current, stateUpdater)
+    setLoading(false)
+  }, [user, stateUpdater])
 
   const toggleReaction = useCallback(async (msgId: string, emoji: string) => {
-    // Pure optimistic — instant toggle, server confirms in background
-    await execCmd(`/creact ${msgId} ${emoji}`, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
+    await execCmd(`/creact ${msgId} ${emoji}`, user ?? 'anon', stateRef.current, stateUpdater)
+  }, [user, stateUpdater])
 
-  // Run arbitrary CMD (for command palette)
   const exec = useCallback(async (cmd: string) => {
-    return execCmd(cmd, user ?? 'anon', stateRef.current, optimisticUpdate)
-  }, [user, optimisticUpdate])
+    return execCmd(cmd, user ?? 'anon', stateRef.current, stateUpdater)
+  }, [user, stateUpdater])
 
-  // Init: show cached immediately, reconcile from server in background
+  // Init: cached → immediate render, server → reconcile
   useEffect(() => {
     if (cached) setState(cached)
-    initialLoad()
+    setLoading(true)
+    refresh().finally(() => setLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {

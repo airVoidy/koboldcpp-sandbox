@@ -1,5 +1,8 @@
-/** API client for sandbox server at localhost:5002 */
-import type { CmdResult, ChatState, MaterializeResult } from '@/types/chat'
+/**
+ * API client — one exec endpoint, one view for bootstrap.
+ * Same as vanilla pipeline-chat shellExec pattern.
+ */
+import type { CmdResult, ChatState } from '@/types/chat'
 
 const BASE = '/api'
 
@@ -13,13 +16,7 @@ async function post<T = unknown>(path: string, body: unknown): Promise<T> {
   return res.json()
 }
 
-async function get<T = unknown>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json()
-}
-
-/** Execute a CMD in a scope */
+/** Execute a CMD — the only mutation endpoint */
 export function exec(cmd: string, user: string, scope = 'CMD'): Promise<CmdResult> {
   return post('/pchat/exec', { cmd, user, scope, log: true })
 }
@@ -29,46 +26,7 @@ export function batch(cmds: string[], user: string, scope = 'CMD'): Promise<CmdR
   return post('/pchat/batch', { cmds, user, scope })
 }
 
-/** Get full chat state (channels + messages) */
-export function getState(channel?: string, user = 'anon', since?: number): Promise<ChatState> {
-  const params: Record<string, unknown> = { channel, user, msg_limit: 100 }
-  if (since !== undefined) params.since = since
-  return post('/pchat/view', params)
-}
-
-/** Materialize a runtime container */
-export function materialize(containerId: string): Promise<MaterializeResult> {
-  return post('/container/materialize', { container_id: containerId })
-}
-
-/** Convenience: select channel */
-export function selectChannel(name: string, user: string) {
-  return exec(`/cselect ${name}`, user)
-}
-
-/** Convenience: post message */
-export function postMessage(text: string, user: string) {
-  return exec(`/cpost ${text}`, user)
-}
-
-/** Convenience: create channel */
-export function createChannel(name: string, user: string) {
-  return exec(`/cmkchannel ${name}`, user)
-}
-
-/** Convenience: toggle reaction */
-export function react(msgId: string, emoji: string, user: string) {
-  return exec(`/creact ${msgId} ${emoji}`, user)
-}
-
-/** Template aggregation projection */
-export function getProjection(template: string, scope?: string) {
-  return post('/pchat/projection', { template, scope: scope ?? '' })
-}
-
-/** Wiki commands */
-export const wiki = {
-  status: (user: string) => exec('/wiki status', user),
-  list: (user: string) => exec('/wiki list', user),
-  read: (slug: string, user: string) => exec(`/wiki read ${slug}`, user),
+/** Bootstrap: get current chat state (legacy view, will move to exec) */
+export function getState(channel?: string, user = 'anon'): Promise<ChatState> {
+  return post('/pchat/view', { channel, user, msg_limit: 100 })
 }

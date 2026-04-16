@@ -5,10 +5,10 @@ import {
   Terminal, X, Minus, Plus, ChevronDown, ChevronRight,
   Eye, Link, Play, RefreshCw,
 } from 'lucide-react'
-import { exec, getProjection } from '@/lib/api'
+import { exec } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState } from '@/types/chat'
-import type { Projection, FieldEntry } from '@/types/runtime'
+import type { FieldEntry } from '@/types/runtime'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -394,11 +394,11 @@ function ProjectionTab({ user }: { user: string }) {
     setLoading(true)
     setError(null)
     try {
-      const r = await exec(`/query ${nodePath.trim()}`, user)
-      if (r.error) { setError(r.error); return }
-      // extract flat_store or fields from result
-      const proj = (r as Record<string, unknown>).projection as Projection | undefined
-      const store = proj?.flat_store ?? (r as Record<string, unknown>).flat_store as Record<string, FieldEntry> | undefined
+      const r = await exec(`/query ${nodePath.trim()}`, user) as Record<string, unknown>
+      if (r.error) { setError(r.error as string); return }
+      // Try flat_store from result or nested projection
+      const proj = r.projection as Record<string, unknown> | undefined
+      const store = (r.flat_store ?? proj?.flat_store) as Record<string, FieldEntry> | undefined
       if (store) {
         setFields(
           Object.entries(store).map(([p, entry]) => ({
