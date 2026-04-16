@@ -7,4 +7,4 @@ Usage: /cselect <channel_name>
 def execute(args, user, scope, ws):
     if not args:
         return {"error": "usage: /cselect <channel_name>"}
-    return ws.container_select_channel(args[0], user)
+    return ws.cmd_select(args[:1], user, scope)
