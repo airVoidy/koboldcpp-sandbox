@@ -6,9 +6,10 @@
  * - useProjection(id, name) — resolves projection, re-renders on version bump
  * - useAllObjects()      — subscribes to ALL objects (use sparingly, for debug)
  */
-import { useSyncExternalStore, useCallback, useMemo } from 'react'
+import { useSyncExternalStore, useCallback, useMemo, useEffect, useRef } from 'react'
 import { getStore, type Store } from '@/data'
 import type { Field, VirtualObject } from '@/data/types'
+import { collectMissingRefs, resolveMissing } from '@/data/lazy'
 
 export function useStore(): Store {
   return getStore()
@@ -43,6 +44,53 @@ export function useProjection(id: string, projectionName: string): Field[] {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [store, id, projectionName, version],
   )
+}
+
+/**
+ * useLazyObject(id, user) — auto-fetches missing refs from server.
+ *
+ * Subscribes to object id like useVirtualObject, but when the current
+ * VirtualObject has dangling references (ref/path_abs/placeholder targeting
+ * objects not yet in store), issues a lazy batch /query via exec to fill them.
+ *
+ * The "virtual object as self-describing query" pattern: object's structure
+ * tells the resolver exactly what to ask the server for.
+ */
+export function useLazyObject(id: string, user = 'anon'): VirtualObject | undefined {
+  const store = getStore()
+  const obj = useVirtualObject(id)
+
+  // Track in-flight targets to avoid resolve storms
+  const inFlight = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    // If object itself is missing, fetch it
+    if (!obj) {
+      const target = id
+      if (!inFlight.current.has(target)) {
+        inFlight.current.add(target)
+        void resolveMissing(
+          [{ requesterId: id, fieldName: '*self*', target, fieldType: 'ref' }],
+          user,
+          store,
+        ).finally(() => inFlight.current.delete(target))
+      }
+      return
+    }
+
+    // Collect dangling refs inside the loaded object
+    const missing = collectMissingRefs(obj, store).filter(
+      (m) => !inFlight.current.has(m.target),
+    )
+    if (missing.length === 0) return
+
+    missing.forEach((m) => inFlight.current.add(m.target))
+    void resolveMissing(missing, user, store).finally(() => {
+      missing.forEach((m) => inFlight.current.delete(m.target))
+    })
+  }, [obj, id, user, store])
+
+  return obj
 }
 
 /**
