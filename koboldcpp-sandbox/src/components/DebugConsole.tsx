@@ -9,6 +9,7 @@ import { exec } from '@/lib/api'
 import { evaluate } from '@/lib/query'
 import type { ChatState } from '@/types/chat'
 import type { FieldEntry } from '@/types/runtime'
+import { TypeHierarchy } from './TypeHierarchy'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -25,7 +26,7 @@ interface TabDef {
   id: string
   label: string
   closable: boolean
-  kind: 'l0log' | 'inspector' | 'projection' | 'free'
+  kind: 'l0log' | 'inspector' | 'projection' | 'free' | 'types'
 }
 
 interface LogEntry {
@@ -555,6 +556,7 @@ function FreeTab({ chatState }: { chatState: ChatState | null }) {
 
 const DEFAULT_TABS: TabDef[] = [
   { id: 'l0log', label: 'L0 Log', closable: false, kind: 'l0log' },
+  { id: 'types', label: 'Type Hierarchy', closable: false, kind: 'types' },
 ]
 
 let tabCounter = 0
@@ -733,6 +735,7 @@ export function DebugConsole({ visible, onClose, chatState, user }: DebugConsole
                 style={{ background: TK.bg, border: `1px solid ${TK.border}`, minWidth: 140 }}
               >
                 {[
+                  { kind: 'types' as const, label: 'Type Hierarchy' },
                   { kind: 'inspector' as const, label: 'Object Inspector' },
                   { kind: 'projection' as const, label: 'Projection' },
                   { kind: 'free' as const, label: 'JSONata (Free)' },
@@ -757,6 +760,7 @@ export function DebugConsole({ visible, onClose, chatState, user }: DebugConsole
             {currentTab?.kind === 'inspector' && <InspectorTab user={user} />}
             {currentTab?.kind === 'projection' && <ProjectionTab user={user} />}
             {currentTab?.kind === 'free' && <FreeTab chatState={chatState} />}
+            {currentTab?.kind === 'types' && <TypeHierarchy />}
           </div>
 
           {/* resize handle */}
