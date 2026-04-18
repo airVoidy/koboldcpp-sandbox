@@ -1,10 +1,20 @@
 # Session T Snapshot — Runtime Sandbox Nodes (TS) + jupyter_layer (Python)
 
 > **For next-session pickup.** Self-contained: read this file + the plan file and you have full context.
-> Worktree: `C:\llm\KoboldCPP agentic sandbox\.claude\worktrees\tender-archimedes`
+> Worktree: `C:\llm\KoboldCPP agentic sandbox\.claude\worktrees\tender-archimedes` (⚠️ stale — see §14)
 > Plan: `C:\Users\vAiry\.claude\plans\wild-forging-melody.md`
-> Branch: `master` @ `2438c775`
+> Memory entry: `C:\Users\vAiry\.claude\projects\C--llm-KoboldCPP-agentic-sandbox\memory\project_session_t_summary.md`
+> Branch: `master` @ `764d7844` (snapshot commit) — previously `2438c775` (Phase 1 work)
+> Origin session: `98f15504-c2a6-4d95-a543-619759ee8d27`
 > Date: 2026-04-18
+
+> ## ⚠️ CRITICAL CONTEXT FOR NEXT AGENT
+>
+> Before acting on any recommendation in this snapshot, **read §14 (Stale Worktree Warning)**.
+> Short version: our force-push of `master` may have clobbered newer user work on `3bdb17a6`
+> (codex/runtime-unify-view merge) — that work is **recoverable by SHA**, but the next agent
+> must decide: rebase Phase 1 onto latest master OR keep branches separate.
+> **Live user context is likely on `cAiry/hopeful-poitras-e8f0de` worktree, not here.**
 
 ---
 
@@ -81,6 +91,14 @@ Built a **client-side Runtime Sandbox** in TypeScript that mirrors the **Python 
 7. **"Can be read from any point"**: syntax is reorderable. Same operation via atomic-DSL / postfix / infix / template-first / JSON / loop-for-every — all compile to same FieldOp batch.
 
 8. **Name-scope parsimony**: virtual objects use **relative** names / schema references / generated ids. Only core primitives get absolute names (`card`, `cards`, `msg`, `channel`, `FieldOp`, `VirtualObject`, `ProjectionSpec`). Prevents name-pollution as runtime grows.
+
+9. **Middlelayer = provenance via shadow metadata**: `<fieldName>._exec.<callId>.{cmd, requester, prev, ts}` stored alongside mutated fields. `current_value` projection shows just the value; `exec_history` projection walks `_exec.*` entries. Same path, two views, zero duplication.
+
+10. **Client-side `batchLambda()` helper** composes dependency-aware lambda graphs: independent lambdas → single `/pchat/batch` (parallel on server); dependent lambdas → `@name` substitution from prior results → sequential exec. Matches "first promise-schema, then fill-in" design articulated during session.
+
+11. **P2P mesh, not client-server**: each peer = full node (local L0 server + sandbox + UI). Shared sandbox virtualizes between peers via message-based protocol (already multiplayer-tested via `workflow_dsl.py` + `gateway_runtime.py`). Future transport: shell session via ssh/socket tunnel, visual-hash auth via tripcode + PNG-indent.
+
+12. **jupyter_layer = cross-language validation** of same architecture. Python implementation over Jupyter kernels independently arrived at identical primitives (Panel/Object/Scope/LocalStore). This is **evidence the abstractions are correct**, not coincidence.
 
 ---
 
@@ -420,12 +438,88 @@ No sugar. Direct mapping to FieldOp append on the `.exec` field. Other syntax fo
 
 Suggested first prompt:
 
-> Continuing from `SESSION_T_SNAPSHOT.md` + `wild-forging-melody.md` plan.
-> Worktree on `master` @ `2438c775`. Data + Runtime + Middlelayer + BashTerminal live in browser.
-> Python jupyter_layer exists on `demo/jupyter-on-master` as architectural twin.
+> Continuing from `SESSION_T_SNAPSHOT.md` (repo root) + `wild-forging-melody.md` plan.
 >
-> First: review `demo/jupyter-on-master` — likely merge into master (no conflicts).
-> Then: Priority 1 — tag-list pattern + atomic-DSL canonical syntax, which lets us remove `MessageEffect` union + `HANDLERS` registry and replace with one walker.
+> **⚠️ First read §14 (Stale Worktree Warning)** — our master was force-pushed over codex/runtime-unify-view work; that work is recoverable by SHA but must be reviewed. Actual live user context may be on `cAiry/hopeful-poitras-e8f0de` worktree, not `tender-archimedes`.
+>
+> Please `git worktree list` and `git fetch --all`, compare our Phase 1 master (`2438c775`) with whatever branch user is currently working on. Ask user which line is authoritative before proceeding.
+>
+> If Phase 1 still relevant after reconciliation:
+> - P0: review `demo/jupyter-on-master` — likely merge (only adds `src/jupyter_layer/`)
+> - P1: tag-list pattern + atomic-DSL canonical syntax (see plan file §6)
+> - P4: JupyterAdapter bridging TS ↔ Python jupyter_layer
+>
+> Architectural principles (§3 + §11) are language-agnostic and survive regardless of which branch becomes base.
+
+---
+
+## 14. ⚠️ Stale Worktree Warning (READ BEFORE TOUCHING MASTER)
+
+This snapshot was produced from worktree `tender-archimedes` which may be **out of sync with live user context**.
+
+### What happened
+
+1. This session operated in `.claude/worktrees/tender-archimedes` (a worktree that was set up some time ago).
+2. Local `master` in this worktree was at `2438c775` (Phase 1 TS work).
+3. Mid-session, user asked to force-push our branch as master: `git push origin HEAD:master --force-with-lease`.
+4. **That force-push overwrote** origin/master's previous HEAD which was `3bdb17a6` — a state containing important independent work from `codex/runtime-unify-view` merge (Apr 16–18): unified runtime/sandbox/chat-hook, restored projection endpoints/renderer, dropped public materialize, typed child lists.
+5. Those commits **are still in git's reflog/dangling objects**, accessible by SHA.
+
+### Evidence of parallel work elsewhere
+
+- User's actual day-to-day context likely lives on branch `cAiry/hopeful-poitras-e8f0de` (another worktree, not this one). That work is "months ahead on different concerns" per the prior summary.
+- The `codex/runtime-unify-view` commits we overwrote represented a **different trajectory** — architecturally related but independently developed, possibly the user's true current line.
+
+### Preserved SHAs (for cherry-pick / restore)
+
+The pre-force-push master HEAD chain, still in origin's refs and local reflog:
+
+```
+3bdb17a6  Fix merged runtime TS build breakages
+943484f0  Drop accidental merge extras from master
+b8dc9f59  Merge branch 'codex/runtime-unify-view'
+da25554b  Unify runtime object flow and add replay debug tools
+5186b5fe  Add typed child lists to sandbox runtime
+1b56276a  Deduplicate projection helpers in server runtime
+4c042881  Unify chat hook with sandbox runtime
+07047d03  Integrate runtime view updates and restore frontend entry files
+ba850a03  Fix message layout: Slack-style left-aligned for all users
+21935f9d  Add capability-based access: children[] scope, exec declaration, append policy
+57c3307d  Restore projection command layer from runtime slice
+98e415a5  Restore projection endpoints and renderer flow
+fddb5ba0  Restore serialized runtime object endpoint logs
+f85eb944  Unify runtime sandbox and drop public materialize
+```
+
+Recover with: `git cherry-pick <sha>` or `git branch recovery-<name> <sha>`.
+
+### Recommended action for next agent
+
+**Do not blindly build on top of our current master.** First:
+
+1. `cd` to the user's active worktree (check `git worktree list` — likely `hopeful-poitras-e8f0de`).
+2. `git fetch --all` and look at `git log cAiry/hopeful-poitras-e8f0de`.
+3. Compare with our `2438c775` (Phase 1 TS stack) and `3bdb17a6` (codex/runtime-unify-view).
+4. **Ask user explicitly which line is authoritative before merging/cherry-picking.**
+5. Options to consider:
+   - Rebase Phase 1 (1f56ba46..2438c775) onto real master
+   - Keep Phase 1 on branch `runtime-jsonata-slice` + cherry-pick into real master piecewise
+   - Accept divergence — Phase 1 TS work is a prototype, merge later after real master stabilizes
+
+### What's safe to use as-is from our work
+
+- Everything in `koboldcpp-sandbox/src/data/*` and `koboldcpp-sandbox/src/runtime/*` (new files, no overlap with server trajectory)
+- `SESSION_T_SNAPSHOT.md` (this file — documentation, additive)
+- Architectural principles (§3) — conceptual, language-agnostic
+- jupyter_layer refs (on `demo/jupyter-on-master`) — independent Python branch, untouched by force-push
+
+### What MAY conflict with real master
+
+- `koboldcpp-sandbox/src/components/DebugConsole.tsx` — we added Bash + TypeHierarchy tabs; master may have added other tabs
+- `koboldcpp-sandbox/src/hooks/useChat.ts` — we added `ingestChatState` call; master has its own useSandbox integration
+- `koboldcpp-sandbox/src/lib/api.ts` — we removed `/pchat/view`, added `loadState`/`batchLambda`; master may have kept view + added other endpoints
+- `koboldcpp-sandbox/vite.config.ts` — our node-polyfills config may not be in master
+- `koboldcpp-sandbox/src/types/runtime.ts` — we dropped Projection types; master kept them
 
 ---
 
