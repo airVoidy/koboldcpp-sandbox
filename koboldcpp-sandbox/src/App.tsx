@@ -5,6 +5,7 @@ import { MessageList } from '@/components/MessageList'
 import { MessageInput } from '@/components/MessageInput'
 import { CommandPalette } from '@/components/CommandPalette'
 import { DebugConsole } from '@/components/DebugConsole'
+import { RuntimeAtomicDemo } from '@/components/RuntimeAtomicDemo'
 import { useChat } from '@/hooks/useChat'
 import { Terminal, Bug, Loader2 } from 'lucide-react'
 
@@ -113,10 +114,21 @@ function Chat() {
   )
 }
 
+function useHash(): string {
+  const [hash, setHash] = useState<string>(typeof window !== 'undefined' ? window.location.hash : '')
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  return hash
+}
+
 export default function App() {
+  const hash = useHash()
   return (
     <QueryClientProvider client={queryClient}>
-      <Chat />
+      {hash === '#runtime-demo' ? <RuntimeAtomicDemo /> : <Chat />}
     </QueryClientProvider>
   )
 }
