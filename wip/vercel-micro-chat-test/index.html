@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Micro Chat Test</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #121722;
+      --panel-2: #171d2a;
+      --line: #2b3345;
+      --text: #eef2ff;
+      --muted: #9aa7c2;
+      --accent: #7dd3fc;
+      --user: #1d4ed8;
+      --bot: #202938;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(125, 211, 252, 0.16), transparent 32%),
+        linear-gradient(180deg, #0b0d12 0%, #0f1420 100%);
+      color: var(--text);
+      font: 14px/1.45 Consolas, "Cascadia Code", monospace;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .shell {
+      width: min(760px, 100%);
+      height: min(85vh, 860px);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: rgba(18, 23, 34, 0.94);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 18px rgba(125, 211, 252, 0.8);
+    }
+
+    .title {
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .sub {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .messages {
+      padding: 18px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .msg {
+      max-width: 82%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: linear-gradient(180deg, #2563eb, #1d4ed8);
+      border-color: rgba(125, 211, 252, 0.25);
+    }
+
+    .msg.bot {
+      align-self: flex-start;
+      background: var(--bot);
+    }
+
+    .meta {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 16px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 64px;
+      max-height: 180px;
+      resize: vertical;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 12px 14px;
+      font: inherit;
+    }
+
+    button {
+      align-self: end;
+      height: 46px;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #082032;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.05); }
+    button:disabled { opacity: 0.5; cursor: default; }
+
+    @media (max-width: 640px) {
+      body { padding: 0; }
+      .shell {
+        width: 100%;
+        height: 100vh;
+        border-radius: 0;
+        border: 0;
+      }
+      .msg { max-width: 92%; }
+      .composer { grid-template-columns: 1fr; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <span class="dot"></span>
+      <strong class="title">Micro Chat Test</strong>
+      <span class="sub">Static Vercel smoke test</span>
+    </header>
+
+    <section class="messages" id="messages"></section>
+
+    <form class="composer" id="composer">
+      <textarea id="input" placeholder="Type a message. This demo replies locally."></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </main>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const composerEl = document.getElementById("composer");
+    const inputEl = document.getElementById("input");
+
+    const seed = [
+      {
+        role: "bot",
+        name: "micro-chat",
+        text: "Boot ok.\nThis is a zero-backend micro-chat for Vercel deploy testing.\nAsk anything and I will answer with a tiny local stub."
+      }
+    ];
+
+    function addMessage(role, name, text) {
+      const el = document.createElement("article");
+      el.className = `msg ${role}`;
+      el.innerHTML = `<span class="meta">${name}</span>${escapeHtml(text)}`;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function fakeReply(text) {
+      const trimmed = text.trim();
+      const lower = trimmed.toLowerCase();
+
+      if (lower.includes("ping")) return "pong";
+      if (lower.includes("status")) return "status: ok\ntransport: local stub\nbackend: none";
+      if (lower.includes("workflow")) return "workflow-v3 mention detected.\nThis deploy is only a UI smoke test.";
+
+      return [
+        "echo: " + trimmed,
+        "",
+        "notes:",
+        "- static deploy works",
+        "- input events work",
+        "- client-side state works"
+      ].join("\n");
+    }
+
+    seed.forEach(m => addMessage(m.role, m.name, m.text));
+
+    composerEl.addEventListener("submit", event => {
+      event.preventDefault();
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      addMessage("user", "you", text);
+      inputEl.value = "";
+
+      window.setTimeout(() => {
+        addMessage("bot", "micro-chat", fakeReply(text));
+      }, 220);
+    });
+  </script>
+</body>
+</html>
