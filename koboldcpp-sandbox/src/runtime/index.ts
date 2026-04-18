@@ -1,0 +1,40 @@
+/**
+ * Runtime Object Layer — entry point + singleton.
+ */
+import { RuntimeLayer } from './layer'
+import { getStore } from '@/data'
+import { createSignalAdapter } from './adapters/signal'
+import { createVfsAdapter } from './adapters/vfs'
+
+export * from './types'
+export { RuntimeLayer } from './layer'
+export { createVirtualAdapter } from './adapters/virtual'
+export { createSignalAdapter } from './adapters/signal'
+export { createVfsAdapter } from './adapters/vfs'
+
+let _runtime: RuntimeLayer | null = null
+
+export function getRuntime(): RuntimeLayer {
+  if (!_runtime) {
+    _runtime = new RuntimeLayer(getStore())
+    // Register Phase 1c adapters as they come online
+    _runtime.registerAdapter('signal', createSignalAdapter())
+    _runtime.registerAdapter('vfs', createVfsAdapter())
+    if (typeof window !== 'undefined') {
+      ;(window as unknown as { __runtime: RuntimeLayer }).__runtime = _runtime
+    }
+  }
+  return _runtime
+}
+
+/**
+ * Instantiate RuntimeObjects for all VirtualObjects currently in Store.
+ * Call after ingesting server state so every object has an adapter backend.
+ */
+export function instantiateAllFromStore(): void {
+  const runtime = getRuntime()
+  const store = getStore()
+  for (const obj of store.all()) {
+    runtime.instantiate(obj.id, obj.virtualType)
+  }
+}

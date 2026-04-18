@@ -1,0 +1,35 @@
+{
+  "page_id": "wiki:hypothesis_cols",
+  "slug": "hypothesis_cols",
+  "title": "$config.hypothesis_cols",
+  "page_kind": "config_page",
+  "item_kind": "text",
+  "message": {
+    "role": "config",
+    "kind": "config_page",
+    "format": "wikilike",
+    "text": "6"
+  },
+  "blocks": [
+    {
+      "block_id": "hypothesis_cols:block:1",
+      "kind": "text",
+      "label": "$config.hypothesis_cols",
+      "text": "6",
+      "headers": [],
+      "rows": [],
+      "ref": null
+    }
+  ],
+  "aliases": [
+    "$config.hypothesis_cols"
+  ],
+  "tags": [
+    "config",
+    "wikilike",
+    "text"
+  ],
+  "links": [],
+  "source": "global_items_migration",
+  "updated_at": "2026-03-27T18:22:01.245492+00:00"
+}

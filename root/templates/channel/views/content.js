@@ -1,4 +1,5 @@
 // Channel Content Panel - messages render + send
+window.chatScrollMode = window.chatScrollMode || 'bottom';
 
 async function sendMessage() {
   const input = document.getElementById('chat-input');
@@ -10,6 +11,7 @@ async function sendMessage() {
   }
   input.value = '';
   setStatus('Posting...', true);
+  window.chatScrollMode = 'bottom';
   try {
     const res = await shellExec(`/cpost ${msg}`, true, 'CMD');
     if (!renderFromCommandResult(res)) {
@@ -23,6 +25,7 @@ async function sendMessage() {
 
 async function reactToMessage(msgId, emoji) {
   setStatus('Reacting...', true);
+  window.chatScrollMode = 'bottom';
   try {
     const res = await shellExec(`/creact ${msgId} ${emoji}`, true, 'CMD');
     if (!renderFromCommandResult(res)) {
@@ -38,6 +41,7 @@ async function editMessageAtomic(msgPath, currentText) {
   const nextText = prompt('Edit message', currentText ?? '');
   if (nextText === null) return;
   setStatus('Saving...', true);
+  window.chatScrollMode = 'keep';
   try {
     await atomicPatchValue(`${msgPath}._data.content`, nextText);
     await refreshChatContainers();
@@ -49,6 +53,7 @@ async function editMessageAtomic(msgPath, currentText) {
 
 async function deleteMessageAtomic(msgPath) {
   setStatus('Deleting...', true);
+  window.chatScrollMode = 'keep';
   try {
     await atomicPatchValue(`${msgPath}._data._deleted`, true);
     await refreshChatContainers();
@@ -58,7 +63,67 @@ async function deleteMessageAtomic(msgPath) {
   }
 }
 
-function renderMessages(items) {
+async function loadOlderMessages() {
+  const cached = loadCachedState() || {};
+  const windowInfo = cached.message_window || {};
+  const beforeRef = windowInfo.oldest_ref || '';
+  if (!beforeRef) return;
+  setStatus('Loading older...', true);
+  window.chatScrollMode = 'keep';
+  try {
+    const olderWindow = await shellExec(`/tablewindow current_channel_messages --limit=${CHAT_PAGE_SIZE} --before-ref=${beforeRef}`, true, 'CMD');
+    const olderMessages = messagesFromTableResolved(olderWindow.table, activeChannelName);
+    const combined = mergeMessagesUnique(olderMessages, cached.messages || []);
+    const nextLimit = Math.max(combined.length, windowInfo.count || 0, CHAT_PAGE_SIZE);
+    await shellExec(`/tablewindow current_channel_messages --limit=${nextLimit} --offset=0`, true, 'CMD');
+    renderFromState({
+      ...cached,
+      messages: combined,
+      message_window: {
+        ...windowInfo,
+        limit: nextLimit,
+        oldest_ref: combined.length ? combined[0].path : '',
+        newest_ref: combined.length ? combined[combined.length - 1].path : '',
+        count: combined.length,
+      },
+    });
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+async function loadNewerMessages() {
+  const cached = loadCachedState() || {};
+  const windowInfo = cached.message_window || {};
+  const afterRef = windowInfo.newest_ref || '';
+  if (!afterRef) return;
+  setStatus('Loading newer...', true);
+  window.chatScrollMode = 'bottom';
+  try {
+    const newerWindow = await shellExec(`/tablewindow current_channel_messages --limit=${CHAT_PAGE_SIZE} --after-ref=${afterRef}`, true, 'CMD');
+    const newerMessages = messagesFromTableResolved(newerWindow.table, activeChannelName);
+    const combined = mergeMessagesTail(cached.messages || [], newerMessages);
+    const nextLimit = Math.max(combined.length, windowInfo.count || 0, CHAT_PAGE_SIZE);
+    await shellExec(`/tablewindow current_channel_messages --limit=${nextLimit} --offset=0`, true, 'CMD');
+    renderFromState({
+      ...cached,
+      messages: combined,
+      message_window: {
+        ...windowInfo,
+        limit: nextLimit,
+        oldest_ref: combined.length ? combined[0].path : '',
+        newest_ref: combined.length ? combined[combined.length - 1].path : '',
+        count: combined.length,
+      },
+    });
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+function renderMessages(items, windowInfo = {}) {
   const el = document.getElementById('chat-thread');
   const msgs = items.filter(i => i.meta?.type === 'message');
   if (!msgs.length) {
@@ -66,7 +131,13 @@ function renderMessages(items) {
     return;
   }
   const currentUser = getUsername();
-  el.innerHTML = msgs.map(m => {
+  const olderBar = windowInfo.oldest_ref
+    ? `<div class="chat-load-more"><button class="btn sm" onclick="loadOlderMessages()">Load older</button></div>`
+    : '';
+  const newerBar = windowInfo.newest_ref
+    ? `<div class="chat-load-more"><button class="btn sm" onclick="loadNewerMessages()">Load newer</button></div>`
+    : '';
+  el.innerHTML = olderBar + msgs.map(m => {
     const meta = m.meta || {};
     const user = meta.user || 'anon';
     const ts = meta.ts ? new Date(meta.ts).toLocaleTimeString() : '';
@@ -91,6 +162,9 @@ function renderMessages(items) {
         <button class="btn sm" onclick="deleteMessageAtomic('${esc(msgPath)}')">Del</button>
       </div>
     </div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
+  }).join('') + newerBar;
+  if (window.chatScrollMode !== 'keep') {
+    el.scrollTop = el.scrollHeight;
+  }
+  window.chatScrollMode = 'bottom';
 }

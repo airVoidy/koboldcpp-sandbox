@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 from dataclasses import asdict, is_dataclass
 import shutil
 import uuid
@@ -55,6 +56,11 @@ from .data_store.store import DataStore
 from .atomic_data_revision import create_atomic_data_revision_router
 from .atomic_wiki import create_atomic_wiki_router
 from .atomic_dsl_api import create_atomic_dsl_router, flatten_json
+try:
+    import jsonata as _jsonata_mod
+    _HAS_JSONATA = True
+except ImportError:
+    _HAS_JSONATA = False
 try:
     from .ui_proto import (
         AddNodeOp,
@@ -4305,7 +4311,7 @@ load();
 
         def _init_runtime_containers(self):
             """Create default runtime container manifests for generic materialization."""
-            for container_id in ("channels_selector", "current_channel"):
+            for container_id in ("channels_selector", "current_channel", "current_channel_messages"):
                 meta, state = self._load_default_container_spec(container_id)
                 self._ensure_container(container_id, meta, state)
 
@@ -4367,6 +4373,58 @@ load();
                     break
             return None
 
+        # ── Exec-as-capability ────────────────────────────
+
+        def _get_node_schema(self, node_dir: Path) -> dict:
+            """Get merged schema for node by walking template inheritance chain."""
+            meta = self._read_meta(node_dir)
+            node_type = (meta or {}).get("type", "")
+            if not node_type:
+                return {}
+            merged: dict[str, Any] = {}
+            visited = set()
+            current_type = node_type
+            while current_type and current_type not in visited:
+                visited.add(current_type)
+                schema_path = self.templates_dir / current_type / "schema.json"
+                if schema_path.is_file():
+                    try:
+                        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+                        # Earlier in chain = more specific, takes priority
+                        for k, v in schema.items():
+                            if k not in merged:
+                                merged[k] = v
+                            elif k == "children" and isinstance(v, dict):
+                                # Merge children from parent into child (child overrides)
+                                parent_children = dict(v)
+                                parent_children.update(merged.get("children", {}))
+                                merged["children"] = parent_children
+                        current_type = schema.get("inherits", "")
+                    except Exception:
+                        break
+                else:
+                    break
+            return merged
+
+        def _node_has_exec(self, node_dir: Path) -> bool:
+            """Check if node's template declares exec capability."""
+            schema = self._get_node_schema(node_dir)
+            return bool(schema.get("exec", False))
+
+        def _node_can_append(self, node_dir: Path, child_type: str) -> bool:
+            """Check if node allows appending children of given type."""
+            schema = self._get_node_schema(node_dir)
+            children = schema.get("children", {})
+            if not children:
+                return False
+            # Check exact type or wildcard
+            spec = children.get(child_type, children.get("*"))
+            if not spec:
+                return False
+            if isinstance(spec, dict):
+                return bool(spec.get("append", False))
+            return bool(spec)
+
         _cmd_cache: dict[str, tuple] = {}  # path_str -> (execute_fn, mtime)
 
         def _preload_commands(self):
@@ -4406,7 +4464,14 @@ load();
 
         def exec_cmd(self, cmd_str: str, user: str = "anon", log: bool = True, scope_name: str = "CMD") -> dict:
             """Parse and execute a shell command in a named scope.
-            Resolution order: template command .py (by inheritance) -> hardcoded cmd_* method."""
+            Resolution order: template command .py (by inheritance) -> hardcoded cmd_* method.
+            Supports -- raw tail: everything after -- is passed as single last arg."""
+            # Raw tail mode: split at -- before shlex
+            raw_tail = None
+            if " -- " in cmd_str:
+                head, raw_tail = cmd_str.split(" -- ", 1)
+                cmd_str = head
+
             try:
                 parts = shlex.split(cmd_str)
             except ValueError as e:
@@ -4415,6 +4480,8 @@ load();
                 return {"error": "empty command"}
             command = parts[0].lstrip("/").lower()
             args = parts[1:]
+            if raw_tail is not None:
+                args.append(raw_tail)
             scope = self.get_scope(scope_name)
 
             # 1. Try template command (from .py files)
@@ -4461,6 +4528,296 @@ load();
         def _write_data(self, path: Path, data: dict):
             (path / "_data.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+        # ── L0: Exec log (append-only per node) ──────────────
+
+        def _exec_log_path(self, node_dir: Path) -> Path:
+            return node_dir / "_exec.jsonl"
+
+        def _append_exec_entry(self, node_dir: Path, entry: dict):
+            log_path = self._exec_log_path(node_dir)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        def _read_exec_log(self, node_dir: Path) -> list[dict]:
+            log_path = self._exec_log_path(node_dir)
+            if not log_path.exists():
+                return []
+            entries = []
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+            return entries
+
+        # ── Patch-only response builder ───────────────────
+
+        def _build_patch_response(self, before: dict, after: dict, prefix: str = "") -> list[dict]:
+            """Diff two state dicts, return list of patches [{path, value, op}]."""
+            patches: list[dict] = []
+            all_keys = set(list(before.keys()) + list(after.keys()))
+            for key in all_keys:
+                path = f"{prefix}.{key}" if prefix else key
+                old_val = before.get(key)
+                new_val = after.get(key)
+                if key not in before:
+                    patches.append({"path": path, "value": new_val, "op": "add"})
+                elif key not in after:
+                    patches.append({"path": path, "value": None, "op": "remove"})
+                elif isinstance(old_val, dict) and isinstance(new_val, dict):
+                    patches.extend(self._build_patch_response(old_val, new_val, path))
+                elif isinstance(old_val, list) and isinstance(new_val, list):
+                    if old_val != new_val:
+                        patches.append({"path": path, "value": new_val, "op": "update"})
+                elif old_val != new_val:
+                    patches.append({"path": path, "value": new_val, "op": "update"})
+            return patches
+
+        # ── L1: Projection / flat_store ──────────────────────
+
+        def _field_type_name(self, value: Any) -> str:
+            if value is None:
+                return "null"
+            if isinstance(value, bool):
+                return "bool"
+            if isinstance(value, int) and not isinstance(value, bool):
+                return "int"
+            if isinstance(value, float):
+                return "float"
+            if isinstance(value, str):
+                return "str"
+            if isinstance(value, list):
+                return "list"
+            if isinstance(value, dict):
+                return "dict"
+            return type(value).__name__
+
+        def _projection_hash(self, source_path: str, field_path: str) -> str:
+            raw = f"{source_path}::{field_path}".encode("utf-8")
+            return hashlib.sha1(raw).hexdigest()[:12]
+
+        def _projection_field_entry(self, source_path: str, scope: str, key: str, value: Any) -> dict:
+            field_path = f"{scope}.{key}"
+            bind = f"{source_path}.{field_path}"
+            field_hash = self._projection_hash(source_path, field_path)
+            return {
+                "hash": field_hash,
+                "scope": scope,
+                "path": field_path,
+                "full_relative_path": field_path,
+                "bind": bind,
+                "value": value,
+                "value_type": self._field_type_name(value),
+            }
+
+        def _projection_views(self, flat_store: dict[str, list[Any]], view_filters: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+            views: dict[str, list[dict[str, Any]]] = {}
+            for view_name, paths in view_filters.items():
+                rows: list[dict[str, Any]] = []
+                for path in paths:
+                    item = flat_store.get(path)
+                    if not item:
+                        continue
+                    rows.append({"hash": item[0], "path": item[1], "value": item[2]})
+                views[view_name] = rows
+            return views
+
+        def _build_message_projection(self, msg_dir: Path) -> dict:
+            """Build L1 projection for a message node: flat_store + views."""
+            source_path = self._rel_path(msg_dir)
+            meta = self._read_meta(msg_dir) or {}
+            data = self._read_data(msg_dir) or {}
+            fields = []
+            flat_store: dict[str, list[Any]] = {}
+            view_filters: dict[str, list[str]] = {"all": [], "_meta": [], "_data": []}
+
+            for key, value in meta.items():
+                entry = self._projection_field_entry(source_path, "_meta", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_meta"].append(entry["full_relative_path"])
+
+            for key, value in data.items():
+                entry = self._projection_field_entry(source_path, "_data", key, value)
+                fields.append(entry)
+                flat_store[entry["full_relative_path"]] = [entry["hash"], entry["full_relative_path"], entry["value"]]
+                view_filters["all"].append(entry["full_relative_path"])
+                view_filters["_data"].append(entry["full_relative_path"])
+
+            return {
+                "source_node": source_path,
+                "_meta": {"global_path": f"{source_path}.(_meta.json)", "schema": {k: k for k in meta.keys()}, "value": meta},
+                "_data": {"global_path": f"{source_path}.(_data.json)", "schema": {k: k for k in data.keys()}, "value": data},
+                "fields": fields,
+                "flat_store": flat_store,
+                "view_filters": view_filters,
+                "views": self._projection_views(flat_store, view_filters),
+            }
+
+        # ── JSONata eval over projection ─────────────────────
+
+        def _build_jsonata_bindings(self, projection: dict) -> dict[str, Any]:
+            flat_store = projection.get("flat_store") or {}
+            views = projection.get("views") or {}
+
+            def field(path: str) -> dict[str, Any] | None:
+                item = flat_store.get(str(path))
+                if not item:
+                    return None
+                return {"hash": item[0], "path": item[1], "value": item[2]}
+
+            def value(path: str) -> Any:
+                item = flat_store.get(str(path))
+                return item[2] if item else None
+
+            def view(name: str) -> list[dict[str, Any]]:
+                return list(views.get(str(name)) or [])
+
+            return {
+                "projection": projection,
+                "flat_store": flat_store,
+                "views": views,
+                "field": field,
+                "value": value,
+                "view": view,
+            }
+
+        def eval_message_projection_jsonata(self, msg_dir: Path, expr: str, *, view_name: str = "all", input_name: str = "view") -> dict:
+            """Evaluate JSONata expression against a message projection."""
+            if not _HAS_JSONATA:
+                return {"error": "jsonata-python not installed (pip install jsonata)"}
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            input_map = {
+                "projection": projection,
+                "flat_store": projection.get("flat_store") or {},
+                "view": (projection.get("views") or {}).get(view_name) or [],
+            }
+            if input_name not in input_map:
+                return {"error": f"unsupported input '{input_name}'"}
+
+            expression = _jsonata_mod.Jsonata(expr)
+            bindings = self._build_jsonata_bindings(projection)
+            expression.assign("projection", bindings["projection"])
+            expression.assign("flat_store", bindings["flat_store"])
+            expression.assign("views", bindings["views"])
+            expression.register_lambda("field", bindings["field"])
+            expression.register_lambda("value", bindings["value"])
+            expression.register_lambda("view", bindings["view"])
+            result = expression.evaluate(input_map[input_name])
+            return {
+                "ok": True,
+                "source": self._rel_path(msg_dir),
+                "input": input_name,
+                "view": view_name,
+                "expr": expr,
+                "result": result,
+                "projection": projection,
+            }
+
+        # ── Checkpoint ───────────────────────────────────────
+
+        def create_message_checkpoint(self, msg_dir: Path, user: str) -> dict:
+            """Create child checkpoint node capturing message projection state."""
+            if not msg_dir.is_dir():
+                return {"error": f"not found: {self._rel_path(msg_dir)}"}
+            meta = self._read_meta(msg_dir) or {}
+            if meta.get("type") != "message":
+                return {"error": f"not a message node: {self._rel_path(msg_dir)}"}
+
+            projection = self._build_message_projection(msg_dir)
+            checkpoint_name = self._next_slot_id(msg_dir, "checkpoint")
+            checkpoint_dir = msg_dir / checkpoint_name
+            checkpoint_dir.mkdir()
+
+            checkpoint_meta = {
+                "type": "message", "kind": "checkpoint",
+                "user": user, "ts": utc_now(),
+                "source": projection["source_node"],
+            }
+            checkpoint_data = {
+                "projection": projection,
+                "resolved": {"meta": projection["_meta"]["value"], "data": projection["_data"]["value"]},
+            }
+            self._write_meta(checkpoint_dir, checkpoint_meta)
+            self._write_data(checkpoint_dir, checkpoint_data)
+            self._append_exec_entry(msg_dir, {
+                "op": "checkpoint", "user": user, "ts": checkpoint_meta["ts"],
+                "checkpoint": self._rel_path(checkpoint_dir),
+                "source": projection["source_node"],
+                "resolved": checkpoint_data["resolved"],
+            })
+            return {
+                "ok": True, "source": self._rel_path(msg_dir),
+                "projection": projection,
+                "checkpoint": {"path": self._rel_path(checkpoint_dir), "meta": checkpoint_meta, "data": checkpoint_data},
+            }
+
+        # ── Template aggregation ──────────────────────────
+
+        def _build_template_aggregation(self, template_type: str, scope_dir: Path) -> dict:
+            """Aggregate projection of all instances matching template type.
+            e.g. type='msg' finds all msg_* dirs, builds projection for each, unions flat_stores."""
+            prefix = f"{template_type}_"
+            instances = []
+            merged_flat_store: dict[str, list[Any]] = {}
+            merged_fields: list[dict] = []
+            instance_views: dict[str, dict] = {}
+
+            for child in sorted(scope_dir.iterdir(), key=lambda p: p.name):
+                if not child.is_dir() or child.name.startswith("_"):
+                    continue
+                if not child.name.startswith(prefix):
+                    continue
+                meta = self._read_meta(child)
+                if not meta or meta.get("type") != template_type:
+                    # Also check by prefix match even without exact type
+                    if meta and meta.get("type"):
+                        continue
+
+                projection = self._build_message_projection(child)
+                instance_id = child.name
+                instances.append({
+                    "id": instance_id,
+                    "path": self._rel_path(child),
+                    "meta": meta or {},
+                })
+
+                # Namespace fields under instance_id
+                for field_path, entry in projection.get("flat_store", {}).items():
+                    namespaced = f"{instance_id}.{field_path}"
+                    merged_flat_store[namespaced] = [entry[0], namespaced, entry[2]]
+                    merged_fields.append({
+                        "instance": instance_id,
+                        "path": field_path,
+                        "namespaced_path": namespaced,
+                        "hash": entry[0],
+                        "value": entry[2],
+                    })
+
+                # Per-instance views
+                instance_views[instance_id] = projection.get("views", {})
+
+            return {
+                "ok": True,
+                "type": template_type,
+                "scope": self._rel_path(scope_dir),
+                "count": len(instances),
+                "instances": instances,
+                "flat_store": merged_flat_store,
+                "fields": merged_fields,
+                "instance_views": instance_views,
+            }
+
         def _read_json(self, path: Path):
             if path.exists():
                 return json.loads(path.read_text(encoding="utf-8"))
@@ -4477,9 +4834,38 @@ load();
             return self._read_json(self._container_dir(container_id) / "_meta.json") or {}
 
         def _read_container_state(self, container_id: str) -> dict:
-            return self._read_json(self._container_dir(container_id) / "state.json") or {}
+            """Read container state. Try state.json cache first, fallback to log replay."""
+            cached = self._read_json(self._container_dir(container_id) / "state.json")
+            if cached:
+                return cached
+            return self._container_state_from_log(container_id)
+
+        def _container_state_from_log(self, container_id: str) -> dict:
+            """Replay cmd_log.jsonl to rebuild container state."""
+            log_path = self._container_dir(container_id) / "cmd_log.jsonl"
+            if not log_path.exists():
+                return {}
+            state: dict[str, Any] = {}
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # Replay state mutations from log entries
+                cmd = entry.get("cmd", "")
+                if cmd == "cselect" and entry.get("args"):
+                    state["selected"] = entry["args"][0]
+                elif "state_patch" in entry:
+                    # Generic state patch entry
+                    for k, v in entry["state_patch"].items():
+                        self._set_by_dotpath(state, k, v)
+            return state
 
         def _write_container_state(self, container_id: str, state: dict):
+            """Write container state cache + append to exec log."""
             self._write_json(self._container_dir(container_id) / "state.json", state)
 
         def _append_container_log(self, container_id: str, entry: dict):
@@ -4493,6 +4879,102 @@ load();
             if normalized_source and normalized_path.startswith(normalized_source + "."):
                 return normalized_path[len(normalized_source) + 1:]
             return normalized_path.split(".")[-1]
+
+        def _projection_bind_entry(self, source_path: str, local_root: str, canonical_path: str, local_path: str | None = None) -> dict:
+            normalized_bind = self._normalize_atomic_path(canonical_path)
+            resolved_local_path = str(local_path or self._projection_field_name(source_path, canonical_path)).strip(".")
+            read = self.atomic_read(normalized_bind)
+            entry = {
+                "kind": "field",
+                "path": f"{local_root}.{resolved_local_path}" if local_root else resolved_local_path,
+                "local_name": resolved_local_path.split(".")[-1],
+                "bind": normalized_bind,
+                "atomic_path": normalized_bind,
+            }
+            if read.get("error"):
+                entry["value"] = None
+                entry["value_type"] = "null"
+                entry["error"] = read.get("error")
+            else:
+                entry["value"] = read.get("value")
+                entry["value_type"] = type(read.get("value")).__name__ if read.get("value") is not None else "null"
+            return entry
+
+        def _projection_local_key(self, local_root: str, field_path: str) -> str:
+            path = str(field_path or "").strip(".")
+            prefix = f"{local_root}."
+            if local_root and path.startswith(prefix):
+                return path[len(prefix):]
+            return path
+
+        def _projection_op_path(self, op: str) -> Path:
+            return self.templates_dir / "root" / "runtime" / "projection-ops" / f"{op}.py"
+
+        def _resolve_projection_op(self, op: str):
+            op_name = str(op or "").strip().lower()
+            if not op_name:
+                return None
+            op_path = self._projection_op_path(op_name)
+            if not op_path.is_file():
+                return None
+            return self._load_cmd_module(op_path)
+
+        def _table_op_path(self, op: str) -> Path:
+            return self.templates_dir / "root" / "runtime" / "table-ops" / f"{op}.py"
+
+        def _resolve_table_op(self, op: str):
+            op_name = str(op or "").strip().lower()
+            if not op_name:
+                return None
+            op_path = self._table_op_path(op_name)
+            if not op_path.is_file():
+                return None
+            return self._load_cmd_module(op_path)
+
+        def _projection_rule_entry(self, local_root: str, rule: dict, value_map: dict[str, Any]) -> dict:
+            field_path = str(rule.get("path") or "").strip(".")
+            op = str(rule.get("op") or "").strip().lower()
+            args = rule.get("args") or []
+            if not field_path:
+                return {
+                    "kind": "field",
+                    "path": f"{local_root}.invalid_rule" if local_root else "invalid_rule",
+                    "local_name": "invalid_rule",
+                    "value": None,
+                    "value_type": "null",
+                    "error": "projection rule path is required",
+                    "rule": rule,
+                }
+            if not isinstance(args, list):
+                args = []
+
+            value = None
+            error = None
+            op_execute = self._resolve_projection_op(op)
+            if op_execute:
+                try:
+                    op_result = op_execute(rule, local_root, value_map, self)
+                except Exception as exc:
+                    op_result = {"error": str(exc)}
+                if isinstance(op_result, dict):
+                    error = op_result.get("error")
+                    value = op_result.get("value")
+                else:
+                    value = op_result
+            else:
+                error = f"unsupported projection rule op: {op}"
+
+            entry = {
+                "kind": "field",
+                "path": f"{local_root}.{field_path}" if local_root else field_path,
+                "local_name": field_path.split(".")[-1],
+                "rule": rule,
+                "value": value,
+                "value_type": type(value).__name__ if value is not None else "null",
+            }
+            if error:
+                entry["error"] = error
+            return entry
 
         def _get_by_dotpath(self, data: Any, path: str):
             cur = data
@@ -5008,30 +5490,37 @@ load();
             source_path = str(projection.get("source_path") or "").replace("\\", "/")
             local_root = str(projection.get("local_root") or "projection")
             fields = projection.get("fields") or []
+            rules = projection.get("rules") or []
             if not isinstance(fields, list):
                 fields = []
+            if not isinstance(rules, list):
+                rules = []
 
             resolved_fields = []
-            for canonical_path in fields:
-                if not isinstance(canonical_path, str) or not canonical_path.strip():
-                    continue
-                read = self.atomic_read(canonical_path)
-                local_path = self._projection_field_name(source_path, canonical_path)
-                entry = {
-                    "kind": "field",
-                    "path": f"{local_root}.{local_path}" if local_root else local_path,
-                    "local_name": local_path.split(".")[-1],
-                    "bind": self._normalize_atomic_path(canonical_path),
-                    "atomic_path": self._normalize_atomic_path(canonical_path),
-                }
-                if read.get("error"):
-                    entry["value"] = None
-                    entry["value_type"] = "null"
-                    entry["error"] = read.get("error")
+            value_map: dict[str, Any] = {}
+            for field_spec in fields:
+                if isinstance(field_spec, str) and field_spec.strip():
+                    entry = self._projection_bind_entry(source_path, local_root, field_spec)
+                elif isinstance(field_spec, dict):
+                    bind = str(field_spec.get("bind") or "").strip()
+                    if not bind:
+                        continue
+                    entry = self._projection_bind_entry(source_path, local_root, bind, field_spec.get("path"))
                 else:
-                    entry["value"] = read.get("value")
-                    entry["value_type"] = type(read.get("value")).__name__ if read.get("value") is not None else "null"
+                    continue
                 resolved_fields.append(entry)
+                local_key = self._projection_local_key(local_root, entry.get("path", ""))
+                value_map[local_key] = entry.get("value")
+                value_map[entry.get("local_name", local_key)] = entry.get("value")
+
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                entry = self._projection_rule_entry(local_root, rule, value_map)
+                resolved_fields.append(entry)
+                local_key = self._projection_local_key(local_root, entry.get("path", ""))
+                value_map[local_key] = entry.get("value")
+                value_map[entry.get("local_name", local_key)] = entry.get("value")
 
             resolved = {
                 "container_id": container_id,
@@ -5057,6 +5546,137 @@ load();
                     "container_id": container_id,
                     "source_path": source_path or None,
                     "kind": "projection",
+                })
+                self._write_json(sdir / "resolved.json", resolved)
+                self._write_json(sdir / "rows.json", {"rows": rows})
+                self._write_json(sdir / "source_refs.json", {"refs": refs})
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "sandbox": self._rel_path(self._sandbox_dir(container_id)),
+                "resolved": resolved,
+                "rows": rows,
+                "refs": refs,
+            }
+
+        def _materialize_table_container(self, container_id: str, meta: dict, state: dict, persist: bool = True) -> dict:
+            runtime_meta = json.loads(json.dumps(meta))
+            table_meta = runtime_meta.get("table", {}) if isinstance(runtime_meta.get("table"), dict) else {}
+            autoload = table_meta.get("autoload") if isinstance(table_meta.get("autoload"), dict) else None
+            if autoload:
+                autoload_spec = json.loads(json.dumps(autoload))
+                pagination = state.get("pagination") if isinstance(state.get("pagination"), dict) else {}
+                for key in ("limit", "offset", "before_ref", "after_ref", "from_end", "visible_only"):
+                    if key in pagination:
+                        autoload_spec[key] = pagination.get(key)
+                source_template = str(autoload_spec.pop("source_path_template", "") or "").strip()
+                if source_template and not autoload_spec.get("source_path"):
+                    autoload_spec["source_path"] = self._render_source_template(source_template)
+                source_path = str(autoload_spec.get("source_path") or "").strip()
+                if source_path:
+                    execute = self._resolve_table_op(str(autoload_spec.get("op") or ""))
+                    if execute:
+                        try:
+                            result = execute(autoload_spec, runtime_meta, self)
+                        except Exception as exc:
+                            return {"error": str(exc)}
+                        if isinstance(result, dict) and result.get("error"):
+                            return result
+                        next_meta = result.get("meta") if isinstance(result, dict) else None
+                        if isinstance(next_meta, dict):
+                            runtime_meta = next_meta
+                            table_meta = runtime_meta.get("table", {}) if isinstance(runtime_meta.get("table"), dict) else {}
+
+            local_root = str(table_meta.get("local_root") or "table")
+            columns = table_meta.get("columns") or []
+            rows_meta = table_meta.get("rows") or []
+            if not isinstance(columns, list):
+                columns = []
+            if not isinstance(rows_meta, list):
+                rows_meta = []
+
+            resolved_rows = []
+            refs = []
+            for idx, row_meta in enumerate(rows_meta):
+                if not isinstance(row_meta, dict):
+                    continue
+                projection_id = str(row_meta.get("projection") or "").strip()
+                row_key = str(row_meta.get("row_key") or projection_id or idx)
+                if not projection_id:
+                    continue
+                projection = self.materialize_container(projection_id, persist=False)
+                if projection.get("error"):
+                    resolved_rows.append({
+                        "row_key": row_key,
+                        "projection": projection_id,
+                        "error": projection.get("error"),
+                        "cells": [],
+                    })
+                    continue
+                proj = projection.get("resolved", {}).get("projection", {})
+                proj_fields = proj.get("fields", []) if isinstance(proj, dict) else []
+                field_map = {}
+                for field in proj_fields:
+                    if not isinstance(field, dict):
+                        continue
+                    key = field.get("local_name") or self._projection_local_key(str(proj.get("local_root") or ""), field.get("path", ""))
+                    field_map[str(key)] = field
+                cells = []
+                for col in columns:
+                    col_name = str(col)
+                    source_field = field_map.get(col_name)
+                    if source_field:
+                        cell = {
+                            "kind": "field",
+                            "path": f"{local_root}.{row_key}.{col_name}",
+                            "local_name": col_name,
+                            "bind": source_field.get("bind"),
+                            "atomic_path": source_field.get("atomic_path"),
+                            "value": source_field.get("value"),
+                            "value_type": source_field.get("value_type", "null"),
+                        }
+                        if source_field.get("rule"):
+                            cell["rule"] = source_field.get("rule")
+                    else:
+                        cell = {
+                            "kind": "field",
+                            "path": f"{local_root}.{row_key}.{col_name}",
+                            "local_name": col_name,
+                            "value": None,
+                            "value_type": "null",
+                        }
+                    cells.append(cell)
+                resolved_rows.append({
+                    "row_key": row_key,
+                    "projection": projection_id,
+                    "ref": row_meta.get("ref"),
+                    "cells": cells,
+                })
+                refs.append({"path": projection_id, "hash": None})
+
+            resolved = {
+                "container_id": container_id,
+                "state": state,
+                "source": {
+                    "path": None,
+                    "meta": runtime_meta,
+                    "data": {},
+                },
+                "table": {
+                    "kind": "virtual_table",
+                    "local_root": local_root,
+                    "columns": columns,
+                    "rows": resolved_rows,
+                },
+            }
+            rows = flatten_json(resolved, object_name=container_id)
+            if persist:
+                sdir = self._sandbox_dir(container_id)
+                sdir.mkdir(parents=True, exist_ok=True)
+                self._write_json(sdir / "_meta.json", {
+                    "container_id": container_id,
+                    "source_path": None,
+                    "kind": "table",
                 })
                 self._write_json(sdir / "resolved.json", resolved)
                 self._write_json(sdir / "rows.json", {"rows": rows})
@@ -5109,6 +5729,8 @@ load();
             state = self._read_container_state(container_id)
             if meta.get("kind") == "projection":
                 return self._materialize_projection_container(container_id, meta, state, persist=persist)
+            if meta.get("kind") == "table":
+                return self._materialize_table_container(container_id, meta, state, persist=persist)
             try:
                 source_path = self._resolve_container_source(meta, state)
             except Exception as e:
@@ -5191,12 +5813,13 @@ load();
                 "user": user,
                 "ts": utc_now(),
             })
-            mats = self._run_action_rebuilds(container_id, "select", [container_id, "current_channel"])
+            mats = self._run_action_rebuilds(container_id, "select", [container_id, "current_channel", "current_channel_messages"])
             return {
                 "ok": True,
                 "selected": name,
                 "selector": mats.get("channels_selector"),
                 "current_channel": mats.get("current_channel"),
+                "current_channel_messages": mats.get("current_channel_messages"),
             }
 
         def container_post_selected(self, text: str, user: str) -> dict:
@@ -5217,13 +5840,14 @@ load();
                 "ts": utc_now(),
                 "selected": channel_name,
             })
-            mats = self._run_action_rebuilds("current_channel", "post", ["channels_selector", "current_channel"])
+            mats = self._run_action_rebuilds("current_channel", "post", ["channels_selector", "current_channel", "current_channel_messages"])
             return {
                 "ok": bool(post_result.get("ok")),
                 "selected": channel_name,
                 "post": post_result,
                 "selector": mats.get("channels_selector"),
                 "current_channel": mats.get("current_channel"),
+                "current_channel_messages": mats.get("current_channel_messages"),
             }
 
         def container_create_channel(self, name: str, user: str, scope: "ConsoleScope") -> dict:
@@ -5242,13 +5866,14 @@ load();
                 "user": user,
                 "ts": utc_now(),
             })
-            mats = self._run_action_rebuilds("channels_selector", "create_channel", ["channels_selector", "current_channel"])
+            mats = self._run_action_rebuilds("channels_selector", "create_channel", ["channels_selector", "current_channel", "current_channel_messages"])
             return {
                 "ok": True,
                 "selected": name,
                 "channel": mk_result,
                 "selector": mats.get("channels_selector"),
                 "current_channel": mats.get("current_channel"),
+                "current_channel_messages": mats.get("current_channel_messages"),
             }
 
         def container_create_projection(self, container_id: str, source_path: str, local_root: str, fields: list[str], user: str) -> dict:
@@ -5292,6 +5917,177 @@ load();
                 "projection": materialized,
             }
 
+        def container_add_projection_rule(self, container_id: str, rule: dict, user: str) -> dict:
+            if not container_id:
+                return {"error": "container_id is required"}
+            if not isinstance(rule, dict):
+                return {"error": "projection rule must be an object"}
+            field_path = str(rule.get("path") or "").strip()
+            op = str(rule.get("op") or "").strip().lower()
+            args = rule.get("args") or []
+            if not field_path:
+                return {"error": "projection rule path is required"}
+            if not op:
+                return {"error": "projection rule op is required"}
+            if not isinstance(args, list):
+                return {"error": "projection rule args must be a list"}
+            normalized_rule = dict(rule)
+            normalized_rule["path"] = field_path
+            normalized_rule["op"] = op
+            normalized_rule["args"] = [str(arg).strip() for arg in args if str(arg).strip()]
+
+            meta = self._read_container_meta(container_id)
+            if not meta:
+                return {"error": f"unknown container: {container_id}"}
+            if meta.get("kind") != "projection":
+                return {"error": f"container is not a projection: {container_id}"}
+
+            projection = meta.get("projection", {}) if isinstance(meta.get("projection"), dict) else {}
+            rules = projection.get("rules") or []
+            if not isinstance(rules, list):
+                rules = []
+            rules.append(normalized_rule)
+            projection["rules"] = rules
+            meta["projection"] = projection
+            self._write_json(self._container_dir(container_id) / "_meta.json", meta)
+            self._append_container_log(container_id, {
+                "cmd": "projectionexec",
+                "user": user,
+                "ts": utc_now(),
+                "rule": normalized_rule,
+            })
+            materialized = self.materialize_container(container_id, persist=False)
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "projection": materialized,
+                "rule": normalized_rule,
+            }
+
+        def container_add_projection_concat_rule(self, container_id: str, field_path: str, args: list[str], sep: str, user: str) -> dict:
+            return self.container_add_projection_rule(container_id, {
+                "path": field_path,
+                "op": "concat",
+                "args": args,
+                "sep": sep,
+            }, user)
+
+        def container_create_table(self, container_id: str, local_root: str, columns: list[str], user: str) -> dict:
+            if not container_id:
+                return {"error": "container_id is required"}
+            if not local_root:
+                return {"error": "local_root is required"}
+            normalized_columns = [str(col).strip() for col in columns if str(col).strip()]
+            meta = {
+                "id": container_id,
+                "kind": "table",
+                "table": {
+                    "local_root": local_root,
+                    "columns": normalized_columns,
+                    "rows": [],
+                },
+            }
+            state = {"local_root": local_root}
+            self._ensure_container(container_id, meta, state)
+            self._write_json(self._container_dir(container_id) / "_meta.json", meta)
+            self._write_container_state(container_id, state)
+            self._append_container_log(container_id, {
+                "cmd": "mktable",
+                "user": user,
+                "ts": utc_now(),
+                "local_root": local_root,
+                "columns": normalized_columns,
+            })
+            materialized = self.materialize_container(container_id, persist=False)
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "table": materialized,
+            }
+
+        def container_add_table_op(self, container_id: str, op_spec: dict, user: str) -> dict:
+            if not container_id:
+                return {"error": "container_id is required"}
+            if not isinstance(op_spec, dict):
+                return {"error": "table op must be an object"}
+            op = str(op_spec.get("op") or "").strip().lower()
+            if not op:
+                return {"error": "table op is required"}
+
+            meta = self._read_container_meta(container_id)
+            if not meta:
+                return {"error": f"unknown container: {container_id}"}
+            if meta.get("kind") != "table":
+                return {"error": f"container is not a table: {container_id}"}
+
+            execute = self._resolve_table_op(op)
+            if not execute:
+                return {"error": f"unsupported table op: {op}"}
+
+            try:
+                result = execute(op_spec, meta, self)
+            except Exception as exc:
+                return {"error": str(exc)}
+            if isinstance(result, dict) and result.get("error"):
+                return result
+            if not isinstance(result, dict):
+                return {"error": f"invalid table op result: {op}"}
+
+            next_meta = result.get("meta")
+            if not isinstance(next_meta, dict):
+                return {"error": f"table op did not return meta: {op}"}
+            self._write_json(self._container_dir(container_id) / "_meta.json", next_meta)
+            self._append_container_log(container_id, {
+                "cmd": "tableexec",
+                "user": user,
+                "ts": utc_now(),
+                "op": op_spec,
+            })
+            materialized = self.materialize_container(container_id, persist=False)
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "table": materialized,
+                "op": op_spec,
+            }
+
+        def container_set_table_window(self, container_id: str, limit: int | None = None, offset: int | None = None, before_ref: str = "", after_ref: str = "", user: str = "system") -> dict:
+            if not container_id:
+                return {"error": "container_id is required"}
+            meta = self._read_container_meta(container_id)
+            if not meta:
+                return {"error": f"unknown container: {container_id}"}
+            if meta.get("kind") != "table":
+                return {"error": f"container is not a table: {container_id}"}
+
+            state = self._read_container_state(container_id)
+            pagination = state.get("pagination") if isinstance(state.get("pagination"), dict) else {}
+            if limit is not None:
+                pagination["limit"] = max(0, int(limit))
+            if offset is not None:
+                pagination["offset"] = max(0, int(offset))
+            pagination["before_ref"] = str(before_ref or "").strip()
+            pagination["after_ref"] = str(after_ref or "").strip()
+            if pagination["before_ref"]:
+                pagination["after_ref"] = ""
+            if pagination["after_ref"]:
+                pagination["before_ref"] = ""
+            state["pagination"] = pagination
+            self._write_container_state(container_id, state)
+            self._append_container_log(container_id, {
+                "cmd": "tablewindow",
+                "user": user,
+                "ts": utc_now(),
+                "pagination": pagination,
+            })
+            materialized = self.materialize_container(container_id, persist=False)
+            return {
+                "ok": True,
+                "container_id": container_id,
+                "table": materialized,
+                "pagination": pagination,
+            }
+
         def container_patch_selected(self, raw_path: str, value: Any, user: str) -> dict:
             channel_name = self._container_selected_value("current_channel")
             if not channel_name:
@@ -5321,6 +6117,18 @@ load();
                     return patch_result
                 target_kind = "data"
 
+            if target_dir != channel_dir and target_dir.is_dir():
+                self._append_exec_entry(target_dir, {
+                    "op": "patch",
+                    "user": user,
+                    "ts": utc_now(),
+                    "target": raw_path,
+                    "target_kind": target_kind,
+                    "field_path": field_path,
+                    "atomic_path": atomic_path,
+                    "value": value,
+                })
+
             self._append_container_log("current_channel", {
                 "cmd": "cpatch",
                 "args": [raw_path],
@@ -5331,7 +6139,7 @@ load();
                 "atomic_path": atomic_path,
                 "value": value,
             })
-            mats = self._run_action_rebuilds("current_channel", "patch", ["channels_selector", "current_channel"])
+            mats = self._run_action_rebuilds("current_channel", "patch", ["channels_selector", "current_channel", "current_channel_messages"])
             return {
                 "ok": True,
                 "selected": channel_name,
@@ -5342,6 +6150,7 @@ load();
                 "value": value,
                 "selector": mats.get("channels_selector"),
                 "current_channel": mats.get("current_channel"),
+                "current_channel_messages": mats.get("current_channel_messages"),
             }
 
         def container_react_selected(self, msg_id: str, emoji: str, user: str) -> dict:
@@ -5381,6 +6190,14 @@ load();
             patch_result = self.atomic_patch(atomic_path, reactions)
             if patch_result.get("error"):
                 return patch_result
+            self._append_exec_entry(msg_dir, {
+                "op": "react",
+                "user": user,
+                "ts": utc_now(),
+                "emoji": emoji,
+                "atomic_path": patch_result.get("atomic_path"),
+                "value": reactions,
+            })
             self._append_container_log("current_channel", {
                 "cmd": "creact",
                 "args": [msg_id, emoji],
@@ -5389,7 +6206,7 @@ load();
                 "selected": channel_name,
                 "atomic_path": patch_result.get("atomic_path"),
             })
-            mats = self._run_action_rebuilds("current_channel", "react", ["channels_selector", "current_channel"])
+            mats = self._run_action_rebuilds("current_channel", "react", ["channels_selector", "current_channel", "current_channel_messages"])
             return {
                 "ok": True,
                 "selected": channel_name,
@@ -5399,6 +6216,7 @@ load();
                 "reactions": reactions,
                 "selector": mats.get("channels_selector"),
                 "current_channel": mats.get("current_channel"),
+                "current_channel_messages": mats.get("current_channel_messages"),
             }
 
         def _next_slot_id(self, parent: Path, type_prefix: str) -> str:
@@ -5419,6 +6237,46 @@ load();
                 return str(path.relative_to(self.root)).replace("\\", "/")
             except ValueError:
                 return str(path)
+
+        def _children_log_path(self, parent: Path) -> Path:
+            return parent / "_children.jsonl"
+
+        def _append_child_ref(self, parent: Path, child: Path):
+            rel_child = self._rel_path(child)
+            entry = {
+                "ref": rel_child,
+                "name": child.name,
+                "ts": utc_now(),
+            }
+            meta = self._read_meta(child) or {}
+            if meta:
+                entry["meta"] = {
+                    "type": meta.get("type"),
+                    "name": meta.get("name"),
+                    "user": meta.get("user"),
+                    "ts": meta.get("ts"),
+                }
+            log_path = self._children_log_path(parent)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        def _read_child_log(self, parent: Path) -> list[dict]:
+            log_path = self._children_log_path(parent)
+            if not log_path.exists():
+                return []
+            entries = []
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(parsed, dict):
+                    entries.append(parsed)
+            return entries
 
         # ── Commands ──────────────────────────────────────────
 
@@ -5456,16 +6314,23 @@ load();
             meta = {"type": "channel", "user": user, "ts": utc_now(), "name": name}
             self._write_meta(ch_dir, meta)
             self._write_data(ch_dir, {})
+            self._append_child_ref(channels_dir, ch_dir)
+            self._append_exec_entry(ch_dir, {
+                "op": "mkchannel", "user": user, "ts": meta["ts"], "name": name,
+            })
             # Auto-create channel scope
             ch_scope = self.get_scope(f"channel:{name}")
             ch_scope.cwd = ch_dir
             return {"ok": True, "path": self._rel_path(ch_dir), "meta": meta, "scope": f"channel:{name}"}
 
         def cmd_mk(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Create a node of given type in current scope."""
+            """Create a node of given type in current scope. Checks children capability."""
             if len(args) < 2:
                 return {"error": "usage: /mk <type> <name>"}
             node_type, name = args[0], args[1]
+            # Capability check: can this container accept children of this type?
+            if not self._node_can_append(scope.cwd, node_type):
+                return {"error": f"cannot create {node_type} in {self._rel_path(scope.cwd)}: no children scope for this type"}
             node_dir = scope.cwd / name
             if node_dir.exists():
                 meta = self._read_meta(node_dir) or {}
@@ -5474,6 +6339,11 @@ load();
             meta = {"type": node_type, "user": user, "ts": utc_now(), "name": name}
             self._write_meta(node_dir, meta)
             self._write_data(node_dir, {})
+            self._append_child_ref(scope.cwd, node_dir)
+            self._append_exec_entry(node_dir, {
+                "op": "mk", "user": user, "ts": meta["ts"],
+                "type": node_type, "name": name,
+            })
             return {"ok": True, "path": self._rel_path(node_dir), "meta": meta}
 
         def cmd_cd(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
@@ -5582,15 +6452,29 @@ load();
             return {"path": self._rel_path(target), "meta": meta, "data": data}
 
         def cmd_post(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
-            """Create a message in current scope."""
+            """Create a message in current scope. Checks msg append capability."""
+            if not self._node_can_append(scope.cwd, "msg"):
+                # Fallback: allow if node type is channel/cards (backward compat)
+                meta = self._read_meta(scope.cwd) or {}
+                if meta.get("type") not in ("channel", "channels", "cards"):
+                    return {"error": f"cannot post in {self._rel_path(scope.cwd)}: no msg children scope"}
             text = " ".join(args) if args else ""
             slot_name = self._next_slot_id(scope.cwd, "msg")
             slot_dir = scope.cwd / slot_name
             slot_dir.mkdir()
             meta = {"type": "message", "user": user, "ts": utc_now()}
+            data = {"content": text}
             self._write_meta(slot_dir, meta)
-            self._write_data(slot_dir, {"content": text})
-            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": {"content": text}}
+            self._write_data(slot_dir, data)
+            self._append_exec_entry(slot_dir, {
+                "op": "post",
+                "user": user,
+                "ts": meta["ts"],
+                "meta": meta,
+                "data": data,
+            })
+            self._append_child_ref(scope.cwd, slot_dir)
+            return {"ok": True, "path": self._rel_path(slot_dir), "meta": meta, "data": data}
 
         def cmd_rm(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
             """Delete a slot."""
@@ -5600,6 +6484,11 @@ load();
             target = scope.cwd / name
             if not target.is_dir():
                 return {"error": f"not found: {name}"}
+            # Log before deletion
+            self._append_exec_entry(scope.cwd, {
+                "op": "rm", "user": user, "ts": utc_now(),
+                "target": name, "path": self._rel_path(target),
+            })
             import shutil
             shutil.rmtree(target)
             return {"ok": True, "removed": name}
@@ -5637,6 +6526,49 @@ load();
             if not target.is_dir():
                 return {"error": f"not found: {path_str}"}
             return self._read_tree(target, depth, limit)
+
+        # ── Projection commands ───────────────────────────
+
+        def cmd_mcheckpoint(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Create a child checkpoint node inside a message slot."""
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if args:
+                    return {"error": "usage: /mcheckpoint  (inside message) or /mcheckpoint <msg_id> (inside channel)"}
+                return self.create_message_checkpoint(target, user)
+            if not args:
+                return {"error": "usage: /mcheckpoint <msg_id>"}
+            msg_dir = scope.cwd / args[0]
+            return self.create_message_checkpoint(msg_dir, user)
+
+        def cmd_mjsonata(self, args: list[str], user: str, scope: "ConsoleScope") -> dict:
+            """Evaluate a JSONata expression against a message projection."""
+            view_name = "all"
+            input_name = "view"
+            positional: list[str] = []
+            for arg in args:
+                if arg.startswith("--view="):
+                    view_name = arg.split("=", 1)[1].strip() or "all"
+                    continue
+                if arg.startswith("--input="):
+                    input_name = arg.split("=", 1)[1].strip() or "view"
+                    continue
+                positional.append(arg)
+
+            target = scope.cwd
+            meta = self._read_meta(target) or {}
+            if meta.get("type") == "message":
+                if not positional:
+                    return {"error": "usage: /mjsonata <expr> [--view=all|_meta|_data] [--input=view|projection|flat_store]"}
+                expr = " ".join(positional)
+                return self.eval_message_projection_jsonata(target, expr, view_name=view_name, input_name=input_name)
+
+            if len(positional) < 2:
+                return {"error": "usage: /mjsonata <msg_id> <expr> [--view=...] [--input=...]"}
+            msg_dir = scope.cwd / positional[0]
+            expr = " ".join(positional[1:])
+            return self.eval_message_projection_jsonata(msg_dir, expr, view_name=view_name, input_name=input_name)
 
         def _read_tree(self, path: Path, depth: int, limit: int) -> dict:
             """Read a node and its children recursively up to depth/limit."""
@@ -5694,9 +6626,42 @@ load();
     workspace = PChatWorkspace(Path(root))
     # No replay needed — FS IS the state. Log is for audit/migration only.
 
+    # ── Endpoint logger: every API call → JSONL ──
+    import traceback as _tb
+
+    _endpoint_log_dir = workspace.root / "runtime" / "endpoint_logs"
+    _endpoint_log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _log_endpoint(endpoint: str, req_data: dict, result: dict | None = None, error: str | None = None):
+        log_path = _endpoint_log_dir / f"{endpoint}.jsonl"
+        entry = {"ts": utc_now(), "endpoint": endpoint, "req": req_data}
+        if result is not None:
+            # Truncate large results for log readability
+            ok = result.get("ok")
+            err = result.get("error")
+            entry["ok"] = ok
+            if err:
+                entry["error"] = err
+        if error:
+            entry["error"] = error
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+
+    def _safe_endpoint(endpoint: str, req_data: dict, fn):
+        """Wrap endpoint: log request, catch errors, log result."""
+        try:
+            result = fn()
+            _log_endpoint(endpoint, req_data, result=result if isinstance(result, dict) else {})
+            return result
+        except Exception as e:
+            tb = _tb.format_exc()
+            _log_endpoint(endpoint, req_data, error=f"{e}\n{tb}")
+            raise
+
     @app.post("/api/pchat/exec")
     def pchat_exec(req: PChatExecRequest) -> dict:
-        return workspace.exec_cmd(req.cmd, req.user, log=req.log, scope_name=req.scope)
+        return _safe_endpoint("exec", {"cmd": req.cmd, "user": req.user, "scope": req.scope},
+            lambda: workspace.exec_cmd(req.cmd, req.user, log=req.log, scope_name=req.scope))
 
     @app.post("/api/pchat/sys")
     def pchat_sys(req: PChatSysRequest) -> dict:
@@ -5706,19 +6671,58 @@ load();
     @app.post("/api/pchat/batch")
     def pchat_batch(req: PChatBatchRequest) -> dict:
         """Execute multiple commands in one HTTP request. Returns list of results."""
-        results = []
-        for cmd in req.cmds:
-            results.append(workspace.exec_cmd(cmd, req.user, log=req.log, scope_name=req.scope))
-        return {"results": results}
+        def run():
+            results = []
+            for cmd in req.cmds:
+                results.append(workspace.exec_cmd(cmd, req.user, log=req.log, scope_name=req.scope))
+            return {"results": results}
+        return _safe_endpoint("batch", {"cmds": req.cmds, "user": req.user}, run)
 
     @app.post("/api/pchat/view")
     def pchat_view(req: PChatStateRequest) -> dict:
         """Return full chat state in one request: channels + messages for active channel."""
-        return _pchat_build_state(req.channel, req.msg_limit, req.user)
+        return _safe_endpoint("view", {"channel": req.channel, "user": req.user},
+            lambda: _pchat_build_state(req.channel, req.msg_limit, req.user))
 
     @app.post("/api/container/materialize")
     def container_materialize(req: ContainerMaterializeRequest) -> dict:
-        return workspace.materialize_container(req.container_id)
+        return _safe_endpoint("materialize", {"container_id": req.container_id},
+            lambda: workspace.materialize_container(req.container_id))
+
+    class ProjectionRequest(BaseModel):
+        template: str
+        scope: str = ""
+
+    @app.get("/api/endpoint-logs/{endpoint}")
+    def get_endpoint_log(endpoint: str, tail: int = 50) -> dict:
+        """Read last N entries from endpoint log."""
+        log_path = _endpoint_log_dir / f"{endpoint}.jsonl"
+        if not log_path.exists():
+            return {"endpoint": endpoint, "entries": [], "total": 0}
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        entries = []
+        for line in lines[-tail:]:
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        return {"endpoint": endpoint, "entries": entries, "total": len(lines)}
+
+    @app.get("/api/endpoint-logs")
+    def list_endpoint_logs() -> dict:
+        """List all endpoint logs with sizes."""
+        logs = []
+        if _endpoint_log_dir.is_dir():
+            for f in sorted(_endpoint_log_dir.glob("*.jsonl")):
+                logs.append({"endpoint": f.stem, "size": f.stat().st_size, "lines": sum(1 for _ in open(f, encoding="utf-8"))})
+        return {"logs": logs}
+
+    @app.post("/api/pchat/projection")
+    def pchat_projection(req: ProjectionRequest) -> dict:
+        scope_dir = workspace.root / req.scope if req.scope else workspace.pchat_dir
+        if not scope_dir.is_dir():
+            scope_dir = workspace.pchat_dir
+        return workspace._build_template_aggregation(req.template, scope_dir)
 
     @app.post("/api/atomic/view")
     def atomic_view(req: AtomicViewRequest) -> dict:
@@ -5733,9 +6737,21 @@ load();
         return workspace.atomic_define_field(req.atomic_path, req.value_type, req.default)
 
     @app.get("/api/pchat/state")
-    def pchat_state_get(channel: str | None = None, msg_limit: int = 50) -> dict:
-        """GET variant — returns channels + optional channel messages."""
-        return _pchat_build_state(channel, msg_limit, "anon")
+    def pchat_state_get(channel: str | None = None, msg_limit: int = 50, since: int | None = None) -> dict:
+        """GET variant — returns channels + optional channel messages.
+        since=N: return only exec entries after index N (inverted: 0=latest)."""
+        state = _pchat_build_state(channel, msg_limit, "anon")
+        if since is not None and isinstance(state.get("messages"), list):
+            total = len(state["messages"])
+            # since=0 means client has latest, return empty
+            # since=5 means client is 5 behind, return last 5
+            if since == 0:
+                state["messages"] = []
+            elif since < total:
+                state["messages"] = state["messages"][-since:]
+            state["since"] = since
+            state["total"] = total
+        return state
 
     def _pchat_build_state(channel: str | None, msg_limit: int, user: str) -> dict:
         selected = workspace._container_selected_value("current_channel")
