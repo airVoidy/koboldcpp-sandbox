@@ -4,7 +4,7 @@
 > Worktree: `C:\llm\KoboldCPP agentic sandbox\.claude\worktrees\tender-archimedes` (⚠️ stale — see §14)
 > Plan: `C:\Users\vAiry\.claude\plans\wild-forging-melody.md`
 > Memory entry: `C:\Users\vAiry\.claude\projects\C--llm-KoboldCPP-agentic-sandbox\memory\project_session_t_summary.md`
-> Branch: `master` @ `764d7844` (snapshot commit) — previously `2438c775` (Phase 1 work)
+> Branch: `master` @ `e068b365` — consolidated via merges (Phase 1 + user's atom prototype + Python jupyter_layer)
 > Origin session: `98f15504-c2a6-4d95-a543-619759ee8d27`
 > Date: 2026-04-18
 
@@ -450,6 +450,51 @@ Suggested first prompt:
 > - P4: JupyterAdapter bridging TS ↔ Python jupyter_layer
 >
 > Architectural principles (§3 + §11) are language-agnostic and survive regardless of which branch becomes base.
+
+---
+
+## 14.5. Consolidation Done — current master content (as of `e068b365`)
+
+Master now includes (via merges performed this session):
+
+- **Phase 1 TS stack** (our work) — Data Layer + Runtime Object Layer + 3 adapters + Middlelayer + BashTerminal + TypeHierarchy + lazy resolver (under `koboldcpp-sandbox/src/`)
+- **Atom prototype** (user's new work) — Vue-based prototype with workers (under `wip/atom_prototype/`)
+- **pchat_exec_scope architecture docs** (user's new work) — full architecture plan with foundation, data model, command model, implementation plan, handoff notes (under `wip/pchat_exec_scope/`)
+- **Vercel micro-chat test** (user's new work) — deployment scaffold (under `wip/vercel-micro-chat-test/`)
+- **jupyter_layer Python twin** — Panel > Object lazy architecture over Jupyter kernels + 25 mocked tests + NLP demo (under `src/jupyter_layer/`, `tests/`, `examples/`)
+- **Session T snapshot + plan handoff docs** (under `root/SESSION_T_SNAPSHOT.md`)
+
+**Still NOT merged (deliberately — requires architectural decision)**:
+
+`cAiry/hopeful-poitras-e8f0de` and `cAiry/upbeat-khorana-452da1` both point at `3bdb17a6`, containing the `codex/runtime-unify-view` chain (15 commits). This is an **alternative architecture** for the same files we touched:
+
+- `useSandbox` hook with `instancesOf`/`resolve` methods
+- Typed child lists in sandbox runtime
+- `Projection`/`ProjectionFieldRow`/`TemplateAggregation` types kept first-class (we removed them)
+- `FSView.tsx` + `ProjectionRenderer.tsx` components (we didn't have these)
+- `/api/pchat/message-projection` server endpoint (we stayed on exec-only)
+
+**Merge attempted, 7 conflicts** (api.ts, useChat.ts, runtime.ts, DebugConsole.tsx, query.ts, client-cmd.ts deleted-vs-modified, package.json). These are coherent but **competing design trajectories** — neither "ours" nor "theirs" is right by default. Needs:
+
+1. User architectural decision on which trajectory is canon
+2. Targeted cherry-pick if only specific pieces (e.g., FSView.tsx standalone) are desired
+
+Preserved SHAs (cherry-pick anchors):
+```
+3bdb17a6 Fix merged runtime TS build breakages
+943484f0 Drop accidental merge extras from master
+b8dc9f59 Merge branch 'codex/runtime-unify-view'
+da25554b Unify runtime object flow and add replay debug tools
+5186b5fe Add typed child lists to sandbox runtime
+57c3307d Restore projection command layer from runtime slice
+98e415a5 Restore projection endpoints and renderer flow
+f85eb944 Unify runtime sandbox and drop public materialize
+21935f9d Add capability-based access: children[] scope, exec declaration, append policy
+ba850a03 Fix message layout: Slack-style left-aligned for all users
+(full chain: git log master..3bdb17a6)
+```
+
+Next agent should **ask user** which runtime architecture line is canon before merging further.
 
 ---
 
