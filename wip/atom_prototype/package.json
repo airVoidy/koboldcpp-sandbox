@@ -1,0 +1,36 @@
+{
+  "name": "atom-prototype",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "@lexical/history": "^0.43.0",
+    "@lexical/rich-text": "^0.43.0",
+    "lexical": "^0.43.0",
+    "synckit": "^0.9.2",
+    "unplugin": "^2.3.11",
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@rollup/plugin-alias": "^5.1.1",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "@vitest/ui": "^4.1.4",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^4.1.4",
+    "vue-tsc": "^2.2.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.0.0-beta.53"
+  }
+}
