@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atom Prototype (Vue + Rolldown)</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: #1a1a1f;
+        color: #e0e0e0;
+      }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      h1 {
+        color: #9ccfd8;
+        margin-bottom: 8px;
+      }
+      p.subtitle {
+        color: #6e6a86;
+        margin-top: 0;
+        margin-bottom: 24px;
+      }
+      .editor-host {
+        background: #2a2a33;
+        border: 1px solid #403d52;
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 160px;
+        margin-bottom: 16px;
+        position: relative;
+      }
+      .editor-host:focus-within {
+        border-color: #9ccfd8;
+      }
+      .editor-input {
+        outline: none;
+        min-height: 120px;
+        color: #e0def4;
+      }
+      .demo {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      button {
+        background: #403d52;
+        color: #e0def4;
+        border: 1px solid #6e6a86;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      button:hover {
+        background: #524f67;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      pre.log {
+        background: #0f0f14;
+        color: #f6c177;
+        padding: 12px;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 12px;
+        max-height: 240px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        color: #ebbcba;
+      }
+      .log-entry + .log-entry {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid #2a2a33;
+      }
+      details.virtual {
+        margin-top: 16px;
+        background: #2a2a33;
+        border: 1px solid #403d52;
+        border-radius: 6px;
+        padding: 8px 12px;
+      }
+      details.virtual summary {
+        cursor: pointer;
+        color: #c4a7e7;
+      }
+      details.virtual pre {
+        color: #8ec07c;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
