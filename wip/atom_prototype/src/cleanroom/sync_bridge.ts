@@ -6,8 +6,15 @@
 // snapshot persistence. The backend chooses where snapshots actually live
 // (memory / OPFS / anything else implementing StorageBackend).
 
-import type { AtomicSnapshot, AtomicStore, JsonValue } from './store'
+import type {
+  AtomicSnapshot,
+  AtomicStore,
+  JsonValue,
+  ProjectionSlot,
+  ProjectionSlotState,
+} from './store'
 import type { CheckpointPredicate, CheckpointSync } from './contracts'
+import type { ProjectionPipeline } from './pipeline'
 import type { StorageBackend } from './storage'
 
 export type SnapshotOnCheckpointOptions = {
@@ -63,6 +70,42 @@ export function bindSnapshotOnCheckpoint(
   return () => {
     unwatch()
   }
+}
+
+export type SnapshotOnResolveOptions = {
+  /** Build the storage key from the resolved slot. */
+  keyOf: (slot: ProjectionSlot) => string
+  /**
+   * Slot states that should trigger persistence. Defaults to ['materialized'].
+   * Pass ['materialized', 'shadow'] to also persist shadow alternatives.
+   */
+  onlyStates?: ProjectionSlotState[]
+  /** Optional: receive errors raised during async storage put. */
+  onError?: (err: unknown, ctx: { slot: ProjectionSlot; key: string }) => void
+}
+
+/**
+ * Bind a ProjectionPipeline to a StorageBackend: when a slot transitions
+ * into one of `onlyStates` (default: just `materialized`), persist the
+ * slot itself under `keyOf(slot)`.
+ *
+ * This closes the pipeline ↔ storage loop without manual snapshot calls.
+ * Useful when you want every successful resolve to leave a trace.
+ */
+export function bindSnapshotOnResolve(
+  pipeline: ProjectionPipeline,
+  storage: StorageBackend,
+  opts: SnapshotOnResolveOptions,
+): () => void {
+  const states = opts.onlyStates ?? ['materialized']
+
+  return pipeline.onResolve(({ slot }) => {
+    if (!states.includes(slot.state)) return
+    const key = opts.keyOf(slot)
+    storage.put(key, slot as unknown as JsonValue).catch((err: unknown) => {
+      if (opts.onError) opts.onError(err, { slot, key })
+    })
+  })
 }
 
 /**

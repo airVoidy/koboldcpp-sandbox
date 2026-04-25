@@ -121,6 +121,14 @@ export const moduleEntries: ModuleEntry[] = [
       'Pipeline lifecycle made visible: declared → resolving → materialized | shadow | problem. Each transition is appended as a paragraph in a Lexical editor — the editor itself IS the computation log surface.',
     tags: ['projection-slot', 'pipeline', 'lexical', 'cleanroom'],
   },
+  {
+    name: 'composition-demo',
+    path: '/composition-demo',
+    title: 'Composition — Gateway + Pipeline + AABB',
+    description:
+      'Three cleanroom primitives composing without mutual coupling. Gateway routes payloads by content; pipeline materializes each as its own slot; on-resolve hook routes the materialized slot into the AABB zone the gateway picked.',
+    tags: ['gateway', 'pipeline', 'aabb', 'composition', 'cleanroom'],
+  },
   // Example external module (uncomment + configure proxy in vite.config.ts):
   // {
   //   name: 'web-container',
@@ -186,6 +194,11 @@ const routes: RouteRecordRaw[] = [
     path: '/slot-inspector',
     name: 'slot-inspector',
     component: () => import('./views/SlotInspectorView.vue'),
+  },
+  {
+    path: '/composition-demo',
+    name: 'composition-demo',
+    component: () => import('./views/CompositionDemoView.vue'),
   },
 ]
 

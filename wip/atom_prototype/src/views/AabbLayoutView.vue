@@ -58,6 +58,51 @@ function addNewItem() {
   tick.value++
 }
 
+// --- HTML5 drag-and-drop (additive — arrow buttons stay) -------------
+
+const dragOverZone = ref<Zone | null>(null)
+
+function onDragStart(event: DragEvent, item: string, fromZone: Zone) {
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData(
+    'application/atomic-aabb',
+    JSON.stringify({ item, from: fromZone }),
+  )
+  // Plain text fallback for tools that don't speak our type
+  event.dataTransfer.setData('text/plain', item)
+}
+
+function onDragOver(event: DragEvent, zone: Zone) {
+  // Only accept our drag type
+  if (event.dataTransfer?.types.includes('application/atomic-aabb')) {
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    dragOverZone.value = zone
+  }
+}
+
+function onDragLeave(zone: Zone) {
+  if (dragOverZone.value === zone) dragOverZone.value = null
+}
+
+function onDrop(event: DragEvent, toZone: Zone) {
+  event.preventDefault()
+  dragOverZone.value = null
+  if (!event.dataTransfer) return
+
+  const raw = event.dataTransfer.getData('application/atomic-aabb')
+  if (!raw) return
+
+  try {
+    const { item, from } = JSON.parse(raw) as { item: string; from: Zone }
+    if (from === toZone) return // dropped onto same zone — no-op
+    move(item, from, toZone)
+  } catch {
+    // ignore malformed payload
+  }
+}
+
 const flatPreview = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   tick.value
@@ -84,11 +129,19 @@ const flatPreview = computed(() => {
         v-for="zone in zoneDescriptors"
         :key="zone.key"
         class="zone"
-        :class="`zone-${zone.key}`"
+        :class="[`zone-${zone.key}`, { 'drag-over': dragOverZone === zone.value }]"
+        @dragover="onDragOver($event, zone.value)"
+        @dragleave="onDragLeave(zone.value)"
+        @drop="onDrop($event, zone.value)"
       >
         <h2>{{ zone.label }}</h2>
         <ul v-if="aabb.zones[zone.key].items.length > 0">
-          <li v-for="item in aabb.zones[zone.key].items" :key="item">
+          <li
+            v-for="item in aabb.zones[zone.key].items"
+            :key="item"
+            draggable="true"
+            @dragstart="onDragStart($event, item, zone.value)"
+          >
             <button
               v-if="zone.value !== -1"
               class="arrow"
@@ -97,7 +150,7 @@ const flatPreview = computed(() => {
             >
               ←
             </button>
-            <span class="chip">{{ item }}</span>
+            <span class="chip" title="drag me, or use the arrow buttons">⋮⋮ {{ item }}</span>
             <button
               v-if="zone.value !== 1"
               class="arrow"
@@ -124,7 +177,7 @@ const flatPreview = computed(() => {
             </button>
           </li>
         </ul>
-        <p v-else class="empty">[ empty ]</p>
+        <p v-else class="empty">[ drop here ]</p>
       </div>
     </div>
 
@@ -198,6 +251,19 @@ code {
 
 .zone-0 {
   border-color: rgba(196, 167, 231, 0.4);
+}
+
+.zone.drag-over {
+  border-color: rgba(156, 207, 216, 0.7);
+  background: rgba(156, 207, 216, 0.06);
+}
+
+.zone li[draggable='true'] {
+  cursor: grab;
+}
+
+.zone li[draggable='true']:active {
+  cursor: grabbing;
 }
 
 .zone ul {

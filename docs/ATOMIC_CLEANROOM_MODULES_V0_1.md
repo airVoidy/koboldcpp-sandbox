@@ -23,10 +23,11 @@ The bootstrap's `AtomicStore` is the only shared substrate.
 
 Demo views live at `wip/atom_prototype/src/views/`:
 
-| View                  | Route              | Demonstrates                                              |
-| --------------------- | ------------------ | --------------------------------------------------------- |
-| `AabbLayoutView.vue`  | `/aabb-layout`     | Three-zone bucket layout with arrow buttons + checkpoint  |
-| `SlotInspectorView.vue` | `/slot-inspector` | Pipeline transitions appended live to Lexical editor      |
+| View                       | Route                 | Demonstrates                                              |
+| -------------------------- | --------------------- | --------------------------------------------------------- |
+| `AabbLayoutView.vue`       | `/aabb-layout`        | Three-zone bucket layout with HTML5 drag-drop + buttons   |
+| `SlotInspectorView.vue`    | `/slot-inspector`     | Pipeline transitions appended live to Lexical editor      |
+| `CompositionDemoView.vue`  | `/composition-demo`   | Gateway + Pipeline + AABB composing via `onResolve` hook  |
 
 ## 1. ProjectionPipeline
 
@@ -64,6 +65,17 @@ pipeline.resolveSlot('s')
 `forkShadow(sourceId, shadowId, opts?)` creates a sibling slot inheriting
 `vector` and `ruleRefs`, ready for independent resolution. Resolve with
 `{ asShadow: true }` to mark the result as a shadow alternative.
+
+`onResolve(listener)` subscribes to lifecycle transitions; the listener is
+called for every state change (resolving, materialized, shadow, problem)
+with `{ slot, prevState }`. Returns an unsubscribe function. Listener
+errors are isolated — one bad listener doesn't stop others.
+
+```ts
+const unsub = pipeline.onResolve(({ slot, prevState }) => {
+  console.log(`${slot.id}: ${prevState} → ${slot.state}`)
+})
+```
 
 See: [ATOMIC_PROJECTION_SLOT_SPEC_V0_1.md](ATOMIC_PROJECTION_SLOT_SPEC_V0_1.md).
 
@@ -218,6 +230,24 @@ sync.append({ kind: 'checkpoint' })  // → snapshot persisted
 const last = await loadLatestSnapshot(storage, 'snap:')
 ```
 
+`bindSnapshotOnResolve(pipeline, storage, opts)` is the dual: persist a
+slot whenever it transitions into one of the configured states (default:
+just `materialized`). Closes the pipeline ↔ storage loop without manual
+snapshot calls.
+
+```ts
+import { bindSnapshotOnResolve, ProjectionPipeline, MemoryStorageBackend, AtomicStore } from '@/cleanroom'
+
+const pipeline = new ProjectionPipeline(new AtomicStore())
+const storage = new MemoryStorageBackend()
+
+bindSnapshotOnResolve(pipeline, storage, {
+  keyOf: (slot) => `slot:${slot.id}`,
+  // onlyStates: ['materialized', 'shadow'],  // include shadow alternatives
+})
+// every successful resolve now leaves a trace in storage automatically
+```
+
 ## 7. Atom-to-placeholder gateway
 
 `AtomToPlaceholderGateway` generalizes `GloryHole` over multiple payload
@@ -261,17 +291,17 @@ all happen in user code over the public APIs.
 
 ## Test coverage
 
-Vitest run on `wip/atom_prototype` (190 tests total, 81 of which are
+Vitest run on `wip/atom_prototype` (199 tests total, 90 of which are
 cleanroom):
 
 | File                    | Tests |
 | ----------------------- | ----- |
-| `pipeline.test.ts`      | 12    |
+| `pipeline.test.ts`      | 16    |
 | `aabb.test.ts`          | 12    |
 | `portals.test.ts`       | 14    |
 | `contracts.test.ts`     | 18    |
 | `storage.test.ts`       | 8     |
-| `sync_bridge.test.ts`   | 6     |
+| `sync_bridge.test.ts`   | 11    |
 | `gateway.test.ts`       | 11    |
 
 Run with `pnpm test` or `npm test` from `wip/atom_prototype/`.
@@ -283,13 +313,11 @@ Things the cleanroom does not yet cover (deferred, pickable independently):
 - **Real OPFS testing in browser** — `OpfsStorageBackend` is implemented
   but only memory backend is unit-tested (Node test env has no OPFS).
   Browser-side smoke test recommended before relying in production.
-- **Drag-and-drop AABB viewer** — current view uses arrow buttons; a
-  HTML5 drag-and-drop variant could replace them for spatial mutation.
-- **Pipeline ↔ AABB ↔ Portal composition demo** — a single view that
-  wires GloryHole drops to AABB zone-promotions to slot resolution.
-- **Persistence-on-resolve hook** — automatically `storage.put` when a
-  slot transitions to materialized (would close the `pipeline ↔ storage`
-  loop without manual snapshot calls).
+- **Multi-peer ghost FS** — actual P2P state-sharing across separate
+  AtomicStore instances via symlinks or live-stream of partial views.
+- **Atomic-DSL bridge** — wire ProjectionSlot vectors to a soft-DSL
+  parser so users can write rules in a natural-language-ish form rather
+  than constructing dispatch objects manually.
 
 See [ATOMIC_CLEANROOM_ARCHITECTURE_SESSION_2026_04_22.md](ATOMIC_CLEANROOM_ARCHITECTURE_SESSION_2026_04_22.md)
 for the full architectural context that produced these modules.

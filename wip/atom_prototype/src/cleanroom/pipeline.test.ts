@@ -166,4 +166,68 @@ describe('ProjectionPipeline', () => {
     // The inner slot (b) catches the cycle directly when it tries to ref back to a (which is 'resolving').
     expect(pipeline.getError('b')).toMatch(/cycle|resolving/i)
   })
+
+  it('onResolve fires for each transition (resolving + materialized)', () => {
+    const events: string[] = []
+    pipeline.onResolve(({ slot, prevState }) => {
+      events.push(`${prevState}->${slot.state}`)
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'literal', value: 1 }))
+
+    pipeline.resolveSlot('s')
+
+    expect(events).toEqual(['declared->resolving', 'resolving->materialized'])
+  })
+
+  it('onResolve fires problem transition on failure', () => {
+    const events: string[] = []
+    pipeline.onResolve(({ slot, prevState }) => {
+      events.push(`${prevState}->${slot.state}`)
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'slotRef', slotId: 'missing' }))
+
+    pipeline.resolveSlot('s')
+
+    expect(events).toContain('declared->resolving')
+    expect(events).toContain('resolving->problem')
+  })
+
+  it('onResolve unsubscribe stops further notifications', () => {
+    let count = 0
+    const unsub = pipeline.onResolve(() => {
+      count++
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s1', 'o', { kind: 'literal', value: 1 }))
+    store.declareSlot(createProjectionSlot('s2', 'o', { kind: 'literal', value: 2 }))
+
+    pipeline.resolveSlot('s1')
+    const afterFirst = count
+    expect(afterFirst).toBeGreaterThan(0)
+
+    unsub()
+    pipeline.resolveSlot('s2')
+    expect(count).toBe(afterFirst)
+  })
+
+  it('onResolve listener errors are isolated', () => {
+    let goodCount = 0
+    pipeline.onResolve(() => {
+      throw new Error('listener boom')
+    })
+    pipeline.onResolve(() => {
+      goodCount++
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'literal', value: 1 }))
+
+    expect(() => pipeline.resolveSlot('s')).not.toThrow()
+    expect(goodCount).toBeGreaterThan(0)
+  })
 })

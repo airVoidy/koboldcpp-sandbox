@@ -2,11 +2,17 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   AtomicStore,
   createAtomicObject,
+  createProjectionSlot,
   type JsonValue,
 } from './store'
 import { CheckpointSync } from './contracts'
+import { ProjectionPipeline } from './pipeline'
 import { MemoryStorageBackend } from './storage'
-import { bindSnapshotOnCheckpoint, loadLatestSnapshot } from './sync_bridge'
+import {
+  bindSnapshotOnCheckpoint,
+  bindSnapshotOnResolve,
+  loadLatestSnapshot,
+} from './sync_bridge'
 
 describe('bindSnapshotOnCheckpoint', () => {
   let store: AtomicStore
@@ -96,6 +102,105 @@ describe('bindSnapshotOnCheckpoint', () => {
     const b = (await storage.get('snap:targetB')) as { target: string } | undefined
     expect(a?.target).toBe('targetA')
     expect(b?.target).toBe('targetB')
+  })
+})
+
+describe('bindSnapshotOnResolve', () => {
+  it('persists slot when it becomes materialized', async () => {
+    const store = new AtomicStore()
+    const pipeline = new ProjectionPipeline(store)
+    const storage = new MemoryStorageBackend()
+
+    bindSnapshotOnResolve(pipeline, storage, {
+      keyOf: (slot) => `slot:${slot.id}`,
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'literal', value: 42 }))
+    pipeline.resolveSlot('s')
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    const persisted = await storage.get('slot:s')
+    expect(persisted).toBeTruthy()
+    expect((persisted as { state: string }).state).toBe('materialized')
+    expect((persisted as { value: number }).value).toBe(42)
+  })
+
+  it('does not persist on resolving transitions by default', async () => {
+    const store = new AtomicStore()
+    const pipeline = new ProjectionPipeline(store)
+    const storage = new MemoryStorageBackend()
+
+    bindSnapshotOnResolve(pipeline, storage, {
+      keyOf: (slot) => `slot:${slot.id}`,
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'literal', value: 1 }))
+    pipeline.resolveSlot('s')
+
+    await new Promise((r) => setTimeout(r, 0))
+    // exactly one entry — only the materialized state
+    expect(await storage.list()).toEqual(['slot:s'])
+  })
+
+  it('does not persist problem state by default', async () => {
+    const store = new AtomicStore()
+    const pipeline = new ProjectionPipeline(store)
+    const storage = new MemoryStorageBackend()
+
+    bindSnapshotOnResolve(pipeline, storage, {
+      keyOf: (slot) => `slot:${slot.id}`,
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'slotRef', slotId: 'missing' }))
+    pipeline.resolveSlot('s')
+
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await storage.list()).toHaveLength(0)
+  })
+
+  it('persists shadow state when included in onlyStates', async () => {
+    const store = new AtomicStore()
+    const pipeline = new ProjectionPipeline(store)
+    const storage = new MemoryStorageBackend()
+
+    bindSnapshotOnResolve(pipeline, storage, {
+      keyOf: (slot) => `slot:${slot.id}`,
+      onlyStates: ['materialized', 'shadow'],
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s', 'o', { kind: 'literal', value: 1 }))
+    pipeline.resolveSlot('s', { asShadow: true })
+
+    await new Promise((r) => setTimeout(r, 0))
+    const persisted = await storage.get('slot:s')
+    expect((persisted as { state: string }).state).toBe('shadow')
+  })
+
+  it('unbind stops further auto-persistence', async () => {
+    const store = new AtomicStore()
+    const pipeline = new ProjectionPipeline(store)
+    const storage = new MemoryStorageBackend()
+
+    const unbind = bindSnapshotOnResolve(pipeline, storage, {
+      keyOf: (slot) => `slot:${slot.id}`,
+    })
+
+    store.putObject(createAtomicObject('o', null))
+    store.declareSlot(createProjectionSlot('s1', 'o', { kind: 'literal', value: 1 }))
+    pipeline.resolveSlot('s1')
+    await new Promise((r) => setTimeout(r, 0))
+
+    unbind()
+    store.declareSlot(createProjectionSlot('s2', 'o', { kind: 'literal', value: 2 }))
+    pipeline.resolveSlot('s2')
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(await storage.list()).toEqual(['slot:s1'])
   })
 })
 

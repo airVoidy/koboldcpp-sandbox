@@ -29,21 +29,55 @@ export type ResolveOptions = {
   asShadow?: boolean
 }
 
+export type SlotResolveEvent = {
+  slot: ProjectionSlot
+  prevState: ProjectionSlotState
+}
+
+export type SlotResolveListener = (event: SlotResolveEvent) => void
+
 /**
  * ProjectionPipeline grants a Store the ability to walk slot vectors and
  * transition slots through their lifecycle stages. It is intentionally
  * additive: nothing in the bootstrap Store changes; resolvers and errors
  * live on the pipeline instance.
+ *
+ * Listeners registered via `onResolve` are notified after each transition
+ * (resolving / materialized / shadow / problem). Useful for persistence,
+ * UI updates, or any side effect that should follow a slot's lifecycle.
  */
 export class ProjectionPipeline {
   readonly resolvers = new Map<string, RuleResolver>()
   readonly errors = new Map<string, string>()
+  private listeners: SlotResolveListener[] = []
 
   constructor(readonly store: AtomicStore) {}
 
   /** Register a resolver for a particular rule body kind. */
   registerRuleResolver(kind: string, resolver: RuleResolver): void {
     this.resolvers.set(kind, resolver)
+  }
+
+  /**
+   * Subscribe to slot lifecycle transitions. Listener fires for every
+   * state change made by the pipeline (resolving, materialized, shadow,
+   * problem). Returns an unsubscribe function.
+   */
+  onResolve(listener: SlotResolveListener): () => void {
+    this.listeners.push(listener)
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== listener)
+    }
+  }
+
+  private fire(slot: ProjectionSlot, prevState: ProjectionSlotState): void {
+    for (const listener of this.listeners) {
+      try {
+        listener({ slot, prevState })
+      } catch {
+        // Listener errors are isolated; pipeline continues.
+      }
+    }
   }
 
   /**
@@ -61,10 +95,14 @@ export class ProjectionPipeline {
     if (slot.state === 'resolving') {
       // cycle reached this slot mid-resolve
       this.errors.set(slotId, `slot ${slotId} already resolving (cycle?)`)
-      return this.store.markSlot(slotId, 'problem')
+      const marked = this.store.markSlot(slotId, 'problem')
+      this.fire(marked, 'resolving')
+      return marked
     }
 
+    const prevState = slot.state
     this.store.markSlot(slotId, 'resolving')
+    this.fire(this.store.slots.get(slotId)!, prevState)
 
     try {
       const value = this.resolveVector(slot.vector, slot)
@@ -76,11 +114,14 @@ export class ProjectionPipeline {
       }
       this.store.slots.set(slotId, next)
       this.errors.delete(slotId)
+      this.fire(next, 'resolving')
       return next
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.errors.set(slotId, msg)
-      return this.store.markSlot(slotId, 'problem')
+      const marked = this.store.markSlot(slotId, 'problem')
+      this.fire(marked, 'resolving')
+      return marked
     }
   }
 
