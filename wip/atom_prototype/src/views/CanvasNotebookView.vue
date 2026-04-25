@@ -239,7 +239,7 @@ async function copyExported() {
           </select>
           <span class="cell-id">{{ c.id }}</span>
           <span class="cell-pos">@ {{ Math.round(c.pos.x) }},{{ Math.round(c.pos.y) }}</span>
-          <button class="close" @click.stop="removeCell(c.id)">×</button>
+          <button class="close" @pointerdown.stop @click.stop="removeCell(c.id)">×</button>
         </div>
         <div class="faces-bar" @pointerdown.stop>
           <button

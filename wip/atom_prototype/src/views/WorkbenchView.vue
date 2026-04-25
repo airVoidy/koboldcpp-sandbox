@@ -167,7 +167,7 @@ function closeWindow(id: string) {
       <div class="window-header" @pointerdown="onHeaderPointerDown($event, w)">
         <span class="window-title">{{ w.title }}</span>
         <span class="window-src">{{ w.src }}</span>
-        <button type="button" class="close" @click="closeWindow(w.id)">×</button>
+        <button type="button" class="close" @pointerdown.stop @click="closeWindow(w.id)">×</button>
       </div>
       <iframe
         :src="w.src"

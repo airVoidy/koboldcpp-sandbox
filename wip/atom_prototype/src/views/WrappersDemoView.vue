@@ -10,13 +10,13 @@ import {
   type Mounted,
 } from '../mount'
 import LexicalContainer from '../components/containers/LexicalContainer.vue'
-import LangExtractStub from '../components/containers/LangExtractStub.vue'
-import WebContainerStub from '../components/containers/WebContainerStub.vue'
+import LangExtractContainer from '../components/containers/LangExtractContainer.vue'
+import WebShellContainer from '../components/containers/WebShellContainer.vue'
 
 // Register container types once per view mount.
-registerContainer('lexical', LexicalContainer, 'Lexical')
-registerContainer('langextract', LangExtractStub, 'LangExtract shadow')
-registerContainer('web-container', WebContainerStub, 'web-container')
+registerContainer('lexical', LexicalContainer, 'Lexical editor')
+registerContainer('langextract', LangExtractContainer, 'LangExtract')
+registerContainer('web-shell', WebShellContainer, 'web shell')
 
 const log = ref<AtomRunResult[]>([])
 const registry = new AtomRegistry()
@@ -123,28 +123,29 @@ registry.register(
   ),
 )
 
-// Atom 4: spawn the web-container stub directly (no bridge).
+// Atom 4: spawn the interactive web-shell directly (no bridge).
 registry.register(
   mkAtom(
-    'spawn-web-container',
+    'spawn-web-shell',
     [],
     {
       type: 'lambda',
       fn: () => {
         return {
-          type: 'web-container',
-          id: 'wc-' + Date.now(),
-          title: 'web-container view',
+          type: 'web-shell',
+          id: 'shell-' + Date.now(),
+          title: 'interactive shell',
           props: {
-            cmd: 'ls -la',
-            stdout: 'drwxr-xr-x  atom.ts mount.ts router.ts\ndrwxr-xr-x  views/ components/\n',
-            exitCode: 0,
+            cmd: 'ls',
+            files: {
+              '/home/user/notes.md': '# notes\n\nPress ↑/↓ for history. Try: cat README.md\n',
+            },
           },
         } as ContainerSpec
       },
     },
     ['last-spawn'],
-    { kind: 'op', tags: ['spawn', 'web-container'] },
+    { kind: 'op', tags: ['spawn', 'web-shell'] },
   ),
 )
 
@@ -154,8 +155,8 @@ function runSpawnLexical() {
 function runSpawnLangExtract() {
   void registry.run('spawn-langextract')
 }
-function runSpawnWebContainer() {
-  void registry.run('spawn-web-container')
+function runSpawnWebShell() {
+  void registry.run('spawn-web-shell')
 }
 function runFakeBash(cmd: string) {
   registry.setValue('cmd', cmd)
@@ -249,9 +250,9 @@ onMounted(() => {
     </p>
 
     <div class="controls">
-      <button @click="runSpawnLexical">Spawn Lexical</button>
-      <button @click="runSpawnLangExtract">Spawn LangExtract overlay</button>
-      <button @click="runSpawnWebContainer">Spawn web-container stub</button>
+      <button @click="runSpawnLexical">Spawn Lexical editor</button>
+      <button @click="runSpawnLangExtract">Spawn LangExtract annotator</button>
+      <button @click="runSpawnWebShell">Spawn web-shell</button>
       <span class="divider" />
       <button @click="runFakeBash('ls')">fake-bash: ls (bridge → Lexical)</button>
       <button @click="runFakeBash('date')">fake-bash: date (bridge → Lexical)</button>
@@ -271,7 +272,7 @@ onMounted(() => {
           <span class="cell-type">{{ m.type }}</span>
           <span class="cell-title">{{ m.title }}</span>
           <span class="cell-id">{{ m.id }}</span>
-          <button class="close" @click.stop="mountManager.close(m.id)">×</button>
+          <button class="close" @pointerdown.stop @click.stop="mountManager.close(m.id)">×</button>
         </div>
         <div class="cell-body">
           <component :is="m.component" v-bind="m.props" />
