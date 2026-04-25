@@ -105,6 +105,22 @@ export const moduleEntries: ModuleEntry[] = [
       'Spans wrapped as atoms, grouped into detached per-class NestedAtomicLists, namescope registering each span + first:<class> aliases, hierarchical LangScope nesting (LangChain-style parent chain with lookupAlias walking up).',
     tags: ['langextract', 'shadow', 'atomic', 'langscope', 'hierarchical'],
   },
+  {
+    name: 'aabb-layout',
+    path: '/aabb-layout',
+    title: 'Aabb Layout — three-zone list',
+    description:
+      'Three buckets per list: past (-1), current (0), future (+1). Move items freely between zones; checkpoint promotes +1 → 0; archive demotes 0 → -1. Zones are mutable buckets, not strict notation.',
+    tags: ['aabb', 'layout', 'cleanroom', 'three-zone'],
+  },
+  {
+    name: 'slot-inspector',
+    path: '/slot-inspector',
+    title: 'ProjectionSlot ↔ Lexical bridge',
+    description:
+      'Pipeline lifecycle made visible: declared → resolving → materialized | shadow | problem. Each transition is appended as a paragraph in a Lexical editor — the editor itself IS the computation log surface.',
+    tags: ['projection-slot', 'pipeline', 'lexical', 'cleanroom'],
+  },
   // Example external module (uncomment + configure proxy in vite.config.ts):
   // {
   //   name: 'web-container',
@@ -160,6 +176,16 @@ const routes: RouteRecordRaw[] = [
     path: '/langextract',
     name: 'langextract',
     component: () => import('./views/LangExtractView.vue'),
+  },
+  {
+    path: '/aabb-layout',
+    name: 'aabb-layout',
+    component: () => import('./views/AabbLayoutView.vue'),
+  },
+  {
+    path: '/slot-inspector',
+    name: 'slot-inspector',
+    component: () => import('./views/SlotInspectorView.vue'),
   },
 ]
 

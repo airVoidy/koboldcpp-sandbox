@@ -8,15 +8,25 @@ the April 22, 2026 session in working TypeScript with vitest coverage.
 
 Code lives at `wip/atom_prototype/src/cleanroom/`:
 
-| Module       | File           | Purpose                                                         |
-| ------------ | -------------- | --------------------------------------------------------------- |
-| `pipeline`   | `pipeline.ts`  | ProjectionSlot lifecycle: declared → resolving → materialized…  |
-| `aabb`       | `aabb.ts`      | Three-zone list layout (-1 / 0 / +1)                            |
-| `portals`    | `portals.ts`   | GloryHole (point-to-one) + StreamGate (point-to-many)           |
-| `contracts`  | `contracts.ts` | FutureContract + KeyframeUnion + CheckpointSync                 |
+| Module        | File              | Purpose                                                         |
+| ------------- | ----------------- | --------------------------------------------------------------- |
+| `pipeline`    | `pipeline.ts`     | ProjectionSlot lifecycle: declared → resolving → materialized…  |
+| `aabb`        | `aabb.ts`         | Three-zone list layout (-1 / 0 / +1)                            |
+| `portals`     | `portals.ts`      | GloryHole (point-to-one) + StreamGate (point-to-many)           |
+| `contracts`   | `contracts.ts`    | FutureContract + KeyframeUnion + CheckpointSync                 |
+| `storage`     | `storage.ts`      | StorageBackend + Memory + OPFS implementations                  |
+| `sync_bridge` | `sync_bridge.ts`  | Wire CheckpointSync to a StorageBackend (snapshot persistence)  |
+| `gateway`     | `gateway.ts`      | Atom-to-placeholder gateway with single/sequence/timeseries/stream payloads |
 
-All four are independent — each can be used alone, none requires the others.
+All seven are independent — each can be used alone, none requires the others.
 The bootstrap's `AtomicStore` is the only shared substrate.
+
+Demo views live at `wip/atom_prototype/src/views/`:
+
+| View                  | Route              | Demonstrates                                              |
+| --------------------- | ------------------ | --------------------------------------------------------- |
+| `AabbLayoutView.vue`  | `/aabb-layout`     | Three-zone bucket layout with arrow buttons + checkpoint  |
+| `SlotInspectorView.vue` | `/slot-inspector` | Pipeline transitions appended live to Lexical editor      |
 
 ## 1. ProjectionPipeline
 
@@ -157,6 +167,80 @@ sync.append({ kind: 'op', payload: 1 })
 sync.append({ kind: 'checkpoint', id: 'milestone-1' })
 ```
 
+## 5. Storage backends
+
+`StorageBackend` is the abstract surface (put/get/list/delete with `JsonValue`).
+Two implementations:
+
+- **`MemoryStorageBackend`**: trivial Map-backed; works in Node + browser;
+  used in tests and short-lived sessions.
+- **`OpfsStorageBackend`**: persists JSON files under origin-private FS
+  (`navigator.storage.getDirectory`). Browser-only — `isOpfsAvailable()`
+  guards construction.
+
+```ts
+import { MemoryStorageBackend, OpfsStorageBackend, isOpfsAvailable } from '@/cleanroom'
+
+const storage = isOpfsAvailable()
+  ? new OpfsStorageBackend('atomic-cleanroom')
+  : new MemoryStorageBackend()
+
+await storage.put('snap:001', { id: 's', target: 'house' })
+const keys = await storage.list('snap:')
+const snap = await storage.get(keys[keys.length - 1])
+```
+
+## 6. Sync bridge
+
+`bindSnapshotOnCheckpoint(sync, store, storage, opts)` wires a
+`CheckpointSync` to a `StorageBackend`: when an appended log entry matches
+`predicate`, the AtomicStore is snapshotted around `target(entry, seq)` and
+persisted under `keyOf(entry, seq)`.
+
+```ts
+import { CheckpointSync, MemoryStorageBackend, AtomicStore, bindSnapshotOnCheckpoint, loadLatestSnapshot } from '@/cleanroom'
+
+const sync = new CheckpointSync()
+const storage = new MemoryStorageBackend()
+const store = new AtomicStore() // populated elsewhere
+
+const unbind = bindSnapshotOnCheckpoint(sync, store, storage, {
+  watcherId: 'auto-snap',
+  predicate: (e) => (e as { kind?: string }).kind === 'checkpoint',
+  target: () => 'main',
+  keyOf: (_e, seq) => `snap:${String(seq).padStart(6, '0')}`,
+})
+
+sync.append({ kind: 'op', payload: 1 })
+sync.append({ kind: 'checkpoint' })  // → snapshot persisted
+
+// Later:
+const last = await loadLatestSnapshot(storage, 'snap:')
+```
+
+## 7. Atom-to-placeholder gateway
+
+`AtomToPlaceholderGateway` generalizes `GloryHole` over multiple payload
+shapes: `single` / `sequence` / `timeseries` / `stream`. Dispatchers match
+on payload kind (or `'*'` wildcard) and an optional content predicate.
+
+```ts
+import { AtomToPlaceholderGateway, Payload } from '@/cleanroom'
+
+const gw = new AtomToPlaceholderGateway()
+gw.registerDispatcher({ id: 'metrics', matchKind: 'timeseries', target: 'slot:metrics' })
+gw.registerDispatcher({ id: 'commands', matchKind: 'sequence', target: 'slot:cmds' })
+gw.registerDispatcher({ id: 'live', matchKind: 'stream', target: 'gate:live' })
+gw.registerDispatcher({ id: 'fallback', matchKind: '*', target: 'sink' })
+
+gw.drop(Payload.timeseries([{ at: 1, value: 10 }, { at: 2, value: 20 }]))
+// → { target: 'slot:metrics', dispatcherId: 'metrics', ... }
+```
+
+The gateway only ROUTES — interpreting a sequence vs a timeseries vs a
+stream is the consumer's responsibility, kept distinct so downstream code
+can dispatch by shape without re-parsing.
+
 ## How they compose
 
 The four modules layer around `AtomicStore`. Composition examples:
@@ -177,15 +261,18 @@ all happen in user code over the public APIs.
 
 ## Test coverage
 
-Vitest run on `wip/atom_prototype` (165 tests total, 56 of which are
+Vitest run on `wip/atom_prototype` (190 tests total, 81 of which are
 cleanroom):
 
-| File                  | Tests |
-| --------------------- | ----- |
-| `pipeline.test.ts`    | 12    |
-| `aabb.test.ts`        | 12    |
-| `portals.test.ts`     | 14    |
-| `contracts.test.ts`   | 18    |
+| File                    | Tests |
+| ----------------------- | ----- |
+| `pipeline.test.ts`      | 12    |
+| `aabb.test.ts`          | 12    |
+| `portals.test.ts`       | 14    |
+| `contracts.test.ts`     | 18    |
+| `storage.test.ts`       | 8     |
+| `sync_bridge.test.ts`   | 6     |
+| `gateway.test.ts`       | 11    |
 
 Run with `pnpm test` or `npm test` from `wip/atom_prototype/`.
 
@@ -193,14 +280,16 @@ Run with `pnpm test` or `npm test` from `wip/atom_prototype/`.
 
 Things the cleanroom does not yet cover (deferred, pickable independently):
 
-- **OPFS ↔ exec-checkpoint sync wire-up** — bind `CheckpointSync` to a
-  real synckit OPFS storage, snapshot-on-match.
-- **Atom-to-placeholder gateway** — generalize `GloryHole` to support
-  ordered command groups, time-series, and other payload-shape variants.
-- **Visual viewer** — Vue component(s) that render an `AabbLayout` with
-  draggable zone movement, calling the existing helpers.
-- **Lexical bridge** — wire `ProjectionSlot.materialized` into a Lexical
-  display so live UI shows computation route, not only payload.
+- **Real OPFS testing in browser** — `OpfsStorageBackend` is implemented
+  but only memory backend is unit-tested (Node test env has no OPFS).
+  Browser-side smoke test recommended before relying in production.
+- **Drag-and-drop AABB viewer** — current view uses arrow buttons; a
+  HTML5 drag-and-drop variant could replace them for spatial mutation.
+- **Pipeline ↔ AABB ↔ Portal composition demo** — a single view that
+  wires GloryHole drops to AABB zone-promotions to slot resolution.
+- **Persistence-on-resolve hook** — automatically `storage.put` when a
+  slot transitions to materialized (would close the `pipeline ↔ storage`
+  loop without manual snapshot calls).
 
 See [ATOMIC_CLEANROOM_ARCHITECTURE_SESSION_2026_04_22.md](ATOMIC_CLEANROOM_ARCHITECTURE_SESSION_2026_04_22.md)
 for the full architectural context that produced these modules.
